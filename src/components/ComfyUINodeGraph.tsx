@@ -38,6 +38,8 @@ interface WorkflowBinding {
   confidence: 'high' | 'medium' | 'low';
 }
 
+interface RuntimeInfo { ok?: boolean; activeJob?: any; history?: Array<{timestamp:string;event:string;payload:any}>; comfy?: any; }
+
 interface WorkflowInfo {
   id: string;
   fileName: string;
@@ -58,6 +60,7 @@ export const ComfyUINodeGraph: React.FC<Props> = ({ onAddLog }) => {
   const [viewMode, setViewMode] = useState<'parameters' | 'graph' | 'json'>('parameters');
   const [nodeFilter, setNodeFilter] = useState<string>('');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [runtime, setRuntime] = useState<RuntimeInfo | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -91,6 +94,25 @@ export const ComfyUINodeGraph: React.FC<Props> = ({ onAddLog }) => {
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const pollRuntime = async () => {
+      try {
+        const r = await fetch('/api/comfy/runtime', { cache:'no-store' });
+        if (!r.ok || cancelled) return;
+        const data = await r.json();
+        if (!cancelled) {
+          setRuntime(data);
+          const activeId = data?.activeJob?.workflowId;
+          if (activeId && workflows.some(w => w.id === activeId)) setSelected(activeId);
+        }
+      } catch {}
+    };
+    pollRuntime();
+    const t = setInterval(pollRuntime, 750);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [workflows]);
 
   const active = useMemo(() => workflows.find(w => w.id === selected), [workflows, selected]);
 
@@ -147,6 +169,11 @@ export const ComfyUINodeGraph: React.FC<Props> = ({ onAddLog }) => {
             <p className="text-[11px] text-slate-400 font-mono mt-0.5">
               Live workflow graph inspector, node parameter synchronization, and connection topology mapper.
             </p>
+            {runtime?.activeJob && <div className="mt-2 flex flex-wrap items-center gap-2 text-[9px] font-mono">
+              <span className="px-2 py-1 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-300">JOB {String(runtime.activeJob.id).slice(0,8)} · {runtime.activeJob.status} · {runtime.activeJob.progress || 0}%</span>
+              <span className="px-2 py-1 rounded border border-sky-500/30 bg-sky-500/10 text-sky-300">NODE #{runtime.activeJob.currentNodeId ?? '—'} · {runtime.activeJob.currentNodeClass || 'waiting'}</span>
+              <span className="px-2 py-1 rounded border border-slate-800 bg-slate-950 text-slate-500">{runtime.activeJob.workflowId}</span>
+            </div>}
           </div>
         </div>
 
@@ -359,13 +386,17 @@ export const ComfyUINodeGraph: React.FC<Props> = ({ onAddLog }) => {
                     {filteredNodes.map(n => {
                       const isSelected = selectedNodeId === n.id;
                       const hasBindings = active.bindings.some(b => b.nodeId === n.id);
+                      const isRunning = String(runtime?.activeJob?.currentNodeId ?? '') === String(n.id);
+                      const wasExecuted = (runtime?.history || []).some((e:any) => e.event === 'node_executed' && String(e.payload?.node ?? '') === String(n.id));
                       const inputsCount = Object.keys(n.inputs).length;
                       return (
                         <div
                           key={n.id}
                           onClick={() => setSelectedNodeId(isSelected ? null : n.id)}
                           className={`p-2.5 rounded-lg border transition-all cursor-pointer ${
-                            isSelected
+                            isRunning
+                              ? 'bg-emerald-500/15 border-emerald-500 ring-1 ring-emerald-500/40 text-slate-100'
+                              : isSelected
                               ? 'bg-sky-500/15 border-sky-500 ring-1 ring-sky-500/40 text-slate-100'
                               : hasBindings
                               ? 'bg-slate-900/90 border-emerald-500/40 hover:border-emerald-500/60 text-slate-300'
@@ -376,7 +407,11 @@ export const ComfyUINodeGraph: React.FC<Props> = ({ onAddLog }) => {
                             <span className="text-xs font-bold font-mono text-slate-200">
                               #{n.id} {n.classType}
                             </span>
-                            {hasBindings && (
+                            {isRunning ? (
+                              <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">RUNNING</span>
+                            ) : wasExecuted ? (
+                              <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-sky-500/10 text-sky-300 border border-sky-500/30">DONE</span>
+                            ) : hasBindings && (
                               <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
                                 BOUND
                               </span>

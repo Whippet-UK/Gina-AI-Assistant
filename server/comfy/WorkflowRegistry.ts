@@ -21,6 +21,11 @@ export class WorkflowRegistry {
           try {
             const raw = JSON.parse(await fs.readFile(path.join(dir, file), 'utf8'));
             const id = path.basename(file, path.extname(file));
+            // Later directories intentionally override earlier packaged defaults.
+            // This lets C:\Gina_AI\workflows\flux_image.json remain the live workflow
+            // the user has configured in ComfyUI, while packaged workflows provide
+            // a safe fallback when no external override exists. The API reports the
+            // resolved definition so Gina's controls always match what it submits.
             this.workflows.set(id, parseWorkflow(id, file, raw));
           } catch (error: any) {
             console.warn(`[WorkflowRegistry] Failed to load ${file} in ${dir}: ${error?.message || error}`);

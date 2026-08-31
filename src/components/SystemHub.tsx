@@ -50,7 +50,7 @@ export const SystemHub: React.FC<SystemHubProps> = ({
         <div className="flex items-end justify-between gap-4 mt-1">
           <div>
             <h1 className="text-2xl md:text-3xl font-semibold text-slate-100">System</h1>
-            <p className="text-xs text-slate-500 mt-1">Everything that supports Gina's local engine, organized by function instead of stacked panels.</p>
+            <p className="text-xs text-slate-500 mt-1">Live local engine inventory: current models, ComfyUI nodes/workflows, generators, telemetry, VRAM controls, safeguards and diagnostics.</p>
           </div>
           <div className="hidden lg:flex items-center gap-2 text-[9px] font-mono text-slate-600 uppercase"><HardDrive className="w-3.5 h-3.5" /> Local only</div>
         </div>

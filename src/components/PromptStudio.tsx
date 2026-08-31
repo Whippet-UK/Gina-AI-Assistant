@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Workflow, RefreshCw, Play, Image as ImageIcon, ShieldCheck, Sliders, SlidersHorizontal,
+  Workflow, RefreshCw, Play, Image as ImageIcon, ShieldCheck, Sliders, SlidersHorizontal, Activity,
   ChevronDown, Cpu, Zap, AlertTriangle, Download, Sparkles, Wand2, Save,
-  RotateCcw, Info, Maximize2, Trash2, CheckCircle2, ShieldAlert, Lock, Unlock, Check, CheckSquare,
+  RotateCcw, Info, Maximize2, Trash2, CheckCircle2, Lock, Unlock, Check, CheckSquare,
   Layout, Layers, Monitor, X, Upload, Paperclip, FileImage
 } from 'lucide-react';
 import { useProjectState } from '../context/ProjectStateContext';
@@ -15,6 +15,7 @@ interface PromptStudioProps {
   onAddLog: (level: 'INFO'|'WARN'|'SEC'|'RULE', message: string, ruleId?: string) => void;
   onClearCache?: () => void;
   telemetry?: SystemTelemetry;
+  stagedReferenceImage?: { filename: string; name: string; bytes: number; previewUrl: string } | null;
 }
 interface WorkflowSummary {
   id: string;
@@ -38,6 +39,7 @@ interface CapabilityData {
 const ratioOptions = [
   { id: '1:1', label: 'Square', width: 1024, height: 1024 },
   { id: '16:9', label: 'Landscape', width: 1024, height: 576 },
+  { id: 'aida64', label: 'AIDA64 Panel', width: 1024, height: 600 },
   { id: '9:16', label: 'Vertical / Shorts', width: 576, height: 1024 },
   { id: '4:3', label: 'Classic', width: 1024, height: 768 },
   { id: '3:4', label: 'Portrait Classic', width: 768, height: 1024 },
@@ -48,6 +50,7 @@ const resolutionPresets = [
   { label: '768 × 768', width: 768, height: 768, budget: 'LOW', ratio: '1:1' },
   { label: '1024 × 1024', width: 1024, height: 1024, budget: 'STANDARD', ratio: '1:1' },
   { label: '1024 × 576', width: 1024, height: 576, budget: 'STANDARD', ratio: '16:9' },
+  { label: '1024 × 600', width: 1024, height: 600, budget: 'AIDA64', ratio: 'aida64' },
   { label: '576 × 1024', width: 576, height: 1024, budget: 'STANDARD', ratio: '9:16' },
   { label: '1024 × 768', width: 1024, height: 768, budget: 'STANDARD', ratio: '4:3' },
   { label: '768 × 1024', width: 768, height: 1024, budget: 'STANDARD', ratio: '3:4' },
@@ -68,7 +71,7 @@ const isDimensionKey = (key: string) => ['width','height'].includes(key);
 const isSeedKey = (key: string) => ['seed'].includes(key);
 const isAdvancedKey = (key: string) => ['cfg','cfg_scale','guidance','denoise','denoise_strength','batch_size','batch','sampler','sampler_name','scheduler','scheduler_name'].includes(key);
 
-export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCache, telemetry }) => {
+export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCache, telemetry, stagedReferenceImage }) => {
   const { projectState, updatePromptStudio, updateAiStudio, setSavedAssets, setActiveAida64Layout } = useProjectState();
   const cfg = projectState.promptStudio;
   const activeLayout = projectState.activeAida64Layout;
@@ -85,7 +88,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
   const [capabilities, setCapabilities] = useState<CapabilityData | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [technicalOpen, setTechnicalOpen] = useState(false);
-  const [resolution, setResolution] = useState('1024 × 576');
+  const [resolution, setResolution] = useState('1024 × 600');
   const [customSize, setCustomSize] = useState(false);
   const [showNegative, setShowNegative] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -96,6 +99,10 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
   const [showConduits, setShowConduits] = useState(true);
   const [showHexBolts, setShowHexBolts] = useState(true);
   const [showFusionOptions, setShowFusionOptions] = useState(false);
+  const [livePanelOpen, setLivePanelOpen] = useState(true);
+  const [fullWorkflowOpen, setFullWorkflowOpen] = useState(false);
+  const [liveEvents, setLiveEvents] = useState<Array<{timestamp:string;event:string;payload:any}>>([]);
+  const [resolvedWorkflow, setResolvedWorkflow] = useState<Record<string, any> | null>(null);
 
   // Seed lock / Keep image mode
   const [lockSeed, setLockSeed] = useState<boolean>(false);
@@ -106,6 +113,13 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
 
   // Local reference-image input for ComfyUI workflows that expose LoadImage.
   const [referenceImage, setReferenceImage] = useState<{ filename: string; name: string; bytes: number; previewUrl: string } | null>(null);
+
+  useEffect(() => {
+    if (stagedReferenceImage) {
+      setReferenceImage(stagedReferenceImage);
+      onAddLog('INFO', `AIDA64 template guide attached as the visual reference: ${stagedReferenceImage.name}.`);
+    }
+  }, [stagedReferenceImage]);
   const [uploadingReference, setUploadingReference] = useState(false);
   const [referenceUploadError, setReferenceUploadError] = useState<string | null>(null);
   const referenceFileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -147,32 +161,52 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
       setControls(list);
       const initial: Record<string, any> = {};
       list.forEach(c => { if (c.currentValue !== undefined && c.currentValue !== null) initial[c.key] = c.currentValue; });
-      setParameters(prev => ({ ...initial, ...prev }));
-      const width = Number(initial.width || 1024);
-      const height = Number(initial.height || 576);
+      setParameters(prev => {
+        const merged = { ...initial };
+        // Keep only explicit prompt-studio values that are not workflow-owned controls.
+        // This prevents stale localStorage values (e.g. 512×512) from silently
+        // disagreeing with the actual ComfyUI workflow (1024×600 AIDA64 baseline).
+        for (const [key, value] of Object.entries(prev)) {
+          if (!['width','height','steps','sampler','sampler_name','scheduler','scheduler_name','denoise','batch_size','seed'].includes(key)) merged[key] = value;
+        }
+        if (activeLayout?.screen?.width === 1024 && activeLayout?.screen?.height === 600) { merged.width = 1024; merged.height = 600; }
+        return merged;
+      });
+      const preferredWidth = activeLayout?.screen?.width === 1024 && activeLayout?.screen?.height === 600 ? 1024 : Number(initial.width || 1024);
+      const preferredHeight = activeLayout?.screen?.width === 1024 && activeLayout?.screen?.height === 600 ? 600 : Number(initial.height || 576);
+      const width = preferredWidth;
+      const height = preferredHeight;
+      if (activeLayout?.screen?.width === 1024 && activeLayout?.screen?.height === 600) { updatePromptStudio({ aspectRatio: 'aida64' }); }
       const preset = resolutionPresets.find(p => p.width === width && p.height === height);
+      if (preset) updatePromptStudio({ aspectRatio: preset.ratio });
       setResolution(preset?.label || `${width} × ${height}`);
       setCustomSize(!preset);
     }).catch(() => { if (!cancelled) { setWorkflow(null); setControls([]); } });
     updateAiStudio({ workflowId: selected });
     return () => { cancelled = true; };
-  }, [selected]);
+  }, [selected, activeLayout, updatePromptStudio]);
 
   const dimensionControls = useMemo(() => controls.filter(c => isDimensionKey(c.key)), [controls]);
   const visibleControls = useMemo(() => controls.filter(c => !isPromptKey(c.key) && !isDimensionKey(c.key)), [controls]);
   const basicControls = useMemo(() => visibleControls.filter(c => !isAdvancedKey(c.key) && !isSeedKey(c.key)), [visibleControls]);
-  const advancedControls = useMemo(() => visibleControls.filter(c => isAdvancedKey(c.key)), [visibleControls]);
+  const advancedControls = useMemo(() => visibleControls.filter(c => isAdvancedKey(c.key) && !c.key.startsWith('node_')), [visibleControls]);
+  const genericWorkflowControls = useMemo(() => visibleControls.filter(c => c.key.startsWith('node_')), [visibleControls]);
   const seedControl = useMemo(() => controls.find(c => isSeedKey(c.key)), [controls]);
   const inputImageControl = useMemo(() => controls.find(c => c.key === 'input_image'), [controls]);
   const hasPrompt = controls.some(c => ['prompt','positive_prompt'].includes(c.key));
   const hasNegativePrompt = controls.some(c => c.key === 'negative_prompt');
   const hasDimensions = dimensionControls.length > 0;
   const hasAdvanced = advancedControls.length > 0 || !!seedControl;
+  const hasGenericWorkflowControls = genericWorkflowControls.length > 0;
   const online = capabilities?.comfy?.online !== false;
   const gpuName = capabilities?.hardware?.name || 'Local NVIDIA GPU';
   const vram = capabilities?.hardware?.memoryTotalMB ? `${(capabilities.hardware.memoryTotalMB / 1024).toFixed(1)} GB` : '8 GB';
+  const workflowModelNode = workflow?.nodes?.find((n:any) => ['UnetLoaderGGUF','UNETLoader','CheckpointLoaderSimple','CheckpointLoader'].includes(n.classType));
+  const workflowModelKey = workflowModelNode ? (workflowModelNode.inputs?.unet_name !== undefined ? `node_${workflowModelNode.id}_unet_name` : workflowModelNode.inputs?.ckpt_name !== undefined ? `node_${workflowModelNode.id}_ckpt_name` : `node_${workflowModelNode.id}_model_name`) : '';
+  const workflowModelValue = (workflowModelKey && parameters[workflowModelKey] !== undefined ? parameters[workflowModelKey] : (workflowModelNode?.inputs?.unet_name || workflowModelNode?.inputs?.ckpt_name || workflowModelNode?.inputs?.model_name || 'Not exposed'));
+  const workflowModelLabel = workflowModelValue === 'flux1-schnell-Q4_K_S.gguf' ? 'FLUX.1-Schnell GGUF Q4_K_S' : String(workflowModelValue);
 
-  const selectedRatio = cfg.aspectRatio || '16:9';
+  const selectedRatio = cfg.aspectRatio || 'aida64';
   const ratio = ratioOptions.find(r => r.id === selectedRatio) || ratioOptions[1];
   const availableResolutions = resolutionPresets.filter(p => p.ratio === selectedRatio);
   const isImageJob = !job?.workflowId || job?.workflowId === 'flux_image' || output?.job?.workflowId === 'flux_image';
@@ -180,6 +214,25 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
   const isMediaImage = rawOutput && (isImageJob || rawOutput.toLowerCase().includes('.png') || rawOutput.toLowerCase().includes('.jpg') || rawOutput.toLowerCase().includes('.jpeg'));
   const activeOutput = isMediaImage ? rawOutput : undefined;
   const isBusy = loading || job?.status === 'QUEUED' || job?.status === 'RUNNING';
+
+  useEffect(() => {
+    if (!job?.id) { setLiveEvents([]); setResolvedWorkflow(null); return; }
+    let cancelled = false;
+    const refreshRuntime = async () => {
+      try {
+        const [historyRes, workflowRes] = await Promise.all([
+          fetch(`/api/jobs/${encodeURIComponent(job.id)}/events/history`, { cache:'no-store' }),
+          fetch(`/api/jobs/${encodeURIComponent(job.id)}/workflow`, { cache:'no-store' })
+        ]);
+        if (cancelled) return;
+        if (historyRes.ok) { const data = await historyRes.json(); setLiveEvents(Array.isArray(data.events) ? data.events : []); }
+        if (workflowRes.ok) { const data = await workflowRes.json(); setResolvedWorkflow(data.workflow || null); }
+      } catch {}
+    };
+    refreshRuntime();
+    const timer = setInterval(refreshRuntime, isBusy ? 500 : 1500);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [job?.id, isBusy]);
 
   const setPrompt = (v:string) => updatePromptStudio({ promptInput: v });
   const setNegativePrompt = (v:string) => updatePromptStudio({ negativePrompt: v });
@@ -224,6 +277,8 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
       {humanize(c.key)}
       <span className="block mt-1">
         {options.length ? <select value={value} onChange={e=>updateControl(c.key, e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-[10px] text-slate-200 normal-case font-mono focus:outline-none focus:border-emerald-500/50">{options.map(o=><option key={String(o)} value={o}>{String(o)}</option>)}</select>
+        : typeof value === 'boolean' ? <input type="checkbox" checked={value} onChange={e=>updateControl(c.key, e.target.checked)} className="mt-2" />
+        : typeof value === 'string' ? <input type="text" value={value} onChange={e=>updateControl(c.key, e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-[10px] text-slate-200 normal-case font-mono focus:outline-none focus:border-emerald-500/50" />
         : <input type="number" value={value} min={c.min} max={c.max} step={c.step ?? 1} onChange={e=>updateControl(c.key, e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-[10px] text-slate-200 normal-case font-mono focus:outline-none focus:border-emerald-500/50" />}
       </span>
     </label>;
@@ -306,14 +361,14 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
 
   const handleResetFluxPreset = () => {
     setSelected('flux_image');
-    setResolution('1024 × 576');
+    setResolution('1024 × 600');
     setCustomSize(false);
     updatePromptStudio({
-      targetNetwork: 'FLUX.1-Schnell (FP8)',
-      aspectRatio: '16:9',
+      targetNetwork: 'FLUX.1-Schnell (GGUF Q4_K_S)',
+      aspectRatio: 'aida64',
       stylePreset: 'Cinematic Photorealistic'
     });
-    onAddLog('INFO', 'Reset Creator Workspace to FLUX.1-Schnell FP8 defaults (1024×576 16:9).');
+    onAddLog('INFO', 'Reset Creator Workspace to FLUX.1-Schnell GGUF AIDA64 defaults (1024×600).');
   };
 
   const handleKeepImage = async () => {
@@ -446,6 +501,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
     }
     setSaving(false);
   };
+
 
   const handleFuseTemplateLayout = async () => {
     if (!activeOutput || !activeLayout) return;
@@ -691,10 +747,10 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
             <div>
               <div className="text-[10px] font-bold text-slate-200 flex items-center gap-1.5">
                 <span>Model Engine:</span>
-                <span className="text-emerald-400 font-mono font-bold">FLUX.1-Schnell FP8</span>
+                <span className="text-emerald-400 font-mono font-bold">{workflowModelLabel}</span>
               </div>
               <p className="text-[9px] text-slate-500">
-                {selected === 'flux_image' ? 'Active: flux_image workflow (4-step euler latent diffusion)' : `Active workflow: ${selected}`}
+                {selected === 'flux_image' ? 'Active: flux_image · UnetLoaderGGUF · 4-step euler · 1024×600 AIDA64 default' : `Active workflow: ${selected}`}
               </p>
             </div>
           </div>
@@ -736,7 +792,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="text-[9px] text-slate-500 uppercase font-bold">Style preset<span className="block mt-1.5"><select value={cfg.stylePreset || 'None'} onChange={e=>updatePromptStudio({ stylePreset: e.target.value })} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2.5 text-[10px] text-slate-200 focus:outline-none focus:border-emerald-500/50">{stylePresets.map(s=><option key={s}>{s}</option>)}</select></span></label>
-          <label className="text-[9px] text-slate-500 uppercase font-bold">Model<span className="block mt-1.5"><select value={cfg.targetNetwork} onChange={e=>updatePromptStudio({ targetNetwork:e.target.value })} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2.5 text-[10px] text-slate-200 focus:outline-none focus:border-emerald-500/50"><option>FLUX.1-Schnell (FP8)</option></select></span></label>
+          <label className="text-[9px] text-slate-500 uppercase font-bold">Model (actual workflow)<span className="block mt-1.5"><div className="w-full bg-slate-950 border border-emerald-500/30 rounded-lg px-2.5 py-2.5 text-[10px] text-emerald-300 font-mono truncate" title={String(workflowModelValue)}>{workflowModelLabel}</div></span></label>
         </div>
 
         {(basicControls.length > 0 || seedControl) && <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5">
@@ -752,6 +808,11 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
           {advancedOpen && <div className="border-t border-slate-800 p-3.5 grid grid-cols-2 sm:grid-cols-3 gap-3">{advancedControls.map(renderControl)}</div>}
         </div>}
 
+        {hasGenericWorkflowControls && <div className="bg-slate-950 border border-sky-500/20 rounded-xl">
+          <button onClick={()=>setFullWorkflowOpen(v=>!v)} className="w-full px-3.5 py-3 flex items-center justify-between text-[9px] text-sky-300 uppercase font-bold tracking-widest"><span className="flex items-center gap-1.5"><Workflow className="w-3 h-3"/>Full workflow inputs · {genericWorkflowControls.length}</span><ChevronDown className={`w-3 h-3 transition-transform ${fullWorkflowOpen?'rotate-180':''}`}/></button>
+          {fullWorkflowOpen && <div className="border-t border-slate-800 p-3.5 space-y-2"><div className="text-[8px] text-slate-600 font-mono">Direct scalar inputs from the selected ComfyUI API graph. Linked node sockets remain read-only topology.</div><div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{genericWorkflowControls.map(renderControl)}</div></div>}
+        </div>}
+
         <div className="flex items-center gap-2 text-[9px] text-slate-600"><Zap className="w-3 h-3 text-emerald-500"/> Gina exposes controls from the selected ComfyUI workflow instead of assuming capabilities.</div>
         <div className="flex items-center gap-2">
           <button onClick={generate} disabled={isBusy || promotingImage || !selected || !cfg.promptInput.trim() || !hasPrompt || !online || (!!inputImageControl && !referenceImage)} className="flex-1 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 font-bold px-3 py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition-colors"><Play className="w-3.5 h-3.5 fill-current"/>{loading ? 'SUBMITTING…' : isBusy ? 'GENERATION RUNNING…' : 'GENERATE LOCALLY'}</button>
@@ -764,6 +825,32 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
       </div>
 
       <div className="xl:col-span-5 space-y-3">
+        <div className="bg-slate-950 border border-sky-500/30 rounded-xl overflow-hidden">
+          <button type="button" onClick={()=>setLivePanelOpen(v=>!v)} className="w-full px-3.5 py-3 flex items-center justify-between text-[9px] uppercase font-bold tracking-widest text-sky-300">
+            <span className="flex items-center gap-1.5"><Activity className="w-3 h-3"/> Live ComfyUI Execution · {workflow?.nodeCount || 0} nodes</span>
+            <span className="font-mono text-slate-500">{job ? `${job.status} · ${job.progress || 0}%` : 'IDLE'}</span>
+          </button>
+          {livePanelOpen && <div className="border-t border-slate-800 p-3 space-y-3">
+            <div className="grid grid-cols-2 gap-2 text-[9px] font-mono">
+              <div className="bg-slate-900 rounded border border-slate-800 p-2"><div className="text-slate-500">CURRENT NODE</div><div className="text-emerald-300 mt-1 font-bold">{job?.currentNodeId ? `#${job.currentNodeId} · ${job.currentNodeClass || 'Unknown'}` : 'Waiting for ComfyUI'}</div></div>
+              <div className="bg-slate-900 rounded border border-slate-800 p-2"><div className="text-slate-500">SAMPLING</div><div className="text-sky-300 mt-1">{job?.currentStep ? `${job.currentStep}/${job.totalSteps || '?'}` : `${parameters.steps ?? workflow?.workflow?.['8']?.inputs?.steps ?? 4} steps`}</div></div>
+              <div className="bg-slate-900 rounded border border-slate-800 p-2"><div className="text-slate-500">WORKFLOW</div><div className="text-slate-200 mt-1">{job?.workflowId || selected}</div></div>
+              <div className="bg-slate-900 rounded border border-slate-800 p-2"><div className="text-slate-500">MODEL</div><div className="text-slate-200 mt-1">{parameters.model || 'UnetLoaderGGUF · Q4_K_S'}</div></div>
+            </div>
+            <div className="max-h-52 overflow-y-auto custom-scrollbar space-y-1">
+              {(workflow?.nodes || []).map((n:any) => {
+                const activeNode = String(job?.currentNodeId || '') === String(n.id);
+                const recent = liveEvents.some(e => e.event === 'node_executed' && String(e.payload?.node ?? '') === String(n.id));
+                return <div key={n.id} className={`rounded border px-2 py-1.5 font-mono text-[9px] ${activeNode ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-200' : recent ? 'border-sky-500/30 bg-sky-500/5 text-sky-300' : 'border-slate-800 bg-slate-900/60 text-slate-500'}`}>
+                  <div className="flex items-center justify-between gap-2"><span>#{n.id} · {n.classType}</span><span>{activeNode ? 'RUNNING' : recent ? 'DONE' : 'READY'}</span></div>
+                  {activeNode && <div className="mt-1 text-slate-400">{Object.entries((resolvedWorkflow?.[n.id]?.inputs || n.inputs || {})).map(([k,v]:any)=> <span key={k} className="mr-2">{k}={Array.isArray(v) ? `[${v.join(',')}]` : String(v)}</span>)}</div>}
+                </div>;
+              })}
+            </div>
+            <div className="border-t border-slate-800 pt-2"><div className="text-[8px] text-slate-600 uppercase font-bold mb-1">Execution event stream</div><div className="max-h-24 overflow-y-auto custom-scrollbar space-y-0.5 font-mono text-[8px]">{liveEvents.slice(-20).reverse().map((e,i)=><div key={`${e.timestamp}-${i}`} className="text-slate-500"><span className="text-slate-700">{new Date(e.timestamp).toLocaleTimeString()}</span> <span className="text-sky-400">{e.event}</span>{e.payload?.node != null ? ` · node #${e.payload.node}` : ''}</div>)}</div></div>
+          </div>}
+        </div>
+
         <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -816,6 +903,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
             <div className="space-y-2 mt-3">
               {/* Active Layout Fusion Action */}
               {activeLayout && (
+                <div className="grid grid-cols-1 gap-2">
                 <button
                   type="button"
                   disabled={fusingLayout || isBusy}
@@ -826,6 +914,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
                   <Zap className="w-3.5 h-3.5 text-sky-200" />
                   <span>{fusingLayout ? 'FUSING EXACT LAYOUT BEZELS…' : '✨ FUSE TEMPLATE LAYOUT BEZELS ONTO THIS IMAGE'}</span>
                 </button>
+                </div>
               )}
 
               {/* Keep Image & Seed Controls */}

@@ -59,8 +59,9 @@ export const ComfyUIStatusIndicator: React.FC<{ activeView?: string }> = ({ acti
 export const LTXDiagnostic: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [comfyDirectStatus, setComfyDirectStatus] = useState<{ checked: boolean; success: boolean; latencyMs?: number; error?: string }>({ checked: false, success: false });
-  const [modelFileStatus, setModelFileStatus] = useState<{ checked: boolean; exists: boolean; path?: string; sizeGB?: number; error?: string }>({ checked: false, exists: false });
+  const [modelFileStatus, setModelFileStatus] = useState<{ checked: boolean; exists: boolean; path?: string; sizeGB?: number; fileName?: string; error?: string }>({ checked: false, exists: false });
   const [lastCheckTime, setLastCheckTime] = useState<string | null>(null);
+  const [watchdog, setWatchdog] = useState<any>(null);
 
   const runDiagnostic = async () => {
     setLoading(true);
@@ -97,31 +98,23 @@ export const LTXDiagnostic: React.FC = () => {
       error: directSuccess ? undefined : directError
     });
 
-    // 2. Backend endpoint filesystem check for LTX-2.3 checkpoint file
     try {
-      const fileRes = await fetch('/api/diagnostics/check-model');
-      if (fileRes.ok) {
-        const fileData = await fileRes.json();
-        setModelFileStatus({
-          checked: true,
-          exists: fileData.exists,
-          path: fileData.path,
-          sizeGB: fileData.sizeGB,
-          error: fileData.error
-        });
-      } else {
-        setModelFileStatus({
-          checked: true,
-          exists: false,
-          error: `HTTP ${fileRes.status} checking backend filesystem`
-        });
+      const diagRes = await fetch('/api/comfy/diagnostics', { cache: 'no-store' });
+      if (diagRes.ok) {
+        const diag = await diagRes.json();
+        setWatchdog(diag.watchdog || null);
       }
-    } catch (fileErr: any) {
-      setModelFileStatus({
-        checked: true,
-        exists: false,
-        error: fileErr?.message || 'Failed to query model diagnostic API'
-      });
+    } catch {}
+
+    // 2. Live capability/model discovery. Do not pin this panel to an obsolete LTX filename.
+    try {
+      const capRes = await fetch('/api/capabilities', { cache: 'no-store' });
+      if (!capRes.ok) throw new Error(`HTTP ${capRes.status} reading capability inventory`);
+      const cap = await capRes.json();
+      const ltx = (cap.models || []).find((m:any) => m.exists && /ltx/i.test(m.fileName));
+      setModelFileStatus({ checked:true, exists:!!ltx, path:ltx?.path, sizeGB:ltx?.sizeGB, fileName:ltx?.fileName, error:ltx ? undefined : 'No LTX model discovered in the local ComfyUI model tree.' });
+    } catch (fileErr:any) {
+      setModelFileStatus({ checked:true, exists:false, error:fileErr?.message || 'Failed to query live model inventory' });
     }
 
     setLastCheckTime(new Date().toLocaleTimeString());
@@ -141,10 +134,10 @@ export const LTXDiagnostic: React.FC = () => {
           </div>
           <div>
             <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider flex items-center gap-2">
-              LTX-2.3 & ComfyUI Connectivity Diagnostic
+              LTX-Video & ComfyUI Connectivity Diagnostic
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Direct verification of local ComfyUI instance (http://127.0.0.1:8188) and LTX-2.3 checkpoint file.
+              Direct verification of local ComfyUI plus live LTX model discovery from the current model inventory.
             </p>
           </div>
         </div>
@@ -159,6 +152,22 @@ export const LTXDiagnostic: React.FC = () => {
           {loading ? 'Running Diagnostic...' : 'Run Connectivity Check'}
         </button>
       </div>
+
+      {watchdog && (
+        <div className={`rounded-lg border p-4 ${watchdog.online ? 'bg-emerald-950/20 border-emerald-500/20' : 'bg-rose-950/20 border-rose-500/30'}`}>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-200">ComfyUI Watchdog</span>
+            <span className={`text-[10px] font-mono font-bold ${watchdog.online ? 'text-emerald-400' : 'text-rose-400'}`}>{watchdog.online ? 'ONLINE' : 'OFFLINE'}</span>
+          </div>
+          <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-[10px] font-mono">
+            <div className="bg-slate-950/60 rounded p-2"><span className="text-slate-500">Failures</span><div className="text-slate-200">{watchdog.consecutiveFailures ?? 0}</div></div>
+            <div className="bg-slate-950/60 rounded p-2"><span className="text-slate-500">Last change</span><div className="text-slate-200">{watchdog.lastChangeAt ? new Date(watchdog.lastChangeAt).toLocaleTimeString() : '—'}</div></div>
+            <div className="bg-slate-950/60 rounded p-2"><span className="text-slate-500">Last probe</span><div className="text-slate-200">{watchdog.lastProbeAt ? new Date(watchdog.lastProbeAt).toLocaleTimeString() : '—'}</div></div>
+          </div>
+          {watchdog.lastError && <div className="mt-2 text-[10px] font-mono text-rose-300 break-words">Reason: {watchdog.lastError}</div>}
+          <div className="mt-2 text-[9px] text-slate-500">The watchdog probes ComfyUI every 5 seconds and records state transitions so transient video backend dropouts have a visible reason.</div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* ComfyUI Connectivity Status */}
@@ -201,12 +210,12 @@ export const LTXDiagnostic: React.FC = () => {
           </div>
         </div>
 
-        {/* LTX-2.3 Model File System Status */}
+        {/* Current LTX Model Discovery */}
         <div className="bg-slate-950 border border-slate-800/80 rounded-lg p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
               <HardDrive className="w-4 h-4 text-emerald-400" />
-              LTX-2.3 Checkpoint File Check
+              LTX Model Inventory Check
             </span>
             <span className="text-[10px] font-mono text-slate-500">models/checkpoints/</span>
           </div>
@@ -231,7 +240,7 @@ export const LTXDiagnostic: React.FC = () => {
               <div className="text-[10px] font-mono text-slate-400 truncate max-w-xs" title={modelFileStatus.path}>
                 {modelFileStatus.exists
                   ? `Size: ${modelFileStatus.sizeGB || 'N/A'} GB`
-                  : modelFileStatus.error || 'C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\checkpoints\\ltxv-2b-0.9.8-distilled-fp8.safetensors'}
+                  : modelFileStatus.error || 'No LTX model discovered'}
               </div>
             </div>
 
@@ -245,7 +254,7 @@ export const LTXDiagnostic: React.FC = () => {
       </div>
 
       <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 pt-1">
-        <span>Target Model: ltxv-2b-0.9.8-distilled-fp8.safetensors</span>
+        <span>Target Model: {modelFileStatus.fileName || 'auto-discovered from local model tree'}</span>
         {lastCheckTime && <span>Last Checked: {lastCheckTime}</span>}
       </div>
     </div>

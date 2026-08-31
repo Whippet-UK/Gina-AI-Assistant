@@ -40,7 +40,7 @@ interface Aida64LayoutMapperProps {
   backgroundUrl?: string;
   injectedItem?: Aida64PanelItem | null;
   onItemInjectedAck?: () => void;
-  onSendToPromptStudio?: (prompt: string, width: number, height: number) => void;
+  onSendToPromptStudio?: (prompt: string, width: number, height: number, reference?: { filename: string; name: string; bytes: number; previewUrl: string }) => void;
 }
 
 const PRESET_COLORS = [
@@ -635,7 +635,7 @@ export const Aida64LayoutMapper: React.FC<Aida64LayoutMapperProps> = ({
   };
 
   // 2. Transfer Prompt and Register Active Layout for AI Studio Generation
-  const handleLaunchAiGeneration = () => {
+  const handleLaunchAiGeneration = async () => {
     // Register active template layout so Create Studio knows exact dial positions
     setActiveAida64Layout({
       screen: { width: selectedScreen.width, height: selectedScreen.height, label: selectedScreen.label },
@@ -645,9 +645,28 @@ export const Aida64LayoutMapper: React.FC<Aida64LayoutMapperProps> = ({
     });
 
     if (onSendToPromptStudio) {
-      onSendToPromptStudio(compiledPrompt.prompt, selectedScreen.width, selectedScreen.height);
-      setIsAiModalOpen(false);
-      showToast(`Registered exact layout coordinates and transferred prompt to Image Creator Studio!`);
+      try {
+        // The rendered template is a visual reference for FLUX: it shows the real
+        // 12-gauge composition so the model can theme the chassis around it.
+        // It is NOT a mask and is deliberately not stripped of the gauge landmarks.
+        const guideCanvas = document.createElement('canvas');
+        renderLayoutChassisArtworkCanvas(guideCanvas, selectedScreen, items, selectedThemeId, { showTickMarks: true, showConduits: true, showHexBolts: true });
+        const guideDataUrl = guideCanvas.toDataURL('image/png');
+        const blob = await new Promise<Blob>((resolve, reject) => guideCanvas.toBlob(b => b ? resolve(b) : reject(new Error('Unable to encode AIDA64 template guide.')), 'image/png'));
+        const response = await fetch('/api/comfy/upload-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'image/png', 'X-Gina-Filename': encodeURIComponent(`AIDA64_Template_Guide_${selectedScreen.width}x${selectedScreen.height}.png`), 'X-Gina-Mime': 'image/png' },
+          body: blob
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok || !data.filename) throw new Error(data.error || `Template guide upload failed (HTTP ${response.status}).`);
+        onSendToPromptStudio(compiledPrompt.prompt, selectedScreen.width, selectedScreen.height, { filename: data.filename, name: `AIDA64 Template Guide ${selectedScreen.width}x${selectedScreen.height}.png`, bytes: Number(data.bytes || blob.size), previewUrl: guideDataUrl });
+        setIsAiModalOpen(false);
+        showToast(`Template guide attached: FLUX will use the 12-gauge layout as a visual composition reference.`);
+      } catch (err: any) {
+        console.error(err);
+        showToast(`Failed to attach AIDA64 template guide: ${err?.message || 'unknown error'}`);
+      }
     }
   };
 
@@ -1880,7 +1899,7 @@ export const Aida64LayoutMapper: React.FC<Aida64LayoutMapperProps> = ({
               </div>
 
               <p className="text-[10px] text-slate-400 font-mono">
-                ⚡ Reads all exact dimensions, bounds, and coordinates from your template and embeds them into the spatial prompt for pixel-accurate hardware mounting.
+                ⚡ Uses the visible template as the AI's visual composition guide, while exact dimensions, bounds and coordinates are also embedded in the spatial prompt. The template image is sent to FLUX as a reference; it is not masked or erased.
               </p>
             </div>
 

@@ -6,6 +6,7 @@ import { GenerationJobProvider, useGenerationJob } from './context/GenerationJob
 import { AppFeaturesGuide } from './components/AppFeaturesGuide';
 import { PromptStudio } from './components/PromptStudio';
 import { VideoStudio } from './components/VideoStudio';
+import { GifStudio } from './components/GifStudio';
 import { Aida64Studio } from './components/Aida64Studio';
 import { AiStudioSuite } from './components/AiStudioSuite';
 import { SystemHub } from './components/SystemHub';
@@ -17,7 +18,9 @@ import { WorkspaceErrorBoundary } from './components/WorkspaceErrorBoundary';
 import { ComfyUIStatusIndicator } from './components/LTXDiagnostic';
 import { LogEntry, SystemTelemetry } from './types';
 import { Aida64Hud } from './components/Aida64Hud';
-import { ACTIVE_SAVE_POINT_ID, APP_VERSION } from './version';
+import { APP_VERSION } from './version';
+
+const ACTIVE_SAVE_POINT_ID = 'RESTORE_14_V1.17.55_FLUX_GGUF_AIDA64_1024X600';
 
 export function getRecentOOMErrors(logs: LogEntry[]): LogEntry[] {
   if (!Array.isArray(logs)) return [];
@@ -172,9 +175,10 @@ interface AppContentProps {
 }
 
 function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCache, handleRunAudit, isAuditing, activeSavePoint, isCooldownActive, cooldownRemainingSec, isManifestOpen, setIsManifestOpen }: AppContentProps) {
-  const [activeView, setActiveView] = useState<'create' | 'video' | 'shorts' | 'aida64' | 'assets' | 'jobs' | 'llm' | 'system'>('create');
+  const [activeView, setActiveView] = useState<'create' | 'video' | 'gif' | 'shorts' | 'aida64' | 'assets' | 'jobs' | 'llm' | 'system'>('create');
   const { job, outputLoading } = useGenerationJob();
   const { updatePromptStudio } = useProjectState();
+  const [stagedAida64Reference, setStagedAida64Reference] = useState<{ filename: string; name: string; bytes: number; previewUrl: string } | null>(null);
   const isJobActive = job?.status === 'RUNNING' || job?.status === 'QUEUED' || outputLoading;
   const isVideoJob = job?.workflowId === 'ltx_video' || (job?.workflowId && job.workflowId.includes('video'));
   const isImageJob = !job?.workflowId || job?.workflowId === 'flux_image' || job?.workflowId.includes('flux') || job?.workflowId.includes('image');
@@ -182,6 +186,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
   const navItems = [
     { id: 'create' as const, label: 'CREATE', icon: Image, isGenerating: isJobActive && isImageJob },
     { id: 'video' as const, label: 'VIDEO', icon: Video, isGenerating: isJobActive && isVideoJob },
+    { id: 'gif' as const, label: 'GIF STUDIO', icon: Film, isGenerating: isJobActive && job?.workflowId === 'gif_studio' },
     { id: 'aida64' as const, label: 'AIDA64', icon: Gauge, isGenerating: false },
     { id: 'shorts' as const, label: 'SHORTS', icon: Film, isGenerating: false },
     { id: 'assets' as const, label: 'ASSETS', icon: FolderOpen, isGenerating: false },
@@ -190,14 +195,15 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
     { id: 'system' as const, label: 'SYSTEM', icon: Settings2, isGenerating: false }
   ];
 
-  const handleSendAida64Prompt = useCallback((prompt: string, width: number, height: number) => {
+  const handleSendAida64Prompt = useCallback((prompt: string, width: number, height: number, reference?: { filename: string; name: string; bytes: number; previewUrl: string }) => {
     const safeWidth = Math.max(64, Math.min(8192, Math.round(Number(width) || 1024)));
     const safeHeight = Math.max(64, Math.min(8192, Math.round(Number(height) || 600)));
     const safePrompt = typeof prompt === 'string' ? prompt.trim() : '';
     if (!safePrompt) return;
-    const ratio = safeWidth === safeHeight ? '1:1' : safeHeight > safeWidth ? '9:16' : (safeWidth / safeHeight > 2.5 ? '16:9' : '16:9');
+    const ratio = safeWidth === 1024 && safeHeight === 600 ? 'aida64' : safeWidth === safeHeight ? '1:1' : safeHeight > safeWidth ? '9:16' : '16:9';
 
     updatePromptStudio({ promptInput: safePrompt, aspectRatio: ratio, stylePreset: 'None' });
+    setStagedAida64Reference(reference || null);
     logWithOomCheck('INFO', `Transferred AIDA64 template prompt (${safeWidth}x${safeHeight}px) to Image Studio.`);
     // Deliberately defer the view change until the state update has committed.
     // This prevents the AIDA64 modal + Create workspace transition from racing each other.
@@ -225,12 +231,17 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
 
         <main className={`space-y-5 ${activeView === 'create' ? 'block' : 'hidden'}`}>
           <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Creator workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Create</h1><p className="text-xs text-slate-500 mt-1">Generate locally through your validated ComfyUI workflows.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">IMAGE · LOCAL · FLUX</div></div>
-          <WorkspaceErrorBoundary name="Create Studio"><PromptStudio onAddLog={logWithOomCheck} onClearCache={() => handleClearCache(false, true)} telemetry={telemetry} /></WorkspaceErrorBoundary>
+          <WorkspaceErrorBoundary name="Create Studio"><PromptStudio onAddLog={logWithOomCheck} onClearCache={() => handleClearCache(false, true)} telemetry={telemetry} stagedReferenceImage={stagedAida64Reference} /></WorkspaceErrorBoundary>
         </main>
 
         <main className={`space-y-5 ${activeView === 'video' ? 'block' : 'hidden'}`}>
           <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Video workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Video Studio</h1><p className="text-xs text-slate-500 mt-1">Interface with LTX-2.3 22B Distilled FP8 workflow parameters for local text-to-video.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">VIDEO · LTX-2.3 · 8GB VRAM</div></div>
           <WorkspaceErrorBoundary name="Video Studio"><VideoStudio onAddLog={logWithOomCheck} logs={logs} telemetry={telemetry} onClearCache={() => handleClearCache(false, true)} /></WorkspaceErrorBoundary>
+        </main>
+
+        <main className={`space-y-5 ${activeView === 'gif' ? 'block' : 'hidden'}`}>
+          <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Frame processing workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">GIF Studio</h1><p className="text-xs text-slate-500 mt-1">Local video/image sequences → trim → optional RIFE interpolation → loop → quantized GIF or web MP4.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">GIF · RIFE · VHS · 8GB VRAM</div></div>
+          <WorkspaceErrorBoundary name="GIF Studio"><GifStudio telemetry={telemetry} onAddLog={logWithOomCheck} onClearCache={() => handleClearCache(false, true)} /></WorkspaceErrorBoundary>
         </main>
 
         <main className={`space-y-5 ${activeView === 'shorts' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Production pipeline</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Shorts Factory</h1><p className="text-xs text-slate-500 mt-1">Build faceless Shorts from scenes, local assets, audio and a final timeline.</p></div><WorkspaceErrorBoundary name="Shorts Factory"><AiStudioSuite onAddLog={logWithOomCheck} view="shorts" /></WorkspaceErrorBoundary></main>

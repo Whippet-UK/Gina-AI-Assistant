@@ -1,3 +1,124 @@
+# v1.17.67 — Sequential Story ComfyUI Completion Fallback
+
+- Fixed sequential GIF Studio stories stalling after an LTX scene reaches its final progress event when the ComfyUI WebSocket completion packet is missed.
+- Child LTX jobs now poll ComfyUI `/history/<prompt_id>` as an authoritative completion fallback.
+- History-reported execution errors are surfaced into the parent story job instead of leaving it waiting indefinitely.
+- Keeps the v1.17.66 batch-size=1 VRAM/OOM fix intact.
+
+## v1.17.66 — LTX Sequential Story CUDA OOM Guard
+
+- Fixed a critical Sequential Story bug where the temporal frame count could be written into an LTX `batch_size` input.
+- LTX story scenes now force `batch_size=1`; temporal duration remains controlled by the LTX frame/length input.
+- Removed the generic parser alias that treated LTX video `frames`/`frame_count`/`length` as batch size.
+- This prevents a 5-second scene at 25 FPS from accidentally becoming a 121-sample batch on an 8GB RTX 3070 Ti.
+- Added an explicit safety normalization immediately before each LTX story workflow is submitted to ComfyUI.
+
+## v1.17.65 — GIF Studio Sequential Story Execution & Preview Fixes
+
+- GIF Studio LTX generation now uses a real server-side sequential story runner instead of submitting only the first LTX scene.
+- Long single prompts are automatically split into safe LTX chunks and chained by final-frame image-to-video conditioning.
+- Each completed block exposes live ComfyUI node/progress events through the parent story job.
+- Final-frame PNGs are extracted between blocks and fed into `LTXVImgToVideo` when available.
+- Optional story-level RIFE is applied per block before final concatenation to keep RTX 3070 Ti VRAM bounded.
+- GIF Studio now previews its own finished GIF/MP4 output directly; Adopt LTX Output is no longer required.
+- Story jobs return stored media through the normal job output API and support re-export with meme text/compression.
+- Added reference strength/noise controls and story block telemetry.
+- Added update documentation under `docs/updates/` to keep the project root clean.
+
+## v1.17.64 — GIF Studio Sequential Story Controls
+
+- Added full Sequential Story workspace controls to GIF Studio.
+- Added per-scene prompts, durations, transitions, seed modes, continuity/reference toggles, story-level continuity settings and RIFE selection.
+- Added automatic total-duration calculation and story metadata packaging.
+- Fixed GIF audit metadata reference to `built.effectiveLoopCount`.
+
+# v1.17.63
+
+- Fixed GIF Studio not displaying completed LTX output until Adopt LTX Output was clicked.
+- Improved direct output media detection and preview refresh.
+
+# v1.17.62 — GIF Studio exact-duration output & result preview
+
+- Fixed the Output Duration control so 30s and longer targets are actually encoded to the requested duration.
+- Removed the ComfyUI repeat-count ceiling from final-duration calculation.
+- Added automatic GIF + MP4 finalization after the ComfyUI source clip completes.
+- GIF Studio now previews the finished exported result and provides GIF/MP4 preview switching.
+- Added long-form FFmpeg encoding time allowance up to 2 hours for extended outputs.
+- Corrected RIFE duration accounting: RIFE changes frame rate/count together and does not shorten the timeline.
+
+# v1.17.61 — GIF Studio Long-Form Controls & Generation Telemetry
+
+- Added 0–360 second duration slider plus exact duration entry up to 6 hours.
+- Added Loop vs Continuous output mode; continuous exports use FFmpeg stream looping and exact `-t` duration.
+- Exposed calculated source duration/repeat information in GIF Studio job metadata and live telemetry.
+- Exported GIF/MP4 requests now carry the selected duration and mode.
+- Kept ComfyUI as the source for actual node execution and preserved live node/event/workflow inspection.
+
+# v1.17.60 — Live System Inventory & Current Capability Discovery
+
+- Reworked the System capability map to auto-discover current local model files instead of relying on an obsolete fixed model list.
+- Added live ComfyUI `/object_info` node-class inventory and custom-node directory discovery.
+- System runtime now exposes current FLUX GGUF, LTX, RIFE, GIF Studio, graph-sync and Gemma projector readiness.
+- Updated the projector baseline to `mmproj-q8_0.gguf` while retaining wildcard `mmproj*.gguf` discovery.
+- Removed stale Wan/Hunyuan entries from Model Pre-Warm; LTX target is now auto-discovered or pinned with `LTX_MODEL`.
+- Updated System feature copy, model labels and thermal/VRAM descriptions to match the current stack.
+
+# v1.17.59 — Native GIF Studio
+
+- Added native **GIF STUDIO** dashboard tab with three-panel asset, player/timeline and AI processing workspace.
+- Added local MP4/MOV/WEBM/MKV and PNG/JPG image-sequence import into `C:\Gina_AI\media\gif_studio`.
+- Added dynamic ComfyUI GIF pipeline using VideoHelperSuite trim/load/combine nodes and optional `RIFE_VFI` interpolation when installed.
+- Added frame window, FPS/frame-delay, ping-pong, loop count and compression controls.
+- Added live ComfyUI node graph/event synchronisation and resolved workflow JSON inspection.
+- Added VRAM purge before GIF processing and a 60°C thermal governor that reduces output FPS under heat.
+- Added meme text preview and FFmpeg-burned dual export to GIF and H.264 MP4.
+- Added LTX generation hand-off so a completed LTX video can be adopted as a GIF Studio source.
+
+# v1.17.58
+
+- Workflow registry now keeps the live `C:\Gina_AI\workflows` definition as the active override, while packaged workflows remain the fallback; Creator Studio introspects that resolved definition so its controls match the workflow Gina actually submits.
+- Creator Studio now mirrors the actual workflow defaults (including 1024×600 AIDA64) instead of stale localStorage values.
+- Added direct scalar workflow-input controls, live execution node/status telemetry, job event history, and resolved-workflow inspection.
+- Corrected FLUX model identity everywhere to `FLUX.1-Schnell GGUF Q4_K_S` and made model pre-warm semantics explicit: armed target + VRAM flush, not falsely resident weights.
+
+## 1.17.57 — startup stability hotfix
+
+- Fixed a React render loop caused by unstable ProjectState callback identities.
+- Kept AIDA64 staging/reference state wired into Create Studio.
+- Removed the frontend dependency on a named `ACTIVE_SAVE_POINT_ID` export to avoid startup import failures.
+- Retained FLUX GGUF + 1024×600 workflow configuration.
+
+# v1.17.55 — FLUX GGUF + AIDA64 1024×600 Generation Lock
+
+- Switched the registered `flux_image` workflow from the FP8 `UNETLoader` to `UnetLoaderGGUF` using `flux1-schnell-Q4_K_S.gguf`.
+- Switched the FLUX reference workflow to the same GGUF model loader.
+- Kept the AIDA64 baseline workflow at exactly **1024×600** and retained server-side dimension enforcement/PNG verification.
+- Updated Creator Studio defaults to **FLUX.1-Schnell (GGUF Q4_K_S)** and **1024×600 AIDA64**.
+- Extended the one-click test suite with GGUF loader/model checks and an AIDA64 1024×600 workflow-lock check.
+
+# v1.17.53 — AIDA64 Template-Guided Image Generation
+
+- AIDA64 template is now uploaded as a visual reference image for FLUX generation.
+- Removed the aggressive gauge-zone masking workflow from the normal generation path.
+- The 12 Gauge Factory positions remain visible as composition landmarks.
+- Existing AIDA64 1024×600 generation lock remains in place.
+
+## v1.17.52 — AIDA64 hard resolution verification + protected gauge background
+- Hard-locks AIDA64 generation at 1024×600 at workflow payload level.
+- Verifies returned PNG dimensions and rejects 1024×576 output.
+- Adds protected 12-gauge background compositor that masks AI-generated gauges/needles/text inside real Gauge Factory zones.
+- Adds a Protect Gauge Zones action in Create Studio.
+- Updates 12-gauge prompt compiler to describe empty protected mounting zones rather than asking the model to render gauges.
+
+## v1.17.51 — AIDA64 1024×600 Generation Lock
+
+- Added a dedicated `AIDA64 Panel` aspect/resolution option at exactly **1024×600**.
+- Added `1024 × 600 · AIDA64` to Creator Studio resolution presets.
+- AIDA64 Studio → Create Studio handoff now preserves the exact 1024×600 canvas instead of converting it to generic 16:9 (1024×576).
+- App-level AIDA64 prompt handoff now preserves 1024×600 as well.
+- Generic image generation defaults remain unchanged; 1024×600 is an explicit AIDA64 target.
+- Note: local build/lint could not be executed in this packaging environment because dependencies (`node_modules`) are not installed here.
+
 ## v1.17.47 — Test Suite Local AI Prerequisite Management
 - Live smoke tests can auto-start stopped Gemma and wait for readiness.
 - Distinguishes a stopped dependency from a failed smoke test.
@@ -2598,6 +2719,12 @@ export const ACTIVE_LIFECYCLE_PHASE = 18;
 - Added a shared cancel endpoint that interrupts ComfyUI, clears its queue and requests model/VRAM release.
 - Added the next milestone workbench to System > Automation.
 
+## v1.17.50 — AIDA64 12-Gauge Sensor Matrix Template
+- Added a new 1024×600 AIDA64 template matching the live SensorPanel composition: exactly 12 circular gauge sockets arranged as 2 hero gauges, 3 upper-centre gauges, 2 lower-left gauges, 2 lower-right gauges and 3 lower-centre gauges.
+- Each dial is explicitly configured as a 100-state Gauge Factory sequence (`frameCount: 100`) so the template preserves the intended gauge asset model rather than treating the dials as ordinary decorative shapes.
+- Updated the spatial chassis prompt compiler to preserve the 12-gauge composition and request a continuous dark industrial sensor-panel background with recessed mounting structure, subtle vents, conduit channels and restrained lighting.
+- Added negative constraints preventing extra/missing/merged gauges and plain-black-background output for the 12-gauge template.
+
 ## v1.17.48 — Asset Library + Conversational Image Iteration
 - Added persistent Asset Library UI backed by the local asset store.
 - Added asset metadata, search, delete, preview and reuse actions.
@@ -2605,3 +2732,25 @@ export const ACTIVE_LIFECYCLE_PHASE = 18;
 - AI Tools now adopts an active asset reference for subsequent image generation/editing turns.
 - AI Tools generated images are automatically persisted to the asset store.
 - Creator “Save” now persists assets through the server API with local fallback.
+
+## v1.17.49
+- Fixed AI Tools image prompting so descriptive prompts such as "A photorealistic vintage black watch bezel..." route directly to the local ComfyUI/FLUX executor instead of being sent to Gemma as chat.
+- Preserved explicit vision/analysis prompts and attached-image modification routing.
+## v1.17.63 — Clean Root Packaging Audit
+
+- **Target File Path:** `/docs/updates/UPDATE_NOTES_v1.17.55.md`, `/docs/updates/UPDATE_NOTES_v1.17.56.md`, `/docs/updates/UPDATE_NOTES_v1.17.59.md`, `/docs/updates/UPDATE_NOTES_v1.17.60.md`, `/docs/updates/UPDATE_NOTES_v1.17.63.md`
+  **Exact Code Snippet:** Files moved from the project root into `/docs/updates/`.
+  **Summary:** Enforced the project's clean-root documentation rule.
+- **Target File Path:** `/docs/milestones/LOCAL_AI_ATTACHMENT_MILESTONE.md`
+  **Exact Code Snippet:** File moved from the project root into `/docs/milestones/`.
+  **Summary:** Keeps milestone/context records under the documented hierarchy.
+- **Target File Path:** `/docs/INDEX.md`
+  **Exact Code Snippet:** Added the Release Notes & Milestones section documenting `/docs/updates/`, `/docs/milestones/` and `/logs/`.
+  **Summary:** Makes the clean documentation/logging hierarchy discoverable.
+- **Target File Path:** `/logs/.gitkeep`
+  **Exact Code Snippet:** Empty directory marker.
+  **Summary:** Reserves the runtime audit-log directory without packaging runtime logs.
+- **Target File Path:** `/flux_image.json`, `/flux_image_reference.json`, `/ltx_video.json`
+  **Exact Code Snippet:** Removed duplicate root workflow files; canonical packaged workflows remain under `/workflows/`.
+  **Summary:** Prevents duplicate workflow definitions in the root while preserving the workflow registry's packaged directory.
+

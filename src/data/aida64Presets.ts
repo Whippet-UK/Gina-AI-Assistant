@@ -1194,6 +1194,38 @@ export interface Aida64PanelTemplate {
 
 export const AIDA64_PANEL_TEMPLATES: Aida64PanelTemplate[] = [
   {
+    id: 'template_1024_600_12_gauge_sensor_matrix',
+    name: '1024×600 12-Gauge Live Sensor Matrix',
+    resolutionId: 'res_1024x600',
+    width: 1024,
+    height: 600,
+    description: 'Live SensorPanel-style cockpit layout: 12 Gauge Factory 100-state dial sockets arranged as 2 hero gauges, 4 side gauges and 6 compact telemetry gauges. Designed for a dark industrial chassis backplate.',
+    category: 'gaming',
+    items: [
+      // Hero gauges — the two large 100-state gauges at the far left/right.
+      { id: 'matrix_gpu_load', name: 'GPU Load 100-State Gauge', type: 'dial', shapeType: 'dial_circle', x: 36, y: 24, width: 268, height: 268, sensorType: 'GPU %', testValue: '0', unit: '%', color: '#ef4444', scale: 1, gaugePercent: 0, gaugeStyle: 'segmented_arc', gaugeConfig: { frameCount: 100, width: 268, height: 268, style: 'segmented_arc' } },
+      { id: 'matrix_gpu_mem', name: 'GPU Memory 100-State Gauge', type: 'dial', shapeType: 'dial_circle', x: 720, y: 24, width: 268, height: 268, sensorType: 'VRAM %', testValue: '0', unit: '%', color: '#06b6d4', scale: 1, gaugePercent: 0, gaugeStyle: 'segmented_arc', gaugeConfig: { frameCount: 100, width: 268, height: 268, style: 'segmented_arc' } },
+
+      // Upper centre cluster — three compact gauges.
+      { id: 'matrix_top_1', name: 'GPU Clock 100-State Gauge', type: 'dial', shapeType: 'dial_circle', x: 326, y: 42, width: 112, height: 112, sensorType: 'GPU CLOCK', testValue: '0', unit: 'MHz', color: '#06b6d4', scale: 1, gaugePercent: 0, gaugeStyle: 'segmented_arc', gaugeConfig: { frameCount: 100, width: 112, height: 112, style: 'segmented_arc' } },
+      { id: 'matrix_top_2', name: 'GPU Fan 100-State Gauge', type: 'dial', shapeType: 'dial_circle', x: 456, y: 42, width: 112, height: 112, sensorType: 'GPU FAN', testValue: '0', unit: '%', color: '#ef4444', scale: 1, gaugePercent: 0, gaugeStyle: 'segmented_arc', gaugeConfig: { frameCount: 100, width: 112, height: 112, style: 'segmented_arc' } },
+      { id: 'matrix_top_3', name: 'VRAM Usage 100-State Gauge', type: 'dial', shapeType: 'dial_circle', x: 586, y: 42, width: 112, height: 112, sensorType: 'VRAM %', testValue: '0', unit: '%', color: '#06b6d4', scale: 1, gaugePercent: 0, gaugeStyle: 'segmented_arc', gaugeConfig: { frameCount: 100, width: 112, height: 112, style: 'segmented_arc' } },
+
+      // Lower left pair.
+      { id: 'matrix_left_1', name: 'CPU Temperature 100-State Gauge', type: 'dial', shapeType: 'dial_circle', x: 24, y: 342, width: 112, height: 112, sensorType: 'CPU TEMP', testValue: '0', unit: '°C', color: '#ef4444', scale: 1, gaugePercent: 0, gaugeStyle: 'segmented_arc', gaugeConfig: { frameCount: 100, width: 112, height: 112, style: 'segmented_arc' } },
+      { id: 'matrix_left_2', name: 'CPU Clock 100-State Gauge', type: 'dial', shapeType: 'dial_circle', x: 154, y: 342, width: 112, height: 112, sensorType: 'CPU CLOCK', testValue: '0', unit: 'MHz', color: '#f59e0b', scale: 1, gaugePercent: 0, gaugeStyle: 'segmented_arc', gaugeConfig: { frameCount: 100, width: 112, height: 112, style: 'segmented_arc' } },
+
+      // Lower right pair.
+      { id: 'matrix_right_1', name: 'GPU Temperature 100-State Gauge', type: 'dial', shapeType: 'dial_circle', x: 694, y: 342, width: 112, height: 112, sensorType: 'GPU TEMP', testValue: '0', unit: '°C', color: '#ef4444', scale: 1, gaugePercent: 0, gaugeStyle: 'segmented_arc', gaugeConfig: { frameCount: 100, width: 112, height: 112, style: 'segmented_arc' } },
+      { id: 'matrix_right_2', name: 'GPU Power 100-State Gauge', type: 'dial', shapeType: 'dial_circle', x: 824, y: 342, width: 112, height: 112, sensorType: 'GPU POWER', testValue: '0', unit: 'W', color: '#f59e0b', scale: 1, gaugePercent: 0, gaugeStyle: 'segmented_arc', gaugeConfig: { frameCount: 100, width: 112, height: 112, style: 'segmented_arc' } },
+
+      // Lower centre cluster — three compact gauges.
+      { id: 'matrix_bottom_1', name: 'RAM Usage 100-State Gauge', type: 'dial', shapeType: 'dial_circle', x: 326, y: 458, width: 112, height: 112, sensorType: 'RAM %', testValue: '0', unit: '%', color: '#06b6d4', scale: 1, gaugePercent: 0, gaugeStyle: 'segmented_arc', gaugeConfig: { frameCount: 100, width: 112, height: 112, style: 'segmented_arc' } },
+      { id: 'matrix_bottom_2', name: 'CPU Load 100-State Gauge', type: 'dial', shapeType: 'dial_circle', x: 456, y: 458, width: 112, height: 112, sensorType: 'CPU %', testValue: '0', unit: '%', color: '#ef4444', scale: 1, gaugePercent: 0, gaugeStyle: 'segmented_arc', gaugeConfig: { frameCount: 100, width: 112, height: 112, style: 'segmented_arc' } },
+      { id: 'matrix_bottom_3', name: 'RAM Clock 100-State Gauge', type: 'dial', shapeType: 'dial_circle', x: 586, y: 458, width: 112, height: 112, sensorType: 'RAM CLOCK', testValue: '0', unit: 'MHz', color: '#06b6d4', scale: 1, gaugePercent: 0, gaugeStyle: 'segmented_arc', gaugeConfig: { frameCount: 100, width: 112, height: 112, style: 'segmented_arc' } }
+    ]
+  },
+  {
     id: 'template_clean_blank_1024_600',
     name: 'Clean Blank Layout Map (1024×600)',
     resolutionId: 'res_1024x600',

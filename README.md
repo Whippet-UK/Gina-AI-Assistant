@@ -26,3 +26,7 @@ Gina scans these files at startup and exposes the discovered capabilities and pa
 
 ## Diagnostics/HMR safety (v1.17.27)
 The dashboard error-log endpoint is intentionally failure-proof. Vite HMR is opt-in via `GINA_HMR=true`; this prevents local metadata/runtime changes from reloading the page while an attachment upload is in flight.
+
+
+### AIDA64 1024×600 protection
+AIDA64 generation is hard-locked to 1024×600 at workflow submission and output validation. The 12-gauge background mode masks AI-generated instrumentation inside the live Gauge Factory zones before the real 100-state gauges are overlaid.

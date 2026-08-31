@@ -61,6 +61,9 @@ export class ComfyWebSocket extends EventEmitter {
       if (nodeId === null) {
         this.jobs.update(job.id, { status: 'COMPLETED', progress: 100, currentNodeId: null, completedAt: new Date().toISOString() });
         this.jobs.event(job.id, 'execution_complete', payload);
+        if (job.workflowId === 'gif_studio') {
+          this.jobs.event(job.id, 'context_repool_armed', { workflowId: job.parameters?.__restoreWorkflowId || null, model: job.parameters?.__restoreModel || null });
+        }
       } else {
         const nodeClass = job.parameters?.__nodeClasses?.[nodeId];
         this.jobs.update(job.id, { status: 'RUNNING', currentNodeId: nodeId, currentNodeClass: nodeClass });

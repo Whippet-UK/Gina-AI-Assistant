@@ -1,6 +1,6 @@
 {
   "name": "Gina AI Factory \u2014 Local Creator UI",
-  "version": "1.17.47",
+  "version": "1.17.67",
   "description": "Strictly local creator dashboard with ComfyUI, AIDA64 studio, local Gemma 3 12B CUDA inference, zero-VRAM hybrid RAG knowledge engine, real-time node graph sync, resilient agent tooling, and voice mode.",
   "majorCapabilities": [
     "LOCAL_ONLY_COMFYUI_EXECUTION",
@@ -39,7 +39,19 @@
     "DASHBOARD_SERVER_ERROR_LOG",
     "COPY_CLEAR_ERROR_DIAGNOSTICS",
     "UNIFIED_DIAGNOSTIC_TEST_SUITE",
-    "COPY_READY_TEST_REPORT"
+    "COPY_READY_TEST_REPORT",
+    "FLUX_GGUF_Q4_K_S",
+    "GIF_STUDIO",
+    "RIFE_MOTION_STUDIO",
+    "LTX_VIDEO_2_5_RUNTIME_DISCOVERY",
+    "LIVE_SYSTEM_INVENTORY",
+    "COMFYUI_CUSTOM_NODE_DISCOVERY",
+    "DYNAMIC_MODEL_DISCOVERY",
+    "GIF_STUDIO_SEQUENTIAL_STORY_CONTROLS",
+    "SEQUENTIAL_LTX_STORY_ENGINE",
+    "FINAL_FRAME_I2V_STORY_CONTINUITY",
+    "LONG_FORM_STREAMED_VIDEO",
+    "STORY_BLOCK_RIFE"
   ],
-  "release": "Unified Diagnostic Test Suite"
+  "release": "Live System Inventory + current local model/capability discovery"
 }

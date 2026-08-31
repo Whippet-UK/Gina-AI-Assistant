@@ -23,7 +23,7 @@
   "4": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "text": "A high-tech cyberpunk workstation with glowing holographic UI widgets, neon blue circuitry, cinematic depth of field",
+      "text": "A high-quality image, refined composition, cinematic lighting",
       "clip": [
         "2",
         0
@@ -64,18 +64,10 @@
       ],
       "scheduler": "simple",
       "steps": 4,
-      "denoise": 1
+      "denoise": 1.0
     }
   },
-  "9": {
-    "class_type": "EmptySD3LatentImage",
-    "inputs": {
-      "width": 1024,
-      "height": 600,
-      "batch_size": 1
-    }
-  },
-  "10": {
+  "11": {
     "class_type": "SamplerCustomAdvanced",
     "inputs": {
       "noise": [
@@ -100,11 +92,11 @@
       ]
     }
   },
-  "11": {
+  "12": {
     "class_type": "VAEDecode",
     "inputs": {
       "samples": [
-        "10",
+        "11",
         0
       ],
       "vae": [
@@ -113,14 +105,22 @@
       ]
     }
   },
-  "12": {
+  "13": {
     "class_type": "SaveImage",
     "inputs": {
-      "filename_prefix": "GinaAI_Flux",
+      "filename_prefix": "GinaAI_Flux_AIDA64",
       "images": [
-        "11",
+        "12",
         0
       ]
+    }
+  },
+  "9": {
+    "class_type": "EmptySD3LatentImage",
+    "inputs": {
+      "width": 1024,
+      "height": 600,
+      "batch_size": 1
     }
   }
 }

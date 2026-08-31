@@ -88,10 +88,10 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 
 ## 3. Installed Models & Workflows
 
-- **Image Workflow**: `flux_image.json` (Flux.1 Schnell FP8)
+- **Image Workflow**: `flux_image.json` (FLUX.1-Schnell GGUF Q4_K_S via `UnetLoaderGGUF`)
 - **Video Workflow**: `ltx_video.json` (LTX-Video 2B FP8, H.264 MP4 export)
 - **Installed Checkpoints / Models**:
-  - `flux1-schnell-fp8.safetensors`
+  - `flux1-schnell-Q4_K_S.gguf` (current FLUX UNet)
   - `ltxv-2b-0.9.8-distilled-fp8.safetensors`
   - `ltx-video-2.0.safetensors`
   - `wan2.1-1.3b.safetensors`
@@ -114,7 +114,7 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 - **Verified benchmark**: approximately 9.2 tokens/sec generation on a realistic Gina/AIDA64 prompt; 10.7 tokens/sec on a short prompt at 28 GPU layers
 - **Known performance cliff**: 36 GPU layers dropped generation to approximately 1.3 tokens/sec, so 28 layers is the pinned starting configuration
 - **VRAM rule**: Gina releases ComfyUI cached models before starting/restarting Gemma. Do not run heavy ComfyUI image/video generation concurrently with the 12B LLM on this 8GB GPU.
-- **Integration status**: Phases 1–13 are `COMPLETED` (Phase 8 Gemma 3 12B IT, Phase 9 Autonomous Agent & 19-Tool Broker, Phase 10 AIDA64 Real-time Shm Telemetry, Phase 11 Zero-VRAM Local RAG Engine, Phase 12 Real-Time ComfyUI Node Graph Sync, Phase 13 Advanced Voice Pipeline & Persistent Presets). Phases 14–17 (`ONE-CLICK WORKFLOW JSON/PNG INGESTION`, `HIGH-DPI AIDA64 TRANSPARENT DESKTOP HUD`, `MULTI-GGUF BENCHMARK & DYNAMIC VRAM TUNER`, `KNOWLEDGE INGESTION & AUTO-INDEXING AGENT`) are planned. Full agent access is enabled by default. File APIs remain scoped to `C:\Gina_AI`; command execution is audited.
+- **Integration status**: Phases 1–13 are `COMPLETED` (Phase 8 Gemma 3 12B IT, Phase 9 Autonomous Agent & 19-Tool Broker, Phase 10 AIDA64 Real-time Shm Telemetry, Phase 11 Zero-VRAM Local RAG Engine, Phase 12 Real-Time ComfyUI Node Graph Sync, Phase 13 Advanced Voice Pipeline & Persistent Presets). Phases 14–17 are no longer treated as merely planned: workflow ingestion, transparent HUD, Dynamic VRAM Tuner, GIF Studio, RIFE Motion Studio and live capability discovery are active in the current dashboard. Full agent access is enabled by default. File APIs remain scoped to `C:\Gina_AI`; command execution is audited.
 - **Agent startup context**: Gina must load `AGENTS.md`, `CHANGELOG.md`, `README.md`, `src/components/MilestoneChecklist.tsx`, `src/components/AppFeaturesGuide.tsx`, `src/components/LocalCapabilityPanel.tsx`, `package.json`, `metadata.json`, `/docs/INDEX.md`, `/docs/setup/LOCAL_LLM_SETUP.md`, `/docs/setup/LOCAL_AGENT_SETUP.md`, workflow inventory, persistent `.gina\agent-memory.json`, and a live hardware/model/ComfyUI/LLM capability snapshot before autonomous tasks.
 - **Agent memory**: Persistent local memory is stored at `C:\Gina_AI\.gina\agent-memory.json`; it is local-only and excluded from source control.
 - **Agent tools**: `inspect_system`, `inspect_capabilities`, `inspect_project_context`, `read_project_bundle`, `list_directory`, `search_files`, `knowledge_search`, `read_file`, `write_file`, `execute_command`, `git_status`, `git_diff`, `git_log`, `remember`, `recall_memory`, `refresh_context`, `comfy_clear_cache`, `llm_start`, `llm_stop`, `llm_restart`, and `build_aida64_template` are available when full access is enabled.

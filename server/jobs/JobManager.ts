@@ -23,13 +23,24 @@ export interface GinaJob {
 
 export class JobManager extends EventEmitter {
   private jobs = new Map<string, GinaJob>();
+  private histories = new Map<string, Array<{ timestamp: string; event: string; payload: any }>>();
   create(workflowId: string, parameters: Record<string, any>) {
     const job: GinaJob = { id: randomUUID(), workflowId, status: 'QUEUED', progress: 0, createdAt: new Date().toISOString(), outputs: [], parameters };
-    this.jobs.set(job.id, job); this.emit('job', job); return job;
+    this.jobs.set(job.id, job);
+    this.histories.set(job.id, []);
+    this.emit('job', job); return job;
   }
   get(id: string) { return this.jobs.get(id); }
   list() { return [...this.jobs.values()].sort((a,b) => b.createdAt.localeCompare(a.createdAt)); }
   update(id: string, patch: Partial<GinaJob>) { const job = this.jobs.get(id); if (!job) return; Object.assign(job, patch); this.emit('job', job); return job; }
-  event(id: string, event: string, payload: any = {}) { const job = this.jobs.get(id); if (!job) return; this.emit('event', { job, event, payload }); }
+  event(id: string, event: string, payload: any = {}) {
+    const job = this.jobs.get(id); if (!job) return;
+    const history = this.histories.get(id) || [];
+    history.push({ timestamp: new Date().toISOString(), event, payload });
+    while (history.length > 250) history.shift();
+    this.histories.set(id, history);
+    this.emit('event', { job, event, payload });
+  }
+  eventHistory(id: string) { return this.histories.get(id) || []; }
   findByPromptId(promptId: string) { return [...this.jobs.values()].find(j => j.promptId === promptId); }
 }

@@ -109,7 +109,11 @@ export function compileLayoutToSpatialPrompt(
   compositionRules.push(`TOTAL CIRCULAR DIALS: EXACTLY ${dials.length}.`);
 
   const centerDials = centerItems.filter(i => i.type === 'dial' || i.shapeType === 'dial_circle' || i.shapeType === 'dial_with_boxes');
-  if (dials.length === 2 && centerDials.length === 0) {
+  if (dials.length === 12) {
+    compositionRules.push(
+      `STRICT TEMPLATE-GUIDED COMPOSITION: This 12-GAUGE SENSOR MATRIX is a visual layout reference. The supplied template image is the authoritative composition guide for the twelve real Gauge Factory positions. Preserve their exact relative positions, scale, spacing and surrounding negative space while designing a new chassis theme around them. The template's visible gauges, needles and readings are reference landmarks only; do not redesign their geometry or invent a different gauge layout. Build the themed hardware environment around the existing instrumentation.`
+    );
+  } else if (dials.length === 2 && centerDials.length === 0) {
     compositionRules.push(
       `STRICT COMPOSITION CONSTRAINT: Symmetrical dual-dial layout format. Exactly TWO circular gauges (one on left side, one on right side). The middle center corridor (X=${Math.round(w * 0.38)}px to X=${Math.round(w * 0.62)}px) MUST REMAIN COMPLETELY EMPTY OF DIALS. The center is a smooth dark brushed titanium conduit bridge.`
     );
@@ -127,15 +131,17 @@ export function compileLayoutToSpatialPrompt(
     `[EXACT 2D TEMPLATE BLUEPRINT MATRIX]:`,
     compositionRules.join(' '),
     coordinateBlueprintEntries.join('; ') + '.',
-    `All display pods, value boxes, and dial circles have solid pitch-black empty glass interior cutouts, crisp precision chamfered carbon and aluminum bezels, illuminated neon conduits connecting sockets, flush mounting hex bolts.`,
-    `EMPTY RECESSED CAVITIES ONLY - all digital text, numbers, and sensor metrics will be rendered at runtime by AIDA64 software overlay.`,
-    `ZERO TEXT, zero numbers, zero letters, blank display cavities, pristine dark UI backdrop, Unreal Engine 5 octane render style, 8k resolution, razor sharp vector lines.`
+    dials.length === 12 ? `TEMPLATE IMAGE RULE: use the supplied 12-gauge template as a composition/reference image. The twelve visible gauge locations are intentional anchors. Design the black/red high-tech chassis, framing, recesses, lighting, conduits and materials around those anchors. Keep the gauge positions stable and visually supported; do not move, merge or replace the twelve positions.` : `Use the supplied template as the authoritative spatial composition reference; preserve the mapped element positions while applying the requested chassis aesthetic.`,
+    `The final artwork should read as a themed hardware panel built around the reference instrumentation. The AI may reproduce simplified reference instrumentation as part of the image-to-image process, but it must not invent a new layout, add extra gauges, or materially shift the mapped gauge positions.`,
+    `ZERO NEW TEXT, ZERO NEW NUMBERS, ZERO NEW LABELS, no unrelated UI, no extra instruments. Existing reference text/readouts are layout landmarks only.`,
+    `Professional photorealistic industrial sci-fi chassis, realistic machined materials, controlled red illumination, deep black/graphite surfaces, high detail.`
   ].join(' ');
 
   const negativePrompt = [
     'text, letters, words, font, watermark, numbers, digits, symbols',
+    dials.length === 12 ? 'extra gauges, extra dials, extra meters, extra needles, extra instrumentation, additional dashboard panels, shifted gauges, merged gauges, overlapping gauges, floating gauges, unrelated UI, new text, new numbers, new labels' : '',
     dials.length === 2 && centerDials.length === 0 ? 'third dial, 3 dials, middle gauge, central dial, dial in center, crowded middle' : '',
-    'blurry, low resolution, messy layout, asymmetrical, crooked, noisy, artifacts, distorted circles, cracked glass'
+    'blurry, low resolution, messy layout, asymmetrical, crooked, noisy, artifacts, distorted circles, cracked glass, plain black background, empty black canvas'
   ].filter(Boolean).join(', ');
 
   const zonesSummary = `${leftItems.length} Left, ${rightItems.length} Right, ${centerItems.length} Center, ${topItems.length} Top, ${bottomItems.length} Bottom (${dials.length} Dials, ${items.length} Total Sockets)`;
@@ -869,6 +875,59 @@ export function renderLayoutChassisArtworkCanvas(
  * Composites the active layout dials and value boxes onto an existing AI image
  * and returns the combined DataURL / PNG.
  */
+/**
+ * Masks the AI-generated instrumentation inside the real Gauge Factory dial zones.
+ * This is deliberately a separate background-only compositor: the AI may design the
+ * chassis around the zones, but its fake gauges/needles/text are covered before the
+ * live 100-state AIDA64 gauge assets are placed on top.
+ */
+export function compositeProtectedAida64BackgroundOntoImage(
+  baseImageUrl: string,
+  screen: { width: number; height: number },
+  items: Aida64PanelItem[],
+  themeId: string = 'cyberpunk_red',
+  options: { dimBaseImage?: number } = {}
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return reject(new Error('Unable to create protected AIDA64 canvas.'));
+      const w = screen.width, h = screen.height;
+      canvas.width = w; canvas.height = h;
+      ctx.drawImage(img, 0, 0, w, h);
+      const dim = options.dimBaseImage ?? 0.12;
+      if (dim > 0) { ctx.fillStyle = `rgba(5,7,13,${dim})`; ctx.fillRect(0,0,w,h); }
+
+      const theme = AIDA64_THEMES.find(t => t.id === themeId) || AIDA64_THEMES[0];
+      const primary = theme.primaryColor || '#ef4444';
+      const dials = items.filter(i => i.type === 'dial' || i.shapeType === 'dial_circle' || i.shapeType === 'dial_with_boxes');
+      for (const dial of dials) {
+        const cx = dial.x + dial.width / 2;
+        const cy = dial.y + dial.height / 2;
+        const r = Math.min(dial.width, dial.height) / 2;
+        ctx.save();
+        // Opaque enough to hide generated gauges, needles and text; still reads as a recessed mount.
+        const g = ctx.createRadialGradient(cx, cy, r * 0.05, cx, cy, r);
+        g.addColorStop(0, '#020307');
+        g.addColorStop(0.82, '#050811');
+        g.addColorStop(1, '#0b101b');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(cx, cy, Math.max(1, r - 1), 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = `${primary}55`;
+        ctx.lineWidth = Math.max(1, Math.round(r * 0.012));
+        ctx.beginPath(); ctx.arc(cx, cy, r - Math.max(2, r * 0.035), 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.onerror = () => reject(new Error('Failed to load base image for protected AIDA64 background.'));
+    img.src = baseImageUrl;
+  });
+}
+
 export function compositeLayoutOntoImage(
   baseImageUrl: string,
   screen: { width: number; height: number },

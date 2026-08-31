@@ -472,9 +472,15 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
   const isImageGenerationRequest = (text: string) => {
     const normalized = text.trim();
     if (!normalized) return false;
-    const createImage = /\b(create|generate|make|draw|render|produce|design|visuali[sz]e|paint|illustrate)\b/i.test(normalized) && /\b(image|picture|photo|artwork|illustration|render|portrait|wallpaper|logo|icon|bezel|watch face|scene)\b/i.test(normalized);
-    const modifyAttached = attachedFiles.some(file => file.kind === 'image') && /\b(edit|modify|change|alter|transform|retouch|remove|add|replace|restyle|improve)\b/i.test(normalized) && /\b(this image|attached image|attached photo|reference image|use (this|the) image|from this image|based on this image)\b/i.test(normalized);
-    return createImage || modifyAttached;
+    const imageNoun = /\b(image|picture|photo|artwork|illustration|render|portrait|wallpaper|logo|icon|bezel|watch face|scene|product shot|product photography)\b/i.test(normalized);
+    const createImage = /\b(create|generate|make|draw|render|produce|design|visuali[sz]e|paint|illustrate)\b/i.test(normalized) && imageNoun;
+    const modifyAttached = attachedFiles.some(file => file.kind === 'image') && /\b(edit|modify|change|alter|transform|retouch|remove|add|replace|restyle|improve|work off)\b/i.test(normalized) && /\b(this image|attached image|attached photo|reference image|use (this|the) image|from this image|based on this image)\b/i.test(normalized);
+    // AI Tools accepts a raw descriptive image prompt without requiring a leading
+    // imperative such as "create". Avoid sending these to Gemma, where the model
+    // may emit a fake tool_code block instead of invoking the local executor.
+    const analysisOrQuestion = /^(?:describe|analyse|analyze|what|why|how|can you|tell me|explain|identify|read|summari[sz]e)\b/i.test(normalized);
+    const bareImagePrompt = imageNoun && !analysisOrQuestion && !attachedFiles.some(file => file.kind === 'image') && normalized.length >= 12;
+    return createImage || modifyAttached || bareImagePrompt;
   };
 
   const pollGeneratedImage = async (jobId: string, promptText: string, usedReference: boolean) => {

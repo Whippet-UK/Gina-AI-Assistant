@@ -81,8 +81,8 @@ const PRE_SEEDED_KNOWLEDGE: Omit<RagChunk, 'id'>[] = [
     keywords: ['comfyui', 'flux', 'ltx-video', '8188', 'fp8', 'schnell', 'mp4', 'clear cache', 'free'],
     content: `Local Workflows & Generation Pipelines:
 - ComfyUI Loopback: Bound to http://127.0.0.1:8188 with flags --lowvram --fp8_e4m3fn-text-enc.
-- Image Workflow: FLUX.1 Schnell FP8 (4-step ultra-fast latent diffusion).
-- Video Workflow: LTX-Video 2B FP8 with H.264 MP4 export and RIFE frame interpolation.
+- Image Workflow: FLUX.1 Schnell GGUF Q4_K_S (4-step ultra-fast latent diffusion).
+- Video Workflow: LTX-Video 2.5 (installed variant) with H.264 MP4 export and RIFE frame interpolation.
 - Memory Sentinel: Automatically calls POST /free on ComfyUI before and after intensive generation passes.`
   },
   {

@@ -36,4 +36,9 @@ Welcome to the centralized documentation hub for **Gina AI Factory — Local Cre
 5. **[AIDA64 Sensor Panel & Gauge Factory](aida64/AIDA64_68_FEATURES.md)**: Real-time Win32 shared memory reader and 100-state true alpha PNG graphic export.
 6. **[Real-Time ComfyUI Node Graph Sync](architecture/SYSTEM_ARCHITECTURE.md#node-graph-sync)**: Live workflow introspection, dynamic parameter binding, and visual link mapping.
 7. **[Advanced Voice Pipeline & Persistent Presets](architecture/SYSTEM_ARCHITECTURE.md#voice-pipeline)**: Google US English priority default, permanent preference storage, SAPI bridge, and speech pacing.
+## 📝 Release Notes & Milestones
+
+- `/docs/updates/` — versioned update notes kept out of the project root.
+- `/docs/milestones/` — milestone/context records and save-point documentation.
+- `/logs/` — runtime audit logs, benchmark summaries and telemetry snapshots; runtime `.log` files are not packaged.
 

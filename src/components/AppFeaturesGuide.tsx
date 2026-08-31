@@ -34,7 +34,7 @@ export const AppFeaturesGuide: React.FC = () => {
   const features = [
     {
       id: 'prompt_studio',
-      title: 'Prompt Automation Studio (FLUX.1 Schnell FP8)',
+      title: 'Prompt Automation Studio (FLUX.1 Schnell GGUF Q4_K_S)',
       icon: Brain,
       color: 'text-cyan-400',
       bgColor: 'bg-cyan-500/10',
@@ -43,7 +43,7 @@ export const AppFeaturesGuide: React.FC = () => {
       category: 'Image Inference',
       shortDesc: 'Workflow-driven prompt engineering, dynamic parameter binding, token budget enforcement, and fast 4-step generation.',
       details: [
-        'FLUX.1 Schnell FP8 Pipeline: High-speed 4-step latent diffusion tuned specifically for local execution.',
+        'FLUX.1 Schnell GGUF Q4_K_S Pipeline: 4-step local diffusion using the installed UnetLoaderGGUF model.',
         'Dynamic Workflow Binding: Introspects workflows/flux_image.json and binds controls to prompt, seed, steps, CFG, aspect ratios, and dimensions.',
         'Token Budget & Parameter Control: Enforces safe token counts, seeds, CFG scales (1-10), and aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4).',
         'Direct ComfyUI Queueing: Compiles and dispatches JSON workflows directly to the local ComfyUI instance at 127.0.0.1:8188.',
@@ -52,16 +52,16 @@ export const AppFeaturesGuide: React.FC = () => {
     },
     {
       id: 'video_studio',
-      title: 'LTX-Video 2B & RIFE Motion Studio',
+      title: 'LTX-Video 2.5 & RIFE Motion Studio',
       icon: Video,
       color: 'text-sky-400',
       bgColor: 'bg-sky-500/10',
       borderColor: 'border-sky-500/30',
       badge: 'LTX-Video + RIFE',
       category: 'Video Pipeline',
-      shortDesc: 'Dedicated text-to-video studio powered by LTX-Video 2B FP8, H.264 MP4 export, and RIFE frame interpolation.',
+      shortDesc: 'Dedicated text-to-video studio using the locally installed LTX-Video pipeline, H.264 MP4 export, and optional RIFE interpolation.',
       details: [
-        'LTX-Video 2B Distilled FP8: Local text-to-video rendering using ltxv-2b-0.9.8-distilled-fp8.safetensors.',
+        'LTX-Video 2.5: Model identity is discovered from the installed ComfyUI workflow/model files so the System tab does not advertise an obsolete checkpoint filename.',
         'AI Frame Interpolation (RIFE VFI): Pairwise frame synthesis (2× 50fps and 4× 60fps slomo) yielding smooth video with low VRAM footprint.',
         '8GB VRAM Safe Zone Matrix: Configured with 512x512 25-frame baselines to ensure crash-free execution within 8GB GPU memory constraints.',
         'H.264 MP4 Direct Pipeline: Uses VHS_VideoCombine node for universal browser and device playback.',
@@ -75,7 +75,7 @@ export const AppFeaturesGuide: React.FC = () => {
       color: 'text-emerald-400',
       bgColor: 'bg-emerald-500/10',
       borderColor: 'border-emerald-500/30',
-      badge: '68 Features + True Alpha',
+      badge: '68+ Features + True Alpha',
       category: 'Telemetry & UI',
       shortDesc: 'Real-time Win32 Shared Memory reader (1000ms), true alpha 1024x600 canvas, and 100-state gauge graphic packager.',
       details: [
@@ -111,7 +111,7 @@ export const AppFeaturesGuide: React.FC = () => {
       color: 'text-sky-400',
       bgColor: 'bg-sky-500/10',
       borderColor: 'border-sky-500/30',
-      badge: 'Phase 12 · Graph Sync',
+      badge: 'Live · Graph Sync',
       category: 'Node Graph Sync',
       shortDesc: 'Live ComfyUI node graph parser, dynamic input parameter bindings, and visual workflow topology mapper.',
       details: [
@@ -180,7 +180,7 @@ export const AppFeaturesGuide: React.FC = () => {
       color: 'text-violet-400',
       bgColor: 'bg-violet-500/10',
       borderColor: 'border-violet-500/30',
-      badge: 'Phase 14 · Drag & Drop',
+      badge: 'Live · Workflow Ingestion',
       category: 'Workflow Automation',
       shortDesc: 'Direct ComfyUI workflow .json and metadata-embedded .png canvas drop zone with missing node scanner and auto-mapping.',
       details: [
@@ -197,7 +197,7 @@ export const AppFeaturesGuide: React.FC = () => {
       color: 'text-teal-400',
       bgColor: 'bg-teal-500/10',
       borderColor: 'border-teal-500/30',
-      badge: 'Phase 15 · Alpha HUD',
+      badge: 'Live · Alpha HUD',
       category: 'Telemetry UI',
       shortDesc: 'Frameless desktop floating telemetry overlay with true alpha transparency for secondary LCD/OLED sensor monitors.',
       details: [
@@ -214,9 +214,9 @@ export const AppFeaturesGuide: React.FC = () => {
       color: 'text-yellow-400',
       bgColor: 'bg-yellow-500/10',
       borderColor: 'border-yellow-500/30',
-      badge: 'Phase 16 · GGUF Tuner',
+      badge: 'Live · Dynamic VRAM Tuner',
       category: 'Performance Benchmarking',
-      shortDesc: 'Automated layer offload benchmarker, memory stress profiling, and zero-crash thermal sentry for Gemma 3 12B/27B.',
+      shortDesc: 'Automated layer offload benchmarking, memory stress profiling, and dynamic VRAM/thermal protection for the current local GGUF stack.',
       details: [
         'Automated Layer Offload Benchmarking: Measures tokens/sec generation speed across 24, 28, 32, and 36 GPU layers on CUDA.',
         'VRAM Paging Cliff Detector: Automatically identifies the exact layer count before Windows VRAM paging degrades performance from 10 t/s to 1.3 t/s.',
@@ -233,12 +233,12 @@ export const AppFeaturesGuide: React.FC = () => {
       borderColor: 'border-rose-500/30',
       badge: '7372 MB VRAM Cage',
       category: 'Hardware Safety',
-      shortDesc: 'Real-time GPU/CPU hardware monitoring with strict 7.2GB VRAM cap, 80°C thermal brakes, and auto-purging.',
+      shortDesc: 'Real-time GPU/CPU hardware monitoring with a 7372MB VRAM safety cage, 60°C performance target, 85°C emergency brake, and auto-purging.',
       details: [
         'VRAM Safety Cage: Capped at 7372 MB (90% ceiling of 8 GB RTX 3070 Ti) to guarantee Windows DWM stability.',
         'Proactive Memory Purge: Automatic cache eviction and model unloading when VRAM approaches threshold.',
         'Automatic OOM Cooldown: Detects CUDA Out of Memory events via real-time log parsing and triggers a 5-second recovery breath.',
-        'Thermal Emergency Brake: Auto-pauses render pipelines if GPU core temperature exceeds 80°C.',
+        'Thermal Governance: GIF/video processing targets 60°C and escalates to the 85°C emergency brake when required.',
         'Live NVML D3.js Telemetry: Real-time graphs displaying VRAM usage, GPU core temperature, and system RAM across tabs.'
       ]
     }
@@ -248,9 +248,9 @@ export const AppFeaturesGuide: React.FC = () => {
     { phase: 1, name: 'Project Initialization & Base Environment', status: 'COMPLETED' },
     { phase: 2, name: 'Hardware Capability & VRAM Guardrails', status: 'COMPLETED' },
     { phase: 3, name: 'ComfyUI Local Execution & WebSocket Bridge', status: 'COMPLETED' },
-    { phase: 4, name: 'FLUX.1 Schnell FP8 Image Studio', status: 'COMPLETED' },
+    { phase: 4, name: 'FLUX.1 Schnell GGUF Image Studio', status: 'COMPLETED' },
     { phase: 5, name: 'Python API Automation Engine Build', status: 'COMPLETED' },
-    { phase: 6, name: 'Automated Video & Image Pipeline Link (LTX-Video 2B + RIFE)', status: 'COMPLETED' },
+    { phase: 6, name: 'Video & Image Pipeline Link (LTX-Video 2.5 + RIFE)', status: 'COMPLETED' },
     { phase: 7, name: 'AIDA64 Sensor Panel Template Studio', status: 'COMPLETED' },
     { phase: 8, name: 'Quantized Local AI Engine (Gemma 3 12B IT CUDA)', status: 'COMPLETED' },
     { phase: 9, name: 'Autonomous Local Agent & 19-Tool Broker', status: 'COMPLETED' },
@@ -430,7 +430,7 @@ export const AppFeaturesGuide: React.FC = () => {
                   </div>
                   <div className="text-slate-300 text-[11px] font-semibold">ComfyUI & llama.cpp</div>
                   <p className="text-[10px] text-slate-400 leading-relaxed">
-                    ComfyUI on port 8188 for FLUX/LTX; llama-server on port 8080 for Gemma 3 12B (28 GPU layers). Mutual cache purges.
+                    ComfyUI on port 8188 for FLUX/LTX/GIF/RIFE workflows; llama-server on port 8080 for Gemma local inference. Mutual cache purges protect the 8GB VRAM budget.
                   </p>
                 </div>
 
@@ -441,7 +441,7 @@ export const AppFeaturesGuide: React.FC = () => {
                   </div>
                   <div className="text-slate-300 text-[11px] font-semibold">RTX 3070 Ti 8GB</div>
                   <p className="text-[10px] text-slate-400 leading-relaxed">
-                    Locked at 7372 MB VRAM cap (90% ceiling) and 80°C thermal brake. Zero DWM crashes or OS display lockups.
+                    Locked at 7372 MB VRAM cap (90% ceiling), with 60°C performance governance and an 85°C emergency brake.
                   </p>
                 </div>
               </div>
@@ -452,7 +452,7 @@ export const AppFeaturesGuide: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px]">
                   <div>• Creator Dashboard: <code className="text-slate-200">http://127.0.0.1:3200</code></div>
                   <div>• ComfyUI WebSocket/REST: <code className="text-slate-200">http://127.0.0.1:8188</code></div>
-                  <div>• llama.cpp Gemma 3 12B IT: <code className="text-slate-200">http://127.0.0.1:8080/v1</code></div>
+                  <div>• llama.cpp local GGUF engine: <code className="text-slate-200">http://127.0.0.1:8080/v1</code></div>
                   <div>• AIDA64 Memory Mapped File: <code className="text-slate-200">AIDA64_SensorValues (1000ms)</code></div>
                 </div>
               </div>

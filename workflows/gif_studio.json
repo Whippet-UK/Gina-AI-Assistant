@@ -1,0 +1,27 @@
+{
+  "1": {
+    "class_type": "VHS_LoadVideo",
+    "inputs": {
+      "video": "gina_gif_studio/source.mp4",
+      "force_rate": 0,
+      "force_size": "Disabled",
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 25,
+      "skip_first_frames": 0,
+      "select_every_nth": 1
+    }
+  },
+  "3": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": ["1", 0],
+      "frame_rate": 25,
+      "loop_count": 0,
+      "filename_prefix": "GinaAI_GIF_Studio",
+      "format": "image/gif",
+      "pingpong": false,
+      "save_output": true
+    }
+  }
+}

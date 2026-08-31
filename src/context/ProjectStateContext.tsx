@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import {
   FullProjectState,
   ComfyUiWorkflowConfig,
@@ -16,17 +16,17 @@ export const DEFAULT_PROJECT_STATE: FullProjectState = {
   lastSavedTimestamp: new Date().toISOString(),
   activeSavePoint: 'V1.2_REAL_COMFY_FLUX_BRIDGE',
   comfyUiWorkflow: {
-    workflowId: 'flux_image', checkpointModel: 'workflow-defined',
+    workflowId: 'flux_image', checkpointModel: 'flux1-schnell-Q4_K_S.gguf (GGUF)',
     positivePrompt: 'A high-tech cyberpunk workstation with glowing holographic UI widgets, neon blue circuitry, 8k photorealistic lighting',
     negativePrompt: 'blurry, distorted, low quality, noise, artifacts, bad anatomy, overexposed',
     samplerSteps: 4, cfgScale: 1.0, samplerName: 'euler', scheduler: 'simple',
-    vaeModel: 'ae.safetensors (required)', outputResolution: '1024x576 (16:9)', outputFormat: 'PNG (300 DPI)'
+    vaeModel: 'ae.safetensors (required)', outputResolution: '1024x600 (AIDA64)', outputFormat: 'PNG (300 DPI)'
   },
   promptStudio: {
     promptInput: 'A high-tech cyberpunk workstation with glowing holographic UI widgets, neon blue circuitry, 8k photorealistic lighting, cinematic depth of field',
-    targetNetwork: 'FLUX.1-Schnell (FP8)', aspectRatio: '16:9', stylePreset: 'Cinematic Photorealistic'
+    targetNetwork: 'FLUX.1-Schnell (GGUF Q4_K_S)', aspectRatio: 'aida64', stylePreset: 'Cinematic Photorealistic'
   },
-  aiStudio: { activeTab: 'creator', workflowId: 'flux_image', videoWorkflowId: '', defaultAspectRatio: '16:9' },
+  aiStudio: { activeTab: 'creator', workflowId: 'flux_image', videoWorkflowId: '', defaultAspectRatio: 'aida64' },
   savedAssets: []
 };
 
@@ -183,8 +183,8 @@ export const ProjectStateProvider: React.FC<{ children: React.ReactNode; onAddLo
   }, [projectState, isAutoSaveActive]);
 
   const updateComfyUiWorkflow = (partial: Partial<ComfyUiWorkflowConfig>) => setProjectState(prev => ({ ...prev, comfyUiWorkflow: { ...prev.comfyUiWorkflow, ...partial } }));
-  const updatePromptStudio = (partial: Partial<PromptStudioConfig>) => setProjectState(prev => ({ ...prev, promptStudio: { ...prev.promptStudio, ...partial } }));
-  const updateAiStudio = (partial: Partial<AiStudioConfig>) => setProjectState(prev => ({ ...prev, aiStudio: { ...prev.aiStudio, ...partial } }));
+  const updatePromptStudio = useCallback((partial: Partial<PromptStudioConfig>) => setProjectState(prev => ({ ...prev, promptStudio: { ...prev.promptStudio, ...partial } })), []);
+  const updateAiStudio = useCallback((partial: Partial<AiStudioConfig>) => setProjectState(prev => ({ ...prev, aiStudio: { ...prev.aiStudio, ...partial } })), []);
 
   const setActiveAida64Layout = (layout: ActiveAida64LayoutData | null) => {
     setProjectState(prev => ({ ...prev, activeAida64Layout: sanitizeAida64Layout(layout) }));

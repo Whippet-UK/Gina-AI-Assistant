@@ -34,9 +34,13 @@ const aliases: Record<string, { key: string; inputs: string[]; classes?: string[
   scheduler: [{ key: 'scheduler', inputs: ['scheduler'], classes: ['BasicScheduler', 'KSampler', 'KSamplerAdvanced', 'LTXVideoSampler', 'LTXVSampler'] }],
   width: [{ key: 'width', inputs: ['width'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage', 'LTXVEmptyLatentVideo', 'EmptyLTXVLatentVideo', 'EmptyLatentVideo'] }],
   height: [{ key: 'height', inputs: ['height'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage', 'LTXVEmptyLatentVideo', 'EmptyLTXVLatentVideo', 'EmptyLatentVideo'] }],
-  batchSize: [{ key: 'batch_size', inputs: ['batch_size', 'frames', 'frame_count', 'num_frames', 'length'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyLatentVideo', 'LTXVEmptyLatentVideo', 'EmptyLTXVLatentVideo'] }],
+  // Keep video temporal length separate from sample batch size. LTX's batch_size is normally 1;
+  // frame_count/length/num_frames are temporal controls and must never be aliased to batch_size.
+  batchSize: [{ key: 'batch_size', inputs: ['batch_size'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage'] }],
   model: [{ key: 'model', inputs: ['ckpt_name'], classes: ['CheckpointLoaderSimple', 'CheckpointLoader', 'LTXVLoader', 'LTXVideoLoader', 'LTXVideoModelLoader'] }],
   fps: [{ key: 'fps', inputs: ['frame_rate', 'fps'], classes: ['VHS_VideoCombine', 'SaveAnimatedWEBP', 'SaveAnimatedPNG'] }],
+  startFrame: [{ key: 'start_frame', inputs: ['skip_first_frames', 'skip_first_images'], classes: ['VHS_LoadVideo', 'VHS_LoadImagesPath'] }],
+  endFrame: [{ key: 'end_frame', inputs: ['frame_load_cap', 'image_load_cap'], classes: ['VHS_LoadVideo', 'VHS_LoadImagesPath'] }],
   denoise: [{ key: 'denoise', inputs: ['denoise'], classes: ['BasicScheduler', 'KSampler', 'KSamplerAdvanced'] }],
   inputImage: [{ key: 'input_image', inputs: ['image', 'image_path', 'filename'], classes: ['LoadImage'] }],
 };
@@ -54,6 +58,9 @@ function classifyNode(node: WorkflowNode) {
   if (cls.includes('saveimage')) caps.push('image-output');
   if (cls.includes('videocombine') || cls.includes('videooutput') || cls.includes('vhs_') || cls.includes('saveanimated')) caps.push('video-output');
   if (cls.includes('loadimage')) caps.push('image-input');
+  if (cls.includes('loadvideo') || cls.includes('loadimagespath')) caps.push('frame-input');
+  if (cls.includes('rife') || cls.includes('vfi')) caps.push('frame-interpolation');
+  if (cls.includes('videocombine')) caps.push('loop-output');
   if (cls.includes('vaeencode')) caps.push('img2img');
   if (cls.includes('upscale')) caps.push('upscale');
   return caps;
@@ -93,6 +100,22 @@ export function parseWorkflow(id: string, fileName: string, workflow: Record<str
           break;
         }
       }
+    }
+  }
+
+  // Also expose every primitive workflow input as a namespaced low-confidence binding.
+  // This is the important distinction between a curated Gina control set and the
+  // actual ComfyUI graph: users can inspect/override scalar inputs without Gina
+  // silently changing the background workflow. Linked inputs ([node,slot]) stay
+  // read-only topology and are deliberately excluded.
+  for (const node of nodes) {
+    for (const [input, value] of Object.entries(node.inputs)) {
+      if (Array.isArray(value) || value === null || value === undefined || typeof value === 'object') continue;
+      const alreadyBound = bindings.some(b => b.nodeId === node.id && b.input === input);
+      if (alreadyBound) continue;
+      const safeNode = node.id.replace(/[^a-zA-Z0-9]/g, '_');
+      const safeInput = input.replace(/[^a-zA-Z0-9]/g, '_');
+      addBinding(`node_${safeNode}_${safeInput}`, node, input, 'low');
     }
   }
 

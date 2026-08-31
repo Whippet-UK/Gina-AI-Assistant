@@ -13,7 +13,7 @@ import { useProjectState } from '../context/ProjectStateContext';
 
 interface Aida64StudioProps {
   telemetry?: SystemTelemetry;
-  onSendToPromptStudio: (prompt: string, width: number, height: number) => void;
+  onSendToPromptStudio: (prompt: string, width: number, height: number, reference?: { filename: string; name: string; bytes: number; previewUrl: string }) => void;
 }
 
 export const Aida64Studio: React.FC<Aida64StudioProps> = ({ telemetry, onSendToPromptStudio }) => {
@@ -54,7 +54,7 @@ export const Aida64Studio: React.FC<Aida64StudioProps> = ({ telemetry, onSendToP
         return;
       }
 
-      const ratio = safeWidth === safeHeight ? '1:1' : safeHeight > safeWidth ? '9:16' : '16:9';
+      const ratio = safeWidth === 1024 && safeHeight === 600 ? 'aida64' : safeWidth === safeHeight ? '1:1' : safeHeight > safeWidth ? '9:16' : '16:9';
       updatePromptStudio({ promptInput: safePrompt, aspectRatio: ratio, stylePreset: 'None' });
       setCurrentResolution({ width: safeWidth, height: safeHeight });
       setAiPromptStaged(true);

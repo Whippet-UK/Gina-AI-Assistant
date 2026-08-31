@@ -135,7 +135,7 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
           err: 'Out of memory in VAEDecode spatial frames reconstruction buffer'
         },
         flux_schnell: {
-          name: 'Flux.1 Schnell FP8',
+          name: 'FLUX.1-Schnell GGUF Q4_K_S',
           workflow: 'flux_image',
           vram: 7420,
           node: 'UNET/CheckpointLoader (Node #1/#2)',

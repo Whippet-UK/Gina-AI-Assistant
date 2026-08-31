@@ -11,78 +11,133 @@ export interface LocalModel {
   purpose: string;
   enabled: boolean;
   note?: string;
+  discovered?: boolean;
 }
 
 export interface LocalCapabilities {
   generatedAt: string;
   localOnly: true;
   hardware: any;
-  comfy: { online: boolean; url: string; latencyMs?: number; error?: string };
+  comfy: { online: boolean; url: string; latencyMs?: number; error?: string; nodeClassCount?: number };
   models: LocalModel[];
+  customNodes: { id:string; directory:string; installed:boolean; matchedClasses:string[] }[];
+  nodeClasses: string[];
+  workflows: { id:string; fileName:string; nodeCount:number; capabilities:string[] }[];
   generators: { id: string; label: string; type: 'image'|'video'|'llm'; status: 'validated'|'installed'|'unavailable'|'not-configured'; workflowIds: string[]; modelIds: string[]; notes: string[] }[];
   controls: { key: string; label: string; type: 'text'|'number'|'select'|'toggle'; values?: string[]; min?: number; max?: number; step?: number; source?: string }[];
-  runtime: { gemmaVisionReady: boolean; comfyConnected: boolean; gpuAvailable: boolean };
+  runtime: { gemmaVisionReady: boolean; comfyConnected: boolean; gpuAvailable: boolean; ggufReady:boolean; gifStudioReady:boolean; rifeReady:boolean; ltxReady:boolean; nodeGraphSyncReady:boolean };
 }
 
-const defaultModels = [
-  { id:'flux-schnell', fileName:'flux1SchnellFp8_schnellFp8.safetensors', category:'unet' as const, relative:'models/unet/flux1SchnellFp8_schnellFp8.safetensors', purpose:'FLUX.1 Schnell image generation', enabled:true },
-  { id:'clip-l', fileName:'clip_l.safetensors', category:'clip' as const, relative:'models/clip/clip_l.safetensors', purpose:'FLUX CLIP-L text encoder', enabled:true },
-  { id:'t5xxl-fp8', fileName:'t5xxl_fp8_e4m3fn.safetensors', category:'clip' as const, relative:'models/clip/t5xxl_fp8_e4m3fn.safetensors', purpose:'FLUX T5-XXL text encoder', enabled:true },
-  { id:'flux-vae', fileName:'ae.safetensors', category:'vae' as const, relative:'models/vae/ae.safetensors', purpose:'FLUX autoencoder', enabled:true },
-  { id:'ltx-2.3', fileName:'ltxv-2b-0.9.8-distilled-fp8.safetensors', category:'checkpoint' as const, relative:'models/checkpoints/ltxv-2b-0.9.8-distilled-fp8.safetensors', purpose:'LTX-Video 2B distilled video generation', enabled:true, note:'2B distilled model optimized for 8 GB VRAM.' },
-  { id:'gemma-3-12b-it', fileName:'gemma-3-12b-it-Q4_K_M.gguf', category:'other' as const, relative:'..\models\llm\gemma-3-12b-it-Q4_K_M.gguf', purpose:'Gemma 3 12B instruction model via llama.cpp CUDA', enabled:true, note:'Local GGUF runtime model. Managed by Gina Local AI.' },
-  { id:'gemma-3-mmproj', fileName:'mmproj-model-f16.gguf', category:'projector' as const, relative:'..\models\llm\mmproj-model-f16.gguf', purpose:'Gemma 3 multimodal vision projector', enabled:true, note:'Required for local image understanding.' }
+type ModelSeed = Omit<LocalModel, 'path'|'exists'|'sizeGB'> & { relative:string; aliases?:string[] };
+
+const knownModels: ModelSeed[] = [
+  { id:'flux-schnell-gguf', fileName:'flux1-schnell-Q4_K_S.gguf', category:'unet', relative:'models/unet/flux1-schnell-Q4_K_S.gguf', purpose:'FLUX.1 Schnell GGUF image generation', enabled:true, aliases:['flux1-schnell-q4_k_s.gguf','flux1-schnell-q4_k_m.gguf'] },
+  { id:'clip-l', fileName:'clip_l.safetensors', category:'clip', relative:'models/clip/clip_l.safetensors', purpose:'FLUX CLIP-L text encoder', enabled:true },
+  { id:'t5xxl-fp8', fileName:'t5xxl_fp8_e4m3fn.safetensors', category:'clip', relative:'models/clip/t5xxl_fp8_e4m3fn.safetensors', purpose:'FLUX T5-XXL text encoder', enabled:true },
+  { id:'flux-vae', fileName:'ae.safetensors', category:'vae', relative:'models/vae/ae.safetensors', purpose:'FLUX autoencoder', enabled:true },
+  { id:'gemma-3-12b-it', fileName:'gemma-3-12b-it-Q4_K_M.gguf', category:'other', relative:'..\\models\\llm\\gemma-3-12b-it-Q4_K_M.gguf', purpose:'Gemma local instruction model via llama.cpp CUDA', enabled:true },
+  { id:'gemma-mmproj', fileName:'mmproj-q8_0.gguf', category:'projector', relative:'..\\models\\llm\\mmproj-q8_0.gguf', purpose:'Gemma multimodal vision projector', enabled:true, note:'Current preferred local projector; scanner also accepts other mmproj*.gguf files.' },
 ];
 
-async function statModel(fullPath: string, baseRoot: string, item: typeof defaultModels[number]): Promise<LocalModel> {
-  try {
-    const s = await fs.stat(fullPath);
-    return { ...item, path: fullPath, exists: true, sizeGB: Number((s.size / 1024 ** 3).toFixed(2)) };
-  } catch {
-    return { ...item, path: fullPath, exists: false };
-  }
+function classifyModel(fileName:string, rel:string): {category:LocalModel['category']; purpose:string; id:string; note?:string}|null {
+  const n=fileName.toLowerCase(); const r=rel.toLowerCase();
+  if (n.includes('mmproj')) return {category:'projector',purpose:'Multimodal vision projector',id:`mmproj-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}`};
+  if (n.includes('flux') && (n.includes('gguf') || r.includes('unet'))) return {category:'unet',purpose:'FLUX image generation model',id:`flux-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`};
+  if (n.includes('ltx') || n.includes('ltxv')) return {category:'checkpoint',purpose:'LTX-Video generation model',id:`ltx-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`};
+  if (n.includes('rife')) return {category:'other',purpose:'RIFE optical-flow interpolation model',id:`rife-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`};
+  if (n.includes('clip_l')) return {category:'clip',purpose:'CLIP-L text encoder',id:'clip-l-discovered'};
+  if (n.includes('t5xxl')) return {category:'clip',purpose:'T5-XXL text encoder',id:'t5xxl-discovered'};
+  if (n === 'ae.safetensors' || n.includes('vae')) return {category:'vae',purpose:'VAE decoder/autoencoder',id:`vae-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`};
+  if (n.includes('gemma') && n.endsWith('.gguf')) return {category:'other',purpose:'Gemma local LLM model',id:`gemma-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`};
+  return null;
 }
 
-export async function scanLocalModels(comfyRoot: string) {
-  const root = path.resolve(comfyRoot);
-  const ginaRoot = process.env.GINA_ROOT || 'C:\\Gina_AI';
-  return Promise.all(defaultModels.map(item => {
-    const fullPath = item.id === 'gemma-3-12b-it' || item.id === 'gemma-3-mmproj'
-      ? path.join(ginaRoot, 'models', 'llm', item.fileName)
-      : path.join(root, item.relative);
-    return statModel(fullPath, root, item);
+async function walkModelFiles(root:string, maxDepth=4):Promise<{fileName:string;fullPath:string;rel:string}[]> {
+  const out:{fileName:string;fullPath:string;rel:string}[]=[];
+  const allowed=new Set(['.gguf','.safetensors','.bin','.pth','.pt','.ckpt','.onnx']);
+  async function walk(dir:string,depth:number){
+    if(depth>maxDepth || out.length>=500) return;
+    let entries:any[]=[]; try{entries=await fs.readdir(dir,{withFileTypes:true} as any) as any;}catch{return;}
+    for(const e of entries){
+      if(out.length>=500) return;
+      const full=path.join(dir,e.name); if(e.isDirectory()){ if(!['output','temp','user','cache','preview','__pycache__'].includes(e.name.toLowerCase())) await walk(full,depth+1); }
+      else if(e.isFile() && allowed.has(path.extname(e.name).toLowerCase())) out.push({fileName:e.name,fullPath:full,rel:path.relative(root,full)});
+    }
+  }
+  await walk(root,0); return out;
+}
+
+async function statModel(fullPath:string, item:ModelSeed):Promise<LocalModel>{
+  try{const st=await fs.stat(fullPath); return {...item,path:fullPath,exists:true,sizeGB:Number((st.size/1024**3).toFixed(2)),discovered:false};}
+  catch{return {...item,path:fullPath,exists:false,discovered:false};}
+}
+
+async function scanCustomNodes(comfyRoot:string, objectInfo?:any){
+  const dir=path.join(comfyRoot,'custom_nodes'); const installed:string[]=[];
+  try{for(const e of await fs.readdir(dir,{withFileTypes:true})){if(e.isDirectory()) installed.push(e.name);}}catch{}
+  const classes=Object.keys(objectInfo||{});
+  return installed.map(name=>({
+    id:name.toLowerCase().replace(/[^a-z0-9]+/g,'-'), directory:name, installed:true,
+    matchedClasses:classes.filter(c=>c.toLowerCase().includes(name.toLowerCase().replace(/^comfyui[-_]/,''))).slice(0,30)
   }));
 }
 
-export function buildCapabilities(args: { hardware: any; comfy: any; models: LocalModel[]; workflows: any[] }): LocalCapabilities {
-  const flux = args.models.find(m => m.id === 'flux-schnell')?.exists && args.models.find(m => m.id === 'clip-l')?.exists && args.models.find(m => m.id === 't5xxl-fp8')?.exists && args.models.find(m => m.id === 'flux-vae')?.exists;
-  const fluxWorkflowIds = args.workflows.filter(w => w.capabilities?.includes('text-conditioning') && w.capabilities?.includes('image-output')).map(w => w.id);
-  const ltxInstalled = !!args.models.find(m => m.id === 'ltx-2.3')?.exists;
-  const gemmaInstalled = !!args.models.find(m => m.id === 'gemma-3-12b-it')?.exists;
-  const mmprojInstalled = !!args.models.find(m => m.id === 'gemma-3-mmproj')?.exists;
-  const videoWorkflowIds = args.workflows.filter(w => w.capabilities?.includes('video-output')).map(w => w.id);
-  const referenceWorkflowIds = args.workflows.filter(w => w.capabilities?.includes('image-input') || w.capabilities?.includes('load-image')).map(w => w.id);
-  const controls: LocalCapabilities['controls'] = [
-    { key:'prompt', label:'Prompt', type:'text', source:'workflow binding' },
-    { key:'negative_prompt', label:'Negative prompt', type:'text', source:'workflow binding' },
-    { key:'seed', label:'Seed', type:'number', min:0, max:2147483647, step:1, source:'workflow binding' },
-    { key:'steps', label:'Steps', type:'number', min:1, max:50, step:1, source:'workflow binding' },
-    { key:'cfg', label:'CFG', type:'number', min:0, max:30, step:0.1, source:'workflow binding' },
-    { key:'sampler', label:'Sampler', type:'select', source:'workflow binding' },
-    { key:'scheduler', label:'Scheduler', type:'select', source:'workflow binding' },
-    { key:'denoise', label:'Denoise', type:'number', min:0, max:1, step:0.01, source:'workflow binding' },
-    { key:'width', label:'Width', type:'number', min:64, max:2048, step:8, source:'workflow binding' },
-    { key:'height', label:'Height', type:'number', min:64, max:2048, step:8, source:'workflow binding' },
-    { key:'batch_size', label:'Batch size', type:'number', min:1, max:4, step:1, source:'workflow binding' }
+export async function scanLocalModels(comfyRoot:string){
+  const root=path.resolve(comfyRoot); const ginaRoot=process.env.GINA_ROOT||'C:\\Gina_AI';
+  const fixed=await Promise.all(knownModels.map(async item=>{
+    const full=item.id.startsWith('gemma-')||item.id==='gemma-mmproj' ? path.join(ginaRoot,'models','llm',item.fileName) : path.join(root,item.relative);
+    // Preferred projector can have changed name; resolve exact first, then mmproj scan below.
+    return statModel(full,item);
+  }));
+  const files=await walkModelFiles(root,4);
+  const llmFiles=await walkModelFiles(path.join(ginaRoot,'models','llm'),3);
+  const all=[...files,...llmFiles]; const seen=new Set(fixed.map(x=>x.path.toLowerCase()));
+  const discovered:LocalModel[]=[];
+  for(const f of all){if(seen.has(f.fullPath.toLowerCase())) continue; const c=classifyModel(f.fileName,f.rel); if(!c) continue; seen.add(f.fullPath.toLowerCase()); const st=await fs.stat(f.fullPath).catch(()=>null); discovered.push({id:c.id,fileName:f.fileName,category:c.category,path:f.fullPath,exists:true,sizeGB:st?Number((st.size/1024**3).toFixed(2)):undefined,purpose:c.purpose,enabled:true,note:c.note,discovered:true});}
+  // If current projector is mmproj-q8_0, don't advertise the obsolete F16 projector as the preferred model.
+  const projectorDiscovered=discovered.find(m=>m.category==='projector') || null;
+  const fixedProjector=fixed.find(m=>m.id==='gemma-mmproj');
+  if(projectorDiscovered && !fixedProjector?.exists){ fixed.push({...projectorDiscovered,id:'gemma-mmproj',fileName:projectorDiscovered.fileName,purpose:'Gemma multimodal vision projector',note:'Discovered automatically from the local LLM model directory.',discovered:true}); }
+  return [...fixed,...discovered];
+}
+
+export function buildCapabilities(args:{hardware:any; comfy:any; models:LocalModel[]; workflows:any[]; customNodes?:any[]; nodeClasses?:string[]}):LocalCapabilities{
+  const has=(id:string)=>!!args.models.find(m=>m.id===id&&m.exists);
+  const hasLike=(re:RegExp)=>args.models.some(m=>m.exists&&re.test(m.fileName));
+  const flux=has('flux-schnell-gguf')&&has('clip-l')&&has('t5xxl-fp8')&&has('flux-vae');
+  const ltx=hasLike(/ltx/i); const rife=hasLike(/rife/i);
+  const mmproj=has('gemma-mmproj')||hasLike(/mmproj.*\.gguf$/i);
+  const gemma=has('gemma-3-12b-it')||hasLike(/gemma.*\.gguf$/i);
+  const workflowSummaries=args.workflows.map(w=>({id:w.id,fileName:w.fileName,nodeCount:w.nodeCount,capabilities:w.capabilities||[]}));
+  const imageW=args.workflows.filter(w=>w.capabilities?.includes('image-output')).map(w=>w.id);
+  const videoW=args.workflows.filter(w=>w.capabilities?.includes('video-output')).map(w=>w.id);
+  const gifW=args.workflows.filter(w=>w.id==='gif_studio'||w.capabilities?.some((c:string)=>/gif|frame|rife/i.test(c))).map(w=>w.id);
+  const controls:LocalCapabilities['controls']=[
+    {key:'prompt',label:'Prompt',type:'text',source:'workflow binding'},
+    {key:'negative_prompt',label:'Negative prompt',type:'text',source:'workflow binding'},
+    {key:'seed',label:'Seed',type:'number',min:0,max:2147483647,step:1,source:'workflow binding'},
+    {key:'steps',label:'Steps',type:'number',min:1,max:100,step:1,source:'workflow binding'},
+    {key:'cfg',label:'CFG',type:'number',min:0,max:30,step:.1,source:'workflow binding'},
+    {key:'width',label:'Width',type:'number',min:64,max:2048,step:8,source:'workflow binding'},
+    {key:'height',label:'Height',type:'number',min:64,max:2048,step:8,source:'workflow binding'},
+    {key:'frames',label:'Frames',type:'number',min:1,max:241,step:1,source:'workflow binding'},
+    {key:'fps',label:'FPS',type:'number',min:1,max:60,step:1,source:'workflow binding'},
+    {key:'denoise',label:'Denoise',type:'number',min:0,max:1,step:.01,source:'workflow binding'}
   ];
+  const comfyOnline=!!args.comfy.online; const classes=(args.nodeClasses||[]).map(x=>String(x).toLowerCase()); const graph=classes.length>0; const hasNode=(...names:string[])=>names.some(n=>classes.includes(n.toLowerCase()) || classes.some(c=>c.includes(n.toLowerCase()))); const rifeNode=hasNode('RIFE_VFI'); const vhsNode=hasNode('VHS_LoadVideo','VHS_LoadImagesPath','VHS_VideoCombine');
+  const ltxW=videoW.filter((id:string)=>/ltx/i.test(id));
   return {
-    generatedAt:new Date().toISOString(), localOnly:true, hardware:args.hardware, comfy:{online:!!args.comfy.online,url:args.comfy.url,latencyMs:args.comfy.latencyMs,error:args.comfy.error}, models:args.models,
-    runtime: { gemmaVisionReady: gemmaInstalled && mmprojInstalled, comfyConnected: !!args.comfy.online, gpuAvailable: !!args.hardware?.available },
+    generatedAt:new Date().toISOString(),localOnly:true,hardware:args.hardware,
+    comfy:{...args.comfy,nodeClassCount:args.nodeClasses?.length||0},models:args.models,customNodes:args.customNodes||[],nodeClasses:args.nodeClasses||[],workflows:workflowSummaries,
+    runtime:{gemmaVisionReady:gemma&&mmproj,comfyConnected:comfyOnline,gpuAvailable:!!args.hardware?.available,ggufReady:hasLike(/\.gguf$/i),gifStudioReady:comfyOnline&&(gifW.length>0||vhsNode), rifeReady:comfyOnline&&(rife||rifeNode), ltxReady:comfyOnline&&(ltx&&ltxW.length>0 || hasNode('LTXVideoSampler','LTXVSampler','LTXVLoader','LTXVideoLoader')), nodeGraphSyncReady:comfyOnline&&graph},
     generators:[
-      { id:'flux-image', label:'FLUX.1 Schnell FP8', type:'image', status:flux && fluxWorkflowIds.length ? 'validated' : flux ? 'installed' : 'unavailable', workflowIds:fluxWorkflowIds, modelIds:['flux-schnell','clip-l','t5xxl-fp8','flux-vae'], notes:['Known-good baseline should remain the primary image generator.'] },
-      { id:'ltx-video', label:'LTX-Video 2B FP8', type:'video', status:ltxInstalled && videoWorkflowIds.length ? 'validated' : ltxInstalled ? 'installed' : 'unavailable', workflowIds:videoWorkflowIds, modelIds:['ltx-2.3'], notes:['H.264 MP4 video generation verified operational with auto-flush sentinel.'] },
-      { id:'gemma-local-llm', label:'Gemma 3 12B IT Q4_K_M', type:'llm', status:gemmaInstalled && mmprojInstalled ? 'validated' : gemmaInstalled ? 'installed' : 'unavailable', workflowIds:[], modelIds:['gemma-3-12b-it','gemma-3-mmproj'], notes:[mmprojInstalled ? 'Multimodal vision projector detected; image attachments are ready.' : 'Text chat ready; vision requires mmproj-model-f16.gguf.'] },
-      { id:'flux-reference-image', label:'FLUX Reference / Image-to-Image', type:'image', status:referenceWorkflowIds.length && flux ? 'validated' : flux ? 'installed' : 'unavailable', workflowIds:referenceWorkflowIds, modelIds:['flux-schnell','clip-l','t5xxl-fp8','flux-vae'], notes:['Reference workflows are available only when the workflow exposes an image input.'] }
-    ], controls
+      {id:'flux-image',label:'FLUX.1 Schnell GGUF Q4_K_S',type:'image',status:flux&&imageW.length?'validated':flux?'installed':'unavailable',workflowIds:imageW,modelIds:['flux-schnell-gguf','clip-l','t5xxl-fp8','flux-vae'],notes:['Uses the active UnetLoaderGGUF workflow when registered.']},
+      {id:'ltx-video',label:ltxW.length?'LTX-Video (installed variant)':'LTX-Video',type:'video',status:ltx&&ltxW.length?'validated':ltx?'installed':'unavailable',workflowIds:ltxW,modelIds:args.models.filter(m=>m.exists&&/ltx/i.test(m.fileName)).map(m=>m.id),notes:['Version/model identity is derived from the installed local files and workflow, not a stale hard-coded filename.']},
+      {id:'rife-motion',label:'RIFE Motion Studio',type:'video',status:(rife||rifeNode)?'validated':'unavailable',workflowIds:gifW,modelIds:args.models.filter(m=>m.exists&&/rife/i.test(m.fileName)).map(m=>m.id),notes:[rife||rifeNode?'RIFE runtime node/model detected locally.':'No RIFE runtime detected.']},
+      {id:'gif-studio',label:'GIF Studio · VHS + RIFE',type:'video',status:gifW.length?'validated':comfyOnline?'installed':'unavailable',workflowIds:gifW,modelIds:[],notes:['Trim, optional interpolation, ping-pong looping and GIF/MP4 export.']},
+      {id:'gemma-local-llm',label:'Gemma Local GGUF',type:'llm',status:gemma&&mmproj?'validated':gemma?'installed':'unavailable',workflowIds:[],modelIds:args.models.filter(m=>m.exists&&/gemma|mmproj/i.test(m.fileName)).map(m=>m.id),notes:[mmproj?'Multimodal projector detected.':'Text model detected; multimodal projector not detected.']}
+    ],controls
   };
 }
+
+export { scanCustomNodes };
