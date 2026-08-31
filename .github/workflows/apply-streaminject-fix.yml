@@ -1,4 +1,4 @@
-name: Apply StreamInject import fix
+name: Finalize StreamInject import fix
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  fix:
+  finalize:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,14 +17,13 @@ jobs:
           ref: Gina-AI-Factory-v1.17.67-STORY-STALL-FIXED
           fetch-depth: 0
 
-      - name: Patch StreamInject v2.5
+      - name: Finalize StreamInject v2.5 patch
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import re
 
           VIDEO_ACCEPT = '.mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp,video/*'
-
           server = Path('server.ts')
           text = server.read_text(encoding='utf-8')
           text = text.replace('app.use(express.json({ limit: "50mb" }));', 'app.use(express.json({ limit: "512mb" }));', 1)
@@ -32,19 +31,18 @@ jobs:
 
           ui = Path('src/components/StreamInjectStudio.tsx')
           text = ui.read_text(encoding='utf-8')
-
           gameplay_old = '<input type="file" accept="video/*" className="hidden" onChange={(e) => handleFileUpload(e, "gameplay")} />'
           gameplay_new = '<input type="file" accept="' + VIDEO_ACCEPT + '" className="hidden" onChange={(e) => handleFileUpload(e, "gameplay")} />'
           text = text.replace(gameplay_old, gameplay_new, 1)
 
           def add_role_upload(text, role, label, field):
+              # Idempotent: if this role already has a file handler anywhere in the component, do not add another control.
+              if 'handleFileUpload(e, "' + field + '")' in text:
+                  return text
               pattern = re.compile(r'(<select\s+value={' + re.escape(role) + r'}[\s\S]*?</select>)', re.M)
               match = pattern.search(text)
               if not match:
                   raise SystemExit('Expected ' + role + ' selector was not found')
-              block = match.group(1)
-              if 'handleFileUpload(e, "' + field + '")' in block:
-                  return text
               control = '\n                <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">\n                  <Upload className="w-3.5 h-3.5" /> ' + label + '\n                  <input type="file" accept="' + VIDEO_ACCEPT + '" className="hidden" onChange={(e) => handleFileUpload(e, "' + field + '")} />\n                </label>'
               return text[:match.end(1)] + control + text[match.end(1):]
 
@@ -54,14 +52,35 @@ jobs:
           upload_tail = '          fetchMediaFiles();\n        }\n      } catch (err) {'
           text = text.replace(upload_tail, '          await fetchMediaFiles();\n        } else {\n          throw new Error(data.error || "Upload failed");\n        }\n      } catch (err) {', 1)
 
+          # Collapse any duplicate role upload controls left by earlier idempotent runs.
+          for label, field in [('Upload Intro', 'intro'), ('Upload CTA', 'outro')]:
+              control = '\n                <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">\n                  <Upload className="w-3.5 h-3.5" /> ' + label + '\n                  <input type="file" accept="' + VIDEO_ACCEPT + '" className="hidden" onChange={(e) => handleFileUpload(e, "' + field + '")} />\n                </label>'
+              text = text.replace(control + control, control)
+
           ui.write_text(text, encoding='utf-8')
+
+          changelog = Path('CHANGELOG.md')
+          marker = 'StreamInject v2.5 import and CTA selection fix'
+          log = changelog.read_text(encoding='utf-8')
+          if marker not in log:
+              log += '\n\n## 2026-08-31 — StreamInject v2.5 import and CTA selection fix\n\n- Target File Path: `/server.ts`\n  - Code Snippet: `app.use(express.json({ limit: "50mb" }))` changed to `app.use(express.json({ limit: "512mb" }))`.\n  - Reason: allow larger local video uploads instead of rejecting larger MP4/MKV payloads at the JSON parser.\n- Target File Path: `/src/components/StreamInjectStudio.tsx`\n  - Code Snippet: video picker now explicitly accepts `.mp4`, `.mkv`, `.webm`, `.mov`, `.avi`, `.m4v`, `.wmv`, `.flv`, `.mpeg`, `.mpg`, `.ts`, `.mts`, `.m2ts`, and `.3gp`; Intro and CTA/Outro each have their own upload control; successful uploads refresh the shared media library and failed uploads surface an error.\n  - Reason: make MKV and less consistently MIME-labelled video files selectable and allow CTA/Intro assets to be uploaded directly rather than requiring Main Gameplay first.\n'
+              changelog.write_text(log, encoding='utf-8')
+
+          # Remove temporary trigger files and this one-shot workflow after the fix is committed.
+          for p in [
+              Path('docs/updates/.streaminject-fix-trigger'),
+              Path('docs/updates/.streaminject-fix-trigger-2'),
+              Path('docs/updates/.streaminject-fix-trigger-3'),
+              Path('.github/workflows/apply-streaminject-fix.yml')
+          ]:
+              p.unlink(missing_ok=True)
           PY
 
-      - name: Commit patched files
+      - name: Commit final StreamInject fix
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add server.ts src/components/StreamInjectStudio.tsx
+          git add -A
           git diff --cached --quiet && exit 0
-          git commit -m "fix: improve StreamInject video imports and CTA selection"
+          git commit -m "fix: finalize StreamInject imports and CTA selection"
           git push origin Gina-AI-Factory-v1.17.67-STORY-STALL-FIXED
