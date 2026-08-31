@@ -53,7 +53,8 @@ export const MilestoneChecklist: React.FC<MilestoneChecklistProps> = ({ activeRe
     { id: 'RESTORE_10_V1.17.19_LOCAL_CREATOR_UPLOADS', label: 'Local Creator Upload Pipeline', description: 'Dashboard-only ComfyUI reference-image uploads and supported Local AI file attachments; no manual ComfyUI interaction required', timestamp: '2026-08-29 22:31', status: 'LOCKED' },
     { id: 'RESTORE_11_V1.17.20_LOCAL_AI_ATTACHMENTS', label: 'Local AI Universal Attachments', description: 'Images, text/code/config files and ZIP archives can be attached from Gina; ZIP text is extracted locally and images are stored for future local multimodal support', timestamp: '2026-08-29 22:35', status: 'LOCKED' },
     { id: 'RESTORE_12_V1.17.22_ATTACHMENT_VISION', label: 'Attachment + Vision Completion', description: 'Create Studio reference-image upload plus real Local AI image transport through llama.cpp multimodal image_url inputs with automatic mmproj detection', timestamp: '2026-08-29 23:11', status: 'LOCKED' },
-    { id: 'RESTORE_13_V1.17.42_MILESTONE_BATCH', label: 'Milestones 14-17 Batch', description: 'Workflow JSON/PNG ingestion, DPI-aware AIDA64 HUD mode, controlled GGUF benchmark/tuner, and filesystem knowledge auto-indexing', timestamp: new Date().toISOString().slice(0,16).replace('T',' '), status: 'ACTIVE' },
+    { id: 'RESTORE_13_V1.17.42_MILESTONE_BATCH', label: 'Milestones 14-17 Batch', description: 'Workflow JSON/PNG ingestion, DPI-aware AIDA64 HUD mode, controlled GGUF benchmark/tuner, and filesystem knowledge auto-indexing', timestamp: '2026-08-30 18:00', status: 'LOCKED' },
+    { id: 'RESTORE_V1.17.68_GIF_STUDIO_FIX', label: 'GIF Studio Sequential Story & Route Resilience', description: 'Seamless multi-scene LTX video generation, frame continuity fallback, and full endpoint resilience', timestamp: new Date().toISOString().slice(0,16).replace('T',' '), status: 'ACTIVE' },
   ]);
 
   const [checks, setChecks] = useState<VerificationCheck[]>([

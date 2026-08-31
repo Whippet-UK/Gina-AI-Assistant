@@ -44,15 +44,32 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
     {id:'scene_3', title:'Scene 03', prompt:'', duration:5, transition:'cut', continuity:true, reference:true, seedMode:'random', seed:3}
   ]);
   const [activeSceneId, setActiveSceneId] = useState('scene_1');
-  const [storyRife, setStoryRife] = useState<'off'|'2x'|'4x'>('off');
+  const [storyRife, setStoryRife] = useState<'off'|'2x'|'4x'>('2x');
   const [storyAutoGenerate, setStoryAutoGenerate] = useState(true);
   const [storyKeepCharacter, setStoryKeepCharacter] = useState(true);
   const [storyKeepEnvironment, setStoryKeepEnvironment] = useState(true);
   const [storyKeepCamera, setStoryKeepCamera] = useState(true);
   const [storyUseFinalFrame, setStoryUseFinalFrame] = useState(true);
-  const [storyReferenceStrength, setStoryReferenceStrength] = useState(1);
-  const [storyReferenceNoise, setStoryReferenceNoise] = useState(0.15);
+  const [storyReferenceStrength, setStoryReferenceStrength] = useState(0.80);
+  const [storyReferenceNoise, setStoryReferenceNoise] = useState(0.10);
+  const [storyModel, setStoryModel] = useState('ltxv-2b-0.9.8-distilled-fp8.safetensors');
+  const [storySteps, setStorySteps] = useState(20);
+  const [storySampler, setStorySampler] = useState('euler_ancestral');
+  const [storyScheduler, setStoryScheduler] = useState('normal');
+  const [storyCfg, setStoryCfg] = useState(3.5);
+  const [storyResolution, setStoryResolution] = useState<'768x768'|'848x480'|'512x512'|'custom'>('768x768');
+  const [storyWidth, setStoryWidth] = useState(768);
+  const [storyHeight, setStoryHeight] = useState(768);
+  const [storyBaseFps, setStoryBaseFps] = useState(12);
+  const [showStoryAdvanced, setShowStoryAdvanced] = useState(true);
   const [storyRunning, setStoryRunning] = useState(false);
+
+  const handleStoryResolutionPreset = (preset: '768x768'|'848x480'|'512x512'|'custom') => {
+    setStoryResolution(preset);
+    if (preset === '768x768') { setStoryWidth(768); setStoryHeight(768); }
+    else if (preset === '848x480') { setStoryWidth(848); setStoryHeight(480); }
+    else if (preset === '512x512') { setStoryWidth(512); setStoryHeight(512); }
+  };
   const [compression, setCompression] = useState(50);
   const [memo, setMemo] = useState('');
   const [fontSize, setFontSize] = useState(42);
@@ -184,14 +201,42 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
     if (endFrame < startFrame) { setError('End frame must be greater than or equal to start frame.'); return; }
     const params = {
       generationMode,
-      story: generationMode==='story' ? { scenes: storyScenes, totalDurationSeconds: storyTotalDuration, useFinalFrame: storyUseFinalFrame, keepCharacter: storyKeepCharacter, keepEnvironment: storyKeepEnvironment, keepCamera: storyKeepCamera, rife: storyRife, autoGenerate: storyAutoGenerate, referenceStrength: storyReferenceStrength, referenceNoise: storyReferenceNoise } : null,
+      story: generationMode==='story' ? {
+        scenes: storyScenes,
+        totalDurationSeconds: storyTotalDuration,
+        useFinalFrame: storyUseFinalFrame,
+        keepCharacter: storyKeepCharacter,
+        keepEnvironment: storyKeepEnvironment,
+        keepCamera: storyKeepCamera,
+        rife: storyRife,
+        autoGenerate: storyAutoGenerate,
+        referenceStrength: storyReferenceStrength,
+        referenceNoise: storyReferenceNoise,
+        width: storyWidth,
+        height: storyHeight,
+        steps: storySteps,
+        cfg: storyCfg,
+        sampler: storySampler,
+        scheduler: storyScheduler,
+        fps: storyBaseFps,
+        model: storyModel
+      } : null,
       sourceMode,
       sourcePath: activeAsset?.path || '',
       sourceKind: activeAsset?.kind || 'video',
       prompt, negative_prompt: negativePrompt,
-      steps: ltxSteps,
+      steps: generationMode==='story' ? storySteps : ltxSteps,
+      cfg: storyCfg,
+      sampler: storySampler,
+      scheduler: storyScheduler,
+      width: storyWidth,
+      height: storyHeight,
+      model: storyModel,
+      reference_strength: storyReferenceStrength,
+      reference_noise: storyReferenceNoise,
       start_frame: startFrame, end_frame: endFrame,
-      fps, smooth_animation: smooth, rife_multiplier: rifeMultiplier,
+      fps: generationMode==='story' ? storyBaseFps : fps,
+      smooth_animation: smooth, rife_multiplier: rifeMultiplier,
       pingpong: pingPong, loop_count: loopCount, duration_seconds: durationSeconds, duration_mode: durationMode,
       compression, filename_prefix: 'GinaAI_GIF_Studio'
     };
@@ -206,9 +251,16 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
         const storyParams = {
           ...params,
           duration_seconds: scenes.reduce((sum:number, scene:any) => sum + Math.max(0.1, Number(scene.duration) || 0.1), 0),
-          width: 512,
-          height: 512,
-          model: 'ltxv-2b-0.9.8-distilled-fp8.safetensors',
+          width: storyWidth,
+          height: storyHeight,
+          steps: storySteps,
+          cfg: storyCfg,
+          sampler: storySampler,
+          scheduler: storyScheduler,
+          fps: storyBaseFps,
+          model: storyModel,
+          reference_strength: storyReferenceStrength,
+          reference_noise: storyReferenceNoise,
           story: {
             scenes,
             totalDurationSeconds: scenes.reduce((sum:number, scene:any) => sum + Math.max(0.1, Number(scene.duration) || 0.1), 0),
@@ -217,12 +269,22 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
             keepEnvironment: storyKeepEnvironment,
             keepCamera: storyKeepCamera,
             rife: storyRife,
-            autoGenerate: storyAutoGenerate
+            autoGenerate: storyAutoGenerate,
+            referenceStrength: storyReferenceStrength,
+            referenceNoise: storyReferenceNoise,
+            width: storyWidth,
+            height: storyHeight,
+            steps: storySteps,
+            cfg: storyCfg,
+            sampler: storySampler,
+            scheduler: storyScheduler,
+            fps: storyBaseFps,
+            model: storyModel
           }
         };
         await startJob('gif_story', storyParams);
         onAddLog('INFO', generationMode==='story'
-          ? `GIF Studio: sequential story queued — ${scenes.length} blocks / ${storyTotalDuration.toFixed(1)}s.`
+          ? `GIF Studio: sequential story queued — ${scenes.length} blocks / ${storyTotalDuration.toFixed(1)}s [${storyWidth}x${storyHeight}, ${storySteps} steps, ${storyBaseFps}fps, RIFE ${storyRife.toUpperCase()}].`
           : `GIF Studio: continuous LTX clip queued — ${scenes[0].duration}s streamed in safe generation blocks.`);
       } else {
         await startJob('gif_studio', params);
@@ -287,13 +349,132 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
   };
 
   return <div className="space-y-4">
-    <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)_390px] gap-4">
-      <section className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 space-y-4">
+    <div className="grid grid-cols-1 xl:grid-cols-[380px_minmax(0,1fr)_390px] gap-4 items-start">
+      <section className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 space-y-4 max-h-[860px] overflow-y-auto custom-scrollbar">
         <div className="flex items-center justify-between"><div><div className="text-[9px] tracking-[.25em] text-emerald-400 font-bold">ASSET + GENERATION CONTROL</div><h2 className="text-lg font-semibold text-slate-100 mt-1">GIF Studio</h2></div><Film className="w-5 h-5 text-emerald-400" /></div>
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3 space-y-3">
           <div className="flex items-center justify-between"><div><div className="text-[9px] font-bold tracking-[.2em] text-fuchsia-300">GENERATION MODE</div><div className="text-[8px] text-slate-600 mt-1">Choose whether this is one clip or a multi-scene production.</div></div><select value={generationMode} onChange={e=>setGenerationMode(e.target.value as any)} className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-[10px] text-slate-200"><option value="single">SINGLE CLIP</option><option value="story">SEQUENTIAL STORY</option></select></div>
           {generationMode==='story' && <div className="space-y-3">
-            <div className="grid grid-cols-3 gap-2 text-[8px]"><div className="rounded border border-slate-800 p-2"><span className="text-slate-600">SCENES</span><div className="font-mono text-fuchsia-300 mt-1">{storyScenes.length}</div></div><div className="rounded border border-slate-800 p-2"><span className="text-slate-600">TOTAL</span><div className="font-mono text-fuchsia-300 mt-1">{storyTotalDuration.toFixed(1)}s</div></div><div className="rounded border border-slate-800 p-2"><span className="text-slate-600">RIFE</span><div className="font-mono text-fuchsia-300 mt-1">{storyRife.toUpperCase()}</div></div></div>
+            <div className="grid grid-cols-4 gap-1.5 text-[8px]">
+              <div className="rounded border border-slate-800 p-2"><span className="text-slate-600">SCENES</span><div className="font-mono text-fuchsia-300 mt-1">{storyScenes.length}</div></div>
+              <div className="rounded border border-slate-800 p-2"><span className="text-slate-600">TOTAL</span><div className="font-mono text-fuchsia-300 mt-1">{storyTotalDuration.toFixed(1)}s</div></div>
+              <div className="rounded border border-slate-800 p-2"><span className="text-slate-600">RES</span><div className="font-mono text-emerald-300 mt-1">{storyWidth}×{storyHeight}</div></div>
+              <div className="rounded border border-slate-800 p-2"><span className="text-slate-600">FPS / RIFE</span><div className="font-mono text-cyan-300 mt-1">{storyBaseFps * (storyRife==='4x'?4:storyRife==='2x'?2:1)}</div></div>
+            </div>
+
+            {/* LTX-Video Hardware & Parameter Controls */}
+            <div className="rounded-lg border border-fuchsia-500/30 bg-slate-950 p-2.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="text-[8px] font-bold tracking-wider text-fuchsia-300 flex items-center gap-1.5">
+                  <Zap className="w-3 h-3 text-amber-400"/>
+                  LTX-VIDEO HARDWARE ENGINE (8GB VRAM OPTIMIZED)
+                </div>
+                <button onClick={()=>setShowStoryAdvanced(v=>!v)} className="text-[8px] text-slate-400 hover:text-slate-200">{showStoryAdvanced ? 'HIDE' : 'CONFIG'}</button>
+              </div>
+
+              {showStoryAdvanced && <div className="space-y-2.5 pt-1 border-t border-slate-800/80">
+                {/* Model Precision */}
+                <div>
+                  <div className="flex items-center justify-between text-[8px]">
+                    <span className="text-slate-400 font-semibold">MODEL PRECISION</span>
+                    <span className="text-[7px] text-emerald-400 font-mono">FP8_e4m3fn · Mandatory for 8GB</span>
+                  </div>
+                  <select value={storyModel} onChange={e=>setStoryModel(e.target.value)} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200">
+                    <option value="ltxv-2b-0.9.8-distilled-fp8.safetensors">LTX-Video 2B 0.9.8 Distilled FP8 (Quantized · ~50% VRAM Cut)</option>
+                    <option value="ltx-video-2.0.safetensors">LTX-Video 2.0 (Full Precision FP16)</option>
+                  </select>
+                </div>
+
+                {/* Sampling Steps & CFG */}
+                <div>
+                  <div className="flex items-center justify-between text-[8px]">
+                    <span className="text-slate-400 font-semibold">SAMPLING STEPS (20–25 OPTIMAL)</span>
+                    <span className="font-mono text-emerald-400">{storySteps} steps · CFG {storyCfg}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 mt-1">
+                    <button type="button" onClick={()=>setStorySteps(20)} className={`py-1 text-[8px] rounded border ${storySteps===20?'border-emerald-500/60 bg-emerald-500/10 text-emerald-300':'border-slate-800 text-slate-500'}`}>20 Steps (Fast)</button>
+                    <button type="button" onClick={()=>setStorySteps(22)} className={`py-1 text-[8px] rounded border ${storySteps===22?'border-emerald-500/60 bg-emerald-500/10 text-emerald-300':'border-slate-800 text-slate-500'}`}>22 Steps (Crisp)</button>
+                    <button type="button" onClick={()=>setStorySteps(25)} className={`py-1 text-[8px] rounded border ${storySteps===25?'border-emerald-500/60 bg-emerald-500/10 text-emerald-300':'border-slate-800 text-slate-500'}`}>25 Steps (Max)</button>
+                  </div>
+                  <input type="range" min="10" max="40" step="1" value={storySteps} onChange={e=>setStorySteps(Number(e.target.value))} className="w-full mt-1.5"/>
+                </div>
+
+                {/* Sampler & Scheduler */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[8px] text-slate-400 font-semibold">SAMPLER</label>
+                    <select value={storySampler} onChange={e=>setStorySampler(e.target.value)} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200">
+                      <option value="euler_ancestral">Euler Ancestral (Crisp)</option>
+                      <option value="euler">Euler</option>
+                      <option value="unipc_2">UniPC 2</option>
+                      <option value="dpmpp_2m">DPM++ 2M</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[8px] text-slate-400 font-semibold">SCHEDULER</label>
+                    <select value={storyScheduler} onChange={e=>setStoryScheduler(e.target.value)} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200">
+                      <option value="normal">Normal (Crisp Detail)</option>
+                      <option value="simple">Simple</option>
+                      <option value="karras">Karras</option>
+                      <option value="sgm_uniform">SGM Uniform</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Resolution Presets */}
+                <div>
+                  <div className="flex items-center justify-between text-[8px]">
+                    <span className="text-slate-400 font-semibold">RESOLUTION TARGET</span>
+                    <span className="font-mono text-cyan-300">{storyWidth} × {storyHeight}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1 mt-1">
+                    <button type="button" onClick={()=>handleStoryResolutionPreset('768x768')} className={`py-1 text-[8px] rounded border ${storyResolution==='768x768'?'border-cyan-500/60 bg-cyan-500/10 text-cyan-300':'border-slate-800 text-slate-500'}`}>768×768 (1:1)</button>
+                    <button type="button" onClick={()=>handleStoryResolutionPreset('848x480')} className={`py-1 text-[8px] rounded border ${storyResolution==='848x480'?'border-cyan-500/60 bg-cyan-500/10 text-cyan-300':'border-slate-800 text-slate-500'}`}>848×480 (16:9)</button>
+                    <button type="button" onClick={()=>handleStoryResolutionPreset('512x512')} className={`py-1 text-[8px] rounded border ${storyResolution==='512x512'?'border-cyan-500/60 bg-cyan-500/10 text-cyan-300':'border-slate-800 text-slate-500'}`}>512×512 (Fast)</button>
+                  </div>
+                </div>
+
+                {/* Base FPS & RIFE Multiplier */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[8px] text-slate-400 font-semibold">BASE FPS (RAW)</label>
+                    <select value={storyBaseFps} onChange={e=>setStoryBaseFps(Number(e.target.value))} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200">
+                      <option value={12}>12 FPS Base (Memory-Safe)</option>
+                      <option value={16}>16 FPS Base</option>
+                      <option value={24}>24 FPS Base</option>
+                      <option value={25}>25 FPS Base</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[8px] text-slate-400 font-semibold">RIFE INTERPOLATION</label>
+                    <select value={storyRife} onChange={e=>setStoryRife(e.target.value as any)} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200">
+                      <option value="off">RIFE OFF ({storyBaseFps} FPS)</option>
+                      <option value="2x">2× Multiplier ({storyBaseFps*2} FPS · Auto-Fallback)</option>
+                      <option value="4x">4× Multiplier ({storyBaseFps*4} FPS · Auto-Fallback)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* I2V Conditioning & Reference */}
+                <div className="rounded border border-slate-800/80 bg-slate-900/40 p-2 space-y-2">
+                  <div className="flex items-center justify-between text-[8px]">
+                    <span className="text-slate-300 font-semibold">I2V CONTINUITY CONDITIONING</span>
+                    <span className="font-mono text-amber-300">Strength: {storyReferenceStrength.toFixed(2)}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    <button type="button" onClick={()=>setStoryReferenceStrength(0.75)} className={`py-0.5 text-[7px] rounded border ${storyReferenceStrength===0.75?'border-amber-500/60 text-amber-300 bg-amber-500/10':'border-slate-800 text-slate-500'}`}>0.75 (Flex)</button>
+                    <button type="button" onClick={()=>setStoryReferenceStrength(0.80)} className={`py-0.5 text-[7px] rounded border ${storyReferenceStrength===0.80?'border-amber-500/60 text-amber-300 bg-amber-500/10':'border-slate-800 text-slate-500'}`}>0.80 (Optimal)</button>
+                    <button type="button" onClick={()=>setStoryReferenceStrength(0.85)} className={`py-0.5 text-[7px] rounded border ${storyReferenceStrength===0.85?'border-amber-500/60 text-amber-300 bg-amber-500/10':'border-slate-800 text-slate-500'}`}>0.85 (Strict)</button>
+                  </div>
+                  <input type="range" min="0.5" max="1" step="0.05" value={storyReferenceStrength} onChange={e=>setStoryReferenceStrength(Number(e.target.value))} className="w-full"/>
+                  <div className="grid grid-cols-2 gap-2 text-[8px]">
+                    <button type="button" onClick={()=>setStoryUseFinalFrame(v=>!v)} className={`rounded border py-1 font-bold ${storyUseFinalFrame?'border-cyan-500/40 text-cyan-300 bg-cyan-500/10':'border-slate-800 text-slate-500'}`}>FINAL FRAME I2V {storyUseFinalFrame?'ON':'OFF'}</button>
+                    <label className="flex items-center gap-1.5 text-[8px] text-slate-400">NOISE: <input type="number" min="0" max="0.3" step="0.01" value={storyReferenceNoise} onChange={e=>setStoryReferenceNoise(clamp(Number(e.target.value),0,0.3))} className="w-14 bg-slate-900 border border-slate-800 rounded px-1 text-xs"/></label>
+                  </div>
+                </div>
+              </div>}
+            </div>
+
             <div className="space-y-1">{storyScenes.map((scene,i)=><div key={scene.id} onClick={()=>setActiveSceneId(scene.id)} className={`rounded border p-2 cursor-pointer ${activeSceneId===scene.id?'border-fuchsia-500/50 bg-fuchsia-500/10':'border-slate-800 bg-slate-950/40'}`}><div className="flex items-center justify-between text-[8px]"><span className="font-mono text-slate-300">{String(i+1).padStart(2,'0')} · {scene.title}</span><span className="text-slate-500">{scene.duration}s · {scene.transition}</span></div><div className="text-[8px] text-slate-600 truncate mt-1">{scene.prompt || 'No prompt yet'}</div></div>)}</div>
             {activeScene && <div className="rounded border border-fuchsia-500/20 bg-slate-950 p-2 space-y-2"><div className="grid grid-cols-[1fr_90px] gap-2"><label className="text-[8px] text-slate-500">SCENE TITLE<input value={activeScene.title} onChange={e=>updateScene(activeScene.id,{title:e.target.value})} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs"/></label><label className="text-[8px] text-slate-500">SECONDS<input type="number" min="0.1" max="3600" step="0.1" value={activeScene.duration} onChange={e=>updateScene(activeScene.id,{duration:Math.max(0.1,Number(e.target.value)||0.1)})} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs"/></label></div>
               <label className="text-[8px] text-slate-500">SCENE PROMPT<textarea value={activeScene.prompt} onChange={e=>updateScene(activeScene.id,{prompt:e.target.value})} rows={4} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded p-2 text-xs text-slate-200 resize-none" placeholder="Describe only what happens in this scene…"/></label>
@@ -302,9 +483,6 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
               <div className="flex gap-2"><button onClick={()=>duplicateScene(activeScene)} className="flex-1 rounded border border-slate-800 py-1.5 text-[8px] text-slate-400">DUPLICATE</button><button onClick={()=>removeScene(activeScene.id)} className="flex-1 rounded border border-red-500/20 py-1.5 text-[8px] text-red-300">DELETE</button></div>
             </div>}
             <button onClick={addScene} className="w-full rounded border border-dashed border-fuchsia-500/30 py-2 text-[9px] font-bold text-fuchsia-300">+ ADD SCENE</button>
-            <div className="grid grid-cols-2 gap-2"><button onClick={()=>setStoryUseFinalFrame(v=>!v)} className={`rounded border py-2 text-[8px] font-bold ${storyUseFinalFrame?'border-cyan-500/40 text-cyan-300':'border-slate-800 text-slate-500'}`}>FINAL FRAME → NEXT {storyUseFinalFrame?'ON':'OFF'}</button><select value={storyRife} onChange={e=>setStoryRife(e.target.value as any)} className="bg-slate-900 border border-slate-800 rounded px-2 text-[8px] text-slate-300"><option value="off">RIFE OFF</option><option value="2x">RIFE 2×</option><option value="4x">RIFE 4×</option></select></div>
-<div className="grid grid-cols-2 gap-2"><label className="text-[8px] text-slate-500">REFERENCE STRENGTH <input type="number" min="0" max="1" step="0.05" value={storyReferenceStrength} onChange={e=>setStoryReferenceStrength(clamp(Number(e.target.value),0,1))} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs"/></label><label className="text-[8px] text-slate-500">IMAGE NOISE <input type="number" min="0" max="1" step="0.05" value={storyReferenceNoise} onChange={e=>setStoryReferenceNoise(clamp(Number(e.target.value),0,1))} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs"/></label></div>
-<div className="text-[8px] text-slate-600">RIFE is a story-level post/interpolation option. Final-frame continuity is separate and is applied automatically between blocks when the active ComfyUI LTX image-to-video node is available.</div>
             <div className="grid grid-cols-3 gap-1"><button onClick={()=>setStoryKeepCharacter(v=>!v)} className={`rounded border py-1.5 text-[7px] ${storyKeepCharacter?'border-emerald-500/30 text-emerald-300':'border-slate-800 text-slate-600'}`}>KEEP CHARACTER</button><button onClick={()=>setStoryKeepEnvironment(v=>!v)} className={`rounded border py-1.5 text-[7px] ${storyKeepEnvironment?'border-emerald-500/30 text-emerald-300':'border-slate-800 text-slate-600'}`}>KEEP ENVIRONMENT</button><button onClick={()=>setStoryKeepCamera(v=>!v)} className={`rounded border py-1.5 text-[7px] ${storyKeepCamera?'border-emerald-500/30 text-emerald-300':'border-slate-800 text-slate-600'}`}>KEEP CAMERA</button></div>
             <label className="flex items-center gap-2 text-[8px] text-slate-500"><input type="checkbox" checked={storyAutoGenerate} onChange={e=>setStoryAutoGenerate(e.target.checked)}/> AUTO-GENERATE SCENES IN ORDER</label>
           </div>}
@@ -336,15 +514,15 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
         {job?.workflowId==='ltx_video' && job.status==='COMPLETED' && <button onClick={()=>void adoptLtx()} className="w-full rounded border border-cyan-500/40 text-cyan-300 text-[10px] py-2">ADOPT LTX OUTPUT AS GIF SOURCE</button>}
       </section>
 
-      <section className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 min-h-[650px] flex flex-col">
-        <div className="flex items-center justify-between mb-3"><div><div className="text-[9px] tracking-[.25em] text-cyan-400 font-bold">LIVE PLAYER + TIMELINE HUD</div><div className="text-sm text-slate-200 font-semibold">Frame range {startFrame} → {endFrame}</div></div><div className="flex items-center gap-2 text-[9px] font-mono text-slate-500"><button onClick={()=>setPreviewFormat('gif')} className={`px-2 py-1 rounded border ${previewFormat==='gif'?'border-emerald-500/50 text-emerald-300':'border-slate-800'}`}>GIF {exportUrls.gif?'✓':''}</button><button onClick={()=>setPreviewFormat('mp4')} className={`px-2 py-1 rounded border ${previewFormat==='mp4'?'border-cyan-500/50 text-cyan-300':'border-slate-800'}`}>MP4 {exportUrls.mp4?'✓':''}</button><span>{fps} FPS</span><span>{Math.round(1000/fps)}ms/frame</span></div></div>
-        <div className="relative flex-1 min-h-[330px] rounded-xl border border-slate-800 bg-[#030712] overflow-hidden flex items-center justify-center">
+      <section className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 xl:sticky xl:top-4 flex flex-col space-y-3">
+        <div className="flex items-center justify-between mb-1"><div><div className="text-[9px] tracking-[.25em] text-cyan-400 font-bold">LIVE PLAYER + TIMELINE HUD</div><div className="text-sm text-slate-200 font-semibold">Frame range {startFrame} → {endFrame}</div></div><div className="flex items-center gap-2 text-[9px] font-mono text-slate-500"><button onClick={()=>setPreviewFormat('gif')} className={`px-2 py-1 rounded border ${previewFormat==='gif'?'border-emerald-500/50 text-emerald-300':'border-slate-800'}`}>GIF {exportUrls.gif?'✓':''}</button><button onClick={()=>setPreviewFormat('mp4')} className={`px-2 py-1 rounded border ${previewFormat==='mp4'?'border-cyan-500/50 text-cyan-300':'border-slate-800'}`}>MP4 {exportUrls.mp4?'✓':''}</button><span>{fps} FPS</span><span>{Math.round(1000/fps)}ms/frame</span></div></div>
+        <div className="relative w-full aspect-video min-h-[260px] max-h-[460px] rounded-xl border border-slate-800 bg-[#030712] overflow-hidden flex items-center justify-center">
           {sourceUrl && previewIsVideo ? <video key={sourceUrl} ref={previewVideoRef} src={sourceUrl} controls loop muted autoPlay playsInline className="max-w-full max-h-full object-contain"/> : sourceUrl ? <img key={sourceUrl} src={sourceUrl} className="max-w-full max-h-full object-contain" alt="GIF Studio result"/> : <div className="text-center text-slate-600"><Film className="w-12 h-12 mx-auto mb-3 opacity-30"/><div className="text-xs">No processed result yet</div><div className="text-[9px] mt-1">Run the workflow to create the final GIF/MP4.</div></div>}
           <canvas ref={canvasRef} width={900} height={500} className={`absolute inset-0 w-full h-full ${textEnabled&&memo?'opacity-100 pointer-events-auto cursor-move':'opacity-0 pointer-events-none'}`} onPointerDown={()=>setDraggingText(true)} onPointerMove={moveText} onPointerUp={()=>setDraggingText(false)} onPointerCancel={()=>setDraggingText(false)} />
           {job && isGifJob && <div className="absolute top-3 left-3 right-3 flex items-center gap-2"><div className="flex-1 h-1.5 rounded bg-slate-800 overflow-hidden"><div className="h-full bg-emerald-400 transition-all" style={{width:`${progress}%`}}/></div><span className="text-[9px] font-mono text-emerald-300">{progress}%</span></div>}
         </div>
-        <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900/60 p-3"><div className="relative h-7"><div className="absolute top-3 left-0 right-0 h-1 bg-slate-700 rounded"/><div className="absolute top-3 h-1 bg-emerald-500 rounded" style={{left:`${Math.min(100,startFrame/500*100)}%`,right:`${100-Math.min(100,endFrame/500*100)}%`}}/></div><div className="flex justify-between text-[8px] font-mono text-slate-600"><span>0</span><span>250</span><span>500</span></div></div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-3"><Metric icon={<Activity/>} label="GPU" value={`${telemetry.gpuTempC}°C`}/><Metric icon={<Cpu/>} label="VRAM" value={`${(telemetry.vramUsedMB/1024).toFixed(1)}GB / ${(telemetry.vramTotalMB/1024).toFixed(1)}GB`}/><Metric icon={<Clock3/>} label="NODE" value={currentNode?.classType || 'idle'}/><Metric icon={<Zap/>} label="JOB" value={job?.status || 'READY'}/></div><div className="mt-3 rounded-lg border border-slate-800 bg-slate-900/50 p-3">
+        <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3"><div className="relative h-7"><div className="absolute top-3 left-0 right-0 h-1 bg-slate-700 rounded"/><div className="absolute top-3 h-1 bg-emerald-500 rounded" style={{left:`${Math.min(100,startFrame/500*100)}%`,right:`${100-Math.min(100,endFrame/500*100)}%`}}/></div><div className="flex justify-between text-[8px] font-mono text-slate-600"><span>0</span><span>250</span><span>500</span></div></div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2"><Metric icon={<Activity/>} label="GPU" value={`${telemetry.gpuTempC}°C`}/><Metric icon={<Cpu/>} label="VRAM" value={`${(telemetry.vramUsedMB/1024).toFixed(1)}GB / ${(telemetry.vramTotalMB/1024).toFixed(1)}GB`}/><Metric icon={<Clock3/>} label="NODE" value={currentNode?.classType || 'idle'}/><Metric icon={<Zap/>} label="JOB" value={job?.status || 'READY'}/></div><div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
           <div className="flex items-center justify-between"><span className="text-[9px] font-bold tracking-wider text-slate-300">GENERATION TELEMETRY</span><span className="text-[8px] font-mono text-slate-600">{events.length} events</span></div>
           {job?.workflowId==='gif_story' && <div className="mb-2 rounded border border-fuchsia-500/20 bg-fuchsia-500/5 p-2 text-[8px] font-mono text-fuchsia-300">STORY BLOCK {job.parameters?.__storyCurrentScene || 0} / {job.parameters?.__storySceneCount || 0} · {job.parameters?.__storyReferenceUsed ? 'FINAL-FRAME I2V ACTIVE' : 'TEXT-TO-VIDEO'} </div>}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-[8px]">
@@ -355,10 +533,10 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
           </div>
           <div className="mt-2 text-[8px] font-mono text-slate-500 break-all">NODE {currentNode?.id || '—'} · {currentNode?.classType || 'idle'} · {currentNode?.inputs ? JSON.stringify(currentNode.inputs) : 'waiting'}</div>
         </div>
-        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2"><button onClick={()=>setTextEnabled(v=>!v)} className={`border rounded px-3 py-2 text-[9px] font-bold ${textEnabled?'border-cyan-500/50 text-cyan-300':'border-slate-800 text-slate-500'}`}><Type className="inline w-3 h-3 mr-1"/>MEME TEXT LAYER</button><button onClick={()=>void exportFormat('gif')} disabled={exporting||!isGifJob} className="border border-emerald-500/40 rounded px-3 py-2 text-[9px] font-bold text-emerald-300 disabled:opacity-40"><Download className="inline w-3 h-3 mr-1"/>EXPORT GIF</button></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2"><button onClick={()=>setTextEnabled(v=>!v)} className={`border rounded px-3 py-2 text-[9px] font-bold ${textEnabled?'border-cyan-500/50 text-cyan-300':'border-slate-800 text-slate-500'}`}><Type className="inline w-3 h-3 mr-1"/>MEME TEXT LAYER</button><button onClick={()=>void exportFormat('gif')} disabled={exporting||!isGifJob} className="border border-emerald-500/40 rounded px-3 py-2 text-[9px] font-bold text-emerald-300 disabled:opacity-40"><Download className="inline w-3 h-3 mr-1"/>EXPORT GIF</button></div>
       </section>
 
-      <section className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 space-y-3 max-h-[820px] overflow-auto custom-scrollbar">
+      <section className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 space-y-3 max-h-[860px] overflow-auto custom-scrollbar">
         <div className="flex items-center justify-between"><div><div className="text-[9px] tracking-[.25em] text-amber-400 font-bold">AI PROCESSING TRAY</div><div className="text-sm text-slate-200 font-semibold">ComfyUI Node Graph Sync</div></div><Layers3 className="w-5 h-5 text-amber-400"/></div>
         <div className="grid grid-cols-2 gap-2 text-[9px]"><div className="rounded border border-slate-800 p-2"><span className="text-slate-600">CURRENT NODE</span><div className="text-emerald-300 font-mono mt-1">{currentNode?.id || '—'} · {currentNode?.classType || 'idle'}</div></div><div className="rounded border border-slate-800 p-2"><span className="text-slate-600">THERMAL TARGET</span><div className={telemetry.gpuTempC>60?'text-amber-300':'text-emerald-300'}>{telemetry.gpuTempC}°C / 60°C</div></div></div>
         <div className="space-y-2"><ToggleRow label="Trim / Frame Window" on/><ToggleRow label="RIFE Optical Flow" on={generationMode==='story' ? storyRife!=='off' : smooth}/><ToggleRow label="Ping-Pong Loop" on={pingPong}/><ToggleRow label="Quantized GIF Compiler" on/><ToggleRow label="VRAM Active Purge" on={isGifJob}/><ToggleRow label="Thermal Governor" on/></div>

@@ -20,7 +20,7 @@ import { LogEntry, SystemTelemetry } from './types';
 import { Aida64Hud } from './components/Aida64Hud';
 import { APP_VERSION } from './version';
 
-const ACTIVE_SAVE_POINT_ID = 'RESTORE_14_V1.17.55_FLUX_GGUF_AIDA64_1024X600';
+const ACTIVE_SAVE_POINT_ID = 'RESTORE_V1.17.68_GIF_STUDIO_FIX';
 
 export function getRecentOOMErrors(logs: LogEntry[]): LogEntry[] {
   if (!Array.isArray(logs)) return [];

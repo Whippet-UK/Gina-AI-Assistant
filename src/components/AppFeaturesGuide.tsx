@@ -276,7 +276,7 @@ export const AppFeaturesGuide: React.FC = () => {
             <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wide flex items-center gap-2">
               <span>PROJECT SYSTEM ARCHITECTURE & FEATURE GUIDE</span>
               <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[9px] px-2 py-0.5 rounded font-mono">
-                GINA AI FACTORY V1.17.19
+                GINA AI FACTORY V1.17.68
               </span>
             </h2>
             <p className="text-[11px] text-slate-400 font-mono mt-0.5">

@@ -220,6 +220,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
   useEffect(() => {
     if (!job?.id) { setLiveEvents([]); setResolvedWorkflow(null); return; }
     let cancelled = false;
+    let timer: any = null;
     const refreshRuntime = async () => {
       try {
         const [historyRes, workflowRes] = await Promise.all([
@@ -229,11 +230,14 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
         if (cancelled) return;
         if (historyRes.ok) { const data = await historyRes.json(); setLiveEvents(Array.isArray(data.events) ? data.events : []); }
         if (workflowRes.ok) { const data = await workflowRes.json(); setResolvedWorkflow(data.workflow || null); }
+        if (!isBusy && (historyRes.status === 404 || workflowRes.status === 404)) {
+          if (timer) clearInterval(timer);
+        }
       } catch {}
     };
     refreshRuntime();
-    const timer = setInterval(refreshRuntime, isBusy ? 500 : 1500);
-    return () => { cancelled = true; clearInterval(timer); };
+    timer = setInterval(refreshRuntime, isBusy ? 500 : 3000);
+    return () => { cancelled = true; if (timer) clearInterval(timer); };
   }, [job?.id, isBusy]);
 
   const setPrompt = (v:string) => updatePromptStudio({ promptInput: v });

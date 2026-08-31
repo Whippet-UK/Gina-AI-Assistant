@@ -118,7 +118,7 @@ goto WAIT_GINA
 
 :GINA_READY
 echo    Gina Dashboard is READY.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $d=(Invoke-WebRequest -Uri '%GINA_URL%/api/version' -UseBasicParsing -TimeoutSec 3).Content | ConvertFrom-Json; if($d.version -ne 'v1.17.41'){ Write-Host ('[WARN] Dashboard reports version ' + $d.version + ' (expected v1.17.41).'); } } catch { Write-Host '[WARN] Could not verify Gina API version.' }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $d=(Invoke-WebRequest -Uri '%GINA_URL%/api/version' -UseBasicParsing -TimeoutSec 3).Content | ConvertFrom-Json; if($d.version -ne 'v1.17.68'){ Write-Host ('[WARN] Dashboard reports version ' + $d.version + ' (expected v1.17.68).'); } } catch { Write-Host '[WARN] Could not verify Gina API version.' }"
 echo.
 
 echo [5/5] Starting local Gemma engine...

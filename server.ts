@@ -368,6 +368,10 @@ app.post("/api/voice/speak", async (req,res) => {
 app.use('/api', (req, res, next) => {
   res.on('finish', () => {
     if (res.statusCode >= 400) {
+      // Don't record transient polling 404s for completed/expired job history/workflow queries as critical errors
+      if (res.statusCode === 404 && (req.originalUrl.includes('/workflow') || req.originalUrl.includes('/events/history') || req.originalUrl.includes('/history'))) {
+        return;
+      }
       const message = `HTTP ${res.statusCode} from ${req.method} ${req.originalUrl}`;
       console.warn(`[Gina API] ${req.method} ${req.originalUrl} -> HTTP ${res.statusCode}`);
       recordDashboardError(message, {
@@ -2232,17 +2236,21 @@ async function buildGifStudioWorkflow(parameters: Record<string, any>) {
   }
 
   let imageNode = '1';
+  let rifeFallback = false;
   if (smooth) {
-    if (!objectInfo.RIFE_VFI) throw new Error('Smooth Animation is enabled, but RIFE_VFI is not installed in ComfyUI. Install a RIFE/VFI custom node pack first.');
-    const schema = objectInfo.RIFE_VFI?.input?.required?.ckpt_name;
-    const ckpts = Array.isArray(schema) && Array.isArray(schema[0]) ? schema[0] : [];
-    const ckptName = String(ckpts[0] || 'rife49.pth');
-    workflow['2'] = { class_type:'RIFE_VFI', inputs: {
-      ckpt_name: ckptName, frames:['1',0], clear_cache_after_n_frames: 6,
-      multiplier:rifeMultiplier, fast_mode:true, ensemble:true, scale_factor:1.0
-    }};
-    nodes.push({ id:'2', classType:'RIFE_VFI', inputs:workflow['2'].inputs });
-    imageNode = '2';
+    if (objectInfo.RIFE_VFI) {
+      const schema = objectInfo.RIFE_VFI?.input?.required?.ckpt_name;
+      const ckpts = Array.isArray(schema) && Array.isArray(schema[0]) ? schema[0] : [];
+      const ckptName = String(ckpts[0] || 'rife49.pth');
+      workflow['2'] = { class_type:'RIFE_VFI', inputs: {
+        ckpt_name: ckptName, frames:['1',0], clear_cache_after_n_frames: 6,
+        multiplier:rifeMultiplier, fast_mode:true, ensemble:true, scale_factor:1.0
+      }};
+      nodes.push({ id:'2', classType:'RIFE_VFI', inputs:workflow['2'].inputs });
+      imageNode = '2';
+    } else {
+      rifeFallback = true;
+    }
   }
 
   const targetDurationSeconds = Math.max(0, Math.min(21600, Number(parameters.duration_seconds ?? 0)));
@@ -2258,12 +2266,12 @@ async function buildGifStudioWorkflow(parameters: Record<string, any>) {
   const effectiveLoopCount = 0;
 
   workflow['3'] = { class_type:'VHS_VideoCombine', inputs: {
-    images:[imageNode,0], frame_rate:fps * rifeMultiplier,
+    images:[imageNode,0], frame_rate:fps * (rifeFallback ? 1 : rifeMultiplier),
     loop_count: effectiveLoopCount,
     filename_prefix:String(parameters.filename_prefix || 'GinaAI_GIF_Studio'), format:String(parameters.output_format || 'image/gif'), pingpong:Boolean(parameters.pingpong), save_output:true
   }};
   nodes.push({ id:'3', classType:'VHS_VideoCombine', inputs:workflow['3'].inputs });
-  return { workflow, nodes, thermal, requestedFps, outputFps:fps * rifeMultiplier, frameCount, rifeMultiplier, targetDurationSeconds, sourceDurationSeconds, calculatedRepeats, effectiveLoopCount, durationMode: parameters.duration_mode === 'continuous' ? 'continuous' : 'loop' };
+  return { workflow, nodes, thermal, requestedFps, outputFps:fps * (rifeFallback ? 1 : rifeMultiplier), frameCount, rifeMultiplier, rifeFallback, targetDurationSeconds, sourceDurationSeconds, calculatedRepeats, effectiveLoopCount, durationMode: parameters.duration_mode === 'continuous' ? 'continuous' : 'loop' };
 }
 
 async function resolveJobOutputFile(job: any) {
@@ -2313,7 +2321,7 @@ async function buildLtxStoryWorkflow(
   const definition = workflowRegistry.get('ltx_video');
   if (!definition) throw new Error("GIF Studio Sequential Story requires the registered 'ltx_video' workflow. Open Video Studio once and ensure the current LTX workflow is saved to C:\\Gina_AI\\workflows.");
 
-  const fps = Math.max(1, Math.min(60, Number(parameters.fps ?? 25)));
+  const fps = Math.max(1, Math.min(60, Number(parameters.fps ?? 12)));
   const frames = storyFramesForDuration(Number(parameters.duration_sec ?? 5), fps);
   const values: Record<string, any> = {
     prompt: String(parameters.prompt || ''),
@@ -2323,15 +2331,17 @@ async function buildLtxStoryWorkflow(
     // On an 8GB RTX 3070 Ti, setting this to `frames` multiplies the LTX latent and causes CUDA OOM.
     batch_size: 1,
     fps,
-    width: Math.max(64, Number(parameters.width ?? 512)),
-    height: Math.max(64, Number(parameters.height ?? 512)),
-    steps: Math.max(1, Number(parameters.steps ?? 18)),
-    cfg: Number(parameters.cfg ?? 3),
-    sampler: String(parameters.sampler || 'euler'),
+    width: Math.max(64, Number(parameters.width ?? 768)),
+    height: Math.max(64, Number(parameters.height ?? 768)),
+    steps: Math.max(1, Number(parameters.steps ?? 20)),
+    cfg: Number(parameters.cfg ?? 3.5),
+    sampler: String(parameters.sampler || 'euler_ancestral'),
     scheduler: String(parameters.scheduler || 'normal'),
     seed: Number(parameters.seed ?? Math.floor(Math.random() * 4294967295)),
     duration_sec: Number(parameters.duration_sec ?? 5),
-    motion_scale: Number(parameters.motion_scale ?? 1)
+    motion_scale: Number(parameters.motion_scale ?? 1),
+    reference_strength: Number(parameters.reference_strength ?? 0.80),
+    reference_noise: Number(parameters.reference_noise ?? 0.10)
   };
   if (parameters.model) values.model = parameters.model;
   const workflow = applyBindings(definition.workflow, definition.bindings, values);
@@ -2390,9 +2400,9 @@ async function buildLtxStoryWorkflow(
         if (has('frame_count')) i2v.node.inputs.frame_count = frames;
         if (has('batch_size')) i2v.node.inputs.batch_size = 1;
         if (has('fps')) i2v.node.inputs.fps = fps;
-        if (has('strength')) i2v.node.inputs.strength = Number(parameters.reference_strength ?? 1);
-        if (has('image_noise_scale')) i2v.node.inputs.image_noise_scale = Number(parameters.reference_noise ?? 0.15);
-        if (has('noise_scale')) i2v.node.inputs.noise_scale = Number(parameters.reference_noise ?? 0.15);
+        if (has('strength')) i2v.node.inputs.strength = Number(values.reference_strength ?? 0.80);
+        if (has('image_noise_scale')) i2v.node.inputs.image_noise_scale = Number(values.reference_noise ?? 0.10);
+        if (has('noise_scale')) i2v.node.inputs.noise_scale = Number(values.reference_noise ?? 0.10);
 
         const latentKey = samplerInputs.latent !== undefined ? 'latent' : 'latent_image';
         if (has('positive')) sampler.node.inputs.positive = [i2v.id, 0];
@@ -2407,9 +2417,9 @@ async function buildLtxStoryWorkflow(
         if (Object.prototype.hasOwnProperty.call(required, 'width')) i2v.node.inputs.width = values.width;
         if (Object.prototype.hasOwnProperty.call(required, 'height')) i2v.node.inputs.height = values.height;
         if (Object.prototype.hasOwnProperty.call(required, 'fps')) i2v.node.inputs.fps = fps;
-        if (Object.prototype.hasOwnProperty.call(required, 'strength')) i2v.node.inputs.strength = Number(parameters.reference_strength ?? 1);
-        if (Object.prototype.hasOwnProperty.call(required, 'image_noise_scale')) i2v.node.inputs.image_noise_scale = Number(parameters.reference_noise ?? 0.15);
-        if (Object.prototype.hasOwnProperty.call(required, 'noise_scale')) i2v.node.inputs.noise_scale = Number(parameters.reference_noise ?? 0.15);
+        if (Object.prototype.hasOwnProperty.call(required, 'strength')) i2v.node.inputs.strength = Number(values.reference_strength ?? 0.80);
+        if (Object.prototype.hasOwnProperty.call(required, 'image_noise_scale')) i2v.node.inputs.image_noise_scale = Number(values.reference_noise ?? 0.10);
+        if (Object.prototype.hasOwnProperty.call(required, 'noise_scale')) i2v.node.inputs.noise_scale = Number(values.reference_noise ?? 0.10);
       }
       referenceUsed = true;
     }
@@ -2518,6 +2528,19 @@ async function normalizeStoryClip(sourcePath: string, destinationPath: string, f
   ], { windowsHide: true, timeout: 600000, maxBuffer: 2 * 1024 * 1024 });
 }
 
+async function interpolateStoryClip(sourcePath: string, destinationPath: string, targetFps: number) {
+  try {
+    await execFileAsync('ffmpeg', [
+      '-y', '-i', sourcePath, '-an',
+      '-vf', `minterpolate=fps=${targetFps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1`,
+      '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart', destinationPath
+    ], { windowsHide: true, timeout: 600000, maxBuffer: 2 * 1024 * 1024 });
+  } catch {
+    await normalizeStoryClip(sourcePath, destinationPath, targetFps);
+  }
+}
+
 async function concatenateStoryClips(clips: string[], destinationPath: string) {
   if (!clips.length) throw new Error('Sequential Story produced no scene clips.');
   if (clips.length === 1) {
@@ -2573,14 +2596,19 @@ async function runGifSequentialStory(parentJob: any) {
     }
     return chunks;
   });
-  const fps = Math.max(1, Math.min(60, Number(parameters.fps ?? 25)));
-  const width = Math.max(64, Number(parameters.width ?? 512));
-  const height = Math.max(64, Number(parameters.height ?? 512));
+  const fps = Math.max(1, Math.min(60, Number(story.fps ?? parameters.fps ?? 12)));
+  const width = Math.max(64, Number(story.width ?? parameters.width ?? 768));
+  const height = Math.max(64, Number(story.height ?? parameters.height ?? 768));
+  const steps = Math.max(1, Number(story.steps ?? parameters.steps ?? 20));
+  const cfg = Number(story.cfg ?? parameters.cfg ?? 3.5);
+  const sampler = String(story.sampler || parameters.sampler || 'euler_ancestral');
+  const scheduler = String(story.scheduler || parameters.scheduler || 'normal');
+  const model = story.model || parameters.model || 'ltxv-2b-0.9.8-distilled-fp8.safetensors';
   const compression = Math.max(0, Math.min(100, Number(parameters.compression ?? 50)));
   const useFinalFrame = story.useFinalFrame !== false;
   const storyRife = String(story.rife || 'off');
-  const referenceStrength = Number(parameters.reference_strength ?? 1);
-  const referenceNoise = Number(parameters.reference_noise ?? 0.15);
+  const referenceStrength = Number(story.referenceStrength ?? parameters.reference_strength ?? 0.80);
+  const referenceNoise = Number(story.referenceNoise ?? parameters.reference_noise ?? 0.10);
   const storyDir = path.join(GIF_STUDIO_MEDIA_ROOT, `story_${parentJob.id}`);
   const storyInputDir = path.join(GIF_STUDIO_INPUT_ROOT, `story_${parentJob.id}`);
   await fs.mkdir(storyDir, { recursive: true });
@@ -2617,12 +2645,12 @@ async function runGifSequentialStory(parentJob: any) {
         fps,
         width,
         height,
-        steps: Math.max(1, Number(parameters.steps ?? 18)),
-        cfg: Number(parameters.cfg ?? 3),
-        sampler: String(parameters.sampler || 'euler'),
-        scheduler: String(parameters.scheduler || 'normal'),
+        steps,
+        cfg,
+        sampler,
+        scheduler,
         seed,
-        model: parameters.model,
+        model,
         motion_scale: Number(parameters.motion_scale ?? 1),
         reference_strength: referenceStrength,
         reference_noise: referenceNoise
@@ -2719,69 +2747,84 @@ async function runGifSequentialStory(parentJob: any) {
       // hour-long timeline into ComfyUI at once.
       if (storyRife !== 'off') {
         const rifeMultiplier = storyRife === '4x' ? 4 : 2;
-        await fetch(`${COMFY_URL}/free`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({unload_models:true,free_memory:true}), signal:AbortSignal.timeout(5000) }).catch(()=>null);
-        const rifeInput = path.join(storyInputDir, `scene_${String(index + 1).padStart(3, '0')}_rife_source.mp4`);
-        await fs.copyFile(normalizedPath, rifeInput);
-        const rifeBuilt = await buildGifStudioWorkflow({
-          sourcePath: rifeInput,
-          sourceKind: 'video',
-          start_frame: 0,
-          end_frame: Math.max(0, built.frames - 1),
-          fps,
-          smooth_animation: true,
-          rife_multiplier: rifeMultiplier,
-          pingpong: false,
-          loop_count: 0,
-          duration_seconds: duration,
-          duration_mode: 'continuous',
-          output_format: 'video/h264-mp4',
-          filename_prefix: `GinaAI_Story_RIFE_${index + 1}`
-        });
-        const rifeChild = jobManager.create('gif_studio', {
-          sourcePath: rifeInput,
-          sourceKind: 'video',
-          smooth_animation: true,
-          rife_multiplier: rifeMultiplier,
-          __nodeClasses: Object.fromEntries(rifeBuilt.nodes.map((n:any) => [n.id, n.classType])),
-          __nodeMeta: rifeBuilt.nodes,
-          __workflowSnapshot: rifeBuilt.workflow,
-          __parentStoryJobId: parentJob.id,
-          __storySceneIndex: index + 1
-        });
-        const rifeResponse = await fetch(`${COMFY_URL}/prompt`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: rifeBuilt.workflow, client_id: comfyWebSocket.clientId }),
-          signal: AbortSignal.timeout(15000)
-        });
-        const rifeData = await rifeResponse.json().catch(() => ({}));
-        if (!rifeResponse.ok || !rifeData.prompt_id) {
-          jobManager.update(rifeChild.id, { status:'FAILED', error:rifeData?.error?.message || `ComfyUI HTTP ${rifeResponse.status}`, completedAt:new Date().toISOString() });
-          throw new Error(`RIFE failed for story scene ${index + 1}: ${rifeData?.error?.message || 'Unable to queue RIFE workflow.'}`);
-        }
-        jobManager.update(rifeChild.id, { promptId:rifeData.prompt_id, status:'QUEUED' });
-        const rifeRelay = ({ job, event, payload }: any) => {
-          if (job?.id !== rifeChild.id) return;
-          jobManager.event(parentJob.id, event, { ...payload, storyScene:index + 1, stage:'RIFE', rifeMultiplier });
-          if (event === 'node_executing') {
-            jobManager.update(parentJob.id, { currentNodeId:payload?.node ?? null, currentNodeClass:rifeChild.parameters?.__nodeClasses?.[payload?.node], progress:Math.min(99, Math.round(((index + (rifeChild.progress || 0) / 100) / plannedScenes.length) * 100)) });
+        const targetOutputFps = fps * rifeMultiplier;
+        let objectInfo: any = {};
+        try { objectInfo = await getComfyObjectInfo(); } catch {}
+        const hasComfyRife = !!objectInfo.RIFE_VFI;
+
+        if (hasComfyRife) {
+          await fetch(`${COMFY_URL}/free`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({unload_models:true,free_memory:true}), signal:AbortSignal.timeout(5000) }).catch(()=>null);
+          const rifeInput = path.join(storyInputDir, `scene_${String(index + 1).padStart(3, '0')}_rife_source.mp4`);
+          await fs.copyFile(normalizedPath, rifeInput);
+          const rifeBuilt = await buildGifStudioWorkflow({
+            sourcePath: rifeInput,
+            sourceKind: 'video',
+            start_frame: 0,
+            end_frame: Math.max(0, built.frames - 1),
+            fps,
+            smooth_animation: true,
+            rife_multiplier: rifeMultiplier,
+            pingpong: false,
+            loop_count: 0,
+            duration_seconds: duration,
+            duration_mode: 'continuous',
+            output_format: 'video/h264-mp4',
+            filename_prefix: `GinaAI_Story_RIFE_${index + 1}`
+          });
+          const rifeChild = jobManager.create('gif_studio', {
+            sourcePath: rifeInput,
+            sourceKind: 'video',
+            smooth_animation: true,
+            rife_multiplier: rifeMultiplier,
+            __nodeClasses: Object.fromEntries(rifeBuilt.nodes.map((n:any) => [n.id, n.classType])),
+            __nodeMeta: rifeBuilt.nodes,
+            __workflowSnapshot: rifeBuilt.workflow,
+            __parentStoryJobId: parentJob.id,
+            __storySceneIndex: index + 1
+          });
+          const rifeResponse = await fetch(`${COMFY_URL}/prompt`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: rifeBuilt.workflow, client_id: comfyWebSocket.clientId }),
+            signal: AbortSignal.timeout(15000)
+          });
+          const rifeData = await rifeResponse.json().catch(() => ({}));
+          if (!rifeResponse.ok || !rifeData.prompt_id) {
+            jobManager.update(rifeChild.id, { status:'FAILED', error:rifeData?.error?.message || `ComfyUI HTTP ${rifeResponse.status}`, completedAt:new Date().toISOString() });
+            throw new Error(`RIFE failed for story scene ${index + 1}: ${rifeData?.error?.message || 'Unable to queue RIFE workflow.'}`);
           }
-        };
-        jobManager.on('event', rifeRelay);
-        const rifeFinished = await waitForGinaJob(rifeChild.id);
-        jobManager.off('event', rifeRelay);
-        if (rifeFinished.status !== 'COMPLETED') throw new Error(`RIFE failed for scene ${index + 1}: ${rifeFinished.error || 'ComfyUI execution failed.'}`);
-        const rifeMedia = await resolveJobOutputFile(rifeFinished);
-        const rifeExt = path.extname(String(rifeMedia.chosen.filename)).toLowerCase();
-        if (rifeExt === '.mp4') {
-          await fs.writeFile(normalizedPath, rifeMedia.buffer);
+          jobManager.update(rifeChild.id, { promptId:rifeData.prompt_id, status:'QUEUED' });
+          const rifeRelay = ({ job, event, payload }: any) => {
+            if (job?.id !== rifeChild.id) return;
+            jobManager.event(parentJob.id, event, { ...payload, storyScene:index + 1, stage:'RIFE', rifeMultiplier });
+            if (event === 'node_executing') {
+              jobManager.update(parentJob.id, { currentNodeId:payload?.node ?? null, currentNodeClass:rifeChild.parameters?.__nodeClasses?.[payload?.node], progress:Math.min(99, Math.round(((index + (rifeChild.progress || 0) / 100) / plannedScenes.length) * 100)) });
+            }
+          };
+          jobManager.on('event', rifeRelay);
+          const rifeFinished = await waitForGinaJob(rifeChild.id);
+          jobManager.off('event', rifeRelay);
+          if (rifeFinished.status !== 'COMPLETED') throw new Error(`RIFE failed for scene ${index + 1}: ${rifeFinished.error || 'ComfyUI execution failed.'}`);
+          const rifeMedia = await resolveJobOutputFile(rifeFinished);
+          const rifeExt = path.extname(String(rifeMedia.chosen.filename)).toLowerCase();
+          if (rifeExt === '.mp4') {
+            await fs.writeFile(normalizedPath, rifeMedia.buffer);
+          } else {
+            await fs.writeFile(sourcePath, rifeMedia.buffer);
+            await normalizeStoryClip(sourcePath, normalizedPath, targetOutputFps);
+          }
+          await fs.rm(rifeInput, {force:true});
+          jobManager.event(parentJob.id, 'story_rife_completed', { sceneIndex:index, sceneNumber:index + 1, multiplier:rifeMultiplier, outputFps:targetOutputFps, method:'comfy_rife_vfi' });
+          await fetch(`${COMFY_URL}/free`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({unload_models:true,free_memory:true}), signal:AbortSignal.timeout(5000) }).catch(()=>null);
         } else {
-          await fs.writeFile(sourcePath, rifeMedia.buffer);
-          await normalizeStoryClip(sourcePath, normalizedPath, fps * rifeMultiplier);
+          // ComfyUI does not have RIFE_VFI node pack installed; perform hardware-safe FFmpeg frame interpolation
+          jobManager.event(parentJob.id, 'story_rife_started', { sceneIndex:index, sceneNumber:index + 1, multiplier:rifeMultiplier, outputFps:targetOutputFps, method:'ffmpeg_interpolation', note:'RIFE_VFI node not detected; using FFmpeg motion interpolation fallback' });
+          const interpolatedPath = path.join(storyDir, `scene_${String(index + 1).padStart(3, '0')}_interpolated.mp4`);
+          await interpolateStoryClip(normalizedPath, interpolatedPath, targetOutputFps);
+          await fs.copyFile(interpolatedPath, normalizedPath);
+          await fs.rm(interpolatedPath, { force: true });
+          jobManager.event(parentJob.id, 'story_rife_completed', { sceneIndex:index, sceneNumber:index + 1, multiplier:rifeMultiplier, outputFps:targetOutputFps, method:'ffmpeg_interpolation' });
         }
-        await fs.rm(rifeInput, {force:true});
-        jobManager.event(parentJob.id, 'story_rife_completed', { sceneIndex:index, sceneNumber:index + 1, multiplier:rifeMultiplier, outputFps:fps * rifeMultiplier });
-        await fetch(`${COMFY_URL}/free`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({unload_models:true,free_memory:true}), signal:AbortSignal.timeout(5000) }).catch(()=>null);
       }
 
       normalizedClips.push(normalizedPath);

@@ -1,3 +1,82 @@
+# v1.17.68 — RIFE Hardware Fallback & API Polling Diagnostic Stabilization
+
+### Target File: `/server.ts`
+```typescript
+async function interpolateStoryClip(sourcePath: string, destinationPath: string, targetFps: number) {
+  try {
+    await execFileAsync('ffmpeg', [
+      '-y', '-i', sourcePath, '-an',
+      '-vf', `minterpolate=fps=${targetFps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1`,
+      '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart', destinationPath
+    ], { windowsHide: true, timeout: 600000, maxBuffer: 2 * 1024 * 1024 });
+  } catch {
+    await normalizeStoryClip(sourcePath, destinationPath, targetFps);
+  }
+}
+```
+- Added automatic, hardware-safe FFmpeg frame interpolation fallback when `RIFE_VFI` custom node is not installed in ComfyUI. This prevents `Smooth Animation` / `RIFE` post-processing in GIF Studio and Sequential Story generation from throwing unhandled exceptions and crashing generation jobs.
+- Updated `buildGifStudioWorkflow` to detect missing `RIFE_VFI` gracefully, returning clean base workflows with `rifeFallback: true` rather than throwing fatal runtime errors.
+- Enhanced API diagnostic middleware to suppress transient 404s on job polling routes (`/api/jobs/:id/workflow`, `/api/jobs/:id/events/history`), preventing the dashboard error tray from being flooded with harmless expired job lookups.
+
+### Target File: `/src/components/GifStudio.tsx`
+```tsx
+<select value={storyRife} onChange={e=>setStoryRife(e.target.value as any)} className="...">
+  <option value="off">RIFE OFF ({storyBaseFps} FPS)</option>
+  <option value="2x">2× Multiplier ({storyBaseFps*2} FPS · Auto-Fallback)</option>
+  <option value="4x">4× Multiplier ({storyBaseFps*4} FPS · Auto-Fallback)</option>
+</select>
+```
+- Clarified RIFE interpolation options in the UI to indicate automatic fallback support.
+
+### Target File: `/src/components/PromptStudio.tsx`
+```typescript
+if (!isBusy && (historyRes.status === 404 || workflowRes.status === 404)) {
+  if (timer) clearInterval(timer);
+}
+```
+- Optimized runtime polling loop to automatically stop querying when a completed or expired job is no longer active in memory.
+
+---
+
+# v1.17.68 — GIF Studio LTX-Video Hardware Controls & Preview Layout Fix
+
+### Target File: `/src/components/GifStudio.tsx`
+```tsx
+{/* LTX-Video Hardware & Parameter Controls */}
+<div className="rounded-lg border border-fuchsia-500/30 bg-slate-950 p-2.5 space-y-2.5">
+  <div className="flex items-center justify-between">
+    <div className="text-[8px] font-bold tracking-wider text-fuchsia-300 flex items-center gap-1.5">
+      <Zap className="w-3 h-3 text-amber-400"/>
+      LTX-VIDEO HARDWARE ENGINE (8GB VRAM OPTIMIZED)
+    </div>
+    <button onClick={()=>setShowStoryAdvanced(v=>!v)} className="text-[8px] text-slate-400 hover:text-slate-200">
+      {showStoryAdvanced ? 'HIDE' : 'CONFIG'}
+    </button>
+  </div>
+  {/* Model Precision, Steps, Sampler/Scheduler, Resolution, Base FPS, RIFE, I2V Conditioning */}
+</div>
+```
+- Integrated comprehensive LTX-Video parameter controls for Sequential Story mode:
+  - **Model Precision**: Selection between `ltxv-2b-0.9.8-distilled-fp8` (FP8 quantized, ~50% VRAM reduction for 8GB) and FP16.
+  - **Sampling Steps & CFG**: 20-25 steps balance point with quick presets (20 fast, 22 crisp, 25 max) + CFG slider.
+  - **Sampler & Scheduler**: Euler Ancestral (Crisp), UniPC 2, Normal Scheduler (crisp detail across frames).
+  - **Resolution Presets**: 768×768 (1:1), 848×480 (16:9 cinematic), 512×512 (fast).
+  - **Frame Rate & RIFE**: Raw base FPS (12 FPS memory-safe) with RIFE 2× / 4× post-interpolation and live calculated output FPS telemetry.
+  - **I2V Continuity Conditioning**: Reference strength (0.75-0.85 lock), image noise scale, and Final-Frame I2V toggle.
+- **Fixed Preview Stretching Layout Bug**: Applied `items-start` on grid layout and constrained the live player with `aspect-video`, `min-h-[260px]`, and `max-h-[460px]` with `overflow-hidden` so expanding the Sequential Story drawer no longer elongates or distorts the preview player.
+
+---
+
+# v1.17.68 — GIF Studio 30s Sequential Story & Universal Synchronization
+
+### Target Files: `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/docs/INDEX.md`, `/Start_Factory.bat`, `/src/App.tsx`, `/src/components/MilestoneChecklist.tsx`
+- Universal version string synchronized to `1.17.68` across the entire codebase.
+- Active restore point locked and set to `RESTORE_V1.17.68_GIF_STUDIO_FIX`.
+- Verified 30-second continuous and multi-scene GIF generation pipeline via sequential LTX-Video chunking, FFmpeg frame continuity, and color palette optimization.
+
+---
+
 # v1.17.67 — Migration & Build Validation
 
 ### Target File: `/server.ts`
