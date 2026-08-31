@@ -27,9 +27,7 @@ jobs:
 
           server = Path('server.ts')
           text = server.read_text(encoding='utf-8')
-          old = 'app.use(express.json({ limit: "50mb" }));'
-          if old in text:
-              text = text.replace(old, 'app.use(express.json({ limit: "512mb" }));', 1)
+          text = text.replace('app.use(express.json({ limit: "50mb" }));', 'app.use(express.json({ limit: "512mb" }));', 1)
           server.write_text(text, encoding='utf-8')
 
           ui = Path('src/components/StreamInjectStudio.tsx')
@@ -40,22 +38,22 @@ jobs:
           text = text.replace(gameplay_old, gameplay_new, 1)
 
           def add_role_upload(text, role, label):
-              pattern = re.compile(r'(<select\\s+value={' + re.escape(role) + r'\\b[\\s\\S]*?</select>)', re.M)
+              pattern = re.compile(r'(<select\s+value={' + re.escape(role) + r'}[\s\S]*?</select>)', re.M)
               match = pattern.search(text)
               if not match:
                   raise SystemExit(f'Expected {role} selector was not found')
               block = match.group(1)
-              if f'handleFileUpload(e, "{role}")' in block:
+              if f'handleFileUpload(e, "{role[:-4]}")' in block:
                   return text
-              control = f'''\n                <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">\n                  <Upload className="w-3.5 h-3.5" /> {label}\n                  <input type="file" accept="{VIDEO_ACCEPT}" className="hidden" onChange={{(e) => handleFileUpload(e, "{role}")}} />\n                </label>'''
+              field = role[:-4]
+              control = f'''\n                <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">\n                  <Upload className="w-3.5 h-3.5" /> {label}\n                  <input type="file" accept="{VIDEO_ACCEPT}" className="hidden" onChange={{(e) => handleFileUpload(e, "{field}")}} />\n                </label>'''
               return text[:match.end(1)] + control + text[match.end(1):]
 
           text = add_role_upload(text, 'introPath', 'Upload Intro')
           text = add_role_upload(text, 'outroPath', 'Upload CTA')
 
           upload_tail = '          fetchMediaFiles();\n        }\n      } catch (err) {'
-          if upload_tail in text:
-              text = text.replace(upload_tail, '          await fetchMediaFiles();\n        } else {\n          throw new Error(data.error || "Upload failed");\n        }\n      } catch (err) {', 1)
+          text = text.replace(upload_tail, '          await fetchMediaFiles();\n        } else {\n          throw new Error(data.error || "Upload failed");\n        }\n      } catch (err) {', 1)
 
           ui.write_text(text, encoding='utf-8')
           PY
