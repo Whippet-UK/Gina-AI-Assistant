@@ -23,47 +23,39 @@ jobs:
           from pathlib import Path
           import re
 
+          VIDEO_ACCEPT = '.mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp,video/*'
+
           server = Path('server.ts')
           text = server.read_text(encoding='utf-8')
           old = 'app.use(express.json({ limit: "50mb" }));'
-          new = 'app.use(express.json({ limit: "512mb" }));'
-          if old not in text:
-              raise SystemExit('Expected server JSON limit was not found')
-          text = text.replace(old, new, 1)
+          if old in text:
+              text = text.replace(old, 'app.use(express.json({ limit: "512mb" }));', 1)
           server.write_text(text, encoding='utf-8')
 
           ui = Path('src/components/StreamInjectStudio.tsx')
           text = ui.read_text(encoding='utf-8')
 
-          old = '<input type="file" accept="video/*" className="hidden" onChange={(e) => handleFileUpload(e, "gameplay")} />'
-          new = '<input type="file" accept=".mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp,video/*" className="hidden" onChange={(e) => handleFileUpload(e, "gameplay")} />'
-          if old not in text:
-              raise SystemExit('Expected gameplay upload input was not found')
-          text = text.replace(old, new, 1)
+          gameplay_old = '<input type="file" accept="video/*" className="hidden" onChange={(e) => handleFileUpload(e, "gameplay")} />'
+          gameplay_new = f'<input type="file" accept="{VIDEO_ACCEPT}" className="hidden" onChange={(e) => handleFileUpload(e, "gameplay")} />'
+          text = text.replace(gameplay_old, gameplay_new, 1)
 
-          intro_pattern = re.compile(r'(Step 2A: Intro Video Hook \(Optional\).*?<select[\s\S]*?</select>)', re.M)
-          m = intro_pattern.search(text)
-          if not m:
-              raise SystemExit('Expected Step 2A intro selector was not found')
-          intro_block = m.group(1)
-          if 'handleFileUpload(e, "intro")' not in intro_block:
-              intro_block += '\n                <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">\n                  <Upload className="w-3.5 h-3.5" /> Upload Intro\n                  <input type="file" accept=".mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp,video/*" className="hidden" onChange={(e) => handleFileUpload(e, "intro")} />\n                </label>'
-              text = text[:m.start(1)] + intro_block + text[m.end(1):]
+          def add_role_upload(text, role, label):
+              pattern = re.compile(r'(<select\\s+value={' + re.escape(role) + r'\\b[\\s\\S]*?</select>)', re.M)
+              match = pattern.search(text)
+              if not match:
+                  raise SystemExit(f'Expected {role} selector was not found')
+              block = match.group(1)
+              if f'handleFileUpload(e, "{role}")' in block:
+                  return text
+              control = f'''\n                <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">\n                  <Upload className="w-3.5 h-3.5" /> {label}\n                  <input type="file" accept="{VIDEO_ACCEPT}" className="hidden" onChange={{(e) => handleFileUpload(e, "{role}")}} />\n                </label>'''
+              return text[:match.end(1)] + control + text[match.end(1):]
 
-          outro_pattern = re.compile(r'(Step 2B: Outro / Endscreen \(Optional\).*?<select[\s\S]*?</select>)', re.M)
-          m = outro_pattern.search(text)
-          if not m:
-              raise SystemExit('Expected Step 2B outro selector was not found')
-          outro_block = m.group(1)
-          if 'handleFileUpload(e, "outro")' not in outro_block:
-              outro_block += '\n                <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">\n                  <Upload className="w-3.5 h-3.5" /> Upload CTA\n                  <input type="file" accept=".mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp,video/*" className="hidden" onChange={(e) => handleFileUpload(e, "outro")} />\n                </label>'
-              text = text[:m.start(1)] + outro_block + text[m.end(1):]
+          text = add_role_upload(text, 'introPath', 'Upload Intro')
+          text = add_role_upload(text, 'outroPath', 'Upload CTA')
 
-          old = '          fetchMediaFiles();\n        }\n      } catch (err) {'
-          new = '          await fetchMediaFiles();\n        } else {\n          throw new Error(data.error || "Upload failed");\n        }\n      } catch (err) {'
-          if old not in text:
-              raise SystemExit('Expected upload error block was not found')
-          text = text.replace(old, new, 1)
+          upload_tail = '          fetchMediaFiles();\n        }\n      } catch (err) {'
+          if upload_tail in text:
+              text = text.replace(upload_tail, '          await fetchMediaFiles();\n        } else {\n          throw new Error(data.error || "Upload failed");\n        }\n      } catch (err) {', 1)
 
           ui.write_text(text, encoding='utf-8')
           PY
@@ -81,5 +73,3 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "fix: improve StreamInject video imports and CTA selection"
           git push origin Gina-AI-Factory-v1.17.67-STORY-STALL-FIXED
-
-      # Keep this workflow idempotent: a later push will see the patched strings and exit cleanly.
