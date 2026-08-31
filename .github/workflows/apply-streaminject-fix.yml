@@ -59,7 +59,7 @@ jobs:
 
       - name: Build
         run: |
-          npm ci
+          npm install
           npm run build
 
       - name: Commit patched files
