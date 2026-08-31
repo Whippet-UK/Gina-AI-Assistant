@@ -1126,6 +1126,10 @@ export function StreamInjectStudio() {
                   <Upload className="w-3.5 h-3.5" /> Upload Intro
                   <input type="file" accept=".mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp,video/*" className="hidden" onChange={(e) => handleFileUpload(e, "intro")} />
                 </label>
+                <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">
+                  <Upload className="w-3.5 h-3.5" /> Upload Intro
+                  <input type="file" accept=".mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp,video/*" className="hidden" onChange={(e) => handleFileUpload(e, "intro")} />
+                </label>
               </div>
 
               <div className="flex flex-col gap-2 p-4 rounded-xl bg-slate-950/70 border border-slate-800">
@@ -1144,6 +1148,10 @@ export function StreamInjectStudio() {
                     </option>
                   ))}
                 </select>
+                <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">
+                  <Upload className="w-3.5 h-3.5" /> Upload CTA
+                  <input type="file" accept=".mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp,video/*" className="hidden" onChange={(e) => handleFileUpload(e, "outro")} />
+                </label>
                 <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">
                   <Upload className="w-3.5 h-3.5" /> Upload CTA
                   <input type="file" accept=".mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp,video/*" className="hidden" onChange={(e) => handleFileUpload(e, "outro")} />
