@@ -1,3 +1,72 @@
+# v1.17.69 — StreamInject v2.5 UI Integration & Navigation Wireup
+
+### Target File: `/src/App.tsx`
+```tsx
+import { StreamInjectStudio } from './components/StreamInjectStudio';
+
+const navItems = [
+  { id: 'create' as const, label: 'CREATE', icon: Image, isGenerating: isJobActive && isImageJob },
+  { id: 'video' as const, label: 'VIDEO', icon: Video, isGenerating: isJobActive && isVideoJob },
+  { id: 'gif' as const, label: 'GIF STUDIO', icon: Film, isGenerating: isJobActive && job?.workflowId === 'gif_studio' },
+  { id: 'streaminject' as const, label: 'STREAMINJECT', icon: Film, isGenerating: isJobActive && (job?.workflowId === 'streaminject_studio' || job?.workflowId === 'streaminject_render') },
+  { id: 'aida64' as const, label: 'AIDA64', icon: Gauge, isGenerating: false },
+  ...
+];
+
+<main className={`space-y-5 ${activeView === 'streaminject' ? 'block' : 'hidden'}`}>
+  <WorkspaceErrorBoundary name="StreamInject Studio">
+    <StreamInjectStudio />
+  </WorkspaceErrorBoundary>
+</main>
+```
+- Integrated the `StreamInjectStudio` visual layout designer and render workspace directly into the primary application navigation bar.
+- Connected real-time generation indicators for `streaminject_studio` and `streaminject_render` job types.
+
+### Target File: `/src/components/MilestoneChecklist.tsx`
+```tsx
+{ phase: 30, name: 'STREAMINJECT v2.5 PURE RENDER SUITE', status: 'COMPLETED', details: 'Headless OpenCV/FFmpeg Python render engine, visual canvas layout builder, 6-track timeline & master pipeline' }
+```
+- Added Phase 30 milestone and updated active restore point to `RESTORE_V1.17.69_STREAMINJECT_SUITE`.
+
+### Target File: `/src/components/AppFeaturesGuide.tsx`
+- Added comprehensive feature documentation for StreamInject v2.5 Pure Render Suite covering headless Python execution, canvas layout builder, and master rendering pipeline.
+
+---
+
+# v1.17.68 — StreamInject v2.5 Pure Render Suite Integration
+
+### Target File: `/scripts/stream_inject.py`
+```python
+class MasterRenderPipeline:
+    @classmethod
+    def execute(
+        cls,
+        intro_path: Optional[str],
+        main_gameplay_path: str,
+        outro_path: Optional[str],
+        output_path: str,
+        aspect_mode: str = "original",
+        split_start_sec: float = 0.0,
+        split_end_sec: Optional[float] = None,
+        green_screen_overlay: Optional[str] = None,
+        overlay_start_time: float = 5.0,
+        watermark_path: Optional[str] = None,
+        watermark_pos: str = "TR",
+        subtitle_path: Optional[str] = None
+    ) -> Dict[str, Any]:
+```
+- Integrated the complete, unabridged, single-file production-ready Python video post-production suite **StreamInject v2.5** (`scripts/stream_inject.py`).
+- Implemented in-memory Kinetic FX matrices: Glitch/Flicker, Screen-Shake Rumble (affine warp with `BORDER_REFLECT`), Ethereal Volumetric Bloom Glow (luminosity mask > 200 + Gaussian blur), and Chromatic Aberration channel separation (+4px/-4px).
+- Implemented Multi-Aspect Engine: 16:9 Widescreen mode and 9:16 Portrait Shorts mode with automated dual-layer `boxblur=40:5` blurred sidebars.
+- Implemented Master Hardcoded Render Pipeline with dynamic markers, green screen chromakey (`0x00FF00:0.1:0.2`), subtitle burns, multi-track concatenation, and automated `build_perf_log.md` telemetry reporting.
+- Implemented Intro & Outro Studio with Ready-Built Template Mode (10s kinetic loop with `OUTRO_BG_RED_MAX=55`) and Blank Template Mode with infinite multi-layer step-by-step interactive inputs and smart safe-zone hints.
+- Enforced Audio Stream Safety Rule (48kHz Stereo via `anullsrc` harmonization) and Hard Audio Peak Limiter (`alimiter` at `-0.95dB` ceiling).
+
+### Target File: `/docs/guides/STREAM_INJECT_SUITE.md`
+- Added comprehensive architecture specification and CLI command guide for the StreamInject v2.5 engine.
+
+---
+
 # v1.17.68 — RIFE Hardware Fallback & API Polling Diagnostic Stabilization
 
 ### Target File: `/server.ts`

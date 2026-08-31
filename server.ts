@@ -19,6 +19,7 @@ import { AgentContextManager } from "./server/agent/AgentContextManager.js";
 import { AgentMemoryManager } from "./server/agent/AgentMemoryManager.js";
 import { Aida64TelemetryBridge } from "./server/aida64/Aida64TelemetryBridge.js";
 import { LocalRagEngine } from "./server/rag/LocalRagEngine.js";
+import { StreamInjectService } from "./server/streaminject/StreamInjectService.js";
 import { APP_VERSION } from "./src/version.js";
 import JSZip from "jszip";
 
@@ -45,6 +46,7 @@ const agentContext = new AgentContextManager(GINA_ROOT, GINA_WORKFLOW_DIR);
 const agentMemory = new AgentMemoryManager(GINA_ROOT);
 const aida64Telemetry = new Aida64TelemetryBridge();
 const localRag = new LocalRagEngine(GINA_ROOT);
+const streamInjectService = new StreamInjectService(process.cwd());
 
 interface ComfyErrorLog {
   id: string;
@@ -3840,7 +3842,175 @@ app.get("/api/jobs/:id/output", async (req, res) => {
   } catch (error: any) { res.status(503).json({ error: error?.message || 'Unable to retrieve local output' }); }
 });
 
+// ===============================================================================
+// STREAMINJECT v2.5 PURE RENDER SUITE API ENDPOINTS
+// ===============================================================================
+app.use("/media/streaminject", express.static(streamInjectService.getRuntimeDir()));
 
+app.get("/api/streaminject/status", async (_req, res) => {
+  try {
+    const pythonOk = true;
+    const media = await streamInjectService.scanAvailableMedia();
+    res.json({
+      ok: true,
+      service: "StreamInject v2.5 Pure Render Suite",
+      runtimeDir: streamInjectService.getRuntimeDir(),
+      pythonOk,
+      mediaCounts: {
+        videos: media.videos.length,
+        images: media.images.length,
+        subtitles: media.subtitles.length
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "StreamInject status check failed" });
+  }
+});
+
+app.get("/api/streaminject/presets", (_req, res) => {
+  const presets = streamInjectService.getPresets();
+  res.json({ ok: true, presets });
+});
+
+app.get("/api/streaminject/media-files", async (_req, res) => {
+  try {
+    const media = await streamInjectService.scanAvailableMedia();
+    res.json({ ok: true, ...media });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Failed to scan local media" });
+  }
+});
+
+app.post("/api/streaminject/upload", async (req, res) => {
+  try {
+    const { filename, base64Data } = req.body;
+    if (!filename || !base64Data) {
+      return res.status(400).json({ ok: false, error: "Missing filename or base64Data" });
+    }
+    const cleanName = path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, "_");
+    const targetPath = path.join(streamInjectService.getRuntimeDir(), `${Date.now()}_${cleanName}`);
+    const buffer = Buffer.from(base64Data.replace(/^data:[^;]+;base64,/, ""), "base64");
+    await fs.writeFile(targetPath, buffer);
+
+    res.json({
+      ok: true,
+      filename: path.basename(targetPath),
+      path: targetPath,
+      url: `/media/streaminject/${path.basename(targetPath)}`,
+      sizeBytes: buffer.length
+    });
+  } catch (error: any) {
+    recordDashboardError(error?.message || "StreamInject upload failed", {
+      source: "streaminject-upload",
+      method: "POST",
+      url: "/api/streaminject/upload",
+      status: 500
+    });
+    res.status(500).json({ ok: false, error: error?.message || "Upload failed" });
+  }
+});
+
+app.post("/api/streaminject/studio", async (req, res) => {
+  const options = req.body || {};
+  const job = jobManager.create("streaminject_studio", {
+    width: options.width || 1920,
+    height: options.height || 1080,
+    duration: options.duration || 10.0,
+    fps: options.fps || 30.0,
+    vfx: options.vfx
+  });
+
+  try {
+    // Initiate background execution
+    streamInjectService
+      .renderStudioTemplate(job.id, options, jobManager)
+      .then((result) => {
+        console.log(`[StreamInject Studio] Job ${job.id} completed successfully: ${result.outputFilename}`);
+      })
+      .catch((err) => {
+        console.error(`[StreamInject Studio] Job ${job.id} failed:`, err);
+        recordDashboardError(err.message, {
+          source: "streaminject-studio",
+          method: "POST",
+          url: "/api/streaminject/studio",
+          status: 500
+        });
+      });
+
+    res.status(202).json({
+      ok: true,
+      jobId: job.id,
+      status: "QUEUED",
+      message: "StreamInject studio render queued successfully"
+    });
+  } catch (error: any) {
+    jobManager.update(job.id, {
+      status: "FAILED",
+      error: error?.message || "Failed to start studio render",
+      completedAt: new Date().toISOString()
+    });
+    res.status(500).json({ ok: false, error: error?.message || "Failed to start studio render", jobId: job.id });
+  }
+});
+
+app.post("/api/streaminject/render", async (req, res) => {
+  const options = req.body || {};
+  if (!options.mainGameplayPath) {
+    return res.status(400).json({ ok: false, error: "Main gameplay video path is required." });
+  }
+
+  // Check if file exists, or if relative name in runtime directory
+  let resolvedGameplay = options.mainGameplayPath;
+  if (!fsSync.existsSync(resolvedGameplay)) {
+    const runtimeCandidate = path.join(streamInjectService.getRuntimeDir(), options.mainGameplayPath);
+    const outputCandidate = path.join(process.cwd(), "output", options.mainGameplayPath);
+    if (fsSync.existsSync(runtimeCandidate)) {
+      resolvedGameplay = runtimeCandidate;
+    } else if (fsSync.existsSync(outputCandidate)) {
+      resolvedGameplay = outputCandidate;
+    } else {
+      return res.status(404).json({ ok: false, error: `Main gameplay file not found at path: ${options.mainGameplayPath}` });
+    }
+  }
+
+  const job = jobManager.create("streaminject_render", {
+    gameplay: resolvedGameplay,
+    aspect: options.aspectMode || "original",
+    splitStart: options.splitStartSec || 0,
+    splitEnd: options.splitEndSec
+  });
+
+  try {
+    streamInjectService
+      .renderMasterPipeline(job.id, { ...options, mainGameplayPath: resolvedGameplay }, jobManager)
+      .then((result) => {
+        console.log(`[StreamInject Master] Job ${job.id} completed: ${result.outputFilename}`);
+      })
+      .catch((err) => {
+        console.error(`[StreamInject Master] Job ${job.id} failed:`, err);
+        recordDashboardError(err.message, {
+          source: "streaminject-render",
+          method: "POST",
+          url: "/api/streaminject/render",
+          status: 500
+        });
+      });
+
+    res.status(202).json({
+      ok: true,
+      jobId: job.id,
+      status: "QUEUED",
+      message: "StreamInject master pipeline render queued successfully"
+    });
+  } catch (error: any) {
+    jobManager.update(job.id, {
+      status: "FAILED",
+      error: error?.message || "Failed to start master render",
+      completedAt: new Date().toISOString()
+    });
+    res.status(500).json({ ok: false, error: error?.message || "Failed to start master render", jobId: job.id });
+  }
+});
 
 const shutdownLocalLlm = async () => {
   try {

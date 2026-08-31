@@ -1,9 +1,11 @@
 {
-  "name": "Gina AI Factory \u2014 Local Creator UI",
-  "version": "1.17.68",
-  "description": "Strictly local creator dashboard with ComfyUI, AIDA64 studio, local Gemma 3 12B CUDA inference, zero-VRAM hybrid RAG knowledge engine, real-time node graph sync, resilient agent tooling, and voice mode.",
+  "name": "Gina AI Factory — Local Creator UI",
+  "version": "1.17.69",
+  "description": "Strictly local creator dashboard with ComfyUI, AIDA64 studio, StreamInject v2.5 Pure Render Suite, local Gemma 3 12B CUDA inference, zero-VRAM hybrid RAG knowledge engine, real-time node graph sync, and voice mode.",
   "majorCapabilities": [
     "LOCAL_ONLY_COMFYUI_EXECUTION",
+    "STREAMINJECT_V25_PURE_RENDER_SUITE",
+    "HEADLESS_PYTHON_FFMPEG_ENGINE",
     "DYNAMIC_WORKFLOW_PARSING",
     "ASYNC_JOB_TRACKING",
     "RTX_3070_TI_8GB_AWARE",

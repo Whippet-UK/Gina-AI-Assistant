@@ -38,6 +38,7 @@ export const MilestoneChecklist: React.FC<MilestoneChecklistProps> = ({ activeRe
     { phase: 27, name: 'RESOURCE SCHEDULER', status: 'COMPLETED', details: 'Shared-GPU scheduling signals and cancellation flush integration' },
     { phase: 28, name: 'HEALTH & DIAGNOSTICS CENTER', status: 'COMPLETED', details: 'Measured system health and one-click diagnostic report' },
     { phase: 29, name: 'ONE-CLICK DIAGNOSTICS', status: 'COMPLETED', details: 'Full local report covering runtime, GPU, VRAM, ComfyUI, Gemma, vision, workflows and knowledge watcher' },
+    { phase: 30, name: 'STREAMINJECT v2.5 PURE RENDER SUITE', status: 'COMPLETED', details: 'Headless OpenCV/FFmpeg Python render engine, visual canvas layout builder, 6-track timeline & master pipeline' },
   ]);
 
   const [restorePoints] = useState<RestorePoint[]>([
@@ -49,12 +50,13 @@ export const MilestoneChecklist: React.FC<MilestoneChecklistProps> = ({ activeRe
     { id: 'RESTORE_06_V1.6.9_LOCAL_GEMMA', label: 'Gemma 3 12B Local CUDA Engine', description: 'Gemma 3 12B Q4_K_M served by llama.cpp CUDA at 28 GPU layers; Local AI workspace integrated', timestamp: '2026-08-18 03:30', status: 'LOCKED' },
     { id: 'RESTORE_07_V1.16.0_AGENT_AIDA64', label: 'Autonomous Agent & Telemetry Bridge', description: '19 local tools, persistent agent memory, Win32 shared memory telemetry reader & gauge generator', timestamp: '2026-08-18 08:30', status: 'LOCKED' },
     { id: 'RESTORE_08_V1.17.2_LOCAL_RAG', label: 'Local Zero-VRAM RAG Knowledge Engine', description: 'In-memory BM25/Vector retrieval, LLM chat grounding, agent knowledge search tool, developer workbench', timestamp: '2026-08-18 12:00', status: 'LOCKED' },
-    { id: 'RESTORE_09_V1.17.18_VOICE_GRAPH_SYNC', label: 'Voice Pipeline & Node Graph Sync', description: 'Google US English default persistence, real-time ComfyUI node graph sync, and Phase 13-17 roadmap expansion', timestamp: '2026-08-18 15:30', status: 'ACTIVE' },
+    { id: 'RESTORE_09_V1.17.18_VOICE_GRAPH_SYNC', label: 'Voice Pipeline & Node Graph Sync', description: 'Google US English default persistence, real-time ComfyUI node graph sync, and Phase 13-17 roadmap expansion', timestamp: '2026-08-18 15:30', status: 'LOCKED' },
     { id: 'RESTORE_10_V1.17.19_LOCAL_CREATOR_UPLOADS', label: 'Local Creator Upload Pipeline', description: 'Dashboard-only ComfyUI reference-image uploads and supported Local AI file attachments; no manual ComfyUI interaction required', timestamp: '2026-08-29 22:31', status: 'LOCKED' },
     { id: 'RESTORE_11_V1.17.20_LOCAL_AI_ATTACHMENTS', label: 'Local AI Universal Attachments', description: 'Images, text/code/config files and ZIP archives can be attached from Gina; ZIP text is extracted locally and images are stored for future local multimodal support', timestamp: '2026-08-29 22:35', status: 'LOCKED' },
     { id: 'RESTORE_12_V1.17.22_ATTACHMENT_VISION', label: 'Attachment + Vision Completion', description: 'Create Studio reference-image upload plus real Local AI image transport through llama.cpp multimodal image_url inputs with automatic mmproj detection', timestamp: '2026-08-29 23:11', status: 'LOCKED' },
     { id: 'RESTORE_13_V1.17.42_MILESTONE_BATCH', label: 'Milestones 14-17 Batch', description: 'Workflow JSON/PNG ingestion, DPI-aware AIDA64 HUD mode, controlled GGUF benchmark/tuner, and filesystem knowledge auto-indexing', timestamp: '2026-08-30 18:00', status: 'LOCKED' },
-    { id: 'RESTORE_V1.17.68_GIF_STUDIO_FIX', label: 'GIF Studio Sequential Story & Route Resilience', description: 'Seamless multi-scene LTX video generation, frame continuity fallback, and full endpoint resilience', timestamp: new Date().toISOString().slice(0,16).replace('T',' '), status: 'ACTIVE' },
+    { id: 'RESTORE_V1.17.68_GIF_STUDIO_FIX', label: 'GIF Studio Sequential Story & Route Resilience', description: 'Seamless multi-scene LTX video generation, frame continuity fallback, and full endpoint resilience', timestamp: '2026-08-31 03:00', status: 'LOCKED' },
+    { id: 'RESTORE_V1.17.69_STREAMINJECT_SUITE', label: 'StreamInject v2.5 Pure Render Suite', description: 'Standalone OpenCV/FFmpeg Python render engine, visual canvas layout builder, 6-track timeline & master pipeline', timestamp: new Date().toISOString().slice(0,16).replace('T',' '), status: 'ACTIVE' },
   ]);
 
   const [checks, setChecks] = useState<VerificationCheck[]>([

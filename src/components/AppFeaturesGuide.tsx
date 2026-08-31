@@ -69,6 +69,24 @@ export const AppFeaturesGuide: React.FC = () => {
       ]
     },
     {
+      id: 'streaminject_studio',
+      title: 'StreamInject v2.5 Pure Render Suite',
+      icon: Film,
+      color: 'text-rose-400',
+      bgColor: 'bg-rose-500/10',
+      borderColor: 'border-rose-500/30',
+      badge: 'Headless OpenCV + FFmpeg',
+      category: 'Pure Video Engine',
+      shortDesc: 'Standalone headless post-production video suite with visual canvas builder, 6-track audio/video mixing, and background Python execution.',
+      details: [
+        'Headless Python Rendering Engine: Full programmatic timeline compositing, letterbox scaling, and audio ducking via scripts/stream_inject.py.',
+        'Interactive Canvas Layout Builder: Visually place, scale, and snap gameplay, camera, HUD, and overlay zones without terminal commands.',
+        'Preset Management & Auto-Scan: Load/save custom layout JSON presets and automatically scan project media directories.',
+        'Full Pipeline Execution: Bake standalone video templates or execute the complete multi-track master render directly from the Gina UI.',
+        'Real-Time Output Streaming: Live rendering logs, progress bars, and instant HTML5 preview playback upon completion.'
+      ]
+    },
+    {
       id: 'aida64_studio',
       title: 'AIDA64 68-Feature Gauge Factory & Telemetry',
       icon: Gauge,

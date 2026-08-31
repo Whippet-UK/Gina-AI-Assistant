@@ -7,6 +7,7 @@ import { AppFeaturesGuide } from './components/AppFeaturesGuide';
 import { PromptStudio } from './components/PromptStudio';
 import { VideoStudio } from './components/VideoStudio';
 import { GifStudio } from './components/GifStudio';
+import { StreamInjectStudio } from './components/StreamInjectStudio';
 import { Aida64Studio } from './components/Aida64Studio';
 import { AiStudioSuite } from './components/AiStudioSuite';
 import { SystemHub } from './components/SystemHub';
@@ -18,9 +19,7 @@ import { WorkspaceErrorBoundary } from './components/WorkspaceErrorBoundary';
 import { ComfyUIStatusIndicator } from './components/LTXDiagnostic';
 import { LogEntry, SystemTelemetry } from './types';
 import { Aida64Hud } from './components/Aida64Hud';
-import { APP_VERSION } from './version';
-
-const ACTIVE_SAVE_POINT_ID = 'RESTORE_V1.17.68_GIF_STUDIO_FIX';
+import { APP_VERSION, ACTIVE_SAVE_POINT_ID } from './version';
 
 export function getRecentOOMErrors(logs: LogEntry[]): LogEntry[] {
   if (!Array.isArray(logs)) return [];
@@ -175,7 +174,7 @@ interface AppContentProps {
 }
 
 function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCache, handleRunAudit, isAuditing, activeSavePoint, isCooldownActive, cooldownRemainingSec, isManifestOpen, setIsManifestOpen }: AppContentProps) {
-  const [activeView, setActiveView] = useState<'create' | 'video' | 'gif' | 'shorts' | 'aida64' | 'assets' | 'jobs' | 'llm' | 'system'>('create');
+  const [activeView, setActiveView] = useState<'create' | 'video' | 'gif' | 'shorts' | 'streaminject' | 'aida64' | 'assets' | 'jobs' | 'llm' | 'system'>('create');
   const { job, outputLoading } = useGenerationJob();
   const { updatePromptStudio } = useProjectState();
   const [stagedAida64Reference, setStagedAida64Reference] = useState<{ filename: string; name: string; bytes: number; previewUrl: string } | null>(null);
@@ -187,6 +186,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
     { id: 'create' as const, label: 'CREATE', icon: Image, isGenerating: isJobActive && isImageJob },
     { id: 'video' as const, label: 'VIDEO', icon: Video, isGenerating: isJobActive && isVideoJob },
     { id: 'gif' as const, label: 'GIF STUDIO', icon: Film, isGenerating: isJobActive && job?.workflowId === 'gif_studio' },
+    { id: 'streaminject' as const, label: 'STREAMINJECT', icon: Film, isGenerating: isJobActive && (job?.workflowId === 'streaminject_studio' || job?.workflowId === 'streaminject_render') },
     { id: 'aida64' as const, label: 'AIDA64', icon: Gauge, isGenerating: false },
     { id: 'shorts' as const, label: 'SHORTS', icon: Film, isGenerating: false },
     { id: 'assets' as const, label: 'ASSETS', icon: FolderOpen, isGenerating: false },
@@ -242,6 +242,12 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
         <main className={`space-y-5 ${activeView === 'gif' ? 'block' : 'hidden'}`}>
           <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Frame processing workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">GIF Studio</h1><p className="text-xs text-slate-500 mt-1">Local video/image sequences → trim → optional RIFE interpolation → loop → quantized GIF or web MP4.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">GIF · RIFE · VHS · 8GB VRAM</div></div>
           <WorkspaceErrorBoundary name="GIF Studio"><GifStudio telemetry={telemetry} onAddLog={logWithOomCheck} onClearCache={() => handleClearCache(false, true)} /></WorkspaceErrorBoundary>
+        </main>
+
+        <main className={`space-y-5 ${activeView === 'streaminject' ? 'block' : 'hidden'}`}>
+          <WorkspaceErrorBoundary name="StreamInject Studio">
+            <StreamInjectStudio />
+          </WorkspaceErrorBoundary>
         </main>
 
         <main className={`space-y-5 ${activeView === 'shorts' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Production pipeline</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Shorts Factory</h1><p className="text-xs text-slate-500 mt-1">Build faceless Shorts from scenes, local assets, audio and a final timeline.</p></div><WorkspaceErrorBoundary name="Shorts Factory"><AiStudioSuite onAddLog={logWithOomCheck} view="shorts" /></WorkspaceErrorBoundary></main>
