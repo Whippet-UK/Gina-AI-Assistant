@@ -34,23 +34,22 @@ jobs:
           text = ui.read_text(encoding='utf-8')
 
           gameplay_old = '<input type="file" accept="video/*" className="hidden" onChange={(e) => handleFileUpload(e, "gameplay")} />'
-          gameplay_new = f'<input type="file" accept="{VIDEO_ACCEPT}" className="hidden" onChange={(e) => handleFileUpload(e, "gameplay")} />'
+          gameplay_new = '<input type="file" accept="' + VIDEO_ACCEPT + '" className="hidden" onChange={(e) => handleFileUpload(e, "gameplay")} />'
           text = text.replace(gameplay_old, gameplay_new, 1)
 
-          def add_role_upload(text, role, label):
+          def add_role_upload(text, role, label, field):
               pattern = re.compile(r'(<select\s+value={' + re.escape(role) + r'}[\s\S]*?</select>)', re.M)
               match = pattern.search(text)
               if not match:
-                  raise SystemExit(f'Expected {role} selector was not found')
+                  raise SystemExit('Expected ' + role + ' selector was not found')
               block = match.group(1)
-              if f'handleFileUpload(e, "{role[:-4]}")' in block:
+              if 'handleFileUpload(e, "' + field + '")' in block:
                   return text
-              field = role[:-4]
-              control = f'''\n                <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">\n                  <Upload className="w-3.5 h-3.5" /> {label}\n                  <input type="file" accept="{VIDEO_ACCEPT}" className="hidden" onChange={{(e) => handleFileUpload(e, "{field}")}} />\n                </label>'''
+              control = '\n                <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">\n                  <Upload className="w-3.5 h-3.5" /> ' + label + '\n                  <input type="file" accept="' + VIDEO_ACCEPT + '" className="hidden" onChange={(e) => handleFileUpload(e, "' + field + '")} />\n                </label>'
               return text[:match.end(1)] + control + text[match.end(1):]
 
-          text = add_role_upload(text, 'introPath', 'Upload Intro')
-          text = add_role_upload(text, 'outroPath', 'Upload CTA')
+          text = add_role_upload(text, 'introPath', 'Upload Intro', 'intro')
+          text = add_role_upload(text, 'outroPath', 'Upload CTA', 'outro')
 
           upload_tail = '          fetchMediaFiles();\n        }\n      } catch (err) {'
           text = text.replace(upload_tail, '          await fetchMediaFiles();\n        } else {\n          throw new Error(data.error || "Upload failed");\n        }\n      } catch (err) {', 1)
