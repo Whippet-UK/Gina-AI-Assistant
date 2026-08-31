@@ -3046,3 +3046,13 @@ export const ACTIVE_LIFECYCLE_PHASE = 18;
     }
   });
   ```
+
+
+## 2026-08-31 — StreamInject v2.5 import and CTA selection fix
+
+- Target File Path: `/server.ts`
+  - Code Snippet: `app.use(express.json({ limit: "50mb" }))` changed to `app.use(express.json({ limit: "512mb" }))`.
+  - Reason: allow larger local video uploads instead of rejecting larger MP4/MKV payloads at the JSON parser.
+- Target File Path: `/src/components/StreamInjectStudio.tsx`
+  - Code Snippet: video picker now explicitly accepts `.mp4`, `.mkv`, `.webm`, `.mov`, `.avi`, `.m4v`, `.wmv`, `.flv`, `.mpeg`, `.mpg`, `.ts`, `.mts`, `.m2ts`, and `.3gp`; Intro and CTA/Outro each have their own upload control; successful uploads refresh the shared media library and failed uploads surface an error.
+  - Reason: make MKV and less consistently MIME-labelled video files selectable and allow CTA/Intro assets to be uploaded directly rather than requiring Main Gameplay first.
