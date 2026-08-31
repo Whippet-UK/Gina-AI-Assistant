@@ -373,5 +373,5 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
   </div>;
 };
 
-const Metric = ({icon,label,value}:{icon:React.ReactNode;label:string;value:string}) => <div className="rounded border border-slate-800 bg-slate-900/60 p-2"><div className="flex items-center gap-1 text-[8px] text-slate-600 uppercase">{React.cloneElement(icon as React.ReactElement,{className:'w-3 h-3'})}{label}</div><div className="text-[10px] font-mono text-slate-300 mt-1 truncate">{value}</div></div>;
+const Metric = ({icon,label,value}:{icon:React.ReactElement<{className?: string}>;label:string;value:string}) => <div className="rounded border border-slate-800 bg-slate-900/60 p-2"><div className="flex items-center gap-1 text-[8px] text-slate-600 uppercase">{React.cloneElement(icon,{className:'w-3 h-3'})}{label}</div><div className="text-[10px] font-mono text-slate-300 mt-1 truncate">{value}</div></div>;
 const ToggleRow = ({label,on}:{label:string;on:boolean}) => <div className="flex items-center justify-between rounded border border-slate-900 bg-slate-900/40 px-2 py-2 text-[9px]"><span className="text-slate-400">{label}</span><span className={`px-1.5 py-0.5 rounded font-bold ${on?'bg-emerald-500/10 text-emerald-300':'bg-slate-800 text-slate-600'}`}>{on?'ON':'OFF'}</span></div>;

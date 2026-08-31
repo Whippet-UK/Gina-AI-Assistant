@@ -24,6 +24,8 @@ interface WorkflowSummary {
   bindings: { key: string; nodeId: string; input: string; classType: string; confidence: string }[];
   capabilities: string[];
   warnings: string[];
+  nodes?: any[];
+  workflow?: any;
 }
 interface Control {
   key: string; nodeId: string; input: string; classType: string; confidence: string;

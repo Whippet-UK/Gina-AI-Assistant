@@ -1,3 +1,50 @@
+# v1.17.67 — Migration & Build Validation
+
+### Target File: `/server.ts`
+```typescript
+function recordComfyErrorLog(rawMessage: string, meta?: { jobId?: string; nodeId?: string; nodeType?: string; watchdog?: boolean }) { ... }
+const requested: number[] = Array.isArray(req.body?.layers) ? (req.body.layers as any[]).map((n: any) => Math.round(Number(n))).filter((n: number) => !isNaN(n) && n >= 8 && n <= 36) : [20, 24, 28, 32];
+const layers: number[] = Array.from(new Set<number>(requested)).sort((a: number, b: number) => a - b).slice(0, 6);
+```
+- Resolved TypeScript compiler errors TS2353 and TS2362/TS2363/TS2322 in `server.ts`.
+
+### Target File: `/src/components/GifStudio.tsx`
+```typescript
+const Metric = ({icon,label,value}:{icon:React.ReactElement<{className?: string}>;label:string;value:string}) => ...
+```
+- Resolved TypeScript compiler error TS2769 on `React.cloneElement` icon prop in `GifStudio.tsx`.
+
+### Target File: `/src/components/PromptStudio.tsx`
+```typescript
+interface WorkflowSummary {
+  id: string;
+  fileName: string;
+  nodeCount: number;
+  bindings: { key: string; nodeId: string; input: string; classType: string; confidence: string }[];
+  capabilities: string[];
+  warnings: string[];
+  nodes?: any[];
+  workflow?: any;
+}
+```
+- Added optional `nodes` and `workflow` properties to `WorkflowSummary` interface to resolve TS2339.
+
+### Target File: `/src/types.ts`
+```typescript
+export interface AiStudioConfig {
+  activeTab: 'creator'|'video'|'jobs'|'shorts'|'assets';
+  workflowId: string;
+  videoWorkflowId: string;
+  defaultAspectRatio: '1:1'|'16:9'|'9:16'|'aida64'|'4:3'|'3:4';
+}
+```
+- Updated `defaultAspectRatio` type union to include `'aida64'`, `'4:3'`, and `'3:4'` options.
+
+### Target Files: `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`
+- Synchronized universal app version string to `1.17.67` across all project files.
+
+---
+
 # v1.17.67 — Sequential Story ComfyUI Completion Fallback
 
 - Fixed sequential GIF Studio stories stalling after an LTX scene reaches its final progress event when the ComfyUI WebSocket completion packet is missed.
@@ -2750,7 +2797,104 @@ export const ACTIVE_LIFECYCLE_PHASE = 18;
 - **Target File Path:** `/logs/.gitkeep`
   **Exact Code Snippet:** Empty directory marker.
   **Summary:** Reserves the runtime audit-log directory without packaging runtime logs.
-- **Target File Path:** `/flux_image.json`, `/flux_image_reference.json`, `/ltx_video.json`
-  **Exact Code Snippet:** Removed duplicate root workflow files; canonical packaged workflows remain under `/workflows/`.
-  **Summary:** Prevents duplicate workflow definitions in the root while preserving the workflow registry's packaged directory.
+## v1.17.67 — FFmpeg Frame Extraction & Job Workflow Route Fixes
 
+- **Target File Path:** `/server.ts`
+- **Description:** Fixed fatal FFmpeg error `[Parsed_format_0] Invalid pixel format 'png'` in `extractStoryFinalFrame` by removing the erroneous `-vf format=png` argument and adding automatic fallback seeking. Added missing `GET /api/jobs/:id/workflow` and `GET /api/jobs/:id/events/history` routes to satisfy runtime polling from `PromptStudio.tsx`, eliminating recurring 404 errors and story generation stops.
+- **Exact Code Snippet:**
+  ```typescript
+  async function extractStoryFinalFrame(sourcePath: string, destinationPath: string) {
+    await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+    try {
+      await execFileAsync('ffmpeg', [
+        '-y', '-sseof', '-0.08', '-i', sourcePath,
+        '-frames:v', '1', destinationPath
+      ], { windowsHide: true, timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
+    } catch {
+      await execFileAsync('ffmpeg', [
+        '-y', '-i', sourcePath,
+        '-frames:v', '1', destinationPath
+      ], { windowsHide: true, timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
+    }
+  }
+
+  app.get('/api/jobs/:id/events/history', (req,res) => {
+    const job = jobManager.get(req.params.id);
+    if (!job) return res.status(404).json({ok:false,error:'Job not found'});
+    res.json({ok:true,jobId:job.id,events:jobManager.eventHistory(job.id)});
+  });
+
+  app.get('/api/jobs/:id/workflow', (req,res) => {
+    const job = jobManager.get(req.params.id);
+    if (!job) return res.status(404).json({ok:false,error:'Job not found'});
+    const workflow = job.parameters?.__workflowSnapshot || workflowRegistry.get(job.workflowId)?.workflow || null;
+    res.json({ok:true,jobId:job.id,workflowId:job.workflowId,workflow});
+  });
+  ```
+
+## v1.17.67 — ComfyUI Health & Capability Endpoint Resilience Fix
+
+- **Target File Path:** `/server.ts`
+- **Description:** Added missing `GET /api/comfy/health` route returning local ComfyUI backend connectivity status and latency. Added graceful error handling for `getComfyObjectInfo()` in `GET /api/workflows/:id/controls` and `GET /api/gif-studio/capabilities` so endpoints return HTTP 200 with default workflow bindings and fallback capability booleans when ComfyUI is offline or starting up, eliminating 503 errors and dashboard error log spam.
+- **Exact Code Snippet:**
+  ```typescript
+  app.get("/api/comfy/health", async (_req, res) => {
+    const comfy = await getComfyHealth();
+    res.json({ ok: comfy.online, ...comfy });
+  });
+
+  app.get("/api/workflows/:id/controls", async (req, res) => {
+    const workflow = workflowRegistry.get(req.params.id);
+    if (!workflow) return res.status(404).json({ error: "Workflow not found" });
+    try {
+      let objectInfo: Record<string, any> = {};
+      try { objectInfo = await getComfyObjectInfo(); } catch {}
+      const controls = workflow.bindings.map(binding => {
+        const schema = objectInfo[binding.classType]?.input?.required?.[binding.input] || objectInfo[binding.classType]?.input?.optional?.[binding.input];
+        const rawOptions = Array.isArray(schema) && Array.isArray(schema[0]) ? schema[0] : undefined;
+        return {
+          key: binding.key,
+          nodeId: binding.nodeId,
+          input: binding.input,
+          classType: binding.classType,
+          confidence: binding.confidence,
+          currentValue: workflow.workflow[binding.nodeId]?.inputs?.[binding.input],
+          options: rawOptions?.filter((x:any) => typeof x === 'string' || typeof x === 'number') || undefined,
+          min: Array.isArray(schema) && typeof schema[1]?.min === 'number' ? schema[1].min : undefined,
+          max: Array.isArray(schema) && typeof schema[1]?.max === 'number' ? schema[1].max : undefined,
+          step: Array.isArray(schema) && typeof schema[1]?.step === 'number' ? schema[1].step : undefined
+        };
+      });
+      res.json({ workflowId: workflow.id, controls });
+    } catch (error:any) {
+      res.status(500).json({ error: error?.message || 'Unable to inspect ComfyUI node inputs' });
+    }
+  });
+
+  app.get('/api/gif-studio/capabilities', async (_req,res) => {
+    try {
+      let info: Record<string, any> = {};
+      try { info = await getComfyObjectInfo(); } catch {}
+      const gpu = await getNvidiaSmi();
+      const assets = await listGifStudioAssets();
+      const rifeSchema = info.RIFE_VFI?.input?.required?.ckpt_name;
+      const rifeModels = Array.isArray(rifeSchema) && Array.isArray(rifeSchema[0]) ? rifeSchema[0] : [];
+      res.json({
+        ok: true,
+        capabilities: {
+          videoLoader: !!info.VHS_LoadVideo,
+          imageSequenceLoader: !!info.VHS_LoadImagesPath,
+          videoCombine: !!info.VHS_VideoCombine,
+          rife: !!info.RIFE_VFI,
+          rifeModels,
+          ffmpeg: true,
+          gpu,
+          thermalTargetC: 60
+        },
+        assets
+      });
+    } catch (e:any) {
+      res.status(500).json({ ok: false, error: e?.message || 'Unable to inspect GIF Studio capabilities' });
+    }
+  });
+  ```

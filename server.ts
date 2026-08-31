@@ -225,7 +225,7 @@ function recordOomIncident(errorText: string, meta?: { modelId?: string; workflo
   return incident;
 }
 
-function recordComfyErrorLog(rawMessage: string, meta?: { jobId?: string; nodeId?: string; nodeType?: string }) {
+function recordComfyErrorLog(rawMessage: string, meta?: { jobId?: string; nodeId?: string; nodeType?: string; watchdog?: boolean }) {
   if (!rawMessage) return;
   const lines = String(rawMessage).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const now = new Date().toLocaleTimeString();
@@ -512,6 +512,11 @@ app.get("/api/health", async (_req, res) => {
     cpu: { model: os.cpus()[0]?.model || "Unknown", logicalThreads: os.cpus().length },
     memory: { totalGB: Number(totalRAMGB.toFixed(2)), freeGB: Number(freeRAMGB.toFixed(2)), usedGB: Number((totalRAMGB - freeRAMGB).toFixed(2)) }
   });
+});
+
+app.get("/api/comfy/health", async (_req, res) => {
+  const comfy = await getComfyHealth();
+  res.json({ ok: comfy.online, ...comfy });
 });
 
 app.get('/api/aida64/telemetry', async (_req, res) => {
@@ -1221,8 +1226,8 @@ app.post("/api/llm/restart", async (_req, res) => {
 
 
 app.post('/api/llm/benchmark', async (req, res) => {
-  const requested = Array.isArray(req.body?.layers) ? req.body.layers.map((n:any)=>Math.round(Number(n))).filter((n:number)=>n>=8&&n<=36) : [20,24,28,32];
-  const layers = [...new Set(requested)].sort((a,b)=>a-b).slice(0,6);
+  const requested: number[] = Array.isArray(req.body?.layers) ? (req.body.layers as any[]).map((n: any) => Math.round(Number(n))).filter((n: number) => !isNaN(n) && n >= 8 && n <= 36) : [20, 24, 28, 32];
+  const layers: number[] = Array.from(new Set<number>(requested)).sort((a: number, b: number) => a - b).slice(0, 6);
   const original = localLlm.config.gpuLayers;
   const results:any[] = [];
   try {
@@ -2492,10 +2497,17 @@ function waitForGinaJob(jobId: string, timeoutMs = 2 * 60 * 60 * 1000): Promise<
 
 async function extractStoryFinalFrame(sourcePath: string, destinationPath: string) {
   await fs.mkdir(path.dirname(destinationPath), { recursive: true });
-  await execFileAsync('ffmpeg', [
-    '-y', '-sseof', '-0.08', '-i', sourcePath,
-    '-frames:v', '1', '-vf', 'format=png', destinationPath
-  ], { windowsHide: true, timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
+  try {
+    await execFileAsync('ffmpeg', [
+      '-y', '-sseof', '-0.08', '-i', sourcePath,
+      '-frames:v', '1', destinationPath
+    ], { windowsHide: true, timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
+  } catch {
+    await execFileAsync('ffmpeg', [
+      '-y', '-i', sourcePath,
+      '-frames:v', '1', destinationPath
+    ], { windowsHide: true, timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
+  }
 }
 
 async function normalizeStoryClip(sourcePath: string, destinationPath: string, fps: number) {
@@ -3005,15 +3017,27 @@ app.get("/api/workflows/:id/controls", async (req, res) => {
   const workflow = workflowRegistry.get(req.params.id);
   if (!workflow) return res.status(404).json({ error: "Workflow not found" });
   try {
-    const objectInfo = await getComfyObjectInfo();
+    let objectInfo: Record<string, any> = {};
+    try { objectInfo = await getComfyObjectInfo(); } catch {}
     const controls = workflow.bindings.map(binding => {
       const schema = objectInfo[binding.classType]?.input?.required?.[binding.input] || objectInfo[binding.classType]?.input?.optional?.[binding.input];
       const rawOptions = Array.isArray(schema) && Array.isArray(schema[0]) ? schema[0] : undefined;
-      return { key: binding.key, nodeId: binding.nodeId, input: binding.input, classType: binding.classType, confidence: binding.confidence, currentValue: workflow.workflow[binding.nodeId]?.inputs?.[binding.input], options: rawOptions?.filter((x:any) => typeof x === 'string' || typeof x === 'number') || undefined, min: Array.isArray(schema) && typeof schema[1]?.min === 'number' ? schema[1].min : undefined, max: Array.isArray(schema) && typeof schema[1]?.max === 'number' ? schema[1].max : undefined, step: Array.isArray(schema) && typeof schema[1]?.step === 'number' ? schema[1].step : undefined };
+      return {
+        key: binding.key,
+        nodeId: binding.nodeId,
+        input: binding.input,
+        classType: binding.classType,
+        confidence: binding.confidence,
+        currentValue: workflow.workflow[binding.nodeId]?.inputs?.[binding.input],
+        options: rawOptions?.filter((x:any) => typeof x === 'string' || typeof x === 'number') || undefined,
+        min: Array.isArray(schema) && typeof schema[1]?.min === 'number' ? schema[1].min : undefined,
+        max: Array.isArray(schema) && typeof schema[1]?.max === 'number' ? schema[1].max : undefined,
+        step: Array.isArray(schema) && typeof schema[1]?.step === 'number' ? schema[1].step : undefined
+      };
     });
     res.json({ workflowId: workflow.id, controls });
   } catch (error:any) {
-    res.status(503).json({ error: error?.message || 'Unable to inspect ComfyUI node inputs' });
+    res.status(500).json({ error: error?.message || 'Unable to inspect ComfyUI node inputs' });
   }
 });
 
@@ -3236,19 +3260,48 @@ app.post('/api/gif-studio/upload', express.raw({ type:'*/*', limit:'220mb' }), a
 
 app.get('/api/gif-studio/capabilities', async (_req,res) => {
   try {
-    const info = await getComfyObjectInfo();
+    let info: Record<string, any> = {};
+    try { info = await getComfyObjectInfo(); } catch {}
     const gpu = await getNvidiaSmi();
     const assets = await listGifStudioAssets();
     const rifeSchema = info.RIFE_VFI?.input?.required?.ckpt_name;
     const rifeModels = Array.isArray(rifeSchema) && Array.isArray(rifeSchema[0]) ? rifeSchema[0] : [];
-    res.json({ ok:true, capabilities:{ videoLoader:!!info.VHS_LoadVideo, imageSequenceLoader:!!info.VHS_LoadImagesPath, videoCombine:!!info.VHS_VideoCombine, rife:!!info.RIFE_VFI, rifeModels, ffmpeg:true, gpu, thermalTargetC:60 }, assets });
-  } catch (e:any) { res.status(503).json({ok:false,error:e?.message||'Unable to inspect GIF Studio capabilities'}); }
+    res.json({
+      ok: true,
+      capabilities: {
+        videoLoader: !!info.VHS_LoadVideo,
+        imageSequenceLoader: !!info.VHS_LoadImagesPath,
+        videoCombine: !!info.VHS_VideoCombine,
+        rife: !!info.RIFE_VFI,
+        rifeModels,
+        ffmpeg: true,
+        gpu,
+        thermalTargetC: 60
+      },
+      assets
+    });
+  } catch (e:any) {
+    res.status(500).json({ ok: false, error: e?.message || 'Unable to inspect GIF Studio capabilities' });
+  }
 });
 
 app.get('/api/jobs/:id/history', (req,res) => {
   const job = jobManager.get(req.params.id);
   if (!job) return res.status(404).json({ok:false,error:'Job not found'});
   res.json({ok:true,job,history:jobManager.eventHistory(job.id)});
+});
+
+app.get('/api/jobs/:id/events/history', (req,res) => {
+  const job = jobManager.get(req.params.id);
+  if (!job) return res.status(404).json({ok:false,error:'Job not found'});
+  res.json({ok:true,jobId:job.id,events:jobManager.eventHistory(job.id)});
+});
+
+app.get('/api/jobs/:id/workflow', (req,res) => {
+  const job = jobManager.get(req.params.id);
+  if (!job) return res.status(404).json({ok:false,error:'Job not found'});
+  const workflow = job.parameters?.__workflowSnapshot || workflowRegistry.get(job.workflowId)?.workflow || null;
+  res.json({ok:true,jobId:job.id,workflowId:job.workflowId,workflow});
 });
 
 app.post('/api/gif-studio/adopt-job', async (req,res) => {
