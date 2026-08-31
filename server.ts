@@ -273,7 +273,7 @@ comfyWebSocket.on("comfy_error", () => {
 const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
 
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({ limit: "512mb" }));
 
 // Record every API failure centrally so the dashboard has the same diagnostic
 // information that would otherwise only appear in the terminal. Route handlers
