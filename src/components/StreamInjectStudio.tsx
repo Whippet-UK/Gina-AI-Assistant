@@ -139,6 +139,7 @@ export function StreamInjectStudio() {
   const [jobProgress, setJobProgress] = useState<number>(0);
   const [jobStep, setJobStep] = useState<string>("");
   const [jobError, setJobError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [completedVideoUrl, setCompletedVideoUrl] = useState<string | null>(null);
 
   // Interactive Live Canvas Simulation
@@ -591,6 +592,7 @@ export function StreamInjectStudio() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetField: "gameplay" | "intro" | "outro" | "watermark" | "chroma") => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setUploadError(null);
 
     const reader = new FileReader();
     reader.onload = async () => {
@@ -599,7 +601,7 @@ export function StreamInjectStudio() {
         const res = await fetch("/api/streaminject/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename: file.name, base64Data })
+          body: JSON.stringify({ filename: file.name, base64Data, targetField })
         });
         const data = await res.json();
         if (data.ok) {
@@ -608,9 +610,13 @@ export function StreamInjectStudio() {
           if (targetField === "outro") setOutroPath(data.path);
           if (targetField === "watermark") setWatermarkPath(data.path);
           if (targetField === "chroma") setChromaOverlay(data.path);
-          fetchMediaFiles();
+          await fetchMediaFiles();
+        } else {
+          throw new Error(data.error || "Upload failed");
         }
       } catch (err) {
+        const message = err instanceof Error ? err.message : "Upload failed";
+        setUploadError(message);
         console.error("Upload error:", err);
       }
     };
@@ -1060,7 +1066,7 @@ export function StreamInjectStudio() {
                 </select>
                 <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">
                   <Upload className="w-3.5 h-3.5" /> Upload
-                  <input type="file" accept="video/*" className="hidden" onChange={(e) => handleFileUpload(e, "gameplay")} />
+                  <input type="file" accept=".mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp,video/*" className="hidden" onChange={(e) => handleFileUpload(e, "gameplay")} />
                 </label>
               </div>
 
@@ -1120,6 +1126,10 @@ export function StreamInjectStudio() {
                     </option>
                   ))}
                 </select>
+                <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">
+                  <Upload className="w-3.5 h-3.5" /> Upload Intro
+                  <input type="file" accept=".mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp,video/*" className="hidden" onChange={(e) => handleFileUpload(e, "intro")} />
+                </label>
               </div>
 
               <div className="flex flex-col gap-2 p-4 rounded-xl bg-slate-950/70 border border-slate-800">
@@ -1162,6 +1172,14 @@ export function StreamInjectStudio() {
                       </option>
                     ))}
                   </select>
+                  <div className="flex items-center gap-2 mt-2">
+                    <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-500/20 text-[11px] font-semibold text-emerald-200 cursor-pointer transition-colors">
+                      <Upload className="w-3.5 h-3.5" /> Upload CTA / Overlay Video
+                      <input type="file" accept="video/*,.mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp" className="hidden" onChange={(e) => handleFileUpload(e, "chroma")} />
+                    </label>
+                    {chromaOverlay && <span className="text-[9px] text-emerald-400 font-mono truncate">CTA selected</span>}
+                  </div>
+                  <p className="text-[9px] text-slate-600 mt-1">CTA uploads are independent of Main Gameplay. MKV/MP4 and unusual names are probed server-side.</p>
                 </div>
 
                 <div>
@@ -1224,6 +1242,12 @@ export function StreamInjectStudio() {
               </button>
             </div>
           </div>
+
+          {uploadError && (
+            <div className="px-4 py-3 rounded-xl border border-rose-500/30 bg-rose-950/30 text-[11px] text-rose-300 font-mono">
+              Video upload: {uploadError}
+            </div>
+          )}
 
           {/* Right Monitor & Telemetry Panel (4 Cols) */}
           <div className="lg:col-span-4 flex flex-col gap-4">

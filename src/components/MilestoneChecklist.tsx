@@ -39,6 +39,10 @@ export const MilestoneChecklist: React.FC<MilestoneChecklistProps> = ({ activeRe
     { phase: 28, name: 'HEALTH & DIAGNOSTICS CENTER', status: 'COMPLETED', details: 'Measured system health and one-click diagnostic report' },
     { phase: 29, name: 'ONE-CLICK DIAGNOSTICS', status: 'COMPLETED', details: 'Full local report covering runtime, GPU, VRAM, ComfyUI, Gemma, vision, workflows and knowledge watcher' },
     { phase: 30, name: 'STREAMINJECT v2.5 PURE RENDER SUITE', status: 'COMPLETED', details: 'Headless OpenCV/FFmpeg Python render engine, visual canvas layout builder, 6-track timeline & master pipeline' },
+	{ phase: 31, name: 'STREAMINJECT v2.5 PURE RENDER SUITE', status: 'IN PROGRESS', details: 'Add Audio import (with duration and start/finish timeline)into both Visual Layout Studio and Master Pipeline Stitcher, Add Chromakey Overlay, Watermark & Subtitles duration and start/finish timeline' },
+    { phase: 32, name: 'MUSIC GENERATOR SUITE', status: 'IN_PROGRESS', details: 'Create Original Songs with the AI Music Generator in Minutes pipeline' },
+	{ phase: 33, name: 'WRB BROWSER INTIGRATION', status: 'IN_PROGRESS', details: 'Web Browser capability, Use Chromium, open sites ect,' },
+
   ]);
 
   const [restorePoints] = useState<RestorePoint[]>([
@@ -56,7 +60,8 @@ export const MilestoneChecklist: React.FC<MilestoneChecklistProps> = ({ activeRe
     { id: 'RESTORE_12_V1.17.22_ATTACHMENT_VISION', label: 'Attachment + Vision Completion', description: 'Create Studio reference-image upload plus real Local AI image transport through llama.cpp multimodal image_url inputs with automatic mmproj detection', timestamp: '2026-08-29 23:11', status: 'LOCKED' },
     { id: 'RESTORE_13_V1.17.42_MILESTONE_BATCH', label: 'Milestones 14-17 Batch', description: 'Workflow JSON/PNG ingestion, DPI-aware AIDA64 HUD mode, controlled GGUF benchmark/tuner, and filesystem knowledge auto-indexing', timestamp: '2026-08-30 18:00', status: 'LOCKED' },
     { id: 'RESTORE_V1.17.68_GIF_STUDIO_FIX', label: 'GIF Studio Sequential Story & Route Resilience', description: 'Seamless multi-scene LTX video generation, frame continuity fallback, and full endpoint resilience', timestamp: '2026-08-31 03:00', status: 'LOCKED' },
-    { id: 'RESTORE_V1.17.69_STREAMINJECT_SUITE', label: 'StreamInject v2.5 Pure Render Suite', description: 'Standalone OpenCV/FFmpeg Python render engine, visual canvas layout builder, 6-track timeline & master pipeline', timestamp: new Date().toISOString().slice(0,16).replace('T',' '), status: 'ACTIVE' },
+    { id: 'RESTORE_V1.17.69_STREAMINJECT_SUITE', label: 'StreamInject v2.5 Pure Render Suite', description: 'Previous StreamInject v2.5 render engine save point', timestamp: '2026-08-31 00:00', status: 'LOCKED' },
+    { id: 'RESTORE_V1.17.70_STREAMINJECT_IMPORT_FIX', label: 'StreamInject v2.5 Import & CTA Fix', description: 'StreamInject v2.5 render engine with FFprobe video validation and independent CTA/Green Screen uploads', timestamp: new Date().toISOString().slice(0,16).replace('T',' '), status: 'ACTIVE' },
   ]);
 
   const [checks, setChecks] = useState<VerificationCheck[]>([

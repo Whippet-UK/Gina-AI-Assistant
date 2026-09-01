@@ -4,6 +4,7 @@ import {
   Cpu,
   Brain,
   Video,
+  Film,
   ImageIcon,
   ShieldCheck,
   Zap,
