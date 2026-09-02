@@ -8,6 +8,7 @@ export interface GinaJob {
   workflowId: string;
   status: JobStatus;
   progress: number;
+  step?: string;
   currentNodeId?: string | null;
   currentNodeClass?: string;
   currentStep?: number;

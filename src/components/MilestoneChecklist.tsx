@@ -40,7 +40,7 @@ export const MilestoneChecklist: React.FC<MilestoneChecklistProps> = ({ activeRe
     { phase: 29, name: 'ONE-CLICK DIAGNOSTICS', status: 'COMPLETED', details: 'Full local report covering runtime, GPU, VRAM, ComfyUI, Gemma, vision, workflows and knowledge watcher' },
     { phase: 30, name: 'STREAMINJECT v2.5 PURE RENDER SUITE', status: 'COMPLETED', details: 'Headless OpenCV/FFmpeg Python render engine, visual canvas layout builder, 6-track timeline & master pipeline' },
     { phase: 31, name: 'STREAMINJECT v2.5 TIMELINE & OVERLAY SUITE', status: 'COMPLETED', details: 'Audio track mixing, start/finish timeline, volume/fades, green/blue screen chromakey tuning, watermark timeline, and burned subtitle overlays' },
-    { phase: 32, name: 'MUSIC GENERATOR SUITE & AUDIOCRAFT', status: 'IN_PROGRESS', details: 'Meta AudioCraft / MusicGen integration, weight downloader script, pre-warm model binding & AI song composition' },
+    { phase: 32, name: 'AI MUSIC GENERATOR SUITE & AUDIOCRAFT', status: 'COMPLETED', details: 'Full 7-mode generation suite: Text-To-Song, Lyrics-To-Song, AI Song Cover, Extension, Editor, AI Lyrics Generator & Voice Remover stem splitter' },
     { phase: 33, name: 'WEB BROWSER INTEGRATION', status: 'PENDING', details: 'Web Browser capability, Use Chromium, open sites etc.' },
 
   ]);
@@ -62,7 +62,9 @@ export const MilestoneChecklist: React.FC<MilestoneChecklistProps> = ({ activeRe
     { id: 'RESTORE_V1.17.68_GIF_STUDIO_FIX', label: 'GIF Studio Sequential Story & Route Resilience', description: 'Seamless multi-scene LTX video generation, frame continuity fallback, and full endpoint resilience', timestamp: '2026-08-31 03:00', status: 'LOCKED' },
     { id: 'RESTORE_V1.17.69_STREAMINJECT_SUITE', label: 'StreamInject v2.5 Pure Render Suite', description: 'Previous StreamInject v2.5 render engine save point', timestamp: '2026-08-31 00:00', status: 'LOCKED' },
     { id: 'RESTORE_V1.17.70_STREAMINJECT_IMPORT_FIX', label: 'StreamInject v2.5 Import & CTA Fix', description: 'StreamInject v2.5 render engine with FFprobe video validation and independent CTA/Green Screen uploads', timestamp: '2026-08-31 12:00', status: 'LOCKED' },
-    { id: 'RESTORE_V1.17.71_AUDIOCRAFT_STREAMINJECT_TIMELINE', label: 'StreamInject Timeline & AudioCraft PreWarm', description: 'AudioCraft model downloader, pre-warm audio memory budget, and StreamInject timeline audio/chroma mixing', timestamp: new Date().toISOString().slice(0,16).replace('T',' '), status: 'ACTIVE' },
+    { id: 'RESTORE_V1.17.71_AUDIOCRAFT_STREAMINJECT_TIMELINE', label: 'StreamInject Timeline & AudioCraft PreWarm', description: 'AudioCraft model downloader, pre-warm audio memory budget, and StreamInject timeline audio/chroma mixing', timestamp: '2026-08-31 18:00', status: 'LOCKED' },
+    { id: 'RESTORE_V1.17.72_MUSIC_GENERATOR_SUITE', label: 'AI Music Generator Suite & AudioCraft Engine', description: '7-mode generator suite with Expert/Basic tiers, style/genre/mood/vocal/tempo drawers, Gemma 3 12B lyricist, stem splitter & BGM bridge', timestamp: '2026-09-01 02:00', status: 'LOCKED' },
+    { id: 'RESTORE_V1.17.73_MULTIMEDIA_MOVIEPY_STITCHER', label: 'MoviePy Multimedia Audio-Video Stitcher', description: 'Cross-studio audio/video stitcher modal in VideoStudio, GifStudio & MusicStudio, Python MoviePy headless compositor with loop/fade/volume sync', timestamp: new Date().toISOString().slice(0,16).replace('T',' '), status: 'ACTIVE' },
   ]);
 
   const [checks, setChecks] = useState<VerificationCheck[]>([

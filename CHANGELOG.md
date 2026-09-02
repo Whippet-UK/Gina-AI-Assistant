@@ -1,3 +1,119 @@
+# v1.17.73 — Multimedia MoviePy Stitcher, MusicGen Medium 1.5B Default & Neural Cache Verification
+
+### 1. Target File: `/server/music/MusicService.ts` & `/server.ts`
+```typescript
+// Verified true weights file presence (>500MB) before declaring cached
+getModelCacheInfo(modelName: string): { cached: boolean; totalBytes: number; fileCount: number; hasWeights: boolean; sizeLabel: string } {
+  // Scans folder & .cache chunks, verifies model.safetensors or state_dict.bin presence
+}
+```
+- Upgraded cache detection logic from basic file existence to deep weight verification (>500MB neural tensors), eliminating false-positive "Cached" states when only JSON metadata is downloaded.
+- Exposed live size, file count, and weight verification to `/api/music/status`.
+
+### 2. Target File: `/src/components/MusicStudio.tsx`
+```tsx
+// Live Download Progress Bar & Accurate Size/Weight Status
+{isModelDownloading && job && (
+  <div className="flex flex-col gap-1.5">
+    <div className="flex items-center justify-between text-[11px] font-mono">
+      <span>{job.step}</span>
+      <span>{job.progress}%</span>
+    </div>
+    <div className="w-full h-1.5 bg-slate-900 rounded-full">
+      <div style={{ width: `${job.progress}%` }} />
+    </div>
+  </div>
+)}
+```
+- Integrated dynamic download tracking with live progress bar and step details directly inside the Music Studio model banner.
+```python
+# Pass optional HuggingFace token for rate limits & fast downloads
+hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or None
+processor = AutoProcessor.from_pretrained(model_id, cache_dir=model_cache_dir, token=hf_token)
+model = MusicgenForConditionalGeneration.from_pretrained(model_id, cache_dir=model_cache_dir, token=hf_token)
+```
+- Added seamless support for `HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN` across AudioCraft / MusicGen weight downloading and inference scripts to avoid unauthenticated Hugging Face Hub rate limits.
+
+### 2. Target File: `/src/components/MusicStudio.tsx`
+```tsx
+// Fixed empty string "" passed to audio tag src attribute
+<audio
+  ref={audioRef}
+  src={activeTrack?.url || undefined}
+  onPause={() => setIsPlaying(false)}
+  onPlay={() => setIsPlaying(true)}
+/>
+```
+- Resolved React console error caused by passing empty string `""` to the `src` attribute on `<audio>` element when no initial track was active by substituting `undefined`.
+
+### 2. Target File: `/scripts/media_stitcher.py`
+```python
+# Headless MoviePy / FFmpeg video & audio stitching compositor
+if audio_mode == "loop" and final_duration > audio_dur:
+    repeats = int(final_duration // audio_dur) + 1
+    audio_clip = afx.audio_loop(audio_clip, nloops=repeats).subclip(0, final_duration)
+```
+- Implemented Python headless compositor supporting MoviePy with FFmpeg fallback to merge LTX-Video/GIF Studio animations with AI Music / AudioCraft generated tracks.
+- Supports volume adjustment (0.0 - 2.0x), audio fade-in, audio fade-out, audio sync modes (`match_video`, `match_audio`, `loop`, `cut`), and H.264 MP4 / AAC export.
+
+### 2. Target File: `/server/multimedia/MultimediaService.ts`
+```typescript
+// Node.js backend orchestration for moviepy installation status and job dispatch
+export class MultimediaService {
+  public async getStatus(): Promise<{ installed: boolean; version?: string }>;
+  public async installMoviePy(): Promise<{ success: boolean; message: string }>;
+  public async stitchMedia(params: StitchParams): Promise<JobResult>;
+}
+```
+- Integrated with server endpoints `/api/multimedia/status`, `/api/multimedia/install-moviepy`, `/api/multimedia/stitch`, and `/media/stitched/*`.
+
+### 3. Target File: `/src/components/MediaStitcherModal.tsx`
+```tsx
+// Cross-Studio Stitcher Modal Component
+<MediaStitcherModal
+  isOpen={showStitchModal}
+  onClose={() => setShowStitchModal(false)}
+  videoSourceUrl={activeVideoUrl}
+  videoSourceName="LTX-Video Render"
+  onAddLog={onAddLog}
+/>
+```
+- Created the `MediaStitcherModal` enabling 1-click audio-video mixing directly from VideoStudio, GifStudio, and MusicStudio with media asset selectors, volume multipliers, fade sliders, sync modes, live progress tracking, and instant MP4 video player preview.
+
+### 4. Target Files: `/src/components/VideoStudio.tsx`, `/src/components/GifStudio.tsx`, `/src/components/MusicStudio.tsx`
+- Added 1-Click "Stitch with AI Music (MoviePy Engine)" triggers into VideoStudio action deck, GIF Studio timeline tray, and MusicStudio track deck and library items.
+
+# v1.17.72 — StreamInject Studio Interactive Layer Controls & Python MP4 Centering Alignment
+
+### 1. Target File: `/scripts/stream_inject.py`
+```python
+# Text layer centered horizontal coordinate calculations in Python rendering pipeline
+if align == "center" or "x" not in tl:
+    # Exact center alignment across PIL/OpenCV and FFmpeg drawtext filter paths
+    x = int(pos_x - (text_w / 2))
+    tl_x = w // 2
+```
+- Fixed text centering alignment in `stream_inject.py` for both the PIL/OpenCV rasterization path and the FFmpeg filtergraph path, eliminating rightward text drift on rendered MP4s.
+
+### 2. Target File: `/src/components/StreamInjectStudio.tsx`
+```tsx
+// Interactive selection, mouse canvas dragging, directional nudge pad, and alignment controls
+<canvas
+  ref={canvasRef}
+  width={canvasWidth}
+  height={canvasHeight}
+  onMouseDown={handleCanvasMouseDown}
+  onMouseMove={handleCanvasMouseMove}
+  onMouseUp={handleCanvasMouseUp}
+  onMouseLeave={handleCanvasMouseUp}
+  className={`max-h-[500px] w-auto max-w-full object-contain shadow-2xl ${
+    isDragging ? "cursor-grabbing" : selectedTarget ? "cursor-grab" : "cursor-crosshair"
+  }`}
+/>
+```
+- Added full interactive direct canvas manipulation: click to select layers/boxes/profile circles, drag with real-time feedback, directional keyboard nudge keys (Arrow keys + Shift for coarse adjustment), directional nudge pad with adjustable step sizes (1px, 5px, 10px, 25px, 50px), instant 1-click auto-align buttons (Center X, Center Y, Dead Center, Top, Left, Right), and layer management (clone, delete, reorder z-index).
+- Added explicit coordinate and dimension numeric inputs (X, Y, Width, Height, Radius, Font Size) to the Text Layers, Video Box Safe-Zones, and Profile Circles inspector panels.
+
 # v1.17.71 — StreamInject Media Filename Universalization & Studio Duration Inspector
 
 ### Target File: `/server/streaminject/StreamInjectService.ts`
@@ -3256,3 +3372,62 @@ export const ACTIVE_LIFECYCLE_PHASE = 18;
     }
   });
   ```
+
+---
+
+# v1.17.72 — AI Music Generator Suite, AudioCraft / MusicGen Integration & Stem Splitter
+
+### 1. Target File Path: `/src/components/MusicStudio.tsx`
+```typescript
+// AI Music Generator Suite UI with 7 Feature Modes, Expert/Basic tiers, Style Dropdowns & Waveform Player
+export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamInject }: MusicStudioProps) {
+  const [suiteMode, setSuiteMode] = useState<
+    'text_to_song' | 'song_cover' | 'extend' | 'edit' | 'lyrics_gen' | 'stem_remover' | 'library'
+  >('text_to_song');
+  const [generatorTier, setGeneratorTier] = useState<'expert' | 'basic'>('expert');
+  const [selectedModel, setSelectedModel] = useState<string>('facebook/musicgen-small');
+  // Interactive Style Tag Popovers: # Genre, # Moods, # Voices, # Tempos
+  // AI Lyrics Generator Modal powered by local Gemma 3 12B
+  // Real-time synthetic audio waveform visualizer and BGM transfer bridge
+}
+```
+**Summary**: Created the full-featured `MusicStudio` component matching the user's reference specification with Expert/Basic mode toggle, model dropdown, tag drawers, Gemma 3 12B songwriter integration, waveform player, and 1-click BGM transfer to StreamInject.
+
+### 2. Target File Path: `/server/music/MusicService.ts`
+```typescript
+// Music Service managing Python AudioCraft execution, track indexing, and stem isolation
+export class MusicService {
+  async scanTracks(): Promise<AudioTrackMeta[]> { ... }
+  async generateMusic(jobId: string, options: MusicGenOptions, jobManager: JobManager): Promise<{ outputFilename: string; outputUrl: string; duration: number }> { ... }
+  async separateStems(jobId: string, inputPath: string, jobManager: JobManager): Promise<{ vocalsUrl: string; instrumentalUrl: string }> { ... }
+}
+```
+**Summary**: Created `MusicService.ts` to bridge Express REST routes to `/scripts/music_generator.py` with multi-step job progress tracking and automatic audio track indexing.
+
+### 3. Target File Path: `/server.ts`
+```typescript
+// Music API Endpoints:
+app.use("/media/audio", express.static(musicService.getOutputDir()));
+app.get("/api/music/status", async (_req, res) => { ... });
+app.get("/api/music/tracks", async (_req, res) => { ... });
+app.post("/api/music/generate", async (req, res) => { ... });
+app.post("/api/music/write-lyrics", async (req, res) => { ... });
+app.post("/api/music/separate-stems", async (req, res) => { ... });
+app.delete("/api/music/tracks/:filename", async (req, res) => { ... });
+```
+**Summary**: Exposed music generation, local LLM lyric writing, stem separation, and track management endpoints in `server.ts`.
+
+### 4. Target File Path: `/src/App.tsx`
+```typescript
+// Added MUSIC SUITE nav item and main workspace container
+const navItems = [
+  ...
+  { id: 'music' as const, label: 'MUSIC SUITE', icon: Music, isGenerating: isJobActive && (job?.workflowId === 'music_studio' || job?.workflowId === 'stem_separation') },
+  ...
+];
+```
+**Summary**: Integrated `MusicStudio` into the top navigation bar with active job tracking and cross-studio BGM timeline handoff.
+
+### 5. Target File Path: `/src/components/MilestoneChecklist.tsx`, `/src/version.ts`, `/metadata.json`, `/package.json`, `/index.html`, `/AGENTS.md`
+**Summary**: Marked Phase 32 as `COMPLETED`, created active restore point `RESTORE_V1.17.72_MUSIC_GENERATOR_SUITE`, and synchronized version `1.17.72` across all project manifests per Rules 7 & 8.
+

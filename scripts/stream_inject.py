@@ -939,15 +939,24 @@ class IntroOutroStudio:
                         except Exception:
                             font = ImageFont.load_default()
 
+                        bbox = draw.textbbox((0, 0), t_str, font=font)
+                        t_w = bbox[2] - bbox[0]
+                        t_h = bbox[3] - bbox[1]
+
                         pos_x = tl.get("x")
                         pos_y = tl.get("y")
-                        if pos_x is None or pos_y is None:
-                            bbox = draw.textbbox((0, 0), t_str, font=font)
-                            t_w = bbox[2] - bbox[0]
-                            pos_x = (canvas_w - t_w) / 2
-                            pos_y = int(canvas_h * 0.25) + (i * (f_size + 24))
+                        if pos_x is not None:
+                            # In Studio UI, pos_x represents center X (matching ctx.textAlign='center')
+                            draw_x = float(pos_x) - (t_w / 2.0)
+                        else:
+                            draw_x = (canvas_w - t_w) / 2.0
 
-                        draw.text((pos_x, pos_y + anim_offset), t_str, font=font, fill=f_color)
+                        if pos_y is not None:
+                            draw_y = float(pos_y)
+                        else:
+                            draw_y = int(canvas_h * 0.25) + (i * (f_size + 24))
+
+                        draw.text((draw_x, draw_y + anim_offset), t_str, font=font, fill=f_color)
 
                     frame = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
@@ -1077,8 +1086,22 @@ class IntroOutroStudio:
                     continue
                 f_size = int(tl.get("size", 48))
                 f_color = "white"
+                tl_x = tl.get("x")
+                tl_y = tl.get("y")
+                if tl_x is not None and tl_y is not None:
+                    x_expr = f"{tl_x}-(text_w/2)"
+                    y_expr = f"{tl_y}"
+                elif tl_x is not None:
+                    x_expr = f"{tl_x}-(text_w/2)"
+                    y_expr = f"(h*{0.3 + idx*0.12})-text_h/2"
+                elif tl_y is not None:
+                    x_expr = "(w-text_w)/2"
+                    y_expr = f"{tl_y}"
+                else:
+                    x_expr = "(w-text_w)/2"
+                    y_expr = f"(h*{0.3 + idx*0.12})-text_h/2"
                 nxt_v = f"[v_txt_{idx}]"
-                filter_chains.append(f"{last_v}drawtext=text='{t_str}':fontsize={f_size}:fontcolor={f_color}:x=(w-text_w)/2:y=(h*{0.3 + idx*0.12})-text_h/2{nxt_v}")
+                filter_chains.append(f"{last_v}drawtext=text='{t_str}':fontsize={f_size}:fontcolor={f_color}:x={x_expr}:y={y_expr}{nxt_v}")
                 last_v = nxt_v
 
             if audio_track_path and os.path.isfile(audio_track_path):

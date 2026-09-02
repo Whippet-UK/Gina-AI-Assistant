@@ -24,7 +24,22 @@ import {
   Trash2,
   Plus,
   Compass,
-  Maximize2
+  Maximize2,
+  Move,
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  ChevronUp,
+  ChevronDown,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  CircleDot,
+  Square,
+  Type,
+  Copy,
+  Crosshair
 } from "lucide-react";
 
 interface TextLayer {
@@ -122,6 +137,13 @@ export function StreamInjectStudio() {
   const [vfxBloom, setVfxBloom] = useState(true);
   const [vfxChroma, setVfxChroma] = useState(true);
 
+  // Interactive Selection & Drag-and-Drop Movement State
+  const [selectedTarget, setSelectedTarget] = useState<{ type: "text" | "box" | "circle"; index: number } | null>({ type: "text", index: 0 });
+  const [nudgeStep, setNudgeStep] = useState<number>(10);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [dragStartCanvasPos, setDragStartCanvasPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [dragInitialElementPos, setDragInitialElementPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
   // Master Pipeline State
   const [gameplayPath, setGameplayPath] = useState<string>("");
   const [introPath, setIntroPath] = useState<string>("");
@@ -211,6 +233,35 @@ export function StreamInjectStudio() {
     }
   };
 
+  // Keyboard shortcut listener for precise nudging
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!selectedTarget) return;
+      // Do not intercept if focus is inside an input or textarea
+      if (["INPUT", "TEXTAREA", "SELECT"].includes((document.activeElement?.tagName || ""))) {
+        return;
+      }
+
+      const step = e.shiftKey ? nudgeStep * 5 : nudgeStep;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        nudgeSelected(-step, 0);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        nudgeSelected(step, 0);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        nudgeSelected(0, -step);
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        nudgeSelected(0, step);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedTarget, nudgeStep, textLayers, videoBoxes, profileCircles, canvasWidth, canvasHeight]);
+
   const applyPreset = (preset: Preset) => {
     setAspectRatio(preset.aspectRatio);
     setCanvasWidth(preset.config.width);
@@ -226,6 +277,15 @@ export function StreamInjectStudio() {
     setVfxBloom(preset.config.vfx.enable_bloom);
     setVfxChroma(preset.config.vfx.enable_chroma);
     setCurrentTime(0);
+    if (preset.config.text_layers?.length) {
+      setSelectedTarget({ type: "text", index: 0 });
+    } else if (preset.config.video_boxes?.length) {
+      setSelectedTarget({ type: "box", index: 0 });
+    } else if (preset.config.profile_circles?.length) {
+      setSelectedTarget({ type: "circle", index: 0 });
+    } else {
+      setSelectedTarget(null);
+    }
   };
 
   // Switch Aspect Ratio
@@ -262,6 +322,283 @@ export function StreamInjectStudio() {
     }
   };
 
+  // Nudge selected layer / box / circle by relative deltas
+  const nudgeSelected = (dx: number, dy: number) => {
+    if (!selectedTarget) return;
+    if (selectedTarget.type === "text" && textLayers[selectedTarget.index]) {
+      const copy = [...textLayers];
+      const curX = copy[selectedTarget.index].x ?? canvasWidth / 2;
+      const curY = copy[selectedTarget.index].y ?? canvasHeight * 0.3;
+      copy[selectedTarget.index] = {
+        ...copy[selectedTarget.index],
+        x: Math.round(curX + dx),
+        y: Math.round(curY + dy)
+      };
+      setTextLayers(copy);
+    } else if (selectedTarget.type === "box" && videoBoxes[selectedTarget.index]) {
+      const copy = [...videoBoxes];
+      copy[selectedTarget.index] = {
+        ...copy[selectedTarget.index],
+        x: Math.round(copy[selectedTarget.index].x + dx),
+        y: Math.round(copy[selectedTarget.index].y + dy)
+      };
+      setVideoBoxes(copy);
+    } else if (selectedTarget.type === "circle" && profileCircles[selectedTarget.index]) {
+      const copy = [...profileCircles];
+      copy[selectedTarget.index] = {
+        ...copy[selectedTarget.index],
+        x: Math.round(copy[selectedTarget.index].x + dx),
+        y: Math.round(copy[selectedTarget.index].y + dy)
+      };
+      setProfileCircles(copy);
+    }
+  };
+
+  // Align selected layer / box / circle
+  const alignSelected = (alignment: "center_x" | "center_y" | "center_both" | "top" | "bottom" | "left" | "right") => {
+    if (!selectedTarget) return;
+    if (selectedTarget.type === "text" && textLayers[selectedTarget.index]) {
+      const copy = [...textLayers];
+      let curX = copy[selectedTarget.index].x ?? canvasWidth / 2;
+      let curY = copy[selectedTarget.index].y ?? canvasHeight * 0.3;
+
+      if (alignment === "center_x" || alignment === "center_both") curX = Math.round(canvasWidth / 2);
+      if (alignment === "center_y" || alignment === "center_both") curY = Math.round(canvasHeight / 2);
+      if (alignment === "top") curY = Math.round(canvasHeight * 0.12);
+      if (alignment === "bottom") curY = Math.round(canvasHeight * 0.88);
+      if (alignment === "left") curX = Math.round(canvasWidth * 0.25);
+      if (alignment === "right") curX = Math.round(canvasWidth * 0.75);
+
+      copy[selectedTarget.index] = { ...copy[selectedTarget.index], x: curX, y: curY };
+      setTextLayers(copy);
+    } else if (selectedTarget.type === "box" && videoBoxes[selectedTarget.index]) {
+      const copy = [...videoBoxes];
+      const box = copy[selectedTarget.index];
+      let bx = box.x;
+      let by = box.y;
+
+      if (alignment === "center_x" || alignment === "center_both") bx = Math.round((canvasWidth - box.width) / 2);
+      if (alignment === "center_y" || alignment === "center_both") by = Math.round((canvasHeight - box.height) / 2);
+      if (alignment === "left") bx = Math.round(canvasWidth * 0.07);
+      if (alignment === "right") bx = Math.round(canvasWidth - box.width - canvasWidth * 0.07);
+      if (alignment === "top") by = Math.round(canvasHeight * 0.1);
+      if (alignment === "bottom") by = Math.round(canvasHeight - box.height - canvasHeight * 0.1);
+
+      copy[selectedTarget.index] = { ...box, x: bx, y: by };
+      setVideoBoxes(copy);
+    } else if (selectedTarget.type === "circle" && profileCircles[selectedTarget.index]) {
+      const copy = [...profileCircles];
+      const circ = copy[selectedTarget.index];
+      let cx = circ.x;
+      let cy = circ.y;
+
+      if (alignment === "center_x" || alignment === "center_both") cx = Math.round(canvasWidth / 2);
+      if (alignment === "center_y" || alignment === "center_both") cy = Math.round(canvasHeight / 2);
+      if (alignment === "top") cy = Math.round(canvasHeight * 0.25);
+      if (alignment === "bottom") cy = Math.round(canvasHeight * 0.75);
+      if (alignment === "left") cx = Math.round(canvasWidth * 0.25);
+      if (alignment === "right") cx = Math.round(canvasWidth * 0.75);
+
+      copy[selectedTarget.index] = { ...circ, x: cx, y: cy };
+      setProfileCircles(copy);
+    }
+  };
+
+  // Duplicate currently selected item
+  const duplicateSelected = () => {
+    if (!selectedTarget) return;
+    if (selectedTarget.type === "text" && textLayers[selectedTarget.index]) {
+      const source = textLayers[selectedTarget.index];
+      const newLayer: TextLayer = {
+        ...source,
+        text: `${source.text} (COPY)`,
+        y: Math.min(canvasHeight - 50, (source.y ?? canvasHeight * 0.3) + 60)
+      };
+      setTextLayers([...textLayers, newLayer]);
+      setSelectedTarget({ type: "text", index: textLayers.length });
+    } else if (selectedTarget.type === "box" && videoBoxes[selectedTarget.index]) {
+      const source = videoBoxes[selectedTarget.index];
+      const newBox: VideoBox = {
+        ...source,
+        label: `${source.label || "BOX"} COPY`,
+        x: Math.min(canvasWidth - source.width, source.x + 40),
+        y: Math.min(canvasHeight - source.height, source.y + 40)
+      };
+      setVideoBoxes([...videoBoxes, newBox]);
+      setSelectedTarget({ type: "box", index: videoBoxes.length });
+    } else if (selectedTarget.type === "circle" && profileCircles[selectedTarget.index]) {
+      const source = profileCircles[selectedTarget.index];
+      const newCircle: ProfileCircle = {
+        ...source,
+        x: Math.min(canvasWidth - source.radius, source.x + 50),
+        y: Math.min(canvasHeight - source.radius, source.y + 50)
+      };
+      setProfileCircles([...profileCircles, newCircle]);
+      setSelectedTarget({ type: "circle", index: profileCircles.length });
+    }
+  };
+
+  // Delete currently selected item
+  const deleteSelected = () => {
+    if (!selectedTarget) return;
+    if (selectedTarget.type === "text") {
+      setTextLayers(textLayers.filter((_, i) => i !== selectedTarget.index));
+      setSelectedTarget(null);
+    } else if (selectedTarget.type === "box") {
+      setVideoBoxes(videoBoxes.filter((_, i) => i !== selectedTarget.index));
+      setSelectedTarget(null);
+    } else if (selectedTarget.type === "circle") {
+      setProfileCircles(profileCircles.filter((_, i) => i !== selectedTarget.index));
+      setSelectedTarget(null);
+    }
+  };
+
+  // Move layer order in array
+  const moveLayerOrder = (type: "text" | "box" | "circle", index: number, direction: -1 | 1) => {
+    if (type === "text") {
+      const targetIdx = index + direction;
+      if (targetIdx < 0 || targetIdx >= textLayers.length) return;
+      const copy = [...textLayers];
+      const temp = copy[index];
+      copy[index] = copy[targetIdx];
+      copy[targetIdx] = temp;
+      setTextLayers(copy);
+      setSelectedTarget({ type: "text", index: targetIdx });
+    } else if (type === "box") {
+      const targetIdx = index + direction;
+      if (targetIdx < 0 || targetIdx >= videoBoxes.length) return;
+      const copy = [...videoBoxes];
+      const temp = copy[index];
+      copy[index] = copy[targetIdx];
+      copy[targetIdx] = temp;
+      setVideoBoxes(copy);
+      setSelectedTarget({ type: "box", index: targetIdx });
+    } else if (type === "circle") {
+      const targetIdx = index + direction;
+      if (targetIdx < 0 || targetIdx >= profileCircles.length) return;
+      const copy = [...profileCircles];
+      const temp = copy[index];
+      copy[index] = copy[targetIdx];
+      copy[targetIdx] = temp;
+      setProfileCircles(copy);
+      setSelectedTarget({ type: "circle", index: targetIdx });
+    }
+  };
+
+  // Hit testing to select or begin dragging
+  const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    const scaleX = canvasWidth / rect.width;
+    const scaleY = canvasHeight / rect.height;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    };
+  };
+
+  const hitTestElement = (cx: number, cy: number): { type: "text" | "box" | "circle"; index: number } | null => {
+    // 1. Check Profile Circles (Top priority for small precise circles)
+    for (let i = profileCircles.length - 1; i >= 0; i--) {
+      const circ = profileCircles[i];
+      const distSq = (cx - circ.x) ** 2 + (cy - circ.y) ** 2;
+      if (distSq <= (circ.radius + 20) ** 2) {
+        return { type: "circle", index: i };
+      }
+    }
+
+    // 2. Check Text Layers
+    for (let i = textLayers.length - 1; i >= 0; i--) {
+      const tl = textLayers[i];
+      const tx = tl.x !== undefined ? tl.x : canvasWidth / 2;
+      const ty = tl.y !== undefined ? tl.y : canvasHeight * 0.3;
+      const approxWidth = Math.max(120, tl.text.length * (tl.size * 0.58));
+      const halfW = approxWidth / 2;
+      const topY = ty - tl.size;
+      const bottomY = ty + tl.size * 0.3;
+
+      if (cx >= tx - halfW && cx <= tx + halfW && cy >= topY && cy <= bottomY) {
+        return { type: "text", index: i };
+      }
+    }
+
+    // 3. Check Video Boxes
+    for (let i = videoBoxes.length - 1; i >= 0; i--) {
+      const box = videoBoxes[i];
+      if (cx >= box.x && cx <= box.x + box.width && cy >= box.y && cy <= box.y + box.height) {
+        return { type: "box", index: i };
+      }
+    }
+
+    return null;
+  };
+
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const coords = getCanvasCoords(e);
+    const hit = hitTestElement(coords.x, coords.y);
+    if (hit) {
+      setSelectedTarget(hit);
+      setIsDragging(true);
+      setDragStartCanvasPos(coords);
+
+      if (hit.type === "text") {
+        const tl = textLayers[hit.index];
+        setDragInitialElementPos({
+          x: tl.x !== undefined ? tl.x : canvasWidth / 2,
+          y: tl.y !== undefined ? tl.y : canvasHeight * 0.3
+        });
+      } else if (hit.type === "box") {
+        const box = videoBoxes[hit.index];
+        setDragInitialElementPos({ x: box.x, y: box.y });
+      } else if (hit.type === "circle") {
+        const circ = profileCircles[hit.index];
+        setDragInitialElementPos({ x: circ.x, y: circ.y });
+      }
+    } else {
+      setSelectedTarget(null);
+    }
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDragging || !selectedTarget) return;
+    const coords = getCanvasCoords(e);
+    const dx = coords.x - dragStartCanvasPos.x;
+    const dy = coords.y - dragStartCanvasPos.y;
+
+    if (selectedTarget.type === "text" && textLayers[selectedTarget.index]) {
+      const copy = [...textLayers];
+      copy[selectedTarget.index] = {
+        ...copy[selectedTarget.index],
+        x: Math.round(dragInitialElementPos.x + dx),
+        y: Math.round(dragInitialElementPos.y + dy)
+      };
+      setTextLayers(copy);
+    } else if (selectedTarget.type === "box" && videoBoxes[selectedTarget.index]) {
+      const copy = [...videoBoxes];
+      copy[selectedTarget.index] = {
+        ...copy[selectedTarget.index],
+        x: Math.round(dragInitialElementPos.x + dx),
+        y: Math.round(dragInitialElementPos.y + dy)
+      };
+      setVideoBoxes(copy);
+    } else if (selectedTarget.type === "circle" && profileCircles[selectedTarget.index]) {
+      const copy = [...profileCircles];
+      copy[selectedTarget.index] = {
+        ...copy[selectedTarget.index],
+        x: Math.round(dragInitialElementPos.x + dx),
+        y: Math.round(dragInitialElementPos.y + dy)
+      };
+      setProfileCircles(copy);
+    }
+  };
+
+  const handleCanvasMouseUp = () => {
+    setIsDragging(false);
+  };
+
   // Real-time Canvas Rendering Loop
   useEffect(() => {
     let animationFrameId: number;
@@ -291,7 +628,7 @@ export function StreamInjectStudio() {
 
     animationFrameId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isPlaying, currentTime, duration, canvasWidth, canvasHeight, bgType, bgMaxRed, textLayers, videoBoxes, profileCircles, showGuides, vfxGlitch, vfxShake, vfxBloom, vfxChroma]);
+  }, [isPlaying, currentTime, duration, canvasWidth, canvasHeight, bgType, bgMaxRed, textLayers, videoBoxes, profileCircles, showGuides, vfxGlitch, vfxShake, vfxBloom, vfxChroma, selectedTarget]);
 
   const drawCanvas = (ctx: CanvasRenderingContext2D, w: number, h: number, time: number) => {
     ctx.save();
@@ -379,11 +716,37 @@ export function StreamInjectStudio() {
       // Aspect ratio tag
       ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
       ctx.font = `${Math.max(10, Math.floor(h * 0.018))}px monospace`;
-      ctx.fillText(`${box.width}×${box.height}`, bx + 12, by + bh - 10);
+      ctx.fillText(`${box.width}×${box.height} @ (${box.x}, ${box.y})`, bx + 12, by + bh - 10);
+
+      // Selection Frame if Active
+      if (selectedTarget && selectedTarget.type === "box" && selectedTarget.index === idx) {
+        ctx.save();
+        ctx.strokeStyle = "#00FFCC";
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(bx - 6, by - 6, bw + 12, bh + 12);
+        ctx.setLineDash([]);
+
+        // 4 Corner Anchor Handles
+        ctx.fillStyle = "#00FFCC";
+        const handleSize = 8;
+        ctx.fillRect(bx - 6 - handleSize / 2, by - 6 - handleSize / 2, handleSize, handleSize);
+        ctx.fillRect(bx + bw + 6 - handleSize / 2, by - 6 - handleSize / 2, handleSize, handleSize);
+        ctx.fillRect(bx - 6 - handleSize / 2, by + bh + 6 - handleSize / 2, handleSize, handleSize);
+        ctx.fillRect(bx + bw + 6 - handleSize / 2, by + bh + 6 - handleSize / 2, handleSize, handleSize);
+
+        // Header Selected Tag
+        ctx.fillStyle = "#00FFCC";
+        ctx.fillRect(bx - 6, by - 26, Math.min(220, bw + 12), 20);
+        ctx.fillStyle = "#000000";
+        ctx.font = "bold 11px monospace";
+        ctx.fillText(`BOX #${idx + 1} • ${box.width}×${box.height} (${box.x},${box.y})`, bx - 2, by - 12);
+        ctx.restore();
+      }
     });
 
     // 3. Draw Profile Circle Safe-Zones
-    profileCircles.forEach((circ) => {
+    profileCircles.forEach((circ, idx) => {
       const cx = (circ.x / canvasWidth) * w;
       const cy = (circ.y / canvasHeight) * h;
       const cr = (circ.radius / canvasHeight) * h;
@@ -427,10 +790,28 @@ export function StreamInjectStudio() {
       ctx.textAlign = "center";
       ctx.fillText("SUBSCRIBE", cx, cy + activeRadius + 20);
       ctx.textAlign = "left";
+
+      // Selection Frame if Active
+      if (selectedTarget && selectedTarget.type === "circle" && selectedTarget.index === idx) {
+        ctx.save();
+        ctx.strokeStyle = "#00FFFF";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 4]);
+        ctx.strokeRect(cx - cr - 10, cy - cr - 10, (cr + 10) * 2, (cr + 10) * 2);
+        ctx.setLineDash([]);
+
+        // Floating info badge
+        ctx.fillStyle = "#00FFFF";
+        ctx.fillRect(cx - cr - 10, cy - cr - 30, 200, 20);
+        ctx.fillStyle = "#000000";
+        ctx.font = "bold 11px monospace";
+        ctx.fillText(`PROFILE CIRCLE • (${circ.x}, ${circ.y}) R:${circ.radius}`, cx - cr - 6, cy - cr - 16);
+        ctx.restore();
+      }
     });
 
     // 4. Draw Text Layers
-    textLayers.forEach((tl) => {
+    textLayers.forEach((tl, idx) => {
       let animOffset = 0;
       let alpha = 1.0;
 
@@ -469,6 +850,31 @@ export function StreamInjectStudio() {
       ctx.fillStyle = tl.color || "#FFFFFF";
       ctx.fillText(tl.text, posX, posY);
       ctx.restore();
+
+      // Selection Frame if Active
+      if (selectedTarget && selectedTarget.type === "text" && selectedTarget.index === idx) {
+        ctx.save();
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        const textMetrics = ctx.measureText(tl.text);
+        const textW = textMetrics.width;
+        const textH = fontSize * 1.2;
+        const selX = posX - textW / 2 - 12;
+        const selY = posY - fontSize + 2;
+
+        ctx.strokeStyle = "#FF007F";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 3]);
+        ctx.strokeRect(selX, selY, textW + 24, textH + 8);
+        ctx.setLineDash([]);
+
+        // Selected Tag Badge
+        ctx.fillStyle = "#FF007F";
+        ctx.fillRect(selX, selY - 20, Math.min(230, textW + 24), 20);
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font = "bold 11px monospace";
+        ctx.fillText(`TEXT #${idx + 1} • X:${tl.x ?? Math.round(canvasWidth/2)} Y:${tl.y ?? Math.round(canvasHeight*0.3)}`, selX + 4, selY - 6);
+        ctx.restore();
+      }
     });
 
     // 5. Overlay Visual Guides if enabled
@@ -824,12 +1230,18 @@ export function StreamInjectStudio() {
             </div>
 
             {/* Canvas Display Frame */}
-            <div className="relative w-full flex items-center justify-center bg-black/90 rounded-xl overflow-hidden border border-purple-500/20 shadow-2xl min-h-[380px] aspect-video">
+            <div className="relative w-full flex items-center justify-center bg-black/90 rounded-xl overflow-hidden border border-purple-500/20 shadow-2xl min-h-[380px] aspect-video select-none">
               <canvas
                 ref={canvasRef}
                 width={canvasWidth}
                 height={canvasHeight}
-                className="max-h-[500px] w-auto max-w-full object-contain shadow-2xl"
+                onMouseDown={handleCanvasMouseDown}
+                onMouseMove={handleCanvasMouseMove}
+                onMouseUp={handleCanvasMouseUp}
+                onMouseLeave={handleCanvasMouseUp}
+                className={`max-h-[500px] w-auto max-w-full object-contain shadow-2xl ${
+                  isDragging ? "cursor-grabbing" : selectedTarget ? "cursor-grab" : "cursor-crosshair"
+                }`}
               />
 
               {/* Aspect Badge */}
@@ -838,16 +1250,249 @@ export function StreamInjectStudio() {
               </div>
 
               {/* Guide Overlay Toggle */}
-              <button
-                onClick={() => setShowGuides(!showGuides)}
-                className={`absolute top-3 right-3 px-2.5 py-1 rounded text-[11px] font-semibold border backdrop-blur transition-all ${
-                  showGuides
-                    ? "bg-purple-600/60 border-purple-400 text-white"
-                    : "bg-black/60 border-white/10 text-slate-400"
-                }`}
-              >
-                {showGuides ? "Guides ON" : "Guides OFF"}
-              </button>
+              <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                <button
+                  onClick={() => setShowGuides(!showGuides)}
+                  className={`px-2.5 py-1 rounded text-[11px] font-semibold border backdrop-blur transition-all ${
+                    showGuides
+                      ? "bg-purple-600/60 border-purple-400 text-white"
+                      : "bg-black/60 border-white/10 text-slate-400"
+                  }`}
+                >
+                  {showGuides ? "Guides ON" : "Guides OFF"}
+                </button>
+              </div>
+
+              {/* Active Selection Overlay Indicator */}
+              {selectedTarget && (
+                <div className="absolute bottom-3 left-3 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/80 backdrop-blur border border-purple-500/40 text-xs shadow-lg">
+                  <Move className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+                  <span className="text-slate-300 font-mono text-[11px]">
+                    {selectedTarget.type === "text" && `Text #${selectedTarget.index + 1}: "${textLayers[selectedTarget.index]?.text?.slice(0, 16)}..."`}
+                    {selectedTarget.type === "box" && `Box #${selectedTarget.index + 1}: ${videoBoxes[selectedTarget.index]?.label || "Video Box"}`}
+                    {selectedTarget.type === "circle" && `Profile Circle #${selectedTarget.index + 1}`}
+                  </span>
+                  <span className="text-purple-300/60 text-[10px]">| Drag on canvas or use Arrow keys</span>
+                </div>
+              )}
+            </div>
+
+            {/* Interactive Transform Toolbar (Move, Align, Layer Order & Nudge Controls) */}
+            <div className="p-3.5 rounded-xl bg-slate-900/90 border border-purple-500/30 shadow-lg flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded bg-purple-500/20 text-purple-300">
+                    <Crosshair className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                      Layer Transform & Position Controls
+                    </h3>
+                    <p className="text-[10px] text-slate-400">
+                      Select any text layer, video box, or circle to interactively reposition or align
+                    </p>
+                  </div>
+                </div>
+
+                {/* Layer Selector Chips */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {textLayers.map((tl, i) => (
+                    <button
+                      key={`t-${i}`}
+                      onClick={() => setSelectedTarget({ type: "text", index: i })}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold border transition-all ${
+                        selectedTarget?.type === "text" && selectedTarget.index === i
+                          ? "bg-pink-600/30 border-pink-400 text-pink-200 shadow-sm"
+                          : "bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      <Type className="w-3 h-3 text-pink-400" /> T{i + 1}
+                    </button>
+                  ))}
+                  {videoBoxes.map((vb, i) => (
+                    <button
+                      key={`b-${i}`}
+                      onClick={() => setSelectedTarget({ type: "box", index: i })}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold border transition-all ${
+                        selectedTarget?.type === "box" && selectedTarget.index === i
+                          ? "bg-emerald-600/30 border-emerald-400 text-emerald-200 shadow-sm"
+                          : "bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      <Square className="w-3 h-3 text-emerald-400" /> Box {i + 1}
+                    </button>
+                  ))}
+                  {profileCircles.map((pc, i) => (
+                    <button
+                      key={`c-${i}`}
+                      onClick={() => setSelectedTarget({ type: "circle", index: i })}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-semibold border transition-all ${
+                        selectedTarget?.type === "circle" && selectedTarget.index === i
+                          ? "bg-cyan-600/30 border-cyan-400 text-cyan-200 shadow-sm"
+                          : "bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      <CircleDot className="w-3 h-3 text-cyan-400" /> Circle {i + 1}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {selectedTarget ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 border-t border-slate-800/80">
+                  {/* Directional Nudge Pad */}
+                  <div className="flex items-center gap-2 bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
+                    <div className="grid grid-cols-3 gap-1 w-24">
+                      <div />
+                      <button
+                        onClick={() => nudgeSelected(0, -nudgeStep)}
+                        title="Move Up (ArrowUp)"
+                        className="p-1.5 rounded bg-slate-800 hover:bg-purple-600 text-slate-200 hover:text-white flex items-center justify-center transition-colors"
+                      >
+                        <ArrowUp className="w-3.5 h-3.5" />
+                      </button>
+                      <div />
+                      <button
+                        onClick={() => nudgeSelected(-nudgeStep, 0)}
+                        title="Move Left (ArrowLeft)"
+                        className="p-1.5 rounded bg-slate-800 hover:bg-purple-600 text-slate-200 hover:text-white flex items-center justify-center transition-colors"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => alignSelected("center_both")}
+                        title="Center Element on Screen"
+                        className="p-1.5 rounded bg-purple-700/60 hover:bg-purple-600 text-purple-200 flex items-center justify-center transition-colors"
+                      >
+                        <Crosshair className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => nudgeSelected(nudgeStep, 0)}
+                        title="Move Right (ArrowRight)"
+                        className="p-1.5 rounded bg-slate-800 hover:bg-purple-600 text-slate-200 hover:text-white flex items-center justify-center transition-colors"
+                      >
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                      <div />
+                      <button
+                        onClick={() => nudgeSelected(0, nudgeStep)}
+                        title="Move Down (ArrowDown)"
+                        className="p-1.5 rounded bg-slate-800 hover:bg-purple-600 text-slate-200 hover:text-white flex items-center justify-center transition-colors"
+                      >
+                        <ArrowDown className="w-3.5 h-3.5" />
+                      </button>
+                      <div />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5 flex-1">
+                      <div className="flex items-center justify-between text-[10px] text-slate-400">
+                        <span>Nudge Step:</span>
+                        <span className="font-mono font-bold text-purple-300">{nudgeStep}px</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {[1, 5, 10, 25, 50].map((step) => (
+                          <button
+                            key={step}
+                            onClick={() => setNudgeStep(step)}
+                            className={`flex-1 py-0.5 rounded text-[10px] font-mono font-semibold border transition-colors ${
+                              nudgeStep === step
+                                ? "bg-purple-600 border-purple-400 text-white"
+                                : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            {step}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Alignment Presets */}
+                  <div className="flex flex-col justify-between gap-1.5 bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                      Auto-Alignment
+                    </span>
+                    <div className="grid grid-cols-3 gap-1">
+                      <button
+                        onClick={() => alignSelected("center_x")}
+                        className="flex items-center justify-center gap-1 py-1 px-1.5 rounded bg-slate-900 hover:bg-slate-800 text-[11px] text-slate-200 border border-slate-800"
+                        title="Center Horizontally"
+                      >
+                        <AlignCenter className="w-3 h-3 text-cyan-400" /> Center X
+                      </button>
+                      <button
+                        onClick={() => alignSelected("center_y")}
+                        className="flex items-center justify-center gap-1 py-1 px-1.5 rounded bg-slate-900 hover:bg-slate-800 text-[11px] text-slate-200 border border-slate-800"
+                        title="Center Vertically"
+                      >
+                        <AlignCenter className="w-3 h-3 text-cyan-400 rotate-90" /> Center Y
+                      </button>
+                      <button
+                        onClick={() => alignSelected("center_both")}
+                        className="flex items-center justify-center gap-1 py-1 px-1.5 rounded bg-purple-900/40 hover:bg-purple-900/70 text-[11px] text-purple-200 border border-purple-500/30"
+                        title="Dead Center"
+                      >
+                        <Crosshair className="w-3 h-3 text-purple-400" /> Center
+                      </button>
+                      <button
+                        onClick={() => alignSelected("top")}
+                        className="flex items-center justify-center gap-1 py-1 px-1.5 rounded bg-slate-900 hover:bg-slate-800 text-[11px] text-slate-200 border border-slate-800"
+                      >
+                        <AlignLeft className="w-3 h-3 text-slate-400 rotate-90" /> Top
+                      </button>
+                      <button
+                        onClick={() => alignSelected("left")}
+                        className="flex items-center justify-center gap-1 py-1 px-1.5 rounded bg-slate-900 hover:bg-slate-800 text-[11px] text-slate-200 border border-slate-800"
+                      >
+                        <AlignLeft className="w-3 h-3 text-slate-400" /> Left
+                      </button>
+                      <button
+                        onClick={() => alignSelected("right")}
+                        className="flex items-center justify-center gap-1 py-1 px-1.5 rounded bg-slate-900 hover:bg-slate-800 text-[11px] text-slate-200 border border-slate-800"
+                      >
+                        <AlignRight className="w-3 h-3 text-slate-400" /> Right
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Layer Operations (Z-Order, Duplicate, Delete) */}
+                  <div className="flex flex-col justify-between gap-1.5 bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                      Layer Actions
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        onClick={() => moveLayerOrder(selectedTarget.type, selectedTarget.index, -1)}
+                        className="flex items-center justify-center gap-1 py-1 px-2 rounded bg-slate-900 hover:bg-slate-800 text-[11px] text-slate-300 border border-slate-800"
+                      >
+                        <ChevronUp className="w-3.5 h-3.5 text-purple-400" /> Move Up
+                      </button>
+                      <button
+                        onClick={() => moveLayerOrder(selectedTarget.type, selectedTarget.index, 1)}
+                        className="flex items-center justify-center gap-1 py-1 px-2 rounded bg-slate-900 hover:bg-slate-800 text-[11px] text-slate-300 border border-slate-800"
+                      >
+                        <ChevronDown className="w-3.5 h-3.5 text-purple-400" /> Move Down
+                      </button>
+                      <button
+                        onClick={duplicateSelected}
+                        className="flex items-center justify-center gap-1 py-1 px-2 rounded bg-slate-900 hover:bg-slate-800 text-[11px] text-cyan-300 border border-cyan-500/20"
+                      >
+                        <Copy className="w-3.5 h-3.5" /> Clone
+                      </button>
+                      <button
+                        onClick={deleteSelected}
+                        className="flex items-center justify-center gap-1 py-1 px-2 rounded bg-red-950/40 hover:bg-red-950/70 text-[11px] text-red-300 border border-red-500/30"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg bg-slate-950/50 border border-dashed border-slate-800 text-center text-xs text-slate-500">
+                  Click any element on the canvas preview or use the selector buttons above to adjust its position and alignment.
+                </div>
+              )}
             </div>
 
             {/* Playback Controls & Timeline Scrubber */}
@@ -1057,93 +1702,132 @@ export function StreamInjectStudio() {
             </div>
 
             {/* Text Layers Inspector */}
+            {/* Text Layers Inspector */}
             <div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-xl backdrop-blur-md flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-xs font-bold uppercase tracking-wider text-pink-400 flex items-center gap-1.5">
-                  <Sliders className="w-4 h-4" /> Kinetic Typography Layers
+                  <Sliders className="w-4 h-4" /> Kinetic Typography Layers ({textLayers.length})
                 </h2>
                 <button
-                  onClick={() =>
-                    setTextLayers([
-                      ...textLayers,
-                      { text: "NEW KINETIC HEADER", size: 48, color: "#FFFFFF", animation: "bounce", x: canvasWidth / 2, y: canvasHeight * 0.4 }
-                    ])
-                  }
-                  className="flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition-colors"
+                  onClick={() => {
+                    const newLayer: TextLayer = {
+                      text: "NEW KINETIC HEADER",
+                      size: 48,
+                      color: "#FFFFFF",
+                      animation: "bounce",
+                      x: Math.round(canvasWidth / 2),
+                      y: Math.round(canvasHeight * 0.4)
+                    };
+                    setTextLayers([...textLayers, newLayer]);
+                    setSelectedTarget({ type: "text", index: textLayers.length });
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-pink-900/40 hover:bg-pink-900/70 border border-pink-500/30 text-xs font-semibold text-pink-200 transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add Layer
                 </button>
               </div>
 
-              <div className="flex flex-col gap-2.5 max-h-[220px] overflow-y-auto pr-1">
-                {textLayers.map((layer, idx) => (
-                  <div key={idx} className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={layer.text}
-                        onChange={(e) => {
-                          const copy = [...textLayers];
-                          copy[idx].text = e.target.value;
-                          setTextLayers(copy);
-                        }}
-                        className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
-                        placeholder="Text message..."
-                      />
-                      <button
-                        onClick={() => setTextLayers(textLayers.filter((_, i) => i !== idx))}
-                        className="p-1 text-red-400 hover:text-red-300"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 text-[11px]">
-                      <div>
-                        <span className="text-slate-400 text-[10px]">Font Size</span>
+              <div className="flex flex-col gap-2.5 max-h-[280px] overflow-y-auto pr-1">
+                {textLayers.map((layer, idx) => {
+                  const isSelected = selectedTarget?.type === "text" && selectedTarget.index === idx;
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => setSelectedTarget({ type: "text", index: idx })}
+                      className={`p-3 rounded-xl transition-all cursor-pointer flex flex-col gap-2.5 border ${
+                        isSelected
+                          ? "bg-slate-900/90 border-pink-500 shadow-md shadow-pink-900/20"
+                          : "bg-slate-950/70 border-slate-800 hover:border-slate-700"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded bg-pink-500/20 text-pink-300 font-mono text-[10px] font-bold">
+                          T{idx + 1}
+                        </span>
                         <input
-                          type="number"
-                          value={layer.size}
+                          type="text"
+                          value={layer.text}
                           onChange={(e) => {
                             const copy = [...textLayers];
-                            copy[idx].size = parseInt(e.target.value, 10) || 32;
+                            copy[idx].text = e.target.value;
                             setTextLayers(copy);
                           }}
-                          className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white"
+                          className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-pink-400 focus:outline-none"
+                          placeholder="Text message..."
                         />
-                      </div>
-                      <div>
-                        <span className="text-slate-400 text-[10px]">Color</span>
-                        <input
-                          type="color"
-                          value={layer.color}
-                          onChange={(e) => {
-                            const copy = [...textLayers];
-                            copy[idx].color = e.target.value;
-                            setTextLayers(copy);
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTextLayers(textLayers.filter((_, i) => i !== idx));
+                            if (isSelected) setSelectedTarget(null);
                           }}
-                          className="w-full h-6 bg-slate-900 border border-slate-700 rounded cursor-pointer"
-                        />
-                      </div>
-                      <div>
-                        <span className="text-slate-400 text-[10px]">Animation</span>
-                        <select
-                          value={layer.animation}
-                          onChange={(e) => {
-                            const copy = [...textLayers];
-                            copy[idx].animation = e.target.value as any;
-                            setTextLayers(copy);
-                          }}
-                          className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-xs text-white"
+                          className="p-1 text-red-400 hover:text-red-300 transition-colors"
+                          title="Delete Layer"
                         >
-                          <option value="bounce">Bounce</option>
-                          <option value="flicker">Flicker</option>
-                          <option value="static">Static</option>
-                        </select>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-2 text-[11px]">
+                        <div>
+                          <span className="text-slate-400 text-[10px] font-semibold">Pos X</span>
+                          <input
+                            type="number"
+                            value={layer.x ?? Math.round(canvasWidth / 2)}
+                            onChange={(e) => {
+                              const copy = [...textLayers];
+                              copy[idx].x = parseInt(e.target.value, 10) || 0;
+                              setTextLayers(copy);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-slate-400 text-[10px] font-semibold">Pos Y</span>
+                          <input
+                            type="number"
+                            value={layer.y ?? Math.round(canvasHeight * 0.3)}
+                            onChange={(e) => {
+                              const copy = [...textLayers];
+                              copy[idx].y = parseInt(e.target.value, 10) || 0;
+                              setTextLayers(copy);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-slate-400 text-[10px] font-semibold">Font Size</span>
+                          <input
+                            type="number"
+                            value={layer.size}
+                            onChange={(e) => {
+                              const copy = [...textLayers];
+                              copy[idx].size = parseInt(e.target.value, 10) || 32;
+                              setTextLayers(copy);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-slate-400 text-[10px] font-semibold">Animation</span>
+                          <select
+                            value={layer.animation}
+                            onChange={(e) => {
+                              const copy = [...textLayers];
+                              copy[idx].animation = e.target.value as any;
+                              setTextLayers(copy);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-xs text-white"
+                          >
+                            <option value="bounce">Bounce</option>
+                            <option value="flicker">Flicker</option>
+                            <option value="static">Static</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -1151,38 +1835,261 @@ export function StreamInjectStudio() {
             <div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-xl backdrop-blur-md flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-                  <Maximize2 className="w-4 h-4" /> 16:9 Video Box Safe-Zones
+                  <Maximize2 className="w-4 h-4" /> Video Box Safe-Zones ({videoBoxes.length})
                 </h2>
                 <button
-                  onClick={() =>
-                    setVideoBoxes([
-                      ...videoBoxes,
-                      { x: 100, y: 400, width: 500, height: 280, label: "NEW VIDEO BOX", border_color: "#00FFCC" }
-                    ])
-                  }
-                  className="flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition-colors"
+                  onClick={() => {
+                    const newBox: VideoBox = {
+                      x: Math.round(canvasWidth * 0.1),
+                      y: Math.round(canvasHeight * 0.4),
+                      width: Math.round(canvasWidth * 0.35),
+                      height: Math.round(canvasHeight * 0.35),
+                      label: `VIDEO BOX #${videoBoxes.length + 1}`,
+                      border_color: "#00FFCC"
+                    };
+                    setVideoBoxes([...videoBoxes, newBox]);
+                    setSelectedTarget({ type: "box", index: videoBoxes.length });
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-900/40 hover:bg-emerald-900/70 border border-emerald-500/30 text-xs font-semibold text-emerald-200 transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add Box
                 </button>
               </div>
 
-              <div className="flex flex-col gap-2 max-h-[160px] overflow-y-auto pr-1">
-                {videoBoxes.map((box, idx) => (
-                  <div key={idx} className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between text-xs">
-                    <div>
-                      <span className="font-bold text-slate-200">{box.label || `Box #${idx + 1}`}</span>
-                      <span className="text-[10px] text-slate-400 ml-2">
-                        ({box.x}, {box.y}, {box.width}×{box.height})
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setVideoBoxes(videoBoxes.filter((_, i) => i !== idx))}
-                      className="p-1 text-red-400 hover:text-red-300"
+              <div className="flex flex-col gap-2.5 max-h-[260px] overflow-y-auto pr-1">
+                {videoBoxes.map((box, idx) => {
+                  const isSelected = selectedTarget?.type === "box" && selectedTarget.index === idx;
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => setSelectedTarget({ type: "box", index: idx })}
+                      className={`p-3 rounded-xl transition-all cursor-pointer flex flex-col gap-2.5 border ${
+                        isSelected
+                          ? "bg-slate-900/90 border-emerald-500 shadow-md shadow-emerald-900/20"
+                          : "bg-slate-950/70 border-slate-800 hover:border-slate-700"
+                      }`}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold">
+                          Box {idx + 1}
+                        </span>
+                        <input
+                          type="text"
+                          value={box.label || ""}
+                          onChange={(e) => {
+                            const copy = [...videoBoxes];
+                            copy[idx].label = e.target.value;
+                            setVideoBoxes(copy);
+                          }}
+                          className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-emerald-400 focus:outline-none"
+                          placeholder="Box Label (e.g. PREVIOUS VIDEO)"
+                        />
+                        <input
+                          type="color"
+                          value={box.border_color || "#00FFFF"}
+                          onChange={(e) => {
+                            const copy = [...videoBoxes];
+                            copy[idx].border_color = e.target.value;
+                            setVideoBoxes(copy);
+                          }}
+                          className="w-6 h-6 bg-transparent border-0 rounded cursor-pointer"
+                          title="Border Glow Color"
+                        />
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setVideoBoxes(videoBoxes.filter((_, i) => i !== idx));
+                            if (isSelected) setSelectedTarget(null);
+                          }}
+                          className="p-1 text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-2 text-[11px]">
+                        <div>
+                          <span className="text-slate-400 text-[10px] font-semibold">X</span>
+                          <input
+                            type="number"
+                            value={box.x}
+                            onChange={(e) => {
+                              const copy = [...videoBoxes];
+                              copy[idx].x = parseInt(e.target.value, 10) || 0;
+                              setVideoBoxes(copy);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-slate-400 text-[10px] font-semibold">Y</span>
+                          <input
+                            type="number"
+                            value={box.y}
+                            onChange={(e) => {
+                              const copy = [...videoBoxes];
+                              copy[idx].y = parseInt(e.target.value, 10) || 0;
+                              setVideoBoxes(copy);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-slate-400 text-[10px] font-semibold">Width</span>
+                          <input
+                            type="number"
+                            value={box.width}
+                            onChange={(e) => {
+                              const copy = [...videoBoxes];
+                              copy[idx].width = Math.max(50, parseInt(e.target.value, 10) || 100);
+                              setVideoBoxes(copy);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-slate-400 text-[10px] font-semibold">Height</span>
+                          <input
+                            type="number"
+                            value={box.height}
+                            onChange={(e) => {
+                              const copy = [...videoBoxes];
+                              copy[idx].height = Math.max(50, parseInt(e.target.value, 10) || 100);
+                              setVideoBoxes(copy);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Profile Avatar Circles Safe-Zones Inspector */}
+            <div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-xl backdrop-blur-md flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                  <CircleDot className="w-4 h-4" /> Subscribe / Avatar Circles ({profileCircles.length})
+                </h2>
+                <button
+                  onClick={() => {
+                    const newCirc: ProfileCircle = {
+                      x: Math.round(canvasWidth / 2),
+                      y: Math.round(canvasHeight * 0.5),
+                      radius: 120,
+                      pulse: true,
+                      glow_color: "#00FFFF"
+                    };
+                    setProfileCircles([...profileCircles, newCirc]);
+                    setSelectedTarget({ type: "circle", index: profileCircles.length });
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded bg-cyan-900/40 hover:bg-cyan-900/70 border border-cyan-500/30 text-xs font-semibold text-cyan-200 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Circle
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2.5 max-h-[200px] overflow-y-auto pr-1">
+                {profileCircles.map((circ, idx) => {
+                  const isSelected = selectedTarget?.type === "circle" && selectedTarget.index === idx;
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => setSelectedTarget({ type: "circle", index: idx })}
+                      className={`p-3 rounded-xl transition-all cursor-pointer flex flex-col gap-2.5 border ${
+                        isSelected
+                          ? "bg-slate-900/90 border-cyan-500 shadow-md shadow-cyan-900/20"
+                          : "bg-slate-950/70 border-slate-800 hover:border-slate-700"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono text-[10px] font-bold">
+                          Circle {idx + 1}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <label className="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={circ.pulse ?? true}
+                              onChange={(e) => {
+                                const copy = [...profileCircles];
+                                copy[idx].pulse = e.target.checked;
+                                setProfileCircles(copy);
+                              }}
+                              className="accent-cyan-500"
+                            />
+                            <span>Kinetic Pulse</span>
+                          </label>
+                          <input
+                            type="color"
+                            value={circ.glow_color || "#00FFFF"}
+                            onChange={(e) => {
+                              const copy = [...profileCircles];
+                              copy[idx].glow_color = e.target.value;
+                              setProfileCircles(copy);
+                            }}
+                            className="w-5 h-5 bg-transparent border-0 rounded cursor-pointer"
+                            title="Glow Color"
+                          />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setProfileCircles(profileCircles.filter((_, i) => i !== idx));
+                              if (isSelected) setSelectedTarget(null);
+                            }}
+                            className="p-1 text-red-400 hover:text-red-300 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 text-[11px]">
+                        <div>
+                          <span className="text-slate-400 text-[10px] font-semibold">Center X</span>
+                          <input
+                            type="number"
+                            value={circ.x}
+                            onChange={(e) => {
+                              const copy = [...profileCircles];
+                              copy[idx].x = parseInt(e.target.value, 10) || 0;
+                              setProfileCircles(copy);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-slate-400 text-[10px] font-semibold">Center Y</span>
+                          <input
+                            type="number"
+                            value={circ.y}
+                            onChange={(e) => {
+                              const copy = [...profileCircles];
+                              copy[idx].y = parseInt(e.target.value, 10) || 0;
+                              setProfileCircles(copy);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-slate-400 text-[10px] font-semibold">Radius</span>
+                          <input
+                            type="number"
+                            value={circ.radius}
+                            onChange={(e) => {
+                              const copy = [...profileCircles];
+                              copy[idx].radius = Math.max(10, parseInt(e.target.value, 10) || 50);
+                              setProfileCircles(copy);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

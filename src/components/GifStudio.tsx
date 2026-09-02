@@ -5,6 +5,7 @@ import {
   ChevronDown, ChevronRight, FileVideo, Image as ImageIcon, Zap, Layers3, Clock3
 } from 'lucide-react';
 import { useGenerationJob } from '../context/GenerationJobContext';
+import { MediaStitcherModal } from './MediaStitcherModal';
 import { SystemTelemetry } from '../types';
 
 interface GifStudioProps {
@@ -90,6 +91,7 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
   const [error, setError] = useState<string|null>(null);
   const [rifeAvailable, setRifeAvailable] = useState<boolean|null>(null);
   const [draggingText, setDraggingText] = useState(false);
+  const [showStitchModal, setShowStitchModal] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement|null>(null);
   const previewVideoRef = useRef<HTMLVideoElement|null>(null);
 
@@ -534,6 +536,16 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
           <div className="mt-2 text-[8px] font-mono text-slate-500 break-all">NODE {currentNode?.id || '—'} · {currentNode?.classType || 'idle'} · {currentNode?.inputs ? JSON.stringify(currentNode.inputs) : 'waiting'}</div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2"><button onClick={()=>setTextEnabled(v=>!v)} className={`border rounded px-3 py-2 text-[9px] font-bold ${textEnabled?'border-cyan-500/50 text-cyan-300':'border-slate-800 text-slate-500'}`}><Type className="inline w-3 h-3 mr-1"/>MEME TEXT LAYER</button><button onClick={()=>void exportFormat('gif')} disabled={exporting||!isGifJob} className="border border-emerald-500/40 rounded px-3 py-2 text-[9px] font-bold text-emerald-300 disabled:opacity-40"><Download className="inline w-3 h-3 mr-1"/>EXPORT GIF</button></div>
+        {sourceUrl && (
+          <button
+            type="button"
+            onClick={() => setShowStitchModal(true)}
+            className="w-full py-2.5 px-3 bg-gradient-to-r from-indigo-500/20 via-fuchsia-500/20 to-emerald-500/20 hover:from-indigo-500/30 hover:to-emerald-500/30 text-indigo-200 border border-indigo-500/40 rounded-lg text-[10px] font-extrabold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-md transition-all"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+            <span>Stitch with AI Music (MoviePy Engine)</span>
+          </button>
+        )}
       </section>
 
       <section className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 space-y-3 max-h-[860px] overflow-auto custom-scrollbar">
@@ -548,6 +560,13 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
       </section>
     </div>
     {error && <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-xs text-red-300 flex gap-2"><AlertTriangle className="w-4 h-4 shrink-0"/>{error}<button className="ml-auto" onClick={()=>setError(null)}><X className="w-4 h-4"/></button></div>}
+    <MediaStitcherModal
+      isOpen={showStitchModal}
+      onClose={() => setShowStitchModal(false)}
+      videoSourceUrl={sourceUrl || exportUrls.mp4 || undefined}
+      videoSourceName={activeAsset?.name || (prompt ? `GIF: ${prompt.slice(0, 25)}...` : 'GIF Studio Export')}
+      onAddLog={onAddLog}
+    />
   </div>;
 };
 

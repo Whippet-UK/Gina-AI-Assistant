@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Image, Video, Film, FolderOpen, ListChecks, Settings2, Gauge, Bot } from 'lucide-react';
+import { Image, Video, Film, FolderOpen, ListChecks, Settings2, Gauge, Bot, Music } from 'lucide-react';
 import { Header } from './components/Header';
 import { ProjectStateProvider, useProjectState } from './context/ProjectStateContext';
 import { GenerationJobProvider, useGenerationJob } from './context/GenerationJobContext';
@@ -8,6 +8,7 @@ import { PromptStudio } from './components/PromptStudio';
 import { VideoStudio } from './components/VideoStudio';
 import { GifStudio } from './components/GifStudio';
 import { StreamInjectStudio } from './components/StreamInjectStudio';
+import { MusicStudio } from './components/MusicStudio';
 import { Aida64Studio } from './components/Aida64Studio';
 import { AiStudioSuite } from './components/AiStudioSuite';
 import { SystemHub } from './components/SystemHub';
@@ -174,7 +175,7 @@ interface AppContentProps {
 }
 
 function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCache, handleRunAudit, isAuditing, activeSavePoint, isCooldownActive, cooldownRemainingSec, isManifestOpen, setIsManifestOpen }: AppContentProps) {
-  const [activeView, setActiveView] = useState<'create' | 'video' | 'gif' | 'shorts' | 'streaminject' | 'aida64' | 'assets' | 'jobs' | 'llm' | 'system'>('create');
+  const [activeView, setActiveView] = useState<'create' | 'video' | 'gif' | 'streaminject' | 'music' | 'aida64' | 'shorts' | 'assets' | 'jobs' | 'llm' | 'system'>('create');
   const { job, outputLoading } = useGenerationJob();
   const { updatePromptStudio } = useProjectState();
   const [stagedAida64Reference, setStagedAida64Reference] = useState<{ filename: string; name: string; bytes: number; previewUrl: string } | null>(null);
@@ -187,6 +188,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
     { id: 'video' as const, label: 'VIDEO', icon: Video, isGenerating: isJobActive && isVideoJob },
     { id: 'gif' as const, label: 'GIF STUDIO', icon: Film, isGenerating: isJobActive && job?.workflowId === 'gif_studio' },
     { id: 'streaminject' as const, label: 'STREAMINJECT', icon: Film, isGenerating: isJobActive && (job?.workflowId === 'streaminject_studio' || job?.workflowId === 'streaminject_render') },
+    { id: 'music' as const, label: 'MUSIC SUITE', icon: Music, isGenerating: isJobActive && (job?.workflowId === 'music_studio' || job?.workflowId === 'stem_separation') },
     { id: 'aida64' as const, label: 'AIDA64', icon: Gauge, isGenerating: false },
     { id: 'shorts' as const, label: 'SHORTS', icon: Film, isGenerating: false },
     { id: 'assets' as const, label: 'ASSETS', icon: FolderOpen, isGenerating: false },
@@ -247,6 +249,20 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
         <main className={`space-y-5 ${activeView === 'streaminject' ? 'block' : 'hidden'}`}>
           <WorkspaceErrorBoundary name="StreamInject Studio">
             <StreamInjectStudio />
+          </WorkspaceErrorBoundary>
+        </main>
+
+        <main className={`space-y-5 ${activeView === 'music' ? 'block' : 'hidden'}`}>
+          <WorkspaceErrorBoundary name="Music Studio">
+            <MusicStudio
+              telemetry={telemetry}
+              onAddLog={logWithOomCheck}
+              onClearCache={() => handleClearCache(false, true)}
+              onSendToStreamInject={(_audioUrl, title) => {
+                logWithOomCheck('INFO', `Transferred master audio "${title}" to StreamInject BGM timeline.`);
+                setActiveView('streaminject');
+              }}
+            />
           </WorkspaceErrorBoundary>
         </main>
 

@@ -64,15 +64,17 @@ def main():
 
     print(f"[AudioCraft Downloader] Starting weight snapshot download for '{model_name}'...")
     start_time = time.time()
+    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or None
     try:
         local_dir = snapshot_download(
             repo_id=model_name,
             local_dir=target_path,
             local_dir_use_symlinks=False,
-            resume_download=True
+            resume_download=True,
+            token=hf_token
         )
         print(f"[AudioCraft Downloader] Pre-loading processor and configuration to verify weights...")
-        processor = AutoProcessor.from_pretrained(target_path)
+        processor = AutoProcessor.from_pretrained(target_path, token=hf_token)
         print(f"[AudioCraft Downloader] SUCCESS: Model cached and verified at {local_dir} in {time.time() - start_time:.1f}s")
     except Exception as e:
         print(f"[AudioCraft Downloader] ERROR during snapshot download: {e}", file=sys.stderr)
