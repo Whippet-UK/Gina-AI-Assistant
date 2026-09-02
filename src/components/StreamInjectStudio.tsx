@@ -17,6 +17,7 @@ import {
   Flame,
   Zap,
   Volume2,
+  Music,
   FileVideo,
   Eye,
   Settings2,
@@ -93,6 +94,15 @@ export function StreamInjectStudio() {
   const [bgType, setBgType] = useState<"radial" | "linear" | "image">("radial");
   const [bgMaxRed, setBgMaxRed] = useState(55);
   
+  // Studio Audio Track State (Intro/Outro Audio Injection)
+  const [studioAudioPath, setStudioAudioPath] = useState<string>("");
+  const [studioAudioStartOffset, setStudioAudioStartOffset] = useState<number>(0);
+  const [studioAudioTrimStart, setStudioAudioTrimStart] = useState<number>(0);
+  const [studioAudioTrimEnd, setStudioAudioTrimEnd] = useState<number>(0);
+  const [studioAudioVolume, setStudioAudioVolume] = useState<number>(1.0);
+  const [studioAudioFadeIn, setStudioAudioFadeIn] = useState<number>(0.5);
+  const [studioAudioFadeOut, setStudioAudioFadeOut] = useState<number>(0.5);
+
   const [textLayers, setTextLayers] = useState<TextLayer[]>([
     { text: "THANKS FOR WATCHING", size: 68, color: "#FFFFFF", animation: "bounce", x: 960, y: 140 },
     { text: "SUBSCRIBE FOR NEXT MISSION", size: 30, color: "#00FFFF", animation: "flicker", x: 960, y: 220 }
@@ -121,15 +131,30 @@ export function StreamInjectStudio() {
   const [splitEnd, setSplitEnd] = useState<number>(0);
   const [chromaOverlay, setChromaOverlay] = useState<string>("");
   const [overlayStart, setOverlayStart] = useState<number>(5);
+  const [overlayFinish, setOverlayFinish] = useState<number>(0);
+  const [chromaColor, setChromaColor] = useState<string>("0x00FF00");
+  const [chromaSimilarity, setChromaSimilarity] = useState<number>(0.15);
+  const [chromaBlend, setChromaBlend] = useState<number>(0.1);
   const [watermarkPath, setWatermarkPath] = useState<string>("");
   const [watermarkPos, setWatermarkPos] = useState<"TL" | "TR" | "BL" | "BR">("TR");
+  const [watermarkStart, setWatermarkStart] = useState<number>(0);
+  const [watermarkFinish, setWatermarkFinish] = useState<number>(0);
+  const [watermarkOpacity, setWatermarkOpacity] = useState<number>(0.85);
   const [subtitlePath, setSubtitlePath] = useState<string>("");
+  const [audioTrackPath, setAudioTrackPath] = useState<string>("");
+  const [audioStartOffset, setAudioStartOffset] = useState<number>(0);
+  const [audioTrimStart, setAudioTrimStart] = useState<number>(0);
+  const [audioTrimEnd, setAudioTrimEnd] = useState<number>(0);
+  const [audioVolume, setAudioVolume] = useState<number>(1.0);
+  const [audioFadeIn, setAudioFadeIn] = useState<number>(0.5);
+  const [audioFadeOut, setAudioFadeOut] = useState<number>(0.5);
 
   // Presets and Media
   const [presets, setPresets] = useState<Preset[]>([]);
-  const [mediaFiles, setMediaFiles] = useState<{ videos: MediaAsset[]; images: MediaAsset[]; subtitles: MediaAsset[] }>({
+  const [mediaFiles, setMediaFiles] = useState<{ videos: MediaAsset[]; images: MediaAsset[]; audio: MediaAsset[]; subtitles: MediaAsset[] }>({
     videos: [],
     images: [],
+    audio: [],
     subtitles: []
   });
 
@@ -174,6 +199,7 @@ export function StreamInjectStudio() {
         setMediaFiles({
           videos: data.videos || [],
           images: data.images || [],
+          audio: data.audio || [],
           subtitles: data.subtitles || []
         });
         if (data.videos.length > 0 && !gameplayPath) {
@@ -493,7 +519,16 @@ export function StreamInjectStudio() {
         enable_shake: vfxShake,
         enable_bloom: vfxBloom,
         enable_chroma: vfxChroma
-      }
+      },
+      audio: studioAudioPath ? {
+        path: studioAudioPath,
+        start_offset: studioAudioStartOffset,
+        trim_start: studioAudioTrimStart > 0 ? studioAudioTrimStart : undefined,
+        trim_end: studioAudioTrimEnd > 0 ? studioAudioTrimEnd : undefined,
+        volume: studioAudioVolume,
+        fade_in: studioAudioFadeIn,
+        fade_out: studioAudioFadeOut
+      } : undefined
     };
 
     try {
@@ -537,9 +572,23 @@ export function StreamInjectStudio() {
       splitEndSec: splitEnd > 0 ? splitEnd : undefined,
       greenScreenOverlay: chromaOverlay || undefined,
       overlayStartTime: overlayStart,
+      overlayFinishTime: overlayFinish > 0 ? overlayFinish : undefined,
+      chromaColor: chromaColor || "0x00FF00",
+      chromaSimilarity: chromaSimilarity,
+      chromaBlend: chromaBlend,
       watermarkPath: watermarkPath || undefined,
       watermarkPos: watermarkPos,
-      subtitlePath: subtitlePath || undefined
+      watermarkStartTime: watermarkStart,
+      watermarkFinishTime: watermarkFinish > 0 ? watermarkFinish : undefined,
+      watermarkOpacity: watermarkOpacity,
+      subtitlePath: subtitlePath || undefined,
+      audioTrackPath: audioTrackPath || undefined,
+      audioStartTime: audioStartOffset,
+      audioTrimStart: audioTrimStart > 0 ? audioTrimStart : undefined,
+      audioTrimEnd: audioTrimEnd > 0 ? audioTrimEnd : undefined,
+      audioVolume: audioVolume,
+      audioFadeIn: audioFadeIn,
+      audioFadeOut: audioFadeOut
     };
 
     try {
@@ -589,10 +638,21 @@ export function StreamInjectStudio() {
   };
 
   // Upload local media
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetField: "gameplay" | "intro" | "outro" | "watermark" | "chroma") => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, targetField: "gameplay" | "intro" | "outro" | "watermark" | "chroma" | "audio" | "subtitle" | "studio_audio") => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadError(null);
+
+    // Guard against browser Base64 memory exhaustion on large files (> 35MB)
+    if (file.size > 35 * 1024 * 1024) {
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      setUploadError(
+        `File "${file.name}" is ${sizeMb} MB. Browser HTTP uploads are capped at 35 MB. For large video recordings (e.g. 300MB - 50GB): copy the file to "C:\\Gina_AI\\.gina_runtime\\streaminject\\input" (or "C:\\Gina_AI\\StreamInject\\input") and select it from the dropdown, or paste its full local path directly into the custom path field below.`
+      );
+      // Reset input element so user can retry
+      e.target.value = "";
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = async () => {
@@ -610,6 +670,9 @@ export function StreamInjectStudio() {
           if (targetField === "outro") setOutroPath(data.path);
           if (targetField === "watermark") setWatermarkPath(data.path);
           if (targetField === "chroma") setChromaOverlay(data.path);
+          if (targetField === "audio") setAudioTrackPath(data.path);
+          if (targetField === "studio_audio") setStudioAudioPath(data.path);
+          if (targetField === "subtitle") setSubtitlePath(data.path);
           await fetchMediaFiles();
         } else {
           throw new Error(data.error || "Upload failed");
@@ -621,6 +684,7 @@ export function StreamInjectStudio() {
       }
     };
     reader.readAsDataURL(file);
+    e.target.value = "";
   };
 
   return (
@@ -657,7 +721,7 @@ export function StreamInjectStudio() {
             }`}
           >
             <Sparkles className="w-4 h-4" />
-            Visual Layout Studio
+            Intro/Outro Studio
           </button>
           <button
             onClick={() => setActiveTab("pipeline")}
@@ -684,7 +748,26 @@ export function StreamInjectStudio() {
         </div>
       </div>
 
-      {/* TAB 1: VISUAL LAYOUT STUDIO */}
+      {/* Upload Warning / Information Banner */}
+      {uploadError && (
+        <div className="flex items-start justify-between gap-3 p-4 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-xs shadow-lg animate-fadeIn">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex flex-col gap-1">
+              <span className="font-bold text-amber-300">Upload Information / Size Notice</span>
+              <p className="text-amber-200/90 leading-relaxed">{uploadError}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setUploadError(null)}
+            className="text-amber-400 hover:text-white p-1 rounded-md transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* TAB 1: INTRO/OUTRO STUDIO */}
       {activeTab === "studio" && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
           {/* Left Column: Live Interactive Canvas Stage (7 Cols) */}
@@ -693,29 +776,50 @@ export function StreamInjectStudio() {
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
-                  <Tv className="w-4 h-4" /> Real-time Interactive Stage
+                  <Tv className="w-4 h-4" /> Intro/Outro Stage
                 </span>
-                <span className="text-xs text-slate-500">({canvasWidth}×{canvasHeight} • {duration}s)</span>
+                <span className="text-xs text-slate-500">({canvasWidth}×{canvasHeight})</span>
               </div>
 
-              {/* Aspect Ratio Selector */}
-              <div className="flex items-center gap-2 bg-slate-950 p-1 rounded-lg border border-slate-800">
-                <button
-                  onClick={() => handleAspectChange("16:9")}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition-all ${
-                    aspectRatio === "16:9" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <Tv className="w-3.5 h-3.5" /> 16:9 Widescreen
-                </button>
-                <button
-                  onClick={() => handleAspectChange("9:16")}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition-all ${
-                    aspectRatio === "9:16" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <Smartphone className="w-3.5 h-3.5" /> 9:16 Shorts
-                </button>
+              {/* Duration & Aspect Ratio Selector */}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-xs">
+                  <Clock className="w-3.5 h-3.5 text-purple-400" />
+                  <span className="text-slate-400 text-[11px]">Duration:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="120"
+                    step="0.5"
+                    value={duration}
+                    onChange={(e) => {
+                      const newDur = Math.max(1, parseFloat(e.target.value) || 10.0);
+                      setDuration(newDur);
+                      if (currentTime > newDur) setCurrentTime(newDur);
+                    }}
+                    className="w-14 bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white text-center font-mono font-bold"
+                  />
+                  <span className="text-slate-400 text-[11px]">sec</span>
+                </div>
+
+                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                  <button
+                    onClick={() => handleAspectChange("16:9")}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition-all ${
+                      aspectRatio === "16:9" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <Tv className="w-3.5 h-3.5" /> 16:9
+                  </button>
+                  <button
+                    onClick={() => handleAspectChange("9:16")}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition-all ${
+                      aspectRatio === "9:16" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <Smartphone className="w-3.5 h-3.5" /> 9:16
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -853,6 +957,57 @@ export function StreamInjectStudio() {
                     </p>
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Studio Canvas Dimensions, Duration & Background Inspector */}
+            <div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-xl backdrop-blur-md flex flex-col gap-3">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+                <Clock className="w-4 h-4" /> Canvas & Duration Settings
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div>
+                  <span className="text-slate-400 text-[11px] font-semibold">Intro/Outro Duration (s)</span>
+                  <div className="flex items-center gap-1.5 mt-1 bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-700">
+                    <Clock className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
+                    <input
+                      type="number"
+                      min="1"
+                      max="120"
+                      step="0.5"
+                      value={duration}
+                      onChange={(e) => {
+                        const newDur = Math.max(1, parseFloat(e.target.value) || 10.0);
+                        setDuration(newDur);
+                        if (currentTime > newDur) setCurrentTime(newDur);
+                      }}
+                      className="w-full bg-transparent text-xs text-white font-mono font-bold focus:outline-none"
+                    />
+                    <span className="text-slate-500 text-[10px]">sec</span>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-400 text-[11px] font-semibold">Aspect & Resolution</span>
+                  <select
+                    value={aspectRatio}
+                    onChange={(e) => handleAspectChange(e.target.value as "16:9" | "9:16")}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white mt-1"
+                  >
+                    <option value="16:9">16:9 (1920×1080 Landscape)</option>
+                    <option value="9:16">9:16 (1080×1920 Portrait / Shorts)</option>
+                  </select>
+                </div>
+                <div>
+                  <span className="text-slate-400 text-[11px] font-semibold">Background Theme</span>
+                  <select
+                    value={bgType}
+                    onChange={(e) => setBgType(e.target.value as any)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white mt-1"
+                  >
+                    <option value="radial">Kinetic Dark Radial</option>
+                    <option value="linear">Neon Linear Gradient</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -1011,7 +1166,7 @@ export function StreamInjectStudio() {
                 </button>
               </div>
 
-              <div className="flex flex-col gap-2 max-h-[200px] overflow-y-auto pr-1">
+              <div className="flex flex-col gap-2 max-h-[160px] overflow-y-auto pr-1">
                 {videoBoxes.map((box, idx) => (
                   <div key={idx} className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between text-xs">
                     <div>
@@ -1028,6 +1183,124 @@ export function StreamInjectStudio() {
                     </button>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Audio Track Mixing & Upload for Intro/Outro (Identical to Master Pipeline Audio Suite) */}
+            <div className="flex flex-col gap-3 p-4 rounded-xl bg-slate-950/70 border border-slate-800">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Music className="w-3.5 h-3.5 text-amber-400" />
+                  Background Audio Track (Intro/Outro BGM)
+                </label>
+                {studioAudioPath && (
+                  <button
+                    onClick={() => setStudioAudioPath("")}
+                    className="text-[10px] text-red-400 hover:text-red-300 transition-colors"
+                  >
+                    Clear Audio
+                  </button>
+                )}
+              </div>
+
+              <div className="text-xs">
+                <div>
+                  <span className="text-slate-400 text-[11px]">Audio / BGM Track (AudioCraft / Uploaded)</span>
+                  <select
+                    value={studioAudioPath}
+                    onChange={(e) => setStudioAudioPath(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white mt-1"
+                  >
+                    <option value="">-- None (Silent Audio Stream) --</option>
+                    {mediaFiles.audio.map((a, i) => (
+                      <option key={i} value={a.path}>
+                        [{a.source}] {a.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="flex items-center gap-2 mt-2">
+                    <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-950/60 hover:bg-amber-900/60 border border-amber-500/20 text-[11px] font-semibold text-amber-200 cursor-pointer transition-colors">
+                      <Upload className="w-3.5 h-3.5" /> Upload Audio (.mp3, .wav)
+                      <input type="file" accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a,.aac" className="hidden" onChange={(e) => handleFileUpload(e, "studio_audio")} />
+                    </label>
+                    {studioAudioPath && (
+                      <span className="text-[9px] text-amber-400 font-mono truncate">
+                        Audio loaded ({studioAudioPath.split("/").pop()?.split("\\").pop()})
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Track Start Offset (s)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={studioAudioStartOffset}
+                        onChange={(e) => setStudioAudioStartOffset(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Audio Start Cut (s)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={studioAudioTrimStart}
+                        onChange={(e) => setStudioAudioTrimStart(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Audio Finish Cut (s, 0=End)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={studioAudioTrimEnd}
+                        onChange={(e) => setStudioAudioTrimEnd(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Volume ({studioAudioVolume.toFixed(1)}x)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="2.0"
+                        step="0.1"
+                        value={studioAudioVolume}
+                        onChange={(e) => setStudioAudioVolume(parseFloat(e.target.value) || 1.0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Fade In (s)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={studioAudioFadeIn}
+                        onChange={(e) => setStudioAudioFadeIn(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Fade Out (s)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={studioAudioFadeOut}
+                        onChange={(e) => setStudioAudioFadeOut(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1069,6 +1342,11 @@ export function StreamInjectStudio() {
                   <input type="file" accept=".mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp,video/*" className="hidden" onChange={(e) => handleFileUpload(e, "gameplay")} />
                 </label>
               </div>
+              {gameplayPath && (
+                <div className="text-[10px] text-purple-400 font-mono truncate">
+                  Loaded: {gameplayPath.split("/").pop()?.split("\\").pop()}
+                </div>
+              )}
 
               {/* Trim Controls & Aspect */}
               <div className="grid grid-cols-3 gap-3 mt-2 text-xs">
@@ -1126,10 +1404,17 @@ export function StreamInjectStudio() {
                     </option>
                   ))}
                 </select>
-                <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">
-                  <Upload className="w-3.5 h-3.5" /> Upload Intro
-                  <input type="file" accept=".mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp,video/*" className="hidden" onChange={(e) => handleFileUpload(e, "intro")} />
-                </label>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">
+                    <Upload className="w-3.5 h-3.5" /> Upload Intro
+                    <input type="file" accept=".mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp,video/*" className="hidden" onChange={(e) => handleFileUpload(e, "intro")} />
+                  </label>
+                  {introPath && (
+                    <span className="text-[10px] text-cyan-400 font-mono truncate">
+                      {introPath.split("/").pop()?.split("\\").pop()}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="flex flex-col gap-2 p-4 rounded-xl bg-slate-950/70 border border-slate-800">
@@ -1148,18 +1433,29 @@ export function StreamInjectStudio() {
                     </option>
                   ))}
                 </select>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer transition-colors">
+                    <Upload className="w-3.5 h-3.5" /> Upload Outro
+                    <input type="file" accept=".mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp,video/*" className="hidden" onChange={(e) => handleFileUpload(e, "outro")} />
+                  </label>
+                  {outroPath && (
+                    <span className="text-[10px] text-pink-400 font-mono truncate">
+                      {outroPath.split("/").pop()?.split("\\").pop()}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Step 3: Chromakey Overlay, Watermark & Subtitles */}
+            {/* Step 3: Chromakey Overlay & Watermark */}
             <div className="flex flex-col gap-3 p-4 rounded-xl bg-slate-950/70 border border-slate-800">
               <label className="text-xs font-bold text-emerald-300 uppercase tracking-wider">
-                Step 3: Chromakey Overlay, Watermark & Subtitles
+                Step 3: Chromakey Overlay & Watermark
               </label>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                 <div>
-                  <span className="text-slate-400 text-[11px]">Green Screen Overlay (0x00FF00)</span>
+                  <span className="text-slate-400 text-[11px]">Green Screen Overlay</span>
                   <select
                     value={chromaOverlay}
                     onChange={(e) => setChromaOverlay(e.target.value)}
@@ -1174,24 +1470,47 @@ export function StreamInjectStudio() {
                   </select>
                   <div className="flex items-center gap-2 mt-2">
                     <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-500/20 text-[11px] font-semibold text-emerald-200 cursor-pointer transition-colors">
-                      <Upload className="w-3.5 h-3.5" /> Upload CTA / Overlay Video
+                      <Upload className="w-3.5 h-3.5" /> Upload Overlay Video
                       <input type="file" accept="video/*,.mp4,.mkv,.webm,.mov,.avi,.m4v,.wmv,.flv,.mpeg,.mpg,.ts,.mts,.m2ts,.3gp" className="hidden" onChange={(e) => handleFileUpload(e, "chroma")} />
                     </label>
-                    {chromaOverlay && <span className="text-[9px] text-emerald-400 font-mono truncate">CTA selected</span>}
+                    {chromaOverlay && <span className="text-[9px] text-emerald-400 font-mono truncate">Overlay selected</span>}
                   </div>
-                  <p className="text-[9px] text-slate-600 mt-1">CTA uploads are independent of Main Gameplay. MKV/MP4 and unusual names are probed server-side.</p>
-                </div>
-
-                <div>
-                  <span className="text-slate-400 text-[11px]">Overlay Trigger Time (sec)</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={overlayStart}
-                    onChange={(e) => setOverlayStart(parseFloat(e.target.value) || 0)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white mt-1"
-                  />
+                  <div className="grid grid-cols-3 gap-2 mt-2">
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Start (s)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={overlayStart}
+                        onChange={(e) => setOverlayStart(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Finish (0=Full)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={overlayFinish}
+                        onChange={(e) => setOverlayFinish(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Tolerance</span>
+                      <input
+                        type="number"
+                        min="0.01"
+                        max="1.0"
+                        step="0.05"
+                        value={chromaSimilarity}
+                        onChange={(e) => setChromaSimilarity(parseFloat(e.target.value) || 0.15)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div>
@@ -1208,20 +1527,178 @@ export function StreamInjectStudio() {
                       </option>
                     ))}
                   </select>
+                  <div className="flex items-center gap-2 mt-2">
+                    <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold text-slate-200 cursor-pointer transition-colors">
+                      <Upload className="w-3.5 h-3.5" /> Upload Watermark
+                      <input type="file" accept=".png,.jpg,.jpeg,.webp,image/*" className="hidden" onChange={(e) => handleFileUpload(e, "watermark")} />
+                    </label>
+                    {watermarkPath && <span className="text-[9px] text-cyan-400 font-mono truncate">Watermark loaded</span>}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 mt-2">
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Pos</span>
+                      <select
+                        value={watermarkPos}
+                        onChange={(e) => setWatermarkPos(e.target.value as any)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-xs text-white"
+                      >
+                        <option value="TR">Top-Right</option>
+                        <option value="TL">Top-Left</option>
+                        <option value="BR">Bottom-Right</option>
+                        <option value="BL">Bottom-Left</option>
+                      </select>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Opacity</span>
+                      <input
+                        type="number"
+                        min="0.1"
+                        max="1.0"
+                        step="0.05"
+                        value={watermarkOpacity}
+                        onChange={(e) => setWatermarkOpacity(parseFloat(e.target.value) || 0.85)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Start (s)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={watermarkStart}
+                        onChange={(e) => setWatermarkStart(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Step 4: Audio Track Mixing & Subtitle Staging */}
+            <div className="flex flex-col gap-3 p-4 rounded-xl bg-slate-950/70 border border-slate-800">
+              <label className="text-xs font-bold text-amber-300 uppercase tracking-wider">
+                Step 4: Background Audio Track & Subtitles
+              </label>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-slate-400 text-[11px]">Audio / BGM Track (AudioCraft / Uploaded)</span>
+                  <select
+                    value={audioTrackPath}
+                    onChange={(e) => setAudioTrackPath(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white mt-1"
+                  >
+                    <option value="">-- None (Original Audio Only) --</option>
+                    {mediaFiles.audio.map((a, i) => (
+                      <option key={i} value={a.path}>
+                        [{a.source}] {a.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex items-center gap-2 mt-2">
+                    <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-950/60 hover:bg-amber-900/60 border border-amber-500/20 text-[11px] font-semibold text-amber-200 cursor-pointer transition-colors">
+                      <Upload className="w-3.5 h-3.5" /> Upload Audio (.mp3, .wav)
+                      <input type="file" accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a,.aac" className="hidden" onChange={(e) => handleFileUpload(e, "audio")} />
+                    </label>
+                    {audioTrackPath && <span className="text-[9px] text-amber-400 font-mono truncate">Audio loaded</span>}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Track Start Offset (s)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={audioStartOffset}
+                        onChange={(e) => setAudioStartOffset(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Audio Start Cut (s)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={audioTrimStart}
+                        onChange={(e) => setAudioTrimStart(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Audio Finish Cut (s, 0=End)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={audioTrimEnd}
+                        onChange={(e) => setAudioTrimEnd(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Volume ({audioVolume.toFixed(1)}x)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="2.0"
+                        step="0.1"
+                        value={audioVolume}
+                        onChange={(e) => setAudioVolume(parseFloat(e.target.value) || 1.0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Fade In (s)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={audioFadeIn}
+                        onChange={(e) => setAudioFadeIn(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-slate-400 text-[10px]">Fade Out (s)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={audioFadeOut}
+                        onChange={(e) => setAudioFadeOut(parseFloat(e.target.value) || 0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <div>
-                  <span className="text-slate-400 text-[11px]">Watermark Alignment</span>
+                  <span className="text-slate-400 text-[11px]">Subtitle Track (.srt, .ass, .vtt)</span>
                   <select
-                    value={watermarkPos}
-                    onChange={(e) => setWatermarkPos(e.target.value as any)}
+                    value={subtitlePath}
+                    onChange={(e) => setSubtitlePath(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white mt-1"
                   >
-                    <option value="TR">Top-Right (TR)</option>
-                    <option value="TL">Top-Left (TL)</option>
-                    <option value="BR">Bottom-Right (BR)</option>
-                    <option value="BL">Bottom-Left (BL)</option>
+                    <option value="">-- None (No Subtitles) --</option>
+                    {mediaFiles.subtitles.map((sub, i) => (
+                      <option key={i} value={sub.path}>
+                        {sub.name}
+                      </option>
+                    ))}
                   </select>
+                  <div className="flex items-center gap-2 mt-2">
+                    <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold text-slate-200 cursor-pointer transition-colors">
+                      <Upload className="w-3.5 h-3.5" /> Upload Subtitles
+                      <input type="file" accept=".srt,.ass,.vtt" className="hidden" onChange={(e) => handleFileUpload(e, "subtitle")} />
+                    </label>
+                    {subtitlePath && <span className="text-[9px] text-green-400 font-mono truncate">Subtitles loaded</span>}
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-2">
+                    Subtitles are burned directly onto video stream using libass and FFmpeg subtitle renderer.
+                  </p>
                 </div>
               </div>
             </div>

@@ -82,7 +82,7 @@ export interface PreWarmModelDef {
   name: string;
   filename: string;
   workflowId: string;
-  type: 'image' | 'video' | 'shorts';
+  type: 'image' | 'video' | 'shorts' | 'audio' | 'music';
   vramFootprintMB: number;
   description: string;
 }

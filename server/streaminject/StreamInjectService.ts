@@ -13,8 +13,22 @@ export interface StreamInjectRenderOptions {
   splitEndSec?: number;
   greenScreenOverlay?: string;
   overlayStartTime?: number;
+  overlayFinishTime?: number;
+  chromaColor?: string;
+  chromaSimilarity?: number;
+  chromaBlend?: number;
   watermarkPath?: string;
   watermarkPos?: "TL" | "TR" | "BL" | "BR";
+  watermarkStartTime?: number;
+  watermarkFinishTime?: number;
+  watermarkOpacity?: number;
+  audioTrackPath?: string;
+  audioStartTime?: number;
+  audioTrimStart?: number;
+  audioTrimEnd?: number;
+  audioVolume?: number;
+  audioFadeIn?: number;
+  audioFadeOut?: number;
   subtitlePath?: string;
   outputFilename?: string;
 }
@@ -58,6 +72,15 @@ export interface StreamInjectStudioOptions {
     enable_bloom?: boolean;
     enable_chroma?: boolean;
   };
+  audio?: {
+    path?: string;
+    start_offset?: number;
+    trim_start?: number;
+    trim_end?: number;
+    volume?: number;
+    fade_in?: number;
+    fade_out?: number;
+  };
   outputFilename?: string;
 }
 
@@ -67,8 +90,9 @@ export class StreamInjectService {
 
   constructor(baseDir: string = process.cwd()) {
     this.runtimeDir = path.join(baseDir, ".gina_runtime", "streaminject");
-    if (!fsSync.existsSync(this.runtimeDir)) {
-      fsSync.mkdirSync(this.runtimeDir, { recursive: true });
+    const inputDir = path.join(this.runtimeDir, "input");
+    if (!fsSync.existsSync(inputDir)) {
+      fsSync.mkdirSync(inputDir, { recursive: true });
     }
     this.pythonBinary = this.detectPythonBinary();
   }
@@ -93,19 +117,33 @@ export class StreamInjectService {
   public async scanAvailableMedia(): Promise<{
     videos: Array<{ name: string; path: string; source: string; sizeBytes?: number }>;
     images: Array<{ name: string; path: string; source: string }>;
+    audio: Array<{ name: string; path: string; source: string; sizeBytes?: number }>;
     subtitles: Array<{ name: string; path: string; source: string }>;
   }> {
     const searchDirs = [
+      { dir: path.join(this.runtimeDir, "input"), source: "StreamInject Input" },
       { dir: this.runtimeDir, source: "StreamInject Assets" },
+      { dir: "C:\\Gina_AI\\.gina_runtime\\streaminject\\input", source: "StreamInject Input" },
+      { dir: "C:\\Gina_AI\\.gina_runtime\\streaminject", source: "StreamInject Assets" },
+      { dir: "C:\\Gina_AI\\StreamInject\\input", source: "StreamInject Input" },
+      { dir: "C:\\Gina_AI\\StreamInject", source: "StreamInject Assets" },
       { dir: path.join(process.cwd(), "output"), source: "ComfyUI Outputs" },
       { dir: path.join(process.cwd(), "input"), source: "ComfyUI Inputs" },
       { dir: path.join(process.cwd(), "local_ai_uploads"), source: "User Uploads" },
-      { dir: "C:\\Gina_AI\\output", source: "Gina Output" }
+      { dir: "C:\\Gina_AI\\output", source: "Gina Output" },
+      { dir: "C:\\Gina_AI\\input", source: "Gina Input" },
+      { dir: "C:\\Gina_AI\\models\\audio", source: "AudioCraft Library" }
     ];
 
     const videos: Array<{ name: string; path: string; source: string; sizeBytes?: number }> = [];
     const images: Array<{ name: string; path: string; source: string }> = [];
+    const audio: Array<{ name: string; path: string; source: string; sizeBytes?: number }> = [];
     const subtitles: Array<{ name: string; path: string; source: string }> = [];
+
+    const seenVideos = new Set<string>();
+    const seenImages = new Set<string>();
+    const seenAudio = new Set<string>();
+    const seenSubtitles = new Set<string>();
 
     for (const item of searchDirs) {
       try {
@@ -117,12 +155,26 @@ export class StreamInjectService {
           if (!stat || !stat.isFile()) continue;
 
           const ext = path.extname(file).toLowerCase();
-          if ([".mp4", ".mov", ".mkv", ".webm", ".avi"].includes(ext)) {
-            videos.push({ name: file, path: fullPath, source: item.source, sizeBytes: stat.size });
-          } else if ([".png", ".jpg", ".jpeg", ".webp"].includes(ext)) {
-            images.push({ name: file, path: fullPath, source: item.source });
-          } else if ([".srt", ".ass", ".vtt"].includes(ext)) {
-            subtitles.push({ name: file, path: fullPath, source: item.source });
+          if ([".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".wmv", ".flv", ".mpeg", ".mpg", ".ts", ".mts", ".m2ts", ".3gp", ".ogv"].includes(ext)) {
+            if (!seenVideos.has(fullPath)) {
+              seenVideos.add(fullPath);
+              videos.push({ name: file, path: fullPath, source: item.source, sizeBytes: stat.size });
+            }
+          } else if ([".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".svg"].includes(ext)) {
+            if (!seenImages.has(fullPath)) {
+              seenImages.add(fullPath);
+              images.push({ name: file, path: fullPath, source: item.source });
+            }
+          } else if ([".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".wma", ".aiff", ".opus"].includes(ext)) {
+            if (!seenAudio.has(fullPath)) {
+              seenAudio.add(fullPath);
+              audio.push({ name: file, path: fullPath, source: item.source, sizeBytes: stat.size });
+            }
+          } else if ([".srt", ".ass", ".vtt", ".sub"].includes(ext)) {
+            if (!seenSubtitles.has(fullPath)) {
+              seenSubtitles.add(fullPath);
+              subtitles.push({ name: file, path: fullPath, source: item.source });
+            }
           }
         }
       } catch {
@@ -130,7 +182,7 @@ export class StreamInjectService {
       }
     }
 
-    return { videos, images, subtitles };
+    return { videos, images, audio, subtitles };
   }
 
   public getPresets() {
@@ -251,7 +303,8 @@ export class StreamInjectService {
       text_layers: options.text_layers || [],
       video_boxes: options.video_boxes || [],
       profile_circles: options.profile_circles || [],
-      vfx: options.vfx || { enable_glitch: true, enable_shake: true, enable_bloom: true, enable_chroma: true }
+      vfx: options.vfx || { enable_glitch: true, enable_shake: true, enable_bloom: true, enable_chroma: true },
+      audio: options.audio || undefined
     };
 
     await fs.writeFile(layoutConfigFile, JSON.stringify(layoutData, null, 2), "utf-8");
@@ -388,15 +441,57 @@ export class StreamInjectService {
       if (options.overlayStartTime !== undefined) {
         args.push("--overlay-start", String(options.overlayStartTime));
       }
+      if (options.overlayFinishTime !== undefined) {
+        args.push("--overlay-finish", String(options.overlayFinishTime));
+      }
+      if (options.chromaColor) {
+        args.push("--chroma-color", options.chromaColor);
+      }
+      if (options.chromaSimilarity !== undefined) {
+        args.push("--chroma-sim", String(options.chromaSimilarity));
+      }
+      if (options.chromaBlend !== undefined) {
+        args.push("--chroma-blend", String(options.chromaBlend));
+      }
     }
     if (options.watermarkPath && fsSync.existsSync(options.watermarkPath)) {
       args.push("--watermark", options.watermarkPath);
       if (options.watermarkPos) {
         args.push("--watermark-pos", options.watermarkPos);
       }
+      if (options.watermarkStartTime !== undefined) {
+        args.push("--watermark-start", String(options.watermarkStartTime));
+      }
+      if (options.watermarkFinishTime !== undefined) {
+        args.push("--watermark-finish", String(options.watermarkFinishTime));
+      }
+      if (options.watermarkOpacity !== undefined) {
+        args.push("--watermark-opacity", String(options.watermarkOpacity));
+      }
     }
     if (options.subtitlePath && fsSync.existsSync(options.subtitlePath)) {
       args.push("--subtitles", options.subtitlePath);
+    }
+    if (options.audioTrackPath && fsSync.existsSync(options.audioTrackPath)) {
+      args.push("--audio-track", options.audioTrackPath);
+      if (options.audioStartTime !== undefined) {
+        args.push("--audio-start", String(options.audioStartTime));
+      }
+      if (options.audioTrimStart !== undefined) {
+        args.push("--audio-trim-start", String(options.audioTrimStart));
+      }
+      if (options.audioTrimEnd !== undefined) {
+        args.push("--audio-trim-end", String(options.audioTrimEnd));
+      }
+      if (options.audioVolume !== undefined) {
+        args.push("--audio-volume", String(options.audioVolume));
+      }
+      if (options.audioFadeIn !== undefined) {
+        args.push("--audio-fade-in", String(options.audioFadeIn));
+      }
+      if (options.audioFadeOut !== undefined) {
+        args.push("--audio-fade-out", String(options.audioFadeOut));
+      }
     }
 
     jobManager.update(jobId, {

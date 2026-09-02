@@ -1,3 +1,213 @@
+# v1.17.71 — StreamInject Media Filename Universalization & Studio Duration Inspector
+
+### Target File: `/server/streaminject/StreamInjectService.ts`
+```typescript
+const searchDirs = [
+  { dir: path.join(this.runtimeDir, "input"), source: "StreamInject Input" },
+  { dir: this.runtimeDir, source: "StreamInject Assets" },
+  { dir: "C:\\Gina_AI\\.gina_runtime\\streaminject\\input", source: "StreamInject Input" },
+  { dir: "C:\\Gina_AI\\.gina_runtime\\streaminject", source: "StreamInject Assets" },
+  { dir: "C:\\Gina_AI\\StreamInject\\input", source: "StreamInject Input" },
+  { dir: "C:\\Gina_AI\\StreamInject", source: "StreamInject Assets" },
+  { dir: path.join(process.cwd(), "output"), source: "ComfyUI Outputs" },
+  { dir: path.join(process.cwd(), "input"), source: "ComfyUI Inputs" },
+  { dir: path.join(process.cwd(), "local_ai_uploads"), source: "User Uploads" },
+  { dir: "C:\\Gina_AI\\output", source: "Gina Output" },
+  { dir: "C:\\Gina_AI\\input", source: "Gina Input" },
+  { dir: "C:\\Gina_AI\\models\\audio", source: "AudioCraft Library" }
+];
+```
+- Added dedicated `input` directories (`.gina_runtime/streaminject/input` and `C:\Gina_AI\StreamInject\input`) to the media scanning pipeline with path-based deduplication.
+- When placing files directly in `C:\Gina_AI\.gina_runtime\streaminject\input` or `C:\Gina_AI\StreamInject\input`, StreamInject detects them in the dropdowns directly with zero duplication and zero uploads to root.
+
+### Target File: `/server/streaminject/StreamInjectService.ts` (Universal Extension Scanner)
+```typescript
+const ext = path.extname(file).toLowerCase();
+if ([".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".wmv", ".flv", ".mpeg", ".mpg", ".ts", ".mts", ".m2ts", ".3gp", ".ogv"].includes(ext)) {
+  videos.push({ name: file, path: fullPath, source: item.source, sizeBytes: stat.size });
+} else if ([".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".svg"].includes(ext)) {
+  images.push({ name: file, path: fullPath, source: item.source });
+} else if ([".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".wma", ".aiff", ".opus"].includes(ext)) {
+  audio.push({ name: file, path: fullPath, source: item.source, sizeBytes: stat.size });
+} else if ([".srt", ".ass", ".vtt", ".sub"].includes(ext)) {
+  subtitles.push({ name: file, path: fullPath, source: item.source });
+}
+```
+- Universalized media scanning across all input directories to recognize any filename with standard container extensions (`.mp4`, `.mkv`, `.webm`, `.mov`, `.avi`, `.m4v`, `.wmv`, `.flv`, `.mpeg`, `.mpg`, `.ts`, `.mts`, `.m2ts`, `.3gp`, `.ogv`, `.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`, `.aac`, `.wma`, `.aiff`, `.opus`, `.srt`, `.ass`, `.vtt`, `.sub`).
+- Completely removed any expectation or requirement for hardcoded filenames (such as `gameplay.mp4` or `audio.mp3`).
+
+### Target File: `/src/components/StreamInjectStudio.tsx`
+```tsx
+// Canvas & Duration Settings Card in Intro/Outro Studio
+<div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-xl backdrop-blur-md flex flex-col gap-3">
+  <h2 className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+    <Clock className="w-4 h-4" /> Canvas & Duration Settings
+  </h2>
+  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+    <div>
+      <span className="text-slate-400 text-[11px] font-semibold">Intro/Outro Duration (s)</span>
+      <div className="flex items-center gap-1.5 mt-1 bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-700">
+        <Clock className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
+        <input
+          type="number"
+          min="1"
+          max="120"
+          step="0.5"
+          value={duration}
+          onChange={(e) => {
+            const newDur = Math.max(1, parseFloat(e.target.value) || 10.0);
+            setDuration(newDur);
+            if (currentTime > newDur) setCurrentTime(newDur);
+          }}
+          className="w-full bg-transparent text-xs text-white font-mono font-bold focus:outline-none"
+        />
+        <span className="text-slate-500 text-[10px]">sec</span>
+      </div>
+    </div>
+    ...
+  </div>
+</div>
+```
+- Added dedicated Canvas & Duration Settings card to the Intro/Outro Studio inspector allowing users to directly configure and fine-tune duration (in seconds), aspect ratio, resolution, and background theme.
+- Added direct Outro upload action and filename verification badges to Step 1 & Step 2 in the Master Pipeline Stitcher.
+- Added comprehensive file format acceptance on all upload inputs (`accept="video/*,.mp4,.mkv,.webm,.mov..."`, `accept="audio/*,.mp3,.wav..."`, etc.).
+
+---
+
+# v1.17.71 — StreamInject v2.5 Timeline, Intro/Outro Studio & Audio Controls
+
+### Target File: `/src/components/StreamInjectStudio.tsx`
+```tsx
+// Renamed Visual Layout Studio -> Intro/Outro Studio with Duration Control
+<span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+  <Tv className="w-4 h-4" /> Intro/Outro Stage
+</span>
+<div className="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-xs">
+  <Clock className="w-3.5 h-3.5 text-purple-400" />
+  <span className="text-slate-400 text-[11px]">Duration:</span>
+  <input type="number" min="1" max="120" step="0.5" value={duration} onChange={(e) => setDuration(Math.max(1, parseFloat(e.target.value) || 10.0))} />
+  <span className="text-slate-400 text-[11px]">sec</span>
+</div>
+
+// Added Intro/Outro Audio Track Mixing Panel & Controls
+<div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-xl backdrop-blur-md flex flex-col gap-3">
+  <h2 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+    <Music className="w-4 h-4" /> Intro/Outro Audio Track
+  </h2>
+  ...
+  <input type="number" min="0" step="0.5" value={studioAudioTrimStart} onChange={(e) => setStudioAudioTrimStart(parseFloat(e.target.value) || 0)} />
+  <input type="number" min="0" step="0.5" value={studioAudioTrimEnd} onChange={(e) => setStudioAudioTrimEnd(parseFloat(e.target.value) || 0)} />
+</div>
+```
+- Renamed "Visual Layout Studio" to "Intro/Outro Studio" across navigation tabs and stage headers.
+- Added dynamic Duration input field to the Intro/Outro stage allowing custom timing instead of a fixed 10s default.
+- Harmonized the Intro/Outro Studio Audio panel to have the exact same design layout, card container styles, track selectors, upload badges, and 6-parameter precision grid (Track Start Offset, Audio Start Cut, Audio Finish Cut, Volume, Fade In, Fade Out) as the Master Pipeline Stitcher.
+- Added start/finish cut controls to the Master Pipeline Stitcher audio track.
+- Passed audio configuration from Intro/Outro Studio into Python rendering pipeline (`render_custom_layout_from_config`) with FFmpeg `atrim`, `afade`, and `amix` audio mixing.
+
+### Target File: `/scripts/stream_inject.py` & `/server/streaminject/StreamInjectService.ts`
+```python
+# Audio mixing in custom layout render
+if audio_cfg and audio_cfg.get("path") and os.path.exists(audio_cfg["path"]):
+    audio_path = audio_cfg["path"]
+    vol = float(audio_cfg.get("volume", 1.0))
+    fade_in = float(audio_cfg.get("fade_in", 0.0))
+    fade_out = float(audio_cfg.get("fade_out", 0.0))
+    trim_start = float(audio_cfg.get("trim_start", 0.0))
+    trim_end = float(audio_cfg.get("trim_end", 0.0))
+    ...
+```
+- Added JSON payload parsing and FFmpeg filter chains for trimming, delaying, fading, and mixing audio directly into programmatic studio layout templates.
+
+---
+
+# v1.17.71 (Initial) — StreamInject v2.5 Timeline & AudioCraft PreWarm Suite
+
+### Target File: `/scripts/download_audiocraft.py`
+```python
+"""
+AudioCraft & MusicGen Weight Downloader Utility for Gina AI Factory.
+Downloads and caches Meta AudioCraft (MusicGen Small 300M & Medium 1.5B) models
+locally into C:\Gina_AI\models\audio without saturating VRAM during download.
+"""
+```
+- Implemented headless model downloader for Meta AudioCraft / MusicGen models caching weights into `C:\Gina_AI\models\audio`.
+
+### Target File: `/src/components/StreamInjectStudio.tsx`
+```tsx
+// Staging & Master Pipeline Audio + Chromakey + Watermark timeline controls
+<div className="grid grid-cols-4 gap-2 mt-2">
+  <div>
+    <span className="text-slate-400 text-[10px]">Volume</span>
+    <input type="number" min="0" max="2.0" step="0.1" value={audioVolume} onChange={(e) => setAudioVolume(parseFloat(e.target.value) || 1.0)} />
+  </div>
+  <div>
+    <span className="text-slate-400 text-[10px]">Offset (s)</span>
+    <input type="number" min="0" step="0.5" value={audioStartOffset} onChange={(e) => setAudioStartOffset(parseFloat(e.target.value) || 0)} />
+  </div>
+  ...
+</div>
+```
+- Added full UI for Audio Track Mixing, start offset, volume, fade in/out, Green Screen tolerance & timeline duration, watermark start/finish times & opacity, and burned subtitle overlays.
+
+### Target File: `/server/streaminject/StreamInjectService.ts`
+```typescript
+if (options.audioTrackPath) {
+  cliArgs.push("--audio-track", options.audioTrackPath);
+  cliArgs.push("--audio-volume", String(options.audioVolume ?? 1.0));
+  cliArgs.push("--audio-start-offset", String(options.audioStartOffset ?? 0));
+  cliArgs.push("--audio-fade-in", String(options.audioFadeIn ?? 0));
+  cliArgs.push("--audio-fade-out", String(options.audioFadeOut ?? 0));
+}
+```
+- Augmented `StreamInjectService` media scanning to index `.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`, and `.aac` from `models/audio` and `output/audio`.
+- Passed all audio mixing, chromakey similarity, and watermark timeline parameters to Python subprocess.
+
+### Target File: `/server.ts` & `/src/components/ModelPreWarmPanel.tsx`
+```typescript
+{
+  id: 'musicgen_small', name: 'MusicGen Small (AudioCraft 300M)', filename: 'facebook/musicgen-small',
+  workflowId: 'audiocraft_music', type: 'music', vramFootprintMB: 2800,
+  description: 'Meta AudioCraft MusicGen 300M model for fast BGM generation and audio composition (cached in models/audio).'
+}
+```
+- Integrated AudioCraft MusicGen into Model Pre-Warm state machine and VRAM management visualizer with distinct `Music` icon badges and allocation budget tracking.
+
+---
+
+# v1.17.69 (Patch 1) — Import Migration Verification & TypeScript Fixes
+
+### Target File: `/server/jobs/JobManager.ts`
+```typescript
+export interface GinaJob {
+  id: string;
+  promptId?: string;
+  workflowId: string;
+  status: JobStatus;
+  progress: number;
+  step?: string;
+  currentNodeId?: string | null;
+  currentNodeClass?: string;
+  currentStep?: number;
+  totalSteps?: number;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+  outputs: any[];
+  parameters: Record<string, any>;
+}
+```
+- Added optional `step?: string` field to `GinaJob` interface to align with StreamInject rendering progress tracking.
+
+### Target File: `/src/components/MilestoneChecklist.tsx`
+```typescript
+{ phase: 31, name: 'STREAMINJECT v2.5 PURE RENDER SUITE', status: 'IN_PROGRESS', details: 'Add Audio import (with duration and start/finish timeline)into both Visual Layout Studio and Master Pipeline Stitcher, Add Chromakey Overlay, Watermark & Subtitles duration and start/finish timeline' }
+```
+- Corrected status enum value from `'IN PROGRESS'` to `'IN_PROGRESS'`.
+
+---
+
 # v1.17.69 — StreamInject v2.5 UI Integration & Navigation Wireup
 
 ### Target File: `/src/App.tsx`

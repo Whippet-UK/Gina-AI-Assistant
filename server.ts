@@ -1854,7 +1854,7 @@ interface PreWarmModelDef {
   name: string;
   filename: string;
   workflowId: string;
-  type: 'image' | 'video' | 'shorts';
+  type: 'image' | 'video' | 'shorts' | 'audio' | 'music';
   vramFootprintMB: number;
   description: string;
 }
@@ -1869,6 +1869,16 @@ const AVAILABLE_PREWARM_MODELS: PreWarmModelDef[] = [
     id: 'ltx_video', name: 'LTX-Video 2.5 (auto-discovered)', filename: process.env.LTX_MODEL || 'AUTO_DISCOVER_LTX',
     workflowId: 'ltx_video', type: 'video', vramFootprintMB: 5000,
     description: 'Current installed LTX model discovered from the local ComfyUI model tree/workflow. Set LTX_MODEL to pin a filename.'
+  },
+  {
+    id: 'musicgen_small', name: 'MusicGen Small (AudioCraft 300M)', filename: 'facebook/musicgen-small',
+    workflowId: 'audiocraft_music', type: 'music', vramFootprintMB: 2800,
+    description: 'Meta AudioCraft MusicGen 300M model for fast BGM generation and audio composition (cached in models/audio).'
+  },
+  {
+    id: 'musicgen_medium', name: 'MusicGen Medium (AudioCraft 1.5B)', filename: 'facebook/musicgen-medium',
+    workflowId: 'audiocraft_music', type: 'music', vramFootprintMB: 4800,
+    description: 'Meta AudioCraft MusicGen 1.5B model for high-fidelity soundtrack generation and scoring.'
   }
 ];
 

@@ -1,7 +1,7 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "1.17.69",
+  "version": "1.17.71",
   "type": "module",
   "scripts": {
     "dev": "tsx watch server.ts",

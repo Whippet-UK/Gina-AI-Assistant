@@ -489,9 +489,23 @@ class MasterRenderPipeline:
         split_end_sec: Optional[float] = None,
         green_screen_overlay: Optional[str] = None,
         overlay_start_time: float = 5.0,
+        overlay_finish_time: Optional[float] = None,
+        chroma_color: str = "0x00FF00",
+        chroma_similarity: float = 0.15,
+        chroma_blend: float = 0.1,
         watermark_path: Optional[str] = None,
         watermark_pos: str = "TR",
-        subtitle_path: Optional[str] = None
+        watermark_start_time: float = 0.0,
+        watermark_finish_time: Optional[float] = None,
+        watermark_opacity: float = 0.85,
+        subtitle_path: Optional[str] = None,
+        audio_track_path: Optional[str] = None,
+        audio_start_time: float = 0.0,
+        audio_trim_start: float = 0.0,
+        audio_trim_end: Optional[float] = None,
+        audio_volume: float = 1.0,
+        audio_fade_in: float = 0.5,
+        audio_fade_out: float = 0.5
     ) -> Dict[str, Any]:
         start_time_all = time.time()
         scratch = ensure_scratch_directory()
@@ -536,17 +550,18 @@ class MasterRenderPipeline:
 
         # Step 4: Chromakey Green Screen Overlay & Watermark / Subtitles
         game_enhanced = os.path.join(scratch, "game_enhanced.mp4")
-        filter_inputs = ["[0:v]"]
         filter_chains = []
         input_args = ["-i", game_slice_aspect]
         curr_stream = "[0:v]"
+        curr_audio = "0:a"
         stream_idx = 1
 
         # Chroma key overlay if provided
         if green_screen_overlay and os.path.isfile(green_screen_overlay):
             input_args.extend(["-itsoffset", str(overlay_start_time), "-i", green_screen_overlay])
-            chroma_tag = f"[{stream_idx}:v]chromakey=0x00FF00:0.1:0.2[chroma_out];"
-            overlay_tag = f"{curr_stream}[chroma_out]overlay=enable='gte(t,{overlay_start_time})'[v_chroma]"
+            ck_enable = f"gte(t,{overlay_start_time})" if overlay_finish_time is None else f"between(t,{overlay_start_time},{overlay_finish_time})"
+            chroma_tag = f"[{stream_idx}:v]chromakey={chroma_color}:{chroma_similarity}:{chroma_blend}[chroma_out];"
+            overlay_tag = f"{curr_stream}[chroma_out]overlay=enable='{ck_enable}'[v_chroma]"
             filter_chains.append(chroma_tag + overlay_tag)
             curr_stream = "[v_chroma]"
             stream_idx += 1
@@ -561,9 +576,33 @@ class MasterRenderPipeline:
                 "BR": "W-w-20:H-h-20"
             }
             overlay_pos = pos_map.get(watermark_pos.upper(), "W-w-20:20")
-            wm_tag = f"{curr_stream}[{stream_idx}:v]overlay={overlay_pos}[v_wm]"
+            wm_enable = f"gte(t,{watermark_start_time})" if watermark_finish_time is None else f"between(t,{watermark_start_time},{watermark_finish_time})"
+            wm_tag = f"[{stream_idx}:v]format=rgba,colorchannelmixer=aa={watermark_opacity}[wm_alpha];{curr_stream}[wm_alpha]overlay={overlay_pos}:enable='{wm_enable}'[v_wm]"
             filter_chains.append(wm_tag)
             curr_stream = "[v_wm]"
+            stream_idx += 1
+
+        # Background Audio Track Mixing if provided
+        if audio_track_path and os.path.isfile(audio_track_path):
+            input_args.extend(["-i", audio_track_path])
+            # Trim, volume, fade in/out on injected audio track
+            audio_dur_filter = []
+            if audio_trim_start > 0:
+                audio_dur_filter.append(f"atrim=start={audio_trim_start}")
+            if audio_trim_end is not None and audio_trim_end > 0:
+                audio_dur_filter.append(f"atrim=end={audio_trim_end}")
+            audio_dur_filter.append(f"volume={audio_volume}")
+            if audio_fade_in > 0:
+                audio_dur_filter.append(f"afade=t=in:ss=0:d={audio_fade_in}")
+            if audio_fade_out > 0:
+                audio_dur_filter.append(f"afade=t=out:st=5:d={audio_fade_out}")
+            if audio_start_time > 0:
+                delay_ms = int(audio_start_time * 1000)
+                audio_dur_filter.append(f"adelay={delay_ms}|{delay_ms}")
+            
+            af_str = ",".join(audio_dur_filter) if audio_dur_filter else "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
+            filter_chains.append(f"[{stream_idx}:a]{af_str}[bg_music];[0:a][bg_music]amix=inputs=2:duration=first:dropout_transition=2[a_mixed]")
+            curr_audio = "[a_mixed]"
             stream_idx += 1
 
         # Subtitle burning
@@ -578,14 +617,17 @@ class MasterRenderPipeline:
             enh_args = input_args + [
                 "-filter_complex", fc_str,
                 "-map", curr_stream,
-                "-map", "0:a",
+                "-map", curr_audio,
                 "-c:v", "libx264",
                 "-preset", "veryfast",
                 "-crf", "18",
-                "-c:a", "copy",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-ar", str(DEFAULT_SAMPLE_RATE),
+                "-ac", str(DEFAULT_AUDIO_CHANNELS),
                 game_enhanced
             ]
-            run_ffmpeg_command(enh_args, "Burn Overlays, Chromakey & Subtitles")
+            run_ffmpeg_command(enh_args, "Burn Overlays, Audio, Chromakey & Subtitles")
         else:
             game_enhanced = game_slice_aspect
 
@@ -836,6 +878,18 @@ class IntroOutroStudio:
         profile_circles = config.get("profile_circles", [])
         vfx_cfg = config.get("vfx", {})
 
+        # Audio track mixing for Intro/Outro Studio
+        audio_cfg = config.get("audio", {})
+        audio_track_path = audio_cfg.get("path") or config.get("audio_track_path")
+        audio_start_time = float(audio_cfg.get("start_offset", config.get("audio_start_time", 0.0)))
+        audio_trim_start = float(audio_cfg.get("trim_start", config.get("audio_trim_start", 0.0)))
+        audio_trim_end = audio_cfg.get("trim_end") if audio_cfg.get("trim_end") is not None else config.get("audio_trim_end")
+        if audio_trim_end is not None:
+            audio_trim_end = float(audio_trim_end)
+        audio_volume = float(audio_cfg.get("volume", config.get("audio_volume", 1.0)))
+        audio_fade_in = float(audio_cfg.get("fade_in", config.get("audio_fade_in", 0.5)))
+        audio_fade_out = float(audio_cfg.get("fade_out", config.get("audio_fade_out", 0.5)))
+
         enable_glitch = bool(vfx_cfg.get("enable_glitch", True))
         enable_shake = bool(vfx_cfg.get("enable_shake", True))
         enable_bloom = bool(vfx_cfg.get("enable_bloom", True))
@@ -951,7 +1005,46 @@ class IntroOutroStudio:
 
             print("[STREAMINJECT_PROGRESS: 85%] Harmonizing audio & mastering peak ceiling...")
             harmonized = os.path.join(scratch, "custom_builder_harmonized.mp4")
-            harmonize_clip_audio(raw_custom, harmonized, target_duration=duration_sec)
+
+            if audio_track_path and os.path.isfile(audio_track_path):
+                # Apply audio track mixing to the rendered video
+                audio_dur_filter = []
+                if audio_trim_start > 0:
+                    audio_dur_filter.append(f"atrim=start={audio_trim_start}")
+                if audio_trim_end is not None and audio_trim_end > 0:
+                    audio_dur_filter.append(f"atrim=end={audio_trim_end}")
+                audio_dur_filter.append(f"volume={audio_volume}")
+                if audio_fade_in > 0:
+                    audio_dur_filter.append(f"afade=t=in:ss=0:d={audio_fade_in}")
+                if audio_fade_out > 0:
+                    fade_st = max(0.0, duration_sec - audio_fade_out)
+                    audio_dur_filter.append(f"afade=t=out:st={fade_st}:d={audio_fade_out}")
+                if audio_start_time > 0:
+                    delay_ms = int(audio_start_time * 1000)
+                    audio_dur_filter.append(f"adelay={delay_ms}|{delay_ms}")
+                
+                af_str = ",".join(audio_dur_filter) if audio_dur_filter else "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
+                
+                muxed_audio = os.path.join(scratch, "custom_builder_audio_muxed.mp4")
+                args = [
+                    "-i", raw_custom,
+                    "-i", audio_track_path,
+                    "-filter_complex", f"[{1}:a]{af_str}[a_out]",
+                    "-map", "0:v",
+                    "-map", "[a_out]",
+                    "-t", str(duration_sec),
+                    "-c:v", "copy",
+                    "-c:a", "aac",
+                    "-b:a", "192k",
+                    "-ar", str(DEFAULT_SAMPLE_RATE),
+                    "-ac", str(DEFAULT_AUDIO_CHANNELS),
+                    muxed_audio
+                ]
+                run_ffmpeg_command(args, "Mux Audio Track to Studio Layout")
+                harmonize_clip_audio(muxed_audio, harmonized, target_duration=duration_sec)
+            else:
+                harmonize_clip_audio(raw_custom, harmonized, target_duration=duration_sec)
+
             apply_master_audio_peak_limiter(harmonized, output_path)
         else:
             # Pure Native FFmpeg Filter Graph Engine fallback
@@ -988,20 +1081,52 @@ class IntroOutroStudio:
                 filter_chains.append(f"{last_v}drawtext=text='{t_str}':fontsize={f_size}:fontcolor={f_color}:x=(w-text_w)/2:y=(h*{0.3 + idx*0.12})-text_h/2{nxt_v}")
                 last_v = nxt_v
 
-            # Audio silent stream
-            args = [
-                "-f", "lavfi", "-i", f"anullsrc=r={DEFAULT_SAMPLE_RATE}:cl=stereo",
-                "-filter_complex", ";".join(filter_chains),
-                "-map", last_v,
-                "-map", "0:a",
-                "-t", str(duration_sec),
-                "-c:v", "libx264",
-                "-preset", "veryfast",
-                "-crf", "18",
-                "-c:a", "aac",
-                "-b:a", "192k",
-                raw_gen
-            ]
+            if audio_track_path and os.path.isfile(audio_track_path):
+                audio_dur_filter = []
+                if audio_trim_start > 0:
+                    audio_dur_filter.append(f"atrim=start={audio_trim_start}")
+                if audio_trim_end is not None and audio_trim_end > 0:
+                    audio_dur_filter.append(f"atrim=end={audio_trim_end}")
+                audio_dur_filter.append(f"volume={audio_volume}")
+                if audio_fade_in > 0:
+                    audio_dur_filter.append(f"afade=t=in:ss=0:d={audio_fade_in}")
+                if audio_fade_out > 0:
+                    fade_st = max(0.0, duration_sec - audio_fade_out)
+                    audio_dur_filter.append(f"afade=t=out:st={fade_st}:d={audio_fade_out}")
+                if audio_start_time > 0:
+                    delay_ms = int(audio_start_time * 1000)
+                    audio_dur_filter.append(f"adelay={delay_ms}|{delay_ms}")
+                af_str = ",".join(audio_dur_filter) if audio_dur_filter else "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
+                filter_chains.append(f"[0:a]{af_str}[a_out]")
+                
+                args = [
+                    "-i", audio_track_path,
+                    "-filter_complex", ";".join(filter_chains),
+                    "-map", last_v,
+                    "-map", "[a_out]",
+                    "-t", str(duration_sec),
+                    "-c:v", "libx264",
+                    "-preset", "veryfast",
+                    "-crf", "18",
+                    "-c:a", "aac",
+                    "-b:a", "192k",
+                    raw_gen
+                ]
+            else:
+                # Audio silent stream
+                args = [
+                    "-f", "lavfi", "-i", f"anullsrc=r={DEFAULT_SAMPLE_RATE}:cl=stereo",
+                    "-filter_complex", ";".join(filter_chains),
+                    "-map", last_v,
+                    "-map", "0:a",
+                    "-t", str(duration_sec),
+                    "-c:v", "libx264",
+                    "-preset", "veryfast",
+                    "-crf", "18",
+                    "-c:a", "aac",
+                    "-b:a", "192k",
+                    raw_gen
+                ]
             run_ffmpeg_command(args, "Render Studio Layout via FFmpeg")
             apply_master_audio_peak_limiter(raw_gen, output_path)
 
@@ -1247,9 +1372,23 @@ def main():
     render_parser.add_argument("--split-end", type=float, default=None, help="Gameplay slice end (seconds)")
     render_parser.add_argument("--chromakey", default=None, help="Green screen overlay video (0x00FF00)")
     render_parser.add_argument("--overlay-start", type=float, default=5.0, help="Overlay start time (seconds)")
+    render_parser.add_argument("--overlay-finish", type=float, default=None, help="Overlay finish time (seconds)")
+    render_parser.add_argument("--chroma-color", default="0x00FF00", help="Chroma key color hex (default 0x00FF00)")
+    render_parser.add_argument("--chroma-sim", type=float, default=0.15, help="Chroma similarity tolerance")
+    render_parser.add_argument("--chroma-blend", type=float, default=0.1, help="Chroma edge blend")
     render_parser.add_argument("--watermark", default=None, help="Watermark image path")
     render_parser.add_argument("--watermark-pos", choices=["TL", "TR", "BL", "BR"], default="TR", help="Watermark alignment")
+    render_parser.add_argument("--watermark-start", type=float, default=0.0, help="Watermark start time")
+    render_parser.add_argument("--watermark-finish", type=float, default=None, help="Watermark finish time")
+    render_parser.add_argument("--watermark-opacity", type=float, default=0.85, help="Watermark opacity")
     render_parser.add_argument("--subtitles", default=None, help="Subtitles file path (.srt, .ass)")
+    render_parser.add_argument("--audio-track", default=None, help="Background audio track path")
+    render_parser.add_argument("--audio-start", type=float, default=0.0, help="Audio track start offset")
+    render_parser.add_argument("--audio-trim-start", type=float, default=0.0, help="Audio trim start")
+    render_parser.add_argument("--audio-trim-end", type=float, default=None, help="Audio trim end")
+    render_parser.add_argument("--audio-volume", type=float, default=1.0, help="Audio track volume scale")
+    render_parser.add_argument("--audio-fade-in", type=float, default=0.5, help="Audio fade in duration")
+    render_parser.add_argument("--audio-fade-out", type=float, default=0.5, help="Audio fade out duration")
 
     # Pipeline 2: Intro/Outro Studio
     studio_parser = subparsers.add_parser("studio", help="Launch Intro & Outro Studio")
@@ -1273,9 +1412,23 @@ def main():
             split_end_sec=args.split_end,
             green_screen_overlay=args.chromakey,
             overlay_start_time=args.overlay_start,
+            overlay_finish_time=args.overlay_finish,
+            chroma_color=args.chroma_color,
+            chroma_similarity=args.chroma_sim,
+            chroma_blend=args.chroma_blend,
             watermark_path=args.watermark,
             watermark_pos=args.watermark_pos,
-            subtitle_path=args.subtitles
+            watermark_start_time=args.watermark_start,
+            watermark_finish_time=args.watermark_finish,
+            watermark_opacity=args.watermark_opacity,
+            subtitle_path=args.subtitles,
+            audio_track_path=args.audio_track,
+            audio_start_time=args.audio_start,
+            audio_trim_start=args.audio_trim_start,
+            audio_trim_end=args.audio_trim_end,
+            audio_volume=args.audio_volume,
+            audio_fade_in=args.audio_fade_in,
+            audio_fade_out=args.audio_fade_out
         )
     elif args.command == "studio":
         if args.layout_json:
