@@ -1,3 +1,128 @@
+# v1.17.89 (Update) — 1:1 Fooocus Layout Alignment for Gina Image Studio
+
+- **Summary**: Realized an exact 1:1 structural copy of Fooocus (https://github.com/lllyasviel/Fooocus) tailored natively for Gina AI Factory. The layout places the unobstructed output canvas (`GinaImagePreview`) prominently in the left column above the prompt area, nests the 4-tab `GinaImageInput` drawer (`Upscale or Variation`, `Image Prompt`, `Inpaint or Outpaint`, `Describe`) directly above the prompt box when `[x] Input Image` is checked, and renders the 4-tab `GinaImageSettings` (`Setting`, `Style`, `Model`, `Advanced`) in the collapsible right column triggered by `[x] Advanced` (expanding the preview to full width when closed).
+- **Target File Paths**:
+  - `/src/components/PromptStudio.tsx`: Restructured layout into Fooocus 2-column grid (`scale=2` left column for output canvas + prompt box + checkbox bar; `scale=1` right column for advanced drawer). Connected `handleUpscale` and `handleApplyDescribedPrompt` handlers.
+  - `/src/components/gina-image/GinaImagePreview.tsx`: Styled image stage container with rounded border and dark elevation to sit seamlessly as the primary stage in the left column.
+  - `/src/components/gina-image/GinaImageInput.tsx`: Complete 4-tab Fooocus architecture (Upscale or Variation, Image Prompt with 4 multi-slots & FaceSwap/PyraCanny/CPDS, Inpaint/Outpaint, Describe) branded for Gina.
+- **Key Code Snippet (`/src/components/PromptStudio.tsx`)**:
+```tsx
+{/* Authentic Fooocus Main Workspace */}
+<div
+  className={`p-4 sm:p-5 bg-[#0d1117] ${
+    advancedOpen
+      ? 'grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-5 items-start'
+      : 'max-w-5xl mx-auto w-full flex flex-col gap-4'
+  }`}
+>
+  {/* Left Column (Fooocus scale=2): Output Canvas + (Optional Input Image) + Prompt Box + Checkboxes */}
+  <div className="flex flex-col gap-4 min-w-0">
+    <GinaImagePreview ... />
+    {inputImageOpen && <GinaImageInput ... />}
+    ...
+  </div>
+  {/* Right Column (Fooocus scale=1): Advanced Settings Tabs */}
+  {advancedOpen && (
+    <div className="w-full shrink-0 animate-in fade-in slide-in-from-right-2 duration-200">
+      <GinaImageSettings ... />
+    </div>
+  )}
+</div>
+```
+
+# v1.17.89 — Gina Image Studio Pure Branding & Architecture
+
+- **Summary**: Completely removed all external branding and prefixes, standardizing all Image Studio components, datasets, and controls around the native GINA architecture (`GinaImagePreview`, `GinaImageInput`, `GinaImageSettings`, `ginaImageStyles.ts`).
+- **Target File Paths**:
+  - `/src/data/ginaImageStyles.ts`: Established native Gina image styles (`Gina V2`, `Gina Enhance`, `Gina Sharp`, `Cinematic Cinema`, `Master Photography`, `Modern Anime`, `Cyberpunk Neon`, `Sci-Fi Hardware & Cockpit`, `AIDA64 Dark Chassis`, etc.).
+  - `/src/components/gina-image/GinaImagePreview.tsx`: Replaced external naming with Gina Image Canvas, Gina post-generation actions, session history carousel, fullscreen modal, and AIDA64 telemetry sensor panel fusion.
+  - `/src/components/gina-image/GinaImageInput.tsx`: Pure Gina Image Input interface supporting Image Prompt, Face Swap, PyraCanny, and CPDS modes with drag-and-drop upload and weight/stop-at sliders.
+  - `/src/components/gina-image/GinaImageSettings.tsx`: 4-tab Gina Settings drawer (`Setting`, `Style`, `Model`, `Advanced`) featuring Gina Performance profiles, aspect ratios (including AIDA64 1024×600), style search with category filters, project model binding (`flux1-schnell-Q4_K_S.gguf`), and RTX 3070 Ti 8GB Hardware Sentinel.
+  - `/src/components/PromptStudio.tsx`: Integrated full Gina Image Studio workstation layout with native naming, log tags (`[Gina Image Studio]`), download filenames (`gina-*.png`), and promoted output filenames (`gina-promoted-*.png`).
+
+- **Key Code Snippet (`/src/components/PromptStudio.tsx`)**:
+```tsx
+import { GINA_IMAGE_STYLES, GinaImageStyle } from '../data/ginaImageStyles';
+import { GinaImagePreview, HistoryItem } from './gina-image/GinaImagePreview';
+import { GinaImageInput, InputImageMode } from './gina-image/GinaImageInput';
+import {
+  GinaImageSettings,
+  GinaSettingsTab,
+  GINA_ASPECT_RATIOS,
+  GINA_PERFORMANCE_PRESETS
+} from './gina-image/GinaImageSettings';
+
+{/* Top Gina Header Bar */}
+<div className="px-4 py-3 border-b border-[#21262d] bg-[#161b22] flex items-center justify-between gap-3">
+  <div className="flex items-center gap-3">
+    <div className="w-8 h-8 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center shadow-inner">
+      <Sparkles className="w-4 h-4 text-blue-400" />
+    </div>
+    <div>
+      <div className="flex items-center gap-2">
+        <h2 className="text-sm font-extrabold text-white tracking-wider font-mono">
+          GINA IMAGE STUDIO
+        </h2>
+        <span className="px-2 py-0.2 rounded bg-blue-500/15 border border-blue-500/30 text-[9px] text-blue-300 font-mono">
+          FLUX.1-Schnell GGUF
+        </span>
+      </div>
+      <p className="text-[10px] text-zinc-400 font-mono">
+        Prompt-focused creation · ComfyUI local backend · RTX 3070 Ti 8GB VRAM cage
+      </p>
+    </div>
+  </div>
+</div>
+```
+
+# v1.17.88 — Fooocus Architecture Overhaul for Gina Image Studio
+
+- **Summary**: Transformed Gina Image Studio (`src/components/PromptStudio.tsx`) into an authentic Fooocus workstation layout mirroring https://github.com/lllyasviel/Fooocus, while keeping Gina's local ComfyUI execution pipeline and installed models (`flux1-schnell-Q4_K_S.gguf`, Geneva, Wan, LTX).
+- **Target File Paths**:
+  - `/src/data/fooocusStyles.ts`: Created authentic Fooocus styles dataset (Fooocus V2, Enhance, Sharp, Cinematic, Photographic, Anime, Digital Art, Fantasy Art, Cyberpunk, Sci-Fi Hardware, Watercolor, Neon Punk, Isometric 3D, Origami, Vintage Film, Dark Fantasy).
+  - `/src/components/fooocus/FooocusPreview.tsx`: Created high-res image stage with generation progress overlay, quick fullscreen/download/copy actions, session history carousel, and post-generation actions (Vary Subtle/Strong, Keep Image, Save to Library, AIDA64 Sensor Panel fusion).
+  - `/src/components/fooocus/FooocusInputImage.tsx`: Created Fooocus Input Image panel toggled via `[x] Input Image` checkbox, supporting Image Prompt, Face Swap, PyraCanny, and CPDS modes with drag-and-drop upload, weight slider, stop-at slider, and one-click reuse of active generation.
+  - `/src/components/fooocus/FooocusSettingsPanel.tsx`: Created Fooocus 4-tab advanced settings drawer (`Setting`, `Style`, `Model`, `Advanced`) supporting performance presets (Speed, Quality, Extreme Speed), visual aspect ratio grid (including AIDA64 1024×600), image number, seed controls, multi-select style search, base model dropdown, LoRA slots, guidance/sampler/scheduler overrides, and GPU VRAM sentinel.
+  - `/src/components/PromptStudio.tsx`: Orchestrated the full Fooocus UI with prominent prompt textarea, large Generate/Cancel button, `[x] Input Image` and `[x] Advanced` checkboxes, active style pills, keyboard shortcut `Ctrl+Enter`, prompt sanitization, and ComfyUI workflow integration.
+
+- **Key Code Snippet (`/src/components/PromptStudio.tsx`)**:
+```tsx
+{/* Prompt Input & Generate Button Box */}
+<div className="relative flex flex-col sm:flex-row gap-2 bg-[#161b22] border border-[#30363d] rounded-2xl p-2.5 shadow-xl focus-within:border-blue-500/70 transition-all">
+  <textarea
+    ref={textareaRef}
+    rows={3}
+    value={cfg.promptInput}
+    onChange={(e) => updatePromptStudio({ promptInput: e.target.value })}
+    onKeyDown={handleKeyDown}
+    placeholder="Type prompt here or paste parameters... (Press Ctrl+Enter to generate)"
+    className="flex-1 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-600 p-2 outline-none resize-none leading-relaxed font-sans"
+  />
+  <div className="flex sm:flex-col justify-end gap-2 flex-shrink-0">
+    {!isBusy ? (
+      <button
+        type="button"
+        onClick={handleGenerate}
+        disabled={!cfg.promptInput.trim() || !online}
+        className="w-full sm:w-32 py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-extrabold text-xs tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition-all active:scale-95"
+      >
+        <Play className="w-4 h-4 fill-current" />
+        GENERATE
+      </button>
+    ) : (
+      <button
+        type="button"
+        onClick={cancelJob}
+        className="w-full sm:w-32 py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-rose-600/30 transition-all animate-pulse"
+      >
+        <Square className="w-4 h-4 fill-current" />
+        CANCEL
+      </button>
+    )}
+  </div>
+</div>
+```
+
 # v1.17.87 — GitHub Import Stabilization & Conflict Resolution
 
 - **Resolution**: Cleanly resolved all git merge conflict markers across configuration, backend services, Python automation scripts, and UI components from the `Whippet-UK/Gina-AI-Assistant` import.

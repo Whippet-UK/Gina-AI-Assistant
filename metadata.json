@@ -1,6 +1,6 @@
 {
   "name": "Gina AI Factory — Local Creator UI",
-  "version": "1.17.87",
+  "version": "1.17.89",
   "description": "Strictly local creator dashboard with ComfyUI, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, local Gemma 3 12B CUDA inference, zero-VRAM hybrid RAG knowledge engine, real-time node graph sync, and voice mode.",
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API",

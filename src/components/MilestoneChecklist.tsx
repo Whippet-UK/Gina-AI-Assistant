@@ -74,7 +74,9 @@ export const MilestoneChecklist: React.FC<MilestoneChecklistProps> = ({ activeRe
     { id: 'RESTORE_V1.17.84_ONE_CLICK_SINGING_AUDIO_DECK', label: 'One-Click Singing Pipeline & Audio Deck', description: 'ACE-Step 1.5 local singing backend with lyrics-aware routing and automatic Audio Deck load', timestamp: '2026-09-04 12:00', status: 'LOCKED' },
     { id: 'RESTORE_V1.17.85_ACE_UV_BOOTSTRAP', label: 'ACE-Step Windows uv Bootstrap', description: 'Automated uv package manager installation and PATH-independent executable resolution', timestamp: '2026-09-05 06:00', status: 'LOCKED' },
     { id: 'RESTORE_V1.17.86_ACE_STEP_API_CLI_FIX', label: 'ACE-Step API CLI Contract Fix', description: 'Corrected CLI arguments for ACE-Step REST API server and 8GB safe offload profile', timestamp: '2026-09-05 18:00', status: 'LOCKED' },
-    { id: 'RESTORE_V1.17.87_FOOOCUS_STYLE_IMAGE_STUDIO', label: 'Fooocus-Inspired Gina Image Studio', description: 'Focused prompt-first layout, large unobstructed preview, collapsible advanced controls, and local-only status', timestamp: '2026-09-06 00:00', status: 'ACTIVE' },
+    { id: 'RESTORE_V1.17.87_FOOOCUS_STYLE_IMAGE_STUDIO', label: 'Fooocus-Inspired Gina Image Studio', description: 'Focused prompt-first layout, large unobstructed preview, collapsible advanced controls, and local-only status', timestamp: '2026-09-06 00:00', status: 'LOCKED' },
+    { id: 'RESTORE_V1.17.88_FOOOCUS_IMAGE_STUDIO', label: 'Fooocus Architecture Overhaul for Gina Image Studio', description: 'Authentic Fooocus UI/UX, Input Image modes (Image Prompt, Face Swap, PyraCanny, CPDS), 4-tab settings (Setting, Style, Model, Advanced), Fooocus V2 styles and history carousel', timestamp: '2026-09-06 04:00', status: 'LOCKED' },
+    { id: 'RESTORE_V1.17.89_GINA_IMAGE_STUDIO', label: 'Gina Image Studio — Full GINA Branding Integration', description: 'Pure GINA branding across all studio components (GinaImagePreview, GinaImageInput, GinaImageSettings, Gina V2 styles, and Gina telemetry)', timestamp: '2026-09-06 04:10', status: 'ACTIVE' },
   ]);
 
   const [checks, setChecks] = useState<VerificationCheck[]>([
