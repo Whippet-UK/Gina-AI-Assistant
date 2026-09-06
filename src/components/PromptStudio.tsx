@@ -105,14 +105,26 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
   const [activeSettingsTab, setActiveSettingsTab] = useState<GinaSettingsTab>('setting');
   const [vramGraphOpen, setVramGraphOpen] = useState(false);
 
+  // Ratio setup
+  const selectedRatio = cfg.aspectRatio || 'aida64';
+  const currentRatioDef = GINA_ASPECT_RATIOS.find((r) => r.id === selectedRatio) || GINA_ASPECT_RATIOS[1];
+
   // Gina Parameters
   const [performance, setPerformance] = useState('speed'); // extreme_speed, speed, quality
   const [customSize, setCustomSize] = useState(false);
-  const [width, setWidth] = useState(1024);
-  const [height, setHeight] = useState(600);
+  const [width, setWidth] = useState(currentRatioDef.w);
+  const [height, setHeight] = useState(currentRatioDef.h);
   const [imageNumber, setImageNumber] = useState(1);
   const [randomSeed, setRandomSeed] = useState(true);
   const [seedValue, setSeedValue] = useState(123456789);
+
+  // Keep dimensions strictly synchronized with the chosen aspect ratio preset
+  useEffect(() => {
+    if (!customSize && currentRatioDef) {
+      setWidth(currentRatioDef.w);
+      setHeight(currentRatioDef.h);
+    }
+  }, [selectedRatio, customSize, currentRatioDef.w, currentRatioDef.h]);
 
   // Gina Styles (Default to Gina V2)
   const [selectedStyles, setSelectedStyles] = useState<string[]>(['gina_v2']);
@@ -226,8 +238,13 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
         });
 
         // Set initial dimensions & steps from workflow
-        if (initial.width) setWidth(Number(initial.width));
-        if (initial.height) setHeight(Number(initial.height));
+        if (customSize) {
+          if (initial.width) setWidth(Number(initial.width));
+          if (initial.height) setHeight(Number(initial.height));
+        } else {
+          setWidth(currentRatioDef.w);
+          setHeight(currentRatioDef.h);
+        }
         if (initial.steps) setSteps(Number(initial.steps));
         if (initial.sampler) setSampler(String(initial.sampler));
         if (initial.scheduler) setScheduler(String(initial.scheduler));
@@ -249,11 +266,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [selectedWorkflow]);
-
-  // Ratio setup
-  const selectedRatio = cfg.aspectRatio || 'aida64';
-  const currentRatioDef = GINA_ASPECT_RATIOS.find((r) => r.id === selectedRatio) || GINA_ASPECT_RATIOS[1];
+  }, [selectedWorkflow, customSize, currentRatioDef.w, currentRatioDef.h]);
 
   const handleSelectRatio = (ratioId: string, w: number, h: number) => {
     updatePromptStudio({ aspectRatio: ratioId });
@@ -455,8 +468,10 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     if (negControl && negative) bound[negControl.key] = negative;
 
     // Dimensions
-    if (controls.some((c) => c.key === 'width')) bound.width = width;
-    if (controls.some((c) => c.key === 'height')) bound.height = height;
+    const effectiveWidth = customSize ? width : currentRatioDef.w;
+    const effectiveHeight = customSize ? height : currentRatioDef.h;
+    if (controls.some((c) => c.key === 'width')) bound.width = effectiveWidth;
+    if (controls.some((c) => c.key === 'height')) bound.height = effectiveHeight;
 
     // Sampling settings
     if (controls.some((c) => c.key === 'steps')) bound.steps = steps;
@@ -484,7 +499,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
 
     onAddLog(
       'INFO',
-      `[Gina Image Studio] Generating with ${workflowModelLabel} (${width}×${height}, ${steps} steps, seed ${effectiveSeed}). Styles: [${selectedStyles.join(', ')}]`
+      `[Gina Image Studio] Generating with ${workflowModelLabel} (${effectiveWidth}×${effectiveHeight}, ${steps} steps, seed ${effectiveSeed}). Styles: [${selectedStyles.join(', ')}]`
     );
 
     await startJob(selectedWorkflow, bound);
@@ -803,8 +818,8 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
             activeLayout={activeLayout}
             onFuseLayout={handleFuseLayout}
             fusingLayout={fusingLayout}
-            resolutionLabel={`${width} × ${height}`}
-            ratioLabel={currentRatioDef.label}
+            resolutionLabel={`${customSize ? width : currentRatioDef.w} × ${customSize ? height : currentRatioDef.h}`}
+            ratioLabel={customSize ? 'Custom Size' : currentRatioDef.label}
           />
 
           {/* Drawer: Input Image Tabs (Appears when [x] Input Image is checked) */}

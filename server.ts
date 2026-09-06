@@ -30,15 +30,15 @@ const isWin = process.platform === "win32";
 const PORT = process.env.PORT ? Number(process.env.PORT) : (isWin ? 3200 : 3000);
 const HOST = process.env.HOST || (isWin ? "127.0.0.1" : "0.0.0.0");
 const COMFY_URL = process.env.COMFY_URL || "http://127.0.0.1:8188";
-const GINA_ROOT = process.env.GINA_ROOT || "C:\\Gina_AI";
-const COMFY_ROOT = process.env.COMFY_ROOT || "C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI";
+const GINA_ROOT = process.env.GINA_ROOT || (isWin ? "C:\\Gina_AI" : process.cwd());
+const COMFY_ROOT = process.env.COMFY_ROOT || (isWin ? "C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI" : path.join(process.cwd(), "ComfyUI"));
 const FLUX_GGUF = process.env.FLUX_GGUF || "flux1-schnell-Q4_K_S.gguf";
 const FLUX_CLIP_L = process.env.FLUX_CLIP_L || "clip_l.safetensors";
 const FLUX_T5 = process.env.FLUX_T5 || "t5xxl_fp8_e4m3fn.safetensors";
 const FLUX_VAE = process.env.FLUX_VAE || "ae.safetensors";
 const MODEL_ROOT = process.env.COMFY_MODEL_ROOT || path.join(COMFY_ROOT, "models");
 const LOCAL_WORKFLOW_DIR = path.join(process.cwd(), "workflows");
-const GINA_WORKFLOW_DIR = process.env.GINA_WORKFLOW_DIR || "C:\\Gina_AI\\workflows";
+const GINA_WORKFLOW_DIR = process.env.GINA_WORKFLOW_DIR || (isWin ? "C:\\Gina_AI\\workflows" : path.join(process.cwd(), "workflows"));
 const WORKFLOW_DIR = LOCAL_WORKFLOW_DIR;
 const workflowRegistry = new WorkflowRegistry(LOCAL_WORKFLOW_DIR, GINA_WORKFLOW_DIR);
 const jobManager = new JobManager();
@@ -455,7 +455,7 @@ app.post('/api/knowledge/watcher/stop', (_req,res) => { stopKnowledgeWatcher(); 
 async function getComfyHealth() {
   const started = Date.now();
   try {
-    const response = await fetch(`${COMFY_URL}/system_stats`, { signal: AbortSignal.timeout(3000) });
+    const response = await fetch(`${COMFY_URL}/system_stats`, { signal: AbortSignal.timeout(10000) });
     const latencyMs = Date.now() - started;
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
@@ -473,27 +473,32 @@ async function probeComfyWatchdog() {
   if (health.online) {
     comfyWatchdog.consecutiveFailures = 0;
     comfyWatchdog.lastError = null;
+    if (previous === false) {
+      comfyWatchdog.lastChangeAt = comfyWatchdog.lastProbeAt;
+      comfyWatchdog.online = true;
+      const message = `ComfyUI watchdog: backend ONLINE after recovery.`;
+      console.log(`[Comfy Watchdog] ${message}`);
+      recordComfyErrorLog(message, { watchdog: true });
+    } else {
+      comfyWatchdog.online = true;
+    }
   } else {
     comfyWatchdog.consecutiveFailures += 1;
     comfyWatchdog.lastError = health.error || 'ComfyUI unavailable';
-  }
-  if (previous !== health.online) {
-    comfyWatchdog.lastChangeAt = comfyWatchdog.lastProbeAt;
-    comfyWatchdog.online = health.online;
-    const message = health.online
-      ? `ComfyUI watchdog: backend ONLINE after ${comfyWatchdog.consecutiveFailures} failed probe(s).`
-      : `ComfyUI watchdog: backend OFFLINE — ${health.error || 'unknown error'}`;
-    if (health.online) console.log(`[Comfy Watchdog] ${message}`);
-    else recordDashboardError(message, { source:'comfy-watchdog', status:503 });
-    recordComfyErrorLog(message, { watchdog: true });
-  } else {
-    comfyWatchdog.online = health.online;
+    // Require at least 2 consecutive failures before declaring OFFLINE to prevent transient GPU load timeouts from tripping the watchdog
+    if (comfyWatchdog.consecutiveFailures >= 2 && previous !== false) {
+      comfyWatchdog.lastChangeAt = comfyWatchdog.lastProbeAt;
+      comfyWatchdog.online = false;
+      const message = `ComfyUI watchdog: backend OFFLINE — ${health.error || 'unknown error'}`;
+      recordDashboardError(message, { source: 'comfy-watchdog', status: 503 });
+      recordComfyErrorLog(message, { watchdog: true });
+    }
   }
   if (health.online) {
     try {
-      const q = await fetch(`${COMFY_URL}/queue`, { signal: AbortSignal.timeout(2500) });
+      const q = await fetch(`${COMFY_URL}/queue`, { signal: AbortSignal.timeout(5000) });
       comfyWatchdog.lastQueue = q.ok ? await q.json() : { error: `HTTP ${q.status}` };
-    } catch (e:any) { comfyWatchdog.lastQueue = { error: e?.message || 'Queue probe failed' }; }
+    } catch (e: any) { comfyWatchdog.lastQueue = { error: e?.message || 'Queue probe failed' }; }
   }
   return health;
 }
@@ -1829,11 +1834,27 @@ app.post("/api/comfy/clear-cache", async (req, res) => {
   try {
     const unloadModels = req.body?.unload_models ?? true;
     const freeMemory = req.body?.free_memory ?? true;
+    const isAutoTrigger = req.body?.is_auto_trigger ?? false;
+
+    // Protection: If a ComfyUI generation is currently active, do not unload models or disrupt execution!
+    const activeRunningJob = jobManager.list().find(j => j.status === 'RUNNING' || j.status === 'QUEUED');
+    if (activeRunningJob) {
+      // If models were to be unloaded during sampling, PyTorch execution freezes or drops weights
+      if (isAutoTrigger || unloadModels) {
+        return res.json({
+          success: false,
+          skipped: true,
+          message: `ComfyUI memory purge skipped: Generation is actively in progress (Job ${activeRunningJob.id}, status: ${activeRunningJob.status}). Cache purge skipped to protect active sampling.`,
+          activeJobId: activeRunningJob.id
+        });
+      }
+    }
+
     const response = await fetch(`${COMFY_URL}/free`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ unload_models: unloadModels, free_memory: freeMemory }),
-      signal: AbortSignal.timeout(5000)
+      signal: AbortSignal.timeout(10000)
     });
     if (response.ok) {
       if (unloadModels) {

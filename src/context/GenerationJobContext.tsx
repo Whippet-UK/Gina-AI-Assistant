@@ -154,7 +154,11 @@ export const GenerationJobProvider: React.FC<{
     source.addEventListener('job', (event) => {
       if (activeJobIdRef.current !== jobId) return;
       const next = JSON.parse((event as MessageEvent).data) as GinaJob;
-      setJob(next);
+      setJob(prev => ({
+        ...prev,
+        ...next,
+        preview: next.preview || prev?.preview
+      }));
       if (next.status === 'COMPLETED') {
         if (outputResolvedJobRef.current !== jobId) loadOutput(jobId);
         onAddLogRef.current?.('INFO', `Local ComfyUI job ${jobId.slice(0, 8)} completed. Finalising output...`);

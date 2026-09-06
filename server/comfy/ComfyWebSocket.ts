@@ -18,6 +18,7 @@ export class ComfyWebSocket extends EventEmitter {
     const url = `${base}/ws?clientId=${encodeURIComponent(this.clientId)}`;
     try {
       this.socket = new WebSocket(url);
+      try { (this.socket as any).binaryType = 'arraybuffer'; } catch {}
     } catch (error) {
       this.emit('comfy_error', error);
       this.scheduleReconnect();
@@ -25,6 +26,7 @@ export class ComfyWebSocket extends EventEmitter {
     }
     this.socket.addEventListener('open', () => {
       this.connected = true;
+      try { (this.socket as any).binaryType = 'arraybuffer'; } catch {}
       this.emit('status', { connected: true, clientId: this.clientId });
     });
     this.socket.addEventListener('close', () => {
@@ -47,10 +49,13 @@ export class ComfyWebSocket extends EventEmitter {
 
   private scheduleReconnect() { if (!this.reconnectTimer) this.reconnectTimer = setTimeout(() => { this.reconnectTimer = undefined; this.connect(); }, 2000); }
 
-  private handleBinaryMessage(data: any) {
+  private async handleBinaryMessage(data: any) {
     try {
       let buffer: Buffer | null = null;
-      if (Buffer.isBuffer(data)) {
+      if (typeof Blob !== 'undefined' && data instanceof Blob) {
+        const arrayBuf = await data.arrayBuffer();
+        buffer = Buffer.from(arrayBuf);
+      } else if (Buffer.isBuffer(data)) {
         buffer = data;
       } else if (data instanceof ArrayBuffer) {
         buffer = Buffer.from(data);
@@ -60,31 +65,42 @@ export class ComfyWebSocket extends EventEmitter {
 
       if (!buffer || buffer.length < 8) return;
 
-      // ComfyUI binary preview frame format:
-      // bytes 0..3: event type (1 = PREVIEW_IMAGE, 2 = UNENCODED)
-      // bytes 4..7: image format type (1 = JPEG, 2 = PNG)
-      // bytes 8+: image payload
-      const eventType = buffer.readUInt32BE(0);
-      const imageType = buffer.readUInt32BE(4);
+      // Locate image magic headers (JPEG: FF D8 FF, PNG: 89 50 4E 47)
+      let imageBytes: Buffer | null = null;
+      let mime = 'image/jpeg';
 
-      if (eventType === 1 || eventType === 2) {
-        const imageBytes = buffer.subarray(8);
-        if (imageBytes.length > 0) {
-          const isPng = imageType === 2 || (imageBytes[0] === 0x89 && imageBytes[1] === 0x50);
-          const mime = isPng ? 'image/png' : 'image/jpeg';
-          const base64 = imageBytes.toString('base64');
-          const previewDataUrl = `data:${mime};base64,${base64}`;
+      const jpegIndex = buffer.indexOf(Buffer.from([0xff, 0xd8, 0xff]));
+      const pngIndex = buffer.indexOf(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 
-          // Find the active running job
-          const runningJob = this.jobs.list().find(j => j.status === 'RUNNING');
-          if (runningJob) {
-            this.jobs.update(runningJob.id, { preview: previewDataUrl });
-            this.jobs.event(runningJob.id, 'preview', {
-              preview: previewDataUrl,
-              step: runningJob.currentStep,
-              totalSteps: runningJob.totalSteps
-            });
-          }
+      if (pngIndex !== -1 && (jpegIndex === -1 || pngIndex < jpegIndex)) {
+        imageBytes = buffer.subarray(pngIndex);
+        mime = 'image/png';
+      } else if (jpegIndex !== -1) {
+        imageBytes = buffer.subarray(jpegIndex);
+        mime = 'image/jpeg';
+      } else if (buffer.length > 8) {
+        // Fallback to offset 8 if standard header was sent without identifiable magic
+        const eventType = buffer.readUInt32BE(0);
+        const imageType = buffer.readUInt32BE(4);
+        if (eventType === 1 || eventType === 2) {
+          imageBytes = buffer.subarray(8);
+          mime = imageType === 2 ? 'image/png' : 'image/jpeg';
+        }
+      }
+
+      if (imageBytes && imageBytes.length > 0) {
+        const base64 = imageBytes.toString('base64');
+        const previewDataUrl = `data:${mime};base64,${base64}`;
+
+        // Find the active running or queued job
+        const runningJob = this.jobs.list().find(j => j.status === 'RUNNING' || j.status === 'QUEUED') || this.jobs.list()[0];
+        if (runningJob) {
+          this.jobs.update(runningJob.id, { preview: previewDataUrl, status: 'RUNNING' });
+          this.jobs.event(runningJob.id, 'preview', {
+            preview: previewDataUrl,
+            step: runningJob.currentStep,
+            totalSteps: runningJob.totalSteps
+          });
         }
       }
     } catch (err) {

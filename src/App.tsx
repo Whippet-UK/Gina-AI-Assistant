@@ -60,22 +60,31 @@ export default function App() {
     if (now - lastClearCacheRef.current < 3000) return;
     lastClearCacheRef.current = now;
     isClearingCacheRef.current = true;
-    addLog(isAutoTrigger ? 'RULE' : 'INFO', isAutoTrigger
-      ? `Proactive OOM Prevention: VRAM ${telemetry.vramUsedMB} MB exceeded the safety threshold; dispatched cache purge.`
-      : 'Dispatching manual purge signal to ComfyUI /free API.');
+    if (!isAutoTrigger) {
+      addLog('INFO', 'Dispatching manual purge signal to ComfyUI /free API.');
+    }
     try {
-      const res = await fetch('/api/comfy/clear-cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unload_models: unloadModels, free_memory: true }) });
+      const res = await fetch('/api/comfy/clear-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unload_models: unloadModels, free_memory: true, is_auto_trigger: isAutoTrigger })
+      });
       const data = await res.json();
-      if (res.ok && data.success) addLog('SEC', 'ComfyUI memory purge completed.');
-      else addLog('WARN', `Clear cache signal result: ${data.error || 'ComfyUI not responding'}`);
+      if (data.skipped) {
+        // Generation is actively running; purge was safely skipped to prevent execution lockup
+        return;
+      }
+      if (res.ok && data.success) {
+        addLog('SEC', 'ComfyUI memory purge completed.');
+      } else {
+        addLog('WARN', `Clear cache signal result: ${data.error || 'ComfyUI not responding'}`);
+      }
     } catch (err: any) {
       addLog('WARN', `Failed to send clear cache signal: ${err?.message || 'Network error'}`);
-    } finally { isClearingCacheRef.current = false; }
-  }, [telemetry.vramUsedMB, addLog]);
-
-  useEffect(() => {
-    if (telemetry.vramUsedMB > 7680) handleClearCache(true, true);
-  }, [telemetry.vramUsedMB, handleClearCache]);
+    } finally {
+      isClearingCacheRef.current = false;
+    }
+  }, [addLog]);
 
   const [isCooldownActive, setIsCooldownActive] = useState(false);
   const [cooldownRemainingSec, setCooldownRemainingSec] = useState(0);

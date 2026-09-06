@@ -77,8 +77,8 @@ export const GinaImagePreview: React.FC<GinaImagePreviewProps> = ({
 
   const progressPercent = Math.max(0, Math.min(100, job?.progress || 0));
   const livePreview = isBusy && job?.preview ? job.preview : null;
-  const displayImage = activeOutput || livePreview;
-  const isLivePreviewing = Boolean(isBusy && livePreview && !activeOutput);
+  const isLivePreviewing = Boolean(isBusy && livePreview);
+  const displayImage = isBusy ? (livePreview || null) : (activeOutput || null);
 
   return (
     <div

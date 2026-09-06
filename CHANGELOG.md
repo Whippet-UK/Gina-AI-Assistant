@@ -1,3 +1,73 @@
+# v1.17.91 — Proactive OOM Loop Elimination & ComfyUI Watchdog Resilience Fix
+
+- **Summary**: Resolved the generation lockup / freezing issue where generations were stuck at "Sampling Step 1/4" / "Sampling step 0/4, Image 1/1 ... 0%" accompanied by continuous "Proactive OOM Prevention: VRAM 7808 MB exceeded the safety threshold; dispatched cache purge" logs every 3 seconds and "ComfyUI watchdog: backend OFFLINE — The operation was aborted due to timeout".
+  1. **Eliminated Destructive OOM Purge Loop**: Removed the unconditional `vramUsedMB > 7680` `useEffect` in `App.tsx` that repeatedly sent `/free` memory and model unload commands to ComfyUI every 3 seconds during sampling. On an 8GB RTX 3070 Ti, FLUX.1-Schnell naturally operates at 7.6–7.8GB VRAM. Sending model purge signals mid-execution repeatedly interrupted and deadlocked PyTorch tensor execution. True OOM conditions are preserved and reactively handled by `logWithOomCheck` and `triggerCooldownBreath` on genuine PyTorch OOM exceptions.
+  2. **Active Job Protection on Server**: Added active generation detection to `/api/comfy/clear-cache` in `server.ts`. If any job is in `RUNNING` or `QUEUED` state, cache purge requests with model unload directives are safely skipped (`skipped: true`) to protect in-flight sampling workflows.
+  3. **Watchdog Timeout & Hysteresis**: Expanded the ComfyUI watchdog probe timeout from an aggressive 3s to 10s (queue probe from 2.5s to 5s) and introduced failure hysteresis (requires 2 consecutive failures before declaring OFFLINE). This prevents normal, heavy GPU kernel execution pauses from causing false-positive HTTP 503 OFFLINE alerts.
+- **Target File Paths**:
+  - `/src/App.tsx`: Removed unconditional auto-purge on high VRAM and safeguarded `handleClearCache` to respect skipped server responses.
+  - `/server.ts`: Added active job check in `/api/comfy/clear-cache`, expanded `getComfyHealth` probe timeout to 10s, and added consecutive failure hysteresis to `probeComfyWatchdog`.
+  - `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/src/components/MilestoneChecklist.tsx`: Synchronized codebase version to `1.17.91` (`RESTORE_V1.17.91_OOM_LOOP_AND_WATCHDOG_FIX`).
+- **Key Code Snippet (`/server.ts`)**:
+```ts
+// Protection: If a ComfyUI generation is currently active, do not unload models or disrupt execution!
+const activeRunningJob = jobManager.list().find(j => j.status === 'RUNNING' || j.status === 'QUEUED');
+if (activeRunningJob) {
+  if (isAutoTrigger || unloadModels) {
+    return res.json({
+      success: false,
+      skipped: true,
+      message: `ComfyUI memory purge skipped: Generation is actively in progress (Job ${activeRunningJob.id}, status: ${activeRunningJob.status}). Cache purge skipped to protect active sampling.`,
+      activeJobId: activeRunningJob.id
+    });
+  }
+}
+```
+
+# v1.17.90 — Live Build Preview Streaming & Dynamic Aspect Ratio Fix
+
+- **Summary**: Resolved both user-reported issues in Gina Image Studio:
+  1. **Live Build Preview Streaming**: In Node 20+, WebSocket binary data defaults to `Blob`. Enhanced `ComfyWebSocket.ts` to set `binaryType = 'arraybuffer'`, handle `Blob` payloads asynchronously via `await data.arrayBuffer()`, and locate JPEG (`0xFF 0xD8 0xFF`) and PNG (`0x89 0x50 0x4E 0x47`) image headers directly. In `GinaImagePreview.tsx`, prioritized `livePreview` during active generation (`isBusy`) so stale previous outputs never shadow real-time denoising frames or the active sampling stage. Updated `Start_Factory.bat` with `--preview-method latent2rgb` (optimal for FLUX.1-Schnell without requiring TAESD model downloads).
+  2. **Dynamic Aspect Ratio Synchronization**: Fixed the issue where selecting 1024×1024 (1:1) generated 1024×600. In `PromptStudio.tsx`, initialized dimensions from `currentRatioDef` (derived from `cfg.aspectRatio`), prevented workflow control fetching from overwriting dimensions unless `customSize` is enabled, and bound `effectiveWidth` and `effectiveHeight` for ComfyUI generation.
+- **Target File Paths**:
+  - `/server/comfy/ComfyWebSocket.ts`: Added WebSocket binary type configuration, async `Blob` arrayBuffer parsing, magic byte detection, and job preview dispatch.
+  - `/src/context/GenerationJobContext.tsx`: Preserved active preview frame across intermediate job updates.
+  - `/src/components/gina-image/GinaImagePreview.tsx`: Fixed `displayImage` to show `livePreview` during `isBusy` and `activeOutput` when complete.
+  - `/src/components/PromptStudio.tsx`: Synchronized aspect ratios with `width`/`height` states and bound `effectiveWidth`/`effectiveHeight` during `handleGenerate`.
+  - `/Start_Factory.bat`: Configured ComfyUI `--preview-method latent2rgb`.
+  - `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/src/components/MilestoneChecklist.tsx`: Synchronized to v1.17.90 (`RESTORE_V1.17.90_LIVE_PREVIEW_ASPECT_RATIO_FIX`).
+- **Key Code Snippet (`/server/comfy/ComfyWebSocket.ts`)**:
+```ts
+private async handleBinaryMessage(data: any) {
+  let buffer: Buffer | null = null;
+  if (typeof Blob !== 'undefined' && data instanceof Blob) {
+    buffer = Buffer.from(await data.arrayBuffer());
+  } else if (Buffer.isBuffer(data)) {
+    buffer = data;
+  } else if (data instanceof ArrayBuffer) {
+    buffer = Buffer.from(data);
+  }
+  if (!buffer || buffer.length < 8) return;
+  const jpegIndex = buffer.indexOf(Buffer.from([0xff, 0xd8, 0xff]));
+  const pngIndex = buffer.indexOf(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  // Decodes intermediate frame, updates job.preview and emits SSE event
+}
+```
+
+# v1.17.89 (Update) — GitHub Import Migration & Environment Harmonization
+
+- **Summary**: Executed GitHub import migration for AI Studio environment compatibility according to the github-import-migration skill. Removed foreign package manager artifact (`bun.lock`), cleaned accidental container directory artifact (`C:\Gina_AI`), adapted `server.ts` path fallbacks (`GINA_ROOT`, `COMFY_ROOT`, `GINA_WORKFLOW_DIR`) to cleanly default to `process.cwd()` in Linux containers while strictly preserving `C:\Gina_AI` on Windows, and synchronized all scanned environment variables into `.env.example`.
+- **Target File Paths**:
+  - `/bun.lock`: Removed Bun lockfile to ensure purely npm execution.
+  - `/server.ts`: Adapted `GINA_ROOT`, `COMFY_ROOT`, and `GINA_WORKFLOW_DIR` defaults to use `(isWin ? "C:\\Gina_AI" : process.cwd())` to prevent relative directory creation in container environments while maintaining 100% Windows fidelity.
+  - `/.env.example`: Added scanned environment variables `ACESTEP_API_URL`, `COMFY_MODEL_ROOT`, `FLUX_GGUF`, `GINA_AGENT_FULL_ACCESS`, `GINA_HMR`, `GINA_KNOWLEDGE_WATCHER`, `HOST`, `LTX_MODEL`, and `PORT`.
+- **Key Code Snippet (`/server.ts`)**:
+```ts
+const GINA_ROOT = process.env.GINA_ROOT || (isWin ? "C:\\Gina_AI" : process.cwd());
+const COMFY_ROOT = process.env.COMFY_ROOT || (isWin ? "C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI" : path.join(process.cwd(), "ComfyUI"));
+const GINA_WORKFLOW_DIR = process.env.GINA_WORKFLOW_DIR || (isWin ? "C:\\Gina_AI\\workflows" : path.join(process.cwd(), "workflows"));
+```
+
 # v1.17.89 (Update) — Real-Time Generation Preview & Fooocus Sampling Stage
 
 - **Summary**: Resolved the issue where the generation preview area showed a blank screen during generation. Enabled ComfyUI binary preview frame extraction over WebSockets in the backend, enabled SSE preview event streaming to the frontend context, and styled `GinaImagePreview` to render intermediate latent frames live with Fooocus's active amber/orange glowing border and dynamic step progression. Also updated `Start_Factory.bat` to launch ComfyUI with `--preview-method auto`.
