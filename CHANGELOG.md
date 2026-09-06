@@ -1,3 +1,132 @@
+<<<<<<< HEAD
+# v1.17.87 — Fooocus-Inspired Gina Image Studio
+
+- Reworked the image creation workspace around a focused Fooocus-inspired layout: prompt + core image controls on the left, large preview/actions on the right.
+- Preserved Gina's local ComfyUI execution path and FLUX.1-Schnell GGUF Q4_K_S workflow; this is a UI/UX redesign, not a replacement of the validated backend.
+- Kept AIDA64 1024×600 support, reference-image upload, Keep Image/reference continuation, variation, download, asset save, VRAM purge, workflow-aware controls, and technical diagnostics.
+- Reduced visual noise by moving advanced/technical controls behind compact disclosure buttons.
+- Added local-only status/model indicators directly into the image workspace.
+
+# v1.17.86 — ACE-Step API CLI Fix
+
+- Fixed the Windows ACE-Step REST API launcher to use the current `acestep-api` CLI contract: `--init-llm` and `--lm-model-path`.
+- Removed unsupported API-server arguments (`--init-service`, `--config-path`, and `--offload-to-cpu`) that caused immediate startup failure.
+- Kept the 8GB-safe configuration in environment variables: `acestep-v15-turbo`, 0.6B LM, PyTorch backend, DiT/LM CPU offload, and localhost port 8101.
+- Updated the one-click `Start_Factory.bat` ACE-Step launch path to use the same corrected command and `uv --no-sync`.
+- Bumped the dashboard/runtime version to `v1.17.86`.
+
+# v1.17.84 — One-Click Singing + Audio Deck
+
+- Added ACE-Step 1.5 local singing backend with lyrics-aware routing.
+- Added 8GB-safe 0.6B LM / PyTorch / CPU-offload configuration.
+- Added ACE-Step install/start scripts.
+- Added automatic WAV registration and Audio Deck loading after successful generation.
+- Added vocal language selection and truthful singing-engine status.
+
+## 1.17.83 — MusicGen runtime hardening
+
+- Fixed Windows managed model path normalization: `facebook/musicgen-medium` now resolves to `facebook_musicgen-medium` instead of throwing `ReferenceError: g is not defined`.
+- Fixed PCM16 WAV writer by importing `torch` inside `save_wav_pcm16()`.
+- MusicGen model loading remains local/offline and prefers an existing Safetensors weight when both representations are present.
+- Status telemetry can now resolve the same local snapshot used by generation without crashing the `/api/music/status` endpoint.
+
+# Changelog
+
+## v1.17.85 — ACE-Step Windows uv Bootstrap
+
+- Fixed the ACE-Step 1.5 Windows singing installer so a missing `uv` is installed automatically with the official Astral PowerShell installer instead of stopping with a manual-install error.
+- Added PATH-independent `uv.exe` resolution for `%USERPROFILE%\.local\bin\uv.exe` and the Windows App Installer/WinGet link location.
+- Hardened the ACE-Step API launcher to use the resolved `uv.exe` directly.
+- Explicitly passes the 8GB-safe ACE-Step configuration: turbo DiT, 0.6B LM, PyTorch backend, CPU offload, and local API on `127.0.0.1:8101`.
+- Bumped the dashboard/runtime version to `v1.17.85`.
+
+
+## 1.17.82 — MusicGen audio-save and status hardening
+- Fixed successful MusicGen synthesis failing at WAV output because the installed torchaudio build had no save backend.
+- Added dependency-light PCM16 WAV writing through Python stdlib `wave`.
+- Hardened `/api/music/status` against Windows HF-cache filesystem edge cases so it does not repeatedly return HTTP 500.
+- Kept MusicGen Medium offline/local-only and Safetensors-first when both weight formats are present.
+
+# v1.17.81 — MusicGen HF Snapshot Path Resolution Hardening
+
+- **Fixed:** MusicGen Medium local snapshot discovery now follows Windows symlink/junction-backed Hugging Face snapshot files with `statSync()`.
+- **Fixed:** resolver now checks Gina's managed HF cache plus the standard per-user Hugging Face cache location, while remaining strictly local/offline.
+- **Fixed:** backend weight telemetry follows the resolved snapshot files instead of relying on directory-entry type flags that can misclassify Windows links.
+- **Preserved:** when both `model.safetensors` and `pytorch_model.bin` exist, Safetensors is preferred and only one weight representation is treated as active.
+- **Preserved:** Generate never downloads from Hugging Face automatically.
+
+# v1.17.81 — MusicGen Dual-Weight Snapshot Resolution
+
+- **Clarified:** a Hugging Face MusicGen Medium snapshot can legitimately contain both `model.safetensors` and `pytorch_model.bin`; these are alternate weight formats from the same checkpoint, not two separate models.
+- **Fixed:** cache telemetry now counts only the preferred active weight (`model.safetensors` when present) instead of adding both 8.04 GB weight files together.
+- **Added:** MusicGen status reports the resolved snapshot revision and any matching local refs, making it clear whether the cached copy came from `main` or an older HF revision/PR.
+- **Preserved:** generation remains local/offline and uses the exact resolved snapshot path; no automatic Hub download.
+- **Safety:** replaced the misleading “Sequential 8GB VRAM Safe” label with “Sequential GPU lane · one audio model at a time”; sequential execution does not guarantee that MusicGen Medium fits in 8 GB VRAM.
+
+# v1.17.79 — MusicGen Snapshot Status Resolution
+
+- **Target:** `server/music/MusicService.ts` — status/backend detection now inspects the exact resolved MusicGen Medium path instead of only `facebook_musicgen-medium`.
+- **Target:** `server/music/MusicService.ts` — local Hugging Face snapshot resolver now requires a complete Transformers snapshot (config + weights + processor/tokenizer), prefers `model.safetensors` when multiple snapshots exist, and never uses the Hub as a generation fallback.
+- **Target:** `src/components/MusicStudio.tsx` — MusicGen banner now reports the resolved local path as well as backend and weight files.
+- **Preserved:** Generate remains offline/local-only and the audio GPU lane remains sequential (one heavy audio generation at a time).
+- **Preserved:** existing `models--facebook--musicgen-medium` cache is not deleted or moved.
+
+# v1.17.78 — MusicGen Transformers Snapshot Routing
+- **Target:** `server/music/MusicService.ts` — MusicGen Medium now resolves the existing local `models--facebook--musicgen-medium\snapshots\<revision>` directory when it contains `model.safetensors`/compatible Transformers weights. This is an explicit local path, not a network fallback.
+- **Target:** `scripts/music_generator.py` — unchanged offline/local-only loader receives the resolved snapshot path; Generate cannot download.
+- **Target:** `server.ts` / `src/components/MusicStudio.tsx` — status and telemetry now report the actual active snapshot path/backend instead of claiming the Hub cache is ignored when it is the selected local checkpoint.
+- The 14 GB Hugging Face cache is retained; the dashboard accounts for the active snapshot/weights rather than summing the cache's blob storage with the Gina AudioCraft directory.
+- Preserved AudioGen/MusicGen separation and the exclusive sequential audio GPU lane.
+
+# v1.17.77 — AudioCraft Explicit Backend & Sequential Generation
+- **Target File:** `server/music/MusicService.ts`
+  - Fixed generation telemetry initialization ordering.
+  - Managed model directories are the only generation source; Hugging Face `models--...` caches are ignored.
+  - Reports exact backend and weight files used.
+- **Target File:** `scripts/music_generator.py`
+  - Prints local model path and weight files; generation is offline/local-only.
+- **Target File:** `scripts/download_audiocraft.py`
+  - Reuses complete managed models and isolates temporary Hub cache metadata under the managed model directory.
+- **Target File:** `src/components/MusicStudio.tsx`
+  - Shows backend, weights, managed path, and duplicate-cache exclusion; Download is clearly separate from Generate.
+- **Target File:** `server.ts`
+  - Audio model status now exposes managed backend/weight metadata.
+- Preserved the AudioGen/MusicGen separation and sequential exclusive GPU lane.
+
+# v1.17.76 — AudioCraft Single Managed Cache
+- Fixed duplicate MusicGen storage: Generate now resolves the authoritative Gina-managed local model directory instead of the Hugging Face `models--facebook--...` cache.
+- Generate now refuses to auto-download missing AudioCraft models and explicitly runs offline.
+- Downloader now writes directly into `C:\\Gina_AI\\models\\audio\\facebook_<model>` and recognizes both `pytorch_model.bin` and `model.safetensors` layouts.
+- Cache telemetry no longer sums a managed model and an old Hub cache together, preventing inflated values such as 26.12 GB.
+- Preserved AudioGen's dedicated AudioCraft runtime and the sequential exclusive GPU lane.
+- Exact modified files: `server/music/MusicService.ts`, `scripts/music_generator.py`, `scripts/download_audiocraft.py`, `src/components/MusicStudio.tsx`, version/manifest files, `src/components/MilestoneChecklist.tsx`, `docs/updates/UPDATE_NOTES_v1.17.76.md`.
+
+# v1.17.75 — AudioCraft Local Cache, Sequential Audio Lane & Dashboard Telemetry
+
+- **Target File:** `server/music/MusicService.ts`
+  - Shared MusicGen/AudioGen Hugging Face cache discovery for legacy and standard `models--...` cache layouts.
+  - AudioCraft download and generation jobs now use an exclusive audio lane so heavy audio models run sequentially.
+  - Generation passes the same cache root used by the Download button and refuses hidden network downloads.
+  - Live job progress now reports cache load, model load, synthesis, and output stages.
+- **Target File:** `scripts/music_generator.py`
+  - MusicGen uses `local_files_only=True`.
+  - AudioGen uses the official `AudioGen.get_pretrained()` AudioCraft path instead of the MusicGen Transformers loader.
+  - Added AudioCraft/Transformers cache environment alignment and offline mode.
+  - Removed the synthetic fallback so a failed requested model cannot masquerade as a successful generation.
+- **Target File:** `scripts/download_audiocraft.py`
+  - Download button now populates the same Hugging Face cache consumed by generation.
+  - AudioGen is verified as an AudioCraft checkpoint (`state_dict.bin` + `compression_state_dict.bin`).
+- **Target File:** `src/components/MusicStudio.tsx`
+  - Correct AudioGen naming: `AudioGen Medium 1.5B · SFX / Atmosphere`.
+  - Generate button now explicitly says `Generate SFX / Atmosphere` for AudioGen.
+  - Added live AudioCraft job telemetry panel with model, duration, progress, and current step.
+- **Target File:** `server.ts`
+  - `/api/jobs/:id/workflow` now returns an external-job inspection envelope for Python/AudioCraft jobs instead of 404.
+  - Added AudioGen to pre-warm inventory and corrected medium-model VRAM metadata to the official 16 GB guidance.
+- **Preserved:** existing Story stall/history fallback, LTX `batch_size=1` OOM guard, StreamInject fixes, and clean-root `docs/updates/` convention.
+
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 # v1.17.73 — Multimedia MoviePy Stitcher, MusicGen Medium 1.5B Default & Neural Cache Verification
 
 ### 1. Target File: `/server/music/MusicService.ts` & `/server.ts`

@@ -65,7 +65,11 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 ## 1. Project Overview & URLs
 
 - **App Name**: Gina AI Factory — Local Creator UI
+<<<<<<< HEAD
+- **Version**: 1.17.79
+=======
 - **Version**: 1.17.73
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 - **Local Dashboard URL**: `http://127.0.0.1:3000/` (Express server listens on `0.0.0.0:3000`)
 - **Local ComfyUI Backend URL**: `http://127.0.0.1:8188/`
 

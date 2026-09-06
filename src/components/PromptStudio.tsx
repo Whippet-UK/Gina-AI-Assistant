@@ -576,406 +576,131 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({ onAddLog, onClearCac
     ? (outputLoading ? 'FINALISING OUTPUT' : 'COMPLETED')
     : job?.status || 'READY';
 
-  return <section className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 md:p-5 mb-5 shadow-sm">
-    <div className="flex flex-col lg:flex-row lg:items-center justify-between border-b border-slate-800 pb-4 mb-5 gap-3">
-      <div>
-        <div className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-emerald-400" /><h2 className="text-sm font-bold text-slate-100 uppercase tracking-widest">CREATE</h2></div>
-        <p className="text-[10px] text-slate-500 mt-1">Local image creation · workflow-aware controls</p>
+  return <section className="bg-[#181818] border border-[#2d2d2d] rounded-2xl overflow-hidden mb-5 shadow-2xl">
+    <div className="px-4 py-3 border-b border-[#303030] bg-[#202020] flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center"><Sparkles className="w-4 h-4 text-emerald-400"/></div>
+        <div><h2 className="text-sm font-bold text-white tracking-wide">GINA IMAGE STUDIO</h2><p className="text-[9px] text-zinc-500">Fooocus-inspired focused creation · local ComfyUI · FLUX.1-Schnell GGUF</p></div>
       </div>
-      <div className="flex flex-wrap items-center gap-2 text-[9px] font-mono">
-        <span className="px-2.5 py-1 rounded-lg border border-slate-800 bg-slate-950 text-slate-400 flex items-center gap-1.5"><Cpu className="w-3 h-3"/>{gpuName} · {vram}</span>
-        <span className={`px-2.5 py-1 rounded-lg border ${online?'border-emerald-500/20 text-emerald-400 bg-emerald-500/5':'border-rose-500/20 text-rose-400 bg-rose-500/5'}`}>{online?'● LOCAL READY':'● COMFYUI OFFLINE'}</span>
+      <div className="flex items-center gap-2 text-[9px] font-mono">
+        <span className={`px-2 py-1 rounded-md border ${online?'border-emerald-500/30 text-emerald-300 bg-emerald-500/10':'border-rose-500/30 text-rose-300 bg-rose-500/10'}`}>{online?'● READY':'● OFFLINE'}</span>
+        <span className="hidden sm:inline px-2 py-1 rounded-md border border-zinc-700 bg-zinc-900 text-zinc-400">{gpuName} · {vram}</span>
       </div>
     </div>
 
-    <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-      <div className="xl:col-span-7 space-y-4">
-        {/* Active AIDA64 Layout Banner */}
-        {activeLayout && (
-          <div className="bg-slate-950 border border-sky-500/40 rounded-xl p-3.5 space-y-2 shadow-sm">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs">
-                <Monitor className="w-4 h-4 text-sky-400 shrink-0" />
-                <div>
-                  <div className="font-bold text-sky-300 flex items-center gap-1.5 font-mono">
-                    <span>Active AIDA64 Template:</span>
-                    <span className="text-emerald-400">{activeLayout.screen.width} × {activeLayout.screen.height} px</span>
-                    <span className="text-slate-400">({activeLayout.items.length} mapped sockets)</span>
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-0.5">
-                    Prompt is injected with exact coordinate dimensions & negative spaces. Fuses 100% exact dials around the AI design.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setShowFusionOptions(v => !v)}
-                  className="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded text-[9.5px] font-mono flex items-center gap-1 cursor-pointer"
-                >
-                  <Sliders className="w-3 h-3 text-sky-400" />
-                  <span>{showFusionOptions ? 'Hide Settings' : 'Fusion Settings'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveAida64Layout(null)}
-                  className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200 cursor-pointer"
-                  title="Clear active AIDA64 layout binding"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Exact Coordinate Chips */}
-            <div className="pt-1.5 border-t border-slate-900 grid grid-cols-2 md:grid-cols-3 gap-1.5">
-              {activeLayout.items.map((item, idx) => (
-                <div key={item.id || idx} className="bg-slate-900/90 border border-slate-800 rounded px-2 py-1 text-[9px] font-mono flex items-center justify-between text-slate-300">
-                  <span className="text-sky-300 truncate max-w-[100px] font-bold">#{idx + 1} {item.name || item.shapeType}</span>
-                  <span className="text-emerald-400 shrink-0">X:{item.x} Y:{item.y}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Fusion Customization Options */}
-            {showFusionOptions && (
-              <div className="pt-2 border-t border-slate-900 grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-900/40 p-2.5 rounded-lg">
-                <div>
-                  <label className="text-[9px] font-mono text-slate-400 block mb-1">
-                    AI BACKGROUND DIM: {Math.round(dimBaseImage * 100)}%
-                  </label>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={dimBaseImage}
-                    onChange={(e) => setDimBaseImage(Number(e.target.value))}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-400"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="showConduits"
-                    checked={showConduits}
-                    onChange={(e) => setShowConduits(e.target.checked)}
-                    className="rounded border-slate-700 text-sky-500 focus:ring-0"
-                  />
-                  <label htmlFor="showConduits" className="text-[10px] font-mono text-slate-300 cursor-pointer">
-                    Illuminated Neon Conduits
-                  </label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="showHexBolts"
-                    checked={showHexBolts}
-                    onChange={(e) => setShowHexBolts(e.target.checked)}
-                    className="rounded border-slate-700 text-sky-500 focus:ring-0"
-                  />
-                  <label htmlFor="showHexBolts" className="text-[10px] font-mono text-slate-300 cursor-pointer">
-                    Machined Hex Bolts & Ticks
-                  </label>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div>
-          <label className="text-[9px] text-slate-500 uppercase font-bold tracking-widest">Prompt</label>
-          <textarea rows={7} value={cfg.promptInput} onChange={e=>setPrompt(e.target.value)} placeholder={hasPrompt ? 'Describe what you want Gina to create…' : 'Selected workflow has no detected text binding.'} disabled={!hasPrompt} className="mt-1.5 w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs leading-5 text-slate-200 focus:outline-none focus:border-emerald-500/50 resize-none disabled:opacity-40" />
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] min-h-[650px]">
+      <div className="bg-[#121212] p-4 md:p-5 order-2 xl:order-1">
+        <div className="mb-4">
+          <label className="text-[9px] text-zinc-500 uppercase tracking-[0.18em] font-bold">Prompt</label>
+          <textarea rows={5} value={cfg.promptInput} onChange={e=>setPrompt(e.target.value)}
+            placeholder="Describe the image you want to create…"
+            disabled={!hasPrompt}
+            className="mt-2 w-full bg-[#202020] border border-[#3a3a3a] focus:border-emerald-500/60 rounded-xl p-3.5 text-sm text-zinc-100 leading-6 outline-none resize-none placeholder:text-zinc-600 disabled:opacity-40"/>
         </div>
 
-        <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <div>
-                <div className="text-[9px] text-slate-400 uppercase font-bold tracking-widest flex items-center gap-1.5"><FileImage className="w-3.5 h-3.5 text-sky-400" /> Reference image</div>
-                <div className="text-[9px] text-slate-600 mt-0.5">Local only · fed into the workflow's image input</div>
-              </div>
-              <span className="text-[8px] font-mono text-emerald-400 border border-emerald-500/20 bg-emerald-500/5 rounded px-1.5 py-0.5">12 MB MAX</span>
-            </div>
-
-            <input
-              ref={referenceFileInputRef}
-              type="file"
-              accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,image/png,image/jpeg,image/webp,image/bmp,image/gif"
-              className="hidden"
-              onChange={e => void handleReferenceImage(e.target.files?.[0])}
-            />
-
-            {!referenceImage ? (
-              <button
-                type="button"
-                onClick={() => referenceFileInputRef.current?.click()}
-                disabled={uploadingReference}
-                className="w-full border border-dashed border-slate-700 hover:border-sky-500/50 bg-slate-900/60 hover:bg-sky-500/5 rounded-lg p-4 text-center transition-colors disabled:opacity-50"
-              >
-                <Upload className="w-5 h-5 mx-auto text-sky-400 mb-1.5" />
-                <div className="text-[10px] text-slate-300 font-bold">{uploadingReference ? 'UPLOADING LOCALLY…' : 'UPLOAD REFERENCE IMAGE'}</div>
-                <div className="text-[9px] text-slate-600 mt-1">PNG · JPG/JPEG · WEBP · BMP · GIF</div>
-              </button>
-            ) : (
-              <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 rounded-lg p-2">
-                <img src={referenceImage.previewUrl} alt="Reference" className="w-16 h-16 object-cover rounded border border-slate-700" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[10px] text-slate-200 font-bold truncate">{referenceImage.name}</div>
-                  <div className="text-[9px] text-slate-500 font-mono mt-0.5">{(referenceImage.bytes / 1024 / 1024).toFixed(2)} MB · uploaded to local ComfyUI input</div>
-                  {inputImageControl ? <div className="text-[9px] text-emerald-400 mt-1">READY — this image will be bound to #{inputImageControl.nodeId} · {inputImageControl.input}</div> : <div className="text-[9px] text-amber-300 mt-1">UPLOADED — switch to a reference workflow to use it.</div>}
-                </div>
-                <button type="button" onClick={() => setReferenceImage(null)} className="p-1.5 rounded border border-slate-700 bg-slate-950 text-slate-500 hover:text-rose-300 hover:border-rose-500/40" title="Remove reference image"><X className="w-3.5 h-3.5" /></button>
-              </div>
-            )}
-
-            {referenceUploadError && <div className="mt-2 text-[9px] text-rose-300 border border-rose-500/20 bg-rose-500/5 rounded p-2">{referenceUploadError}</div>}
-            {!inputImageControl && (
-              <div className="mt-2 rounded border border-amber-500/20 bg-amber-500/5 p-2 text-[9px] text-amber-300">
-                The selected workflow does not expose a LoadImage input, so this reference cannot affect generation yet.
-                {workflows.some(w => w.id === 'flux_image_reference') && (
-                  <button type="button" onClick={() => setSelected('flux_image_reference')} className="ml-2 px-2 py-1 rounded border border-amber-500/30 text-amber-200 hover:bg-amber-500/10 font-bold">SWITCH TO REFERENCE WORKFLOW</button>
-                )}
-              </div>
-            )}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+          <label className="text-[9px] text-zinc-500 uppercase font-bold">Aspect ratio
+            <select value={selectedRatio} onChange={e=>applyRatio(e.target.value)} disabled={!hasDimensions}
+              className="mt-1.5 w-full bg-[#202020] border border-[#383838] rounded-lg px-2.5 py-2.5 text-[10px] text-zinc-200 outline-none">
+              {ratioOptions.map(r=><option key={r.id} value={r.id}>{r.id} · {r.label}</option>)}
+            </select>
+          </label>
+          <label className="text-[9px] text-zinc-500 uppercase font-bold">Image size
+            <select value={resolution} onChange={e=>applyResolution(e.target.value)} disabled={!hasDimensions || customSize}
+              className="mt-1.5 w-full bg-[#202020] border border-[#383838] rounded-lg px-2.5 py-2.5 text-[10px] text-zinc-200 outline-none">
+              {availableResolutions.map(p=><option key={p.label} value={p.label}>{p.label}</option>)}
+              {customSize && <option value={resolution}>{resolution} · CUSTOM</option>}
+            </select>
+          </label>
+          <label className="text-[9px] text-zinc-500 uppercase font-bold">Style
+            <select value={cfg.stylePreset || 'None'} onChange={e=>updatePromptStudio({stylePreset:e.target.value})}
+              className="mt-1.5 w-full bg-[#202020] border border-[#383838] rounded-lg px-2.5 py-2.5 text-[10px] text-zinc-200 outline-none">
+              {stylePresets.map(x=><option key={x}>{x}</option>)}
+            </select>
+          </label>
+          <div className="text-[9px] text-zinc-500 uppercase font-bold">Engine
+            <div className="mt-1.5 px-2.5 py-2.5 rounded-lg bg-[#202020] border border-emerald-500/25 text-emerald-300 font-mono truncate" title={String(workflowModelValue)}>{workflowModelLabel}</div>
           </div>
+        </div>
 
-        {hasNegativePrompt && <div>
-          <button onClick={()=>setShowNegative(v=>!v)} className="flex items-center gap-1.5 text-[9px] text-slate-500 uppercase font-bold tracking-widest hover:text-slate-300"><ChevronDown className={`w-3 h-3 transition-transform ${showNegative?'rotate-180':''}`}/> Negative prompt</button>
-          {showNegative && <textarea rows={3} value={cfg.negativePrompt} onChange={e=>setNegativePrompt(e.target.value)} placeholder="Optional things to avoid…" className="mt-1.5 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-[10px] text-slate-300 focus:outline-none focus:border-emerald-500/50 resize-none" />}
-        </div>}
-
-        {/* VRAM Safety & Flux Fast Action Bar */}
-        <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2">
-            <div className="p-1 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <div className="text-[10px] font-bold text-slate-200 flex items-center gap-1.5">
-                <span>Model Engine:</span>
-                <span className="text-emerald-400 font-mono font-bold">{workflowModelLabel}</span>
-              </div>
-              <p className="text-[9px] text-slate-500">
-                {selected === 'flux_image' ? 'Active: flux_image · UnetLoaderGGUF · 4-step euler · 1024×600 AIDA64 default' : `Active workflow: ${selected}`}
-              </p>
-            </div>
+        <div className="bg-[#1b1b1b] border border-[#303030] rounded-xl p-3 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[9px] text-zinc-400 uppercase tracking-widest font-bold flex items-center gap-2"><ImageIcon className="w-3.5 h-3.5 text-emerald-400"/> Image input</div>
+            <span className="text-[8px] text-zinc-600 font-mono">OPTIONAL · LOCAL ONLY</span>
           </div>
-
-          <div className="flex items-center gap-2">
-            {selected !== 'flux_image' && (
-              <button
-                type="button"
-                onClick={handleResetFluxPreset}
-                className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[9.5px] font-bold font-mono transition-colors cursor-pointer"
-                title="Switch workflow to standard flux_image"
-              >
-                Switch to Flux.1
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handlePurgeVram}
-              disabled={purgingVram}
-              className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded text-[9.5px] font-bold font-mono flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-              title="Purge ComfyUI GPU memory (/free) to clear video tensors and prevent CUDA OOM"
-            >
-              <Trash2 className="w-3 h-3 text-amber-400" />
-              <span>{purgingVram ? 'Purging VRAM…' : 'Purge VRAM Cache'}</span>
+          <input ref={referenceFileInputRef} type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,image/png,image/jpeg,image/webp,image/bmp,image/gif" className="hidden" onChange={e=>void handleReferenceImage(e.target.files?.[0])}/>
+          {!referenceImage ? (
+            <button type="button" onClick={()=>referenceFileInputRef.current?.click()} disabled={uploadingReference}
+              className="w-full rounded-lg border border-dashed border-[#494949] hover:border-emerald-500/50 bg-[#151515] py-3.5 text-center disabled:opacity-50">
+              <Upload className="w-4 h-4 mx-auto text-zinc-500 mb-1"/><div className="text-[9px] text-zinc-300 font-bold">{uploadingReference?'UPLOADING…':'DROP / CHOOSE REFERENCE IMAGE'}</div><div className="text-[8px] text-zinc-600 mt-1">PNG · JPG · WEBP · BMP · GIF · 12 MB MAX</div>
             </button>
-          </div>
+          ) : (
+            <div className="flex items-center gap-3 bg-[#151515] rounded-lg border border-[#333] p-2">
+              <img src={referenceImage.previewUrl} className="w-14 h-14 rounded object-cover" alt="Reference"/>
+              <div className="min-w-0 flex-1"><div className="text-[10px] text-zinc-200 font-bold truncate">{referenceImage.name}</div><div className="text-[8px] text-zinc-600 font-mono">{(referenceImage.bytes/1024/1024).toFixed(2)} MB</div><div className="text-[8px] text-emerald-400 mt-1">{inputImageControl?'READY FOR WORKFLOW':'UPLOADED — REFERENCE WORKFLOW REQUIRED'}</div></div>
+              <button type="button" onClick={()=>setReferenceImage(null)} className="p-1.5 text-zinc-500 hover:text-rose-300"><X className="w-3.5 h-3.5"/></button>
+            </div>
+          )}
+          {referenceUploadError && <div className="mt-2 p-2 rounded bg-rose-500/5 border border-rose-500/20 text-[8px] text-rose-300">{referenceUploadError}</div>}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <label className="text-[9px] text-slate-500 uppercase font-bold">Workflow<span className="block mt-1.5"><select value={selected} onChange={e=>setSelected(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2.5 text-[10px] text-slate-200 font-mono focus:outline-none focus:border-emerald-500/50"><option value="">Select local workflow</option>{workflows.map(w=><option key={w.id} value={w.id}>{w.id}</option>)}</select></span></label>
-          <label className="text-[9px] text-slate-500 uppercase font-bold">Aspect ratio<span className="block mt-1.5"><select value={selectedRatio} onChange={e=>applyRatio(e.target.value)} disabled={!hasDimensions} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2.5 text-[10px] text-slate-200 font-mono focus:outline-none focus:border-emerald-500/50 disabled:opacity-40">{ratioOptions.map(r=><option key={r.id} value={r.id}>{r.id} · {r.label}</option>)}</select></span></label>
-          <label className="text-[9px] text-slate-500 uppercase font-bold">Size<span className="block mt-1.5"><select value={resolution} onChange={e=>applyResolution(e.target.value)} disabled={!hasDimensions || customSize} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2.5 text-[10px] text-slate-200 font-mono focus:outline-none focus:border-emerald-500/50 disabled:opacity-40">{availableResolutions.map(p=><option key={p.label} value={p.label}>{p.label} · {p.budget}</option>)}{customSize && <option value={resolution}>{resolution} · CUSTOM</option>}</select></span></label>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button type="button" onClick={()=>setShowNegative(v=>!v)} className="px-3 py-2 rounded-lg bg-[#202020] border border-[#343434] text-[9px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5"><ChevronDown className={`w-3 h-3 ${showNegative?'rotate-180':''}`}/> Negative prompt</button>
+          <button type="button" onClick={()=>setAdvancedOpen(v=>!v)} className="px-3 py-2 rounded-lg bg-[#202020] border border-[#343434] text-[9px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5"><SlidersHorizontal className="w-3 h-3"/> Advanced</button>
+          <button type="button" onClick={()=>setTechnicalOpen(v=>!v)} className="px-3 py-2 rounded-lg bg-[#202020] border border-[#343434] text-[9px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5"><Info className="w-3 h-3"/> Technical</button>
+          <button type="button" onClick={handleResetFluxPreset} className="px-3 py-2 rounded-lg bg-[#202020] border border-[#343434] text-[9px] text-zinc-400 hover:text-emerald-300 flex items-center gap-1.5"><RotateCcw className="w-3 h-3"/> Reset FLUX preset</button>
         </div>
 
-        {hasDimensions && <div className="flex items-center gap-3 text-[9px] text-slate-500">
-          <label className="flex items-center gap-1.5"><input type="checkbox" checked={customSize} onChange={e=>setCustomSize(e.target.checked)} /> Custom workflow dimensions</label>
-          {customSize && dimensionControls.map(c => <label key={c.key} className="flex items-center gap-1">{c.key}<input type="number" value={parameters[c.key] ?? c.currentValue ?? ''} min={c.min} max={c.max} step={c.step ?? 8} onChange={e=>updateControl(c.key, Number(e.target.value))} className="w-20 bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-slate-300 font-mono" /></label>)}
-        </div>}
+        {showNegative && hasNegativePrompt && <textarea rows={3} value={cfg.negativePrompt} onChange={e=>setNegativePrompt(e.target.value)} placeholder="Optional things to avoid…" className="mb-4 w-full bg-[#202020] border border-[#3a3a3a] rounded-xl p-3 text-[10px] text-zinc-300 outline-none resize-none"/>}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="text-[9px] text-slate-500 uppercase font-bold">Style preset<span className="block mt-1.5"><select value={cfg.stylePreset || 'None'} onChange={e=>updatePromptStudio({ stylePreset: e.target.value })} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2.5 text-[10px] text-slate-200 focus:outline-none focus:border-emerald-500/50">{stylePresets.map(s=><option key={s}>{s}</option>)}</select></span></label>
-          <label className="text-[9px] text-slate-500 uppercase font-bold">Model (actual workflow)<span className="block mt-1.5"><div className="w-full bg-slate-950 border border-emerald-500/30 rounded-lg px-2.5 py-2.5 text-[10px] text-emerald-300 font-mono truncate" title={String(workflowModelValue)}>{workflowModelLabel}</div></span></label>
-        </div>
-
-        {(basicControls.length > 0 || seedControl) && <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5">
-          <div className="flex items-center justify-between mb-3"><div className="text-[9px] text-slate-500 uppercase font-bold tracking-widest">Generation settings</div><span className="text-[9px] text-slate-600">Only supported workflow inputs</span></div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {seedControl && <label className="text-[9px] text-slate-500 uppercase font-bold">Seed<span className="block mt-1.5 relative"><input type="number" value={parameters[seedControl.key] ?? seedControl.currentValue ?? ''} min={0} max={2147483647} onChange={e=>updateControl(seedControl.key, Number(e.target.value))} className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-2 text-[10px] text-slate-200 font-mono pr-8"/><button type="button" onClick={randomizeSeed} className="absolute right-1 top-1 p-1 text-slate-500 hover:text-emerald-400" title="Randomise seed"><RotateCcw className="w-3 h-3"/></button></span></label>}
+        {advancedOpen && <div className="mb-4 bg-[#1b1b1b] border border-[#303030] rounded-xl p-3.5">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {seedControl && <label className="text-[9px] text-zinc-500 uppercase font-bold">Seed
+              <span className="block mt-1 relative"><input type="number" value={parameters[seedControl.key] ?? seedControl.currentValue ?? ''} min={0} max={2147483647} onChange={e=>updateControl(seedControl.key,Number(e.target.value))} className="w-full bg-[#151515] border border-[#383838] rounded-lg px-2.5 py-2 text-[10px] text-zinc-200 font-mono pr-8"/><button type="button" onClick={randomizeSeed} className="absolute right-1 top-1 p-1 text-zinc-500 hover:text-emerald-400"><RotateCcw className="w-3 h-3"/></button></span>
+            </label>}
             {basicControls.map(renderControl)}
           </div>
+          {hasAdvanced && <div className="mt-3 pt-3 border-t border-[#303030] grid grid-cols-2 md:grid-cols-3 gap-3">{advancedControls.map(renderControl)}</div>}
         </div>}
 
-        {hasAdvanced && <div className="bg-slate-950 border border-slate-800 rounded-xl">
-          <button onClick={()=>setAdvancedOpen(v=>!v)} className="w-full px-3.5 py-3 flex items-center justify-between text-[9px] text-slate-400 uppercase font-bold tracking-widest"><span className="flex items-center gap-1.5"><SlidersHorizontal className="w-3 h-3"/>Advanced controls</span><ChevronDown className={`w-3 h-3 transition-transform ${advancedOpen?'rotate-180':''}`}/></button>
-          {advancedOpen && <div className="border-t border-slate-800 p-3.5 grid grid-cols-2 sm:grid-cols-3 gap-3">{advancedControls.map(renderControl)}</div>}
+        {customSize && hasDimensions && <div className="mb-4 flex flex-wrap gap-3 text-[9px] text-zinc-500">
+          {dimensionControls.map(c=><label key={c.key} className="flex items-center gap-2 uppercase">{c.key}<input type="number" value={parameters[c.key]??c.currentValue??''} min={c.min} max={c.max} step={c.step??8} onChange={e=>updateControl(c.key,Number(e.target.value))} className="w-20 bg-[#202020] border border-[#383838] rounded px-2 py-1.5 text-zinc-300"/></label>)}
         </div>}
 
-        {hasGenericWorkflowControls && <div className="bg-slate-950 border border-sky-500/20 rounded-xl">
-          <button onClick={()=>setFullWorkflowOpen(v=>!v)} className="w-full px-3.5 py-3 flex items-center justify-between text-[9px] text-sky-300 uppercase font-bold tracking-widest"><span className="flex items-center gap-1.5"><Workflow className="w-3 h-3"/>Full workflow inputs · {genericWorkflowControls.length}</span><ChevronDown className={`w-3 h-3 transition-transform ${fullWorkflowOpen?'rotate-180':''}`}/></button>
-          {fullWorkflowOpen && <div className="border-t border-slate-800 p-3.5 space-y-2"><div className="text-[8px] text-slate-600 font-mono">Direct scalar inputs from the selected ComfyUI API graph. Linked node sockets remain read-only topology.</div><div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{genericWorkflowControls.map(renderControl)}</div></div>}
+        {activeLayout && <div className="mb-4 bg-sky-500/5 border border-sky-500/20 rounded-xl p-3">
+          <div className="flex items-center justify-between"><div className="text-[9px] text-sky-300 font-bold uppercase tracking-widest">AIDA64 template locked</div><button onClick={()=>setActiveAida64Layout(null)} className="text-zinc-600 hover:text-zinc-200"><X className="w-3 h-3"/></button></div>
+          <div className="text-[9px] text-zinc-500 mt-1 font-mono">{activeLayout.screen.width}×{activeLayout.screen.height} · {activeLayout.items.length} mapped sockets · exact layout fusion available after generation</div>
         </div>}
 
-        <div className="flex items-center gap-2 text-[9px] text-slate-600"><Zap className="w-3 h-3 text-emerald-500"/> Gina exposes controls from the selected ComfyUI workflow instead of assuming capabilities.</div>
-        <div className="flex items-center gap-2">
-          <button onClick={generate} disabled={isBusy || promotingImage || !selected || !cfg.promptInput.trim() || !hasPrompt || !online || (!!inputImageControl && !referenceImage)} className="flex-1 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 font-bold px-3 py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition-colors"><Play className="w-3.5 h-3.5 fill-current"/>{loading ? 'SUBMITTING…' : isBusy ? 'GENERATION RUNNING…' : 'GENERATE LOCALLY'}</button>
-          {isBusy && (
-            <button type="button" onClick={cancelJob} className="shrink-0 bg-rose-600 hover:bg-rose-500 text-white font-bold px-4 py-3 rounded-xl text-xs flex items-center justify-center gap-2 transition-colors" title="Cancel generation, clear ComfyUI queue, and flush VRAM">
-              <X className="w-3.5 h-3.5" /> STOP &amp; FLUSH
-            </button>
-          )}
+        <div className="flex gap-2">
+          <button onClick={generate} disabled={isBusy || promotingImage || !selected || !cfg.promptInput.trim() || !hasPrompt || !online || (!!inputImageControl && !referenceImage)}
+            className="flex-1 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 font-black text-xs tracking-wide flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/10">
+            <Play className="w-4 h-4 fill-current"/>{loading?'SUBMITTING…':isBusy?'GENERATING…':'GENERATE'}
+          </button>
+          <button type="button" onClick={handlePurgeVram} disabled={purgingVram} className="px-4 rounded-xl bg-[#242424] border border-[#3a3a3a] text-[9px] text-zinc-300 hover:text-amber-300" title="Purge ComfyUI VRAM"><Trash2 className="w-4 h-4 mx-auto"/><span className="block mt-1">{purgingVram?'…':'VRAM'}</span></button>
+          {isBusy && <button type="button" onClick={cancelJob} className="px-4 rounded-xl bg-rose-600 text-white text-[9px] font-bold">CANCEL</button>}
         </div>
+
+        {technicalOpen && <div className="mt-4 bg-[#1b1b1b] border border-[#303030] rounded-xl p-3.5">
+          {workflow ? <><div className="flex flex-wrap gap-1 mb-3">{workflow.capabilities.map(c=><span key={c} className="px-1.5 py-0.5 rounded bg-[#252525] border border-[#353535] text-[8px] text-sky-300">{c}</span>)}</div><div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-auto custom-scrollbar">{workflow.bindings.map(b=><div key={`${b.key}-${b.nodeId}`} className="bg-[#151515] rounded p-1.5"><div className="text-[8px] text-emerald-400 font-bold">{humanize(b.key)}</div><div className="text-[8px] text-zinc-600 font-mono">#{b.nodeId} · {b.input}</div></div>)}</div></> : <div className="text-[9px] text-zinc-600">No workflow details available.</div>}
+        </div>}
       </div>
 
-      <div className="xl:col-span-5 space-y-3">
-        <div className="bg-slate-950 border border-sky-500/30 rounded-xl overflow-hidden">
-          <button type="button" onClick={()=>setLivePanelOpen(v=>!v)} className="w-full px-3.5 py-3 flex items-center justify-between text-[9px] uppercase font-bold tracking-widest text-sky-300">
-            <span className="flex items-center gap-1.5"><Activity className="w-3 h-3"/> Live ComfyUI Execution · {workflow?.nodeCount || 0} nodes</span>
-            <span className="font-mono text-slate-500">{job ? `${job.status} · ${job.progress || 0}%` : 'IDLE'}</span>
-          </button>
-          {livePanelOpen && <div className="border-t border-slate-800 p-3 space-y-3">
-            <div className="grid grid-cols-2 gap-2 text-[9px] font-mono">
-              <div className="bg-slate-900 rounded border border-slate-800 p-2"><div className="text-slate-500">CURRENT NODE</div><div className="text-emerald-300 mt-1 font-bold">{job?.currentNodeId ? `#${job.currentNodeId} · ${job.currentNodeClass || 'Unknown'}` : 'Waiting for ComfyUI'}</div></div>
-              <div className="bg-slate-900 rounded border border-slate-800 p-2"><div className="text-slate-500">SAMPLING</div><div className="text-sky-300 mt-1">{job?.currentStep ? `${job.currentStep}/${job.totalSteps || '?'}` : `${parameters.steps ?? workflow?.workflow?.['8']?.inputs?.steps ?? 4} steps`}</div></div>
-              <div className="bg-slate-900 rounded border border-slate-800 p-2"><div className="text-slate-500">WORKFLOW</div><div className="text-slate-200 mt-1">{job?.workflowId || selected}</div></div>
-              <div className="bg-slate-900 rounded border border-slate-800 p-2"><div className="text-slate-500">MODEL</div><div className="text-slate-200 mt-1">{parameters.model || 'UnetLoaderGGUF · Q4_K_S'}</div></div>
-            </div>
-            <div className="max-h-52 overflow-y-auto custom-scrollbar space-y-1">
-              {(workflow?.nodes || []).map((n:any) => {
-                const activeNode = String(job?.currentNodeId || '') === String(n.id);
-                const recent = liveEvents.some(e => e.event === 'node_executed' && String(e.payload?.node ?? '') === String(n.id));
-                return <div key={n.id} className={`rounded border px-2 py-1.5 font-mono text-[9px] ${activeNode ? 'border-emerald-500/60 bg-emerald-500/10 text-emerald-200' : recent ? 'border-sky-500/30 bg-sky-500/5 text-sky-300' : 'border-slate-800 bg-slate-900/60 text-slate-500'}`}>
-                  <div className="flex items-center justify-between gap-2"><span>#{n.id} · {n.classType}</span><span>{activeNode ? 'RUNNING' : recent ? 'DONE' : 'READY'}</span></div>
-                  {activeNode && <div className="mt-1 text-slate-400">{Object.entries((resolvedWorkflow?.[n.id]?.inputs || n.inputs || {})).map(([k,v]:any)=> <span key={k} className="mr-2">{k}={Array.isArray(v) ? `[${v.join(',')}]` : String(v)}</span>)}</div>}
-                </div>;
-              })}
-            </div>
-            <div className="border-t border-slate-800 pt-2"><div className="text-[8px] text-slate-600 uppercase font-bold mb-1">Execution event stream</div><div className="max-h-24 overflow-y-auto custom-scrollbar space-y-0.5 font-mono text-[8px]">{liveEvents.slice(-20).reverse().map((e,i)=><div key={`${e.timestamp}-${i}`} className="text-slate-500"><span className="text-slate-700">{new Date(e.timestamp).toLocaleTimeString()}</span> <span className="text-sky-400">{e.event}</span>{e.payload?.node != null ? ` · node #${e.payload.node}` : ''}</div>)}</div></div>
-          </div>}
+      <div className="order-1 xl:order-2 bg-[#0d0d0d] border-b xl:border-b-0 xl:border-l border-[#303030] p-3 md:p-4">
+        <div className="flex items-center justify-between mb-2"><div><div className="text-[10px] text-white font-bold uppercase tracking-widest">Preview</div><div className="text-[8px] text-zinc-600 font-mono">{ratio.id} · {resolution} · {statusLabel}</div></div>{lockSeed&&<span className="px-2 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-[8px] text-amber-300 flex items-center gap-1"><Lock className="w-2.5 h-2.5"/> KEPT</span>}</div>
+        <div className="rounded-xl border border-[#333] bg-black overflow-hidden aspect-square xl:aspect-[3/4] flex items-center justify-center relative">
+          {activeOutput ? <img src={activeOutput} alt="Latest local generation" className="w-full h-full object-contain"/> : <div className="text-center text-zinc-700"><ImageIcon className="w-9 h-9 mx-auto mb-2 opacity-30"/><div className="text-[9px] font-mono">{isBusy?'GENERATING…':'YOUR IMAGE APPEARS HERE'}</div></div>}
+          {isBusy && <div className="absolute inset-x-0 bottom-0 bg-black/70 p-2"><div className="h-1 bg-zinc-800 rounded-full overflow-hidden"><div className="h-full bg-emerald-400" style={{width:`${Math.max(0,Math.min(100,job?.progress||0))}%`}}/></div><div className="text-[8px] text-zinc-500 font-mono mt-1">{job?.currentStep?`step ${job.currentStep}/${job.totalSteps||'?'} · `:''}{job?.progress||0}%</div></div>}
         </div>
-
-        <div className="bg-slate-950 border border-slate-800 rounded-xl p-3.5">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <div className="text-[10px] text-slate-400 uppercase font-bold tracking-widest flex items-center gap-1.5">
-                <span>Preview</span>
-                {lockSeed && (
-                  <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[8px] font-mono flex items-center gap-1">
-                    <Lock className="w-2.5 h-2.5" /> SEED LOCKED (KEEP ACTIVE)
-                  </span>
-                )}
-              </div>
-              <div className="text-[9px] text-slate-600 mt-0.5">{ratio.id} · {resolution}</div>
-            </div>
-            <Maximize2 className="w-3.5 h-3.5 text-slate-600"/>
-          </div>
-
-          {keepNotification && (
-            <div className="mb-2 p-2 rounded bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-[9px] font-mono flex items-center gap-1.5 animate-in fade-in">
-              <Check className="w-3 h-3 text-emerald-400 shrink-0" />
-              <span>{keepNotification}</span>
-            </div>
-          )}
-
-          <div className="w-full aspect-[16/10] min-h-[360px] rounded-lg border border-slate-800 bg-black overflow-hidden flex items-center justify-center relative">
-            {activeOutput ? (
-              <img src={activeOutput} alt="Latest local generation" className="w-full h-full object-contain" />
-            ) : (
-              <div className="text-center text-[10px] text-slate-700 font-mono">
-                <ImageIcon className="w-7 h-7 mx-auto mb-2 opacity-30"/>
-                {isBusy ? 'GENERATING…' : 'NO OUTPUT YET'}
-              </div>
-            )}
-
-            {lockSeed && keptImageUrl && (
-              <div className="absolute top-2 right-2 px-2 py-1 rounded bg-slate-950/90 border border-amber-500/60 text-amber-400 text-[8.5px] font-mono flex items-center gap-1 shadow-lg">
-                <Lock className="w-2.5 h-2.5 text-amber-400" />
-                <span>KEPT BASE IMAGE</span>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between mt-3 min-h-6">
-            <div className="text-[9px] font-mono text-slate-500">{job ? `${statusLabel} · ${job.progress || 0}%` : 'READY'}</div>
-            {job && <div className="text-[9px] font-mono text-slate-600">{job.currentStep ? `step ${job.currentStep}/${job.totalSteps || '?'}` : ''}</div>}
-          </div>
-          <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden"><div className="h-full bg-emerald-400 transition-[width] duration-200" style={{width:`${Math.max(0, Math.min(100, job?.progress || 0))}%`}}/></div>
-          {outputLoading && <div className="mt-2 text-[9px] text-slate-600 font-mono">Finalising output…</div>}
-          
-          {activeOutput && job?.status === 'COMPLETED' && (
-            <div className="space-y-2 mt-3">
-              {/* Active Layout Fusion Action */}
-              {activeLayout && (
-                <div className="grid grid-cols-1 gap-2">
-                <button
-                  type="button"
-                  disabled={fusingLayout || isBusy}
-                  onClick={handleFuseTemplateLayout}
-                  className="w-full py-2 px-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-[10px] flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer disabled:opacity-50"
-                  title="Overlays the exact titanium dials, bezel tracks, and neon conduits from your template directly onto this AI wallpaper"
-                >
-                  <Zap className="w-3.5 h-3.5 text-sky-200" />
-                  <span>{fusingLayout ? 'FUSING EXACT LAYOUT BEZELS…' : '✨ FUSE TEMPLATE LAYOUT BEZELS ONTO THIS IMAGE'}</span>
-                </button>
-                </div>
-              )}
-
-              {/* Keep Image & Seed Controls */}
-              <div className="grid grid-cols-2 gap-2">
-                {!lockSeed ? (
-                  <button
-                    type="button"
-                    onClick={handleKeepImage}
-                    className="col-span-2 py-2 px-3 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/50 text-emerald-300 font-bold text-[10px] flex items-center justify-center gap-1.5 transition-all shadow-sm"
-                  >
-                    <CheckSquare className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>{promotingImage ? 'IMPORTING IMAGE AS NEXT REFERENCE…' : 'KEEP THIS IMAGE & WORK OFF IT'}</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleUnlockImage}
-                    className="col-span-2 py-2 px-3 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/50 text-amber-300 font-bold text-[10px] flex items-center justify-center gap-1.5 transition-all shadow-sm"
-                  >
-                    <Unlock className="w-3.5 h-3.5 text-amber-400" />
-                    <span>UNLOCK IMAGE (GENERATE NEW RANDOM CONCEPTS)</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Standard Output Action Row */}
-              <div className="grid grid-cols-3 gap-2">
-                <button onClick={variation} disabled={isBusy || promotingImage} className="border border-slate-800 bg-slate-900 hover:bg-slate-800 rounded-lg py-2 text-[9px] text-slate-300 flex items-center justify-center gap-1"><Wand2 className="w-3 h-3"/> Variation</button>
-                <button onClick={downloadOutput} className="border border-slate-800 bg-slate-900 hover:bg-slate-800 rounded-lg py-2 text-[9px] text-slate-300 flex items-center justify-center gap-1"><Download className="w-3 h-3"/> Download</button>
-                <button onClick={saveAsset} disabled={saving} className="border border-slate-800 bg-slate-900 hover:bg-slate-800 rounded-lg py-2 text-[9px] text-slate-300 flex items-center justify-center gap-1"><Save className="w-3 h-3"/> Save</button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="bg-slate-950 border border-slate-800 rounded-xl">
-          <button onClick={()=>setTechnicalOpen(v=>!v)} className="w-full px-3.5 py-3 flex items-center justify-between text-[9px] text-slate-500 uppercase font-bold tracking-widest"><span className="flex items-center gap-1.5"><Info className="w-3 h-3"/> Workflow details</span><ChevronDown className={`w-3 h-3 transition-transform ${technicalOpen?'rotate-180':''}`}/></button>
-          {technicalOpen && <div className="border-t border-slate-800 p-3.5 space-y-3">
-            {workflow ? <>
-              <div className="flex flex-wrap gap-1">{workflow.capabilities.map(c=><span key={c} className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-sky-300">{c}</span>)}</div>
-              <div className="grid grid-cols-2 gap-1.5 max-h-44 overflow-auto custom-scrollbar">{workflow.bindings.map(b=><div key={`${b.key}-${b.nodeId}`} className="bg-slate-900 border border-slate-800 rounded p-1.5"><div className="text-[9px] text-emerald-400 font-bold">{humanize(b.key)}</div><div className="text-[9px] text-slate-500 font-mono">#{b.nodeId} · {b.input}</div></div>)}</div>
-              {workflow.warnings.map(w=><div key={w} className="text-[9px] text-amber-400 bg-amber-500/5 border border-amber-500/20 rounded p-1.5 flex gap-1"><AlertTriangle className="w-3 h-3 shrink-0"/>{w}</div>)}
-            </> : <div className="text-[10px] text-slate-500 py-3 text-center"><SlidersHorizontal className="w-5 h-5 mx-auto mb-1 opacity-40"/>No workflow details available.</div>}
-            <button onClick={()=>{loadWorkflows();loadCapabilities();}} className="text-[9px] text-slate-500 hover:text-slate-200 flex items-center gap-1"><RefreshCw className="w-3 h-3"/> Refresh local capabilities</button>
-          </div>}
-        </div>
-
-        {telemetry && (
-          <VRAMHistoryGraph
-            telemetry={telemetry}
-            onAddLog={onAddLog}
-            onClearCache={onClearCache}
-          />
-        )}
+        {keepNotification && <div className="mt-2 px-2 py-1.5 rounded bg-emerald-500/5 border border-emerald-500/20 text-[8px] text-emerald-300">{keepNotification}</div>}
+        {activeOutput && job?.status==='COMPLETED' && <div className="mt-3 space-y-2">
+          {activeLayout && <button type="button" disabled={fusingLayout||isBusy} onClick={handleFuseTemplateLayout} className="w-full py-2 rounded-lg bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white text-[9px] font-bold"><Zap className="w-3 h-3 inline mr-1"/>{fusingLayout?'FUSING…':'FUSE AIDA64 LAYOUT'}</button>}
+          {!lockSeed ? <button type="button" onClick={handleKeepImage} className="w-full py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[9px] font-bold"><CheckSquare className="w-3 h-3 inline mr-1"/>{promotingImage?'IMPORTING…':'KEEP IMAGE & WORK FROM IT'}</button> : <button type="button" onClick={handleUnlockImage} className="w-full py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[9px] font-bold"><Unlock className="w-3 h-3 inline mr-1"/>UNLOCK IMAGE</button>}
+          <div className="grid grid-cols-3 gap-1.5"><button onClick={variation} disabled={isBusy||promotingImage} className="py-2 rounded-lg bg-[#202020] border border-[#333] text-[8px] text-zinc-300"><Wand2 className="w-3 h-3 inline mr-1"/>Variation</button><button onClick={downloadOutput} className="py-2 rounded-lg bg-[#202020] border border-[#333] text-[8px] text-zinc-300"><Download className="w-3 h-3 inline mr-1"/>Save file</button><button onClick={saveAsset} disabled={saving} className="py-2 rounded-lg bg-[#202020] border border-[#333] text-[8px] text-zinc-300"><Save className="w-3 h-3 inline mr-1"/>Library</button></div>
+        </div>}
+        <div className="mt-3 pt-3 border-t border-[#292929] flex items-center justify-between text-[8px] text-zinc-600 font-mono"><span>FLUX · COMFYUI · LOCAL</span><button onClick={()=>{loadWorkflows();loadCapabilities();}} className="hover:text-zinc-300 flex items-center gap-1"><RefreshCw className="w-3 h-3"/> refresh</button></div>
       </div>
     </div>
   </section>;
+
 };

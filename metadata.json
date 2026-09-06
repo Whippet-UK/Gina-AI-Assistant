@@ -1,6 +1,11 @@
 {
+<<<<<<< HEAD
+  "name": "Gina AI Factory \u2014 Local Creator UI",
+  "version": "1.17.84",
+=======
   "name": "Gina AI Factory — Local Creator UI",
   "version": "1.17.73",
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
   "description": "Strictly local creator dashboard with ComfyUI, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, local Gemma 3 12B CUDA inference, zero-VRAM hybrid RAG knowledge engine, real-time node graph sync, and voice mode.",
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API",
@@ -58,7 +63,8 @@
     "SEQUENTIAL_LTX_STORY_ENGINE",
     "FINAL_FRAME_I2V_STORY_CONTINUITY",
     "LONG_FORM_STREAMED_VIDEO",
-    "STORY_BLOCK_RIFE"
+    "STORY_BLOCK_RIFE",
+    "ACE_STEP_SINGING_PIPELINE"
   ],
-  "release": "Live System Inventory + current local model/capability discovery"
+  "release": "One-click singing pipeline: ACE-Step routing + Audio Deck auto-load"
 }

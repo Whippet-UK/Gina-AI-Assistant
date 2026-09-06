@@ -60,9 +60,15 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
   // Generator State (Matches Reference Image)
   const [generatorTier, setGeneratorTier] = useState<'expert' | 'basic'>('expert');
   const [selectedModel, setSelectedModel] = useState<string>(() => {
+<<<<<<< HEAD
+    return localStorage.getItem('gina_music_model') || 'auto';
+  });
+  const [modelStatusMap, setModelStatusMap] = useState<Record<string, { cached: boolean; hasWeights: boolean; sizeLabel: string; fileCount: number; backend?: string; weightFiles?: string[]; managedPath?: string; hubCacheIgnored?: boolean; cacheMode?: string; resolution?: { path?: string; source?: string; revision?: string | null; refs?: string[] } }>>({
+=======
     return localStorage.getItem('gina_music_model') || 'facebook/musicgen-medium';
   });
   const [modelStatusMap, setModelStatusMap] = useState<Record<string, { cached: boolean; hasWeights: boolean; sizeLabel: string; fileCount: number }>>({
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
     'facebook/musicgen-medium': { cached: false, hasWeights: false, sizeLabel: '0 MB', fileCount: 0 },
     'facebook/musicgen-small': { cached: true, hasWeights: true, sizeLabel: '2.3 GB', fileCount: 14 },
     'facebook/audiogen-medium': { cached: false, hasWeights: false, sizeLabel: '0 MB', fileCount: 0 },
@@ -79,6 +85,11 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
   const [duration, setDuration] = useState<number>(15);
   const [guidanceScale, setGuidanceScale] = useState<number>(3.0);
   const [temperature, setTemperature] = useState<number>(1.0);
+<<<<<<< HEAD
+  const [vocalLanguage, setVocalLanguage] = useState<string>('en');
+  const [aceStepReady, setAceStepReady] = useState<boolean>(false);
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 
   // Dropdown Drawer Popovers (# Genre, # Moods, # Voices, # Tempos)
   const [activeDropdown, setActiveDropdown] = useState<'genre' | 'moods' | 'voices' | 'tempos' | null>(null);
@@ -117,17 +128,55 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
 
   // Load Tracks & Model Status on mount
   const fetchModelStatus = useCallback(async () => {
+<<<<<<< HEAD
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        const res = await fetch('/api/music/status', { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+        if (data.availableModels) {
+          const map: Record<string, { cached: boolean; hasWeights: boolean; sizeLabel: string; fileCount: number; backend?: string; weightFiles?: string[]; managedPath?: string; hubCacheIgnored?: boolean; resolution?: { path?: string; source?: string; revision?: string | null; refs?: string[] } }> = {};
+=======
     try {
       const res = await fetch('/api/music/status');
       if (res.ok) {
         const data = await res.json();
         if (data.availableModels) {
           const map: Record<string, { cached: boolean; hasWeights: boolean; sizeLabel: string; fileCount: number }> = {};
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           data.availableModels.forEach((m: any) => {
             map[m.id] = {
               cached: !!m.cached,
               hasWeights: !!m.hasWeights,
               sizeLabel: m.sizeLabel || '0 MB',
+<<<<<<< HEAD
+              fileCount: m.fileCount || 0,
+              backend: m.backend,
+              weightFiles: Array.isArray(m.weightFiles) ? m.weightFiles : [],
+              managedPath: m.managedPath,
+              hubCacheIgnored: m.hubCacheIgnored !== false,
+              resolution: m.resolution
+            };
+          });
+          setModelStatusMap(map);
+          }
+          return;
+        }
+      } catch (err) {
+        if (attempt === 3) console.error('Failed to query music model status:', err);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
+    }
+  }, []);
+
+  const fetchAceStepStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/music/ace-step/status', { cache: 'no-store' });
+      const data = await res.json();
+      setAceStepReady(!!data.ok);
+    } catch {
+      setAceStepReady(false);
+=======
               fileCount: m.fileCount || 0
             };
           });
@@ -136,12 +185,17 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
       }
     } catch (err) {
       console.error('Failed to query music model status:', err);
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
     }
   }, []);
 
   const handleDownloadModel = async (modelId: string) => {
     setIsDownloadingModel(true);
+<<<<<<< HEAD
+    onAddLog?.('INFO', `Starting managed local model download for '${modelId}' — Generate never downloads.`);
+=======
     onAddLog?.('INFO', `Starting 1-click HuggingFace weights download for '${modelId}'...`);
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
     try {
       const res = await fetch('/api/music/models/download', {
         method: 'POST',
@@ -183,9 +237,17 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
   useEffect(() => {
     fetchTracks();
     fetchModelStatus();
+<<<<<<< HEAD
+    fetchAceStepStatus();
+    const timer = setInterval(fetchModelStatus, 8000);
+    const aceTimer = setInterval(fetchAceStepStatus, 5000);
+    return () => { clearInterval(timer); clearInterval(aceTimer); };
+  }, [fetchTracks, fetchModelStatus, fetchAceStepStatus]);
+=======
     const timer = setInterval(fetchModelStatus, 8000);
     return () => clearInterval(timer);
   }, [fetchTracks, fetchModelStatus]);
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 
   // Audio Playback Listener
   useEffect(() => {
@@ -212,6 +274,34 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
     };
   }, [activeTrack]);
 
+<<<<<<< HEAD
+  useEffect(() => {
+    if (!job || job.workflowId !== 'music_studio' || job.status !== 'COMPLETED') return;
+    const output = Array.isArray(job.outputs) ? job.outputs.find((item: any) => item?.url && item?.filename) : null;
+    if (!output) return;
+    const track: TrackItem = {
+      filename: output.filename,
+      name: (songName || output.filename).replace(/_/g, ' '),
+      url: `${output.url}${output.url.includes('?') ? '&' : '?'}gina_deck=${encodeURIComponent(job.id)}`,
+      durationSec: Number(output.duration || duration),
+      bytes: 0,
+      createdAt: new Date().toISOString()
+    };
+    setActiveTrack(track);
+    setIsPlaying(false);
+    setPlaybackProgress(0);
+    fetchTracks();
+    onAddLog?.('SEC', `Audio Deck loaded generated WAV automatically: ${output.filename}`);
+  }, [job?.id, job?.status, job?.workflowId]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !activeTrack?.url) return;
+    audio.load();
+  }, [activeTrack?.url]);
+
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
   const togglePlayTrack = (track: TrackItem) => {
     if (activeTrack?.filename === track.filename) {
       if (isPlaying) {
@@ -277,7 +367,12 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
 
   // Main Music Generation Trigger
   const handleGenerateSong = async () => {
+<<<<<<< HEAD
+    const singingRequested = !!lyrics.trim() && !noVocals && selectedModel !== 'facebook/audiogen-medium';
+    onAddLog?.('RULE', singingRequested ? `Rule 011: VRAM-safe one-click singing lane → ACE-Step 1.5 (0.6B LM + CPU offload).` : `Rule 011: VRAM cage safety check for local audio generation.`);
+=======
     onAddLog?.('RULE', `Rule 011: VRAM cage safety check for AudioCraft MusicGen.`);
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
     try {
       const res = await fetch('/api/music/generate', {
         method: 'POST',
@@ -294,7 +389,13 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
           model: selectedModel,
           guidanceScale: guidanceScale,
           temperature: temperature,
+<<<<<<< HEAD
+          splitStart: suiteMode === 'extend' ? extendTimestamp : editStartSec,
+          vocalLanguage,
+          engine: singingRequested ? 'ace-step-1.5' : selectedModel
+=======
           splitStart: suiteMode === 'extend' ? extendTimestamp : editStartSec
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
         })
       });
 
@@ -328,7 +429,11 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
               <Music className="w-5 h-5" />
             </span>
             <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+<<<<<<< HEAD
+              AI Music Generator Suite <span className="text-xs px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-mono">AudioCraft · MusicGen · AudioGen</span>
+=======
               AI Music Generator Suite <span className="text-xs px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-mono">AudioCraft & MusicGen</span>
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
             </h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
@@ -444,9 +549,17 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                 }}
                 className="appearance-none bg-slate-900 hover:bg-slate-850 border border-slate-700/80 text-purple-300 font-mono text-xs font-semibold px-3 py-1.5 pr-7 rounded-full focus:outline-none focus:border-purple-400 cursor-pointer"
               >
+<<<<<<< HEAD
+                <option value="auto">Auto — Lyrics → ACE-Step Singing / No Lyrics → MusicGen</option>
+                <option value="facebook/musicgen-medium">MusicGen Medium 1.5B · Instrumental</option>
+                <option value="facebook/musicgen-small">MusicGen Small 300M · Fast BGM</option>
+                <option value="ace-step-1.5">ACE-Step 1.5 · Singing (0.6B / 8GB Safe)</option>
+                <option value="facebook/audiogen-medium">AudioGen Medium 1.5B · SFX / Atmosphere</option>
+=======
                 <option value="facebook/musicgen-medium">V6.0 Pro (MusicGen Medium 1.5B · High-Fi)</option>
                 <option value="facebook/musicgen-small">V5.5 (MusicGen Small 300M · Fast BGM)</option>
                 <option value="facebook/audiogen-medium">V5.5 SFX (AudioGen Atmosphere 1.5B)</option>
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
               </select>
               <ChevronDown className="w-3.5 h-3.5 text-purple-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
@@ -455,15 +568,41 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
           {/* Model Cache & VRAM Sentinel Banner */}
           {(() => {
             const currentStatus = modelStatusMap[selectedModel] || { cached: false, hasWeights: false, sizeLabel: '0 MB', fileCount: 0 };
+<<<<<<< HEAD
+            const singingMode = selectedModel === 'ace-step-1.5' || (selectedModel === 'auto' && !!lyrics.trim() && !noVocals) || (!!lyrics.trim() && !noVocals && selectedModel !== 'facebook/audiogen-medium');
             return (
+              <>
+              {singingMode && (
+                <div className={`p-3 rounded-xl border ${aceStepReady ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-amber-950/20 border-amber-500/30'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 font-semibold text-slate-200"><Mic className="w-3.5 h-3.5 text-pink-400" /> ACE-Step singing lane</div>
+                    <span className={`text-[10px] font-mono ${aceStepReady ? 'text-emerald-300' : 'text-amber-300'}`}>{aceStepReady ? 'API READY' : 'API NOT READY'}</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-1">Lyrics are sent to a real singing model. MusicGen is not used to fake vocals.</div>
+                  {!aceStepReady && <div className="text-[10px] text-amber-300 mt-1">Run <span className="font-mono">scripts\Install_ACEStep_Singing.bat</span> once, then start the ACE-Step API.</div>}
+                </div>
+              )}
+=======
+            return (
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
               <div className="flex flex-col gap-2 p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
                     <span className="text-slate-300 font-medium">
+<<<<<<< HEAD
+                      {selectedModel === 'ace-step-1.5' || singingMode ? 'ACE-Step 1.5 · Real Singing' : selectedModel === 'facebook/audiogen-medium' ? 'AudioGen Medium 1.5B · SFX / Atmosphere' : selectedModel === 'facebook/musicgen-medium' ? 'MusicGen Medium 1.5B · Instrumental' : 'MusicGen Small 300M'}
+                    </span>
+                    {singingMode || selectedModel === 'ace-step-1.5' ? (
+                      <span className={`flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full font-mono border ${aceStepReady ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border-amber-500/30'}`}>
+                        {aceStepReady ? <CheckCircle2 className="w-3 h-3" /> : <ShieldAlert className="w-3 h-3" />} {aceStepReady ? 'ACE-Step API Ready' : 'Start ACE-Step API'}
+                      </span>
+                    ) : currentStatus.hasWeights ? (
+=======
                       {selectedModel === 'facebook/musicgen-medium' ? 'MusicGen Medium 1.5B (Preferred)' : 'MusicGen Small 300M'}
                     </span>
                     {currentStatus.hasWeights ? (
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
                       <span className="flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono border border-emerald-500/30">
                         <CheckCircle2 className="w-3 h-3" /> Cached Locally ({currentStatus.sizeLabel})
                       </span>
@@ -473,6 +612,20 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                       </span>
                     ) : (
                       <span className="flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono border border-amber-500/30">
+<<<<<<< HEAD
+                        <Download className="w-3 h-3" /> Download required — Generate will not auto-download
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-1.5 text-[10px] text-slate-500 font-mono">
+                    <span>BACKEND: <span className="text-slate-300">{currentStatus.backend || 'detecting…'}</span></span>
+                    <span>WEIGHTS: <span className="text-slate-300">{currentStatus.weightFiles?.length ? currentStatus.weightFiles.join(', ') : 'not detected'}</span></span>
+                    <span>PATH: <span className="text-slate-300" title={currentStatus.managedPath || ''}>{currentStatus.managedPath ? (currentStatus.managedPath.length > 52 ? `…${currentStatus.managedPath.slice(-52)}` : currentStatus.managedPath) : 'not resolved'}</span></span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {!currentStatus.hasWeights && !isModelDownloading && selectedModel !== 'ace-step-1.5' && selectedModel !== 'auto' && (
+=======
                         <Download className="w-3 h-3" /> Ready to Cache (~5.8 GB)
                       </span>
                     )}
@@ -480,6 +633,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
 
                   <div className="flex items-center gap-2">
                     {!currentStatus.hasWeights && !isModelDownloading && (
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
                       <button
                         type="button"
                         disabled={isDownloadingModel}
@@ -491,8 +645,13 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                       </button>
                     )}
 
+<<<<<<< HEAD
+                    <span className="text-[10px] font-mono text-slate-500 hidden sm:inline" title="Gina serializes heavy AudioCraft work so only one audio model generation runs at a time. This does not reduce the model's own peak VRAM requirement.">
+                      Sequential GPU lane · one audio model at a time
+=======
                     <span className="text-[10px] font-mono text-slate-500 hidden sm:inline" title="Gina isolates memory allocations & executes tasks sequentially to prevent VRAM exhaustion on 8GB GPUs.">
                       Sequential 8GB VRAM Safe (~4.8GB max)
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
                     </span>
                   </div>
                 </div>
@@ -502,7 +661,11 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                   <div className="mt-1 pt-2 border-t border-slate-800/80 flex flex-col gap-1.5">
                     <div className="flex items-center justify-between text-[11px] font-mono">
                       <span className="text-purple-300 font-semibold truncate max-w-md">
+<<<<<<< HEAD
+                        {job.step || "Downloading model into Gina managed directory..."}
+=======
                         {job.step || 'Downloading AudioCraft weights via HuggingFace...'}
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
                       </span>
                       <span className="text-purple-400 font-bold">{job.progress ?? 20}%</span>
                     </div>
@@ -513,12 +676,21 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                       />
                     </div>
                     <div className="flex items-center justify-between text-[10px] text-slate-500">
+<<<<<<< HEAD
+                      <span>Using: {currentStatus.managedPath || "C:\\Gina_AI\\models\\audio"}</span>
+                      <span>Download only · Generate is offline</span>
+=======
                       <span>Saving to: C:\Gina_AI\models\audio\facebook_musicgen-medium\</span>
                       <span>Chunks buffered in .cache folder</span>
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
                     </div>
                   </div>
                 )}
               </div>
+<<<<<<< HEAD
+              </>
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
             );
           })()}
 
@@ -760,6 +932,25 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                   </div>
                 </div>
 
+<<<<<<< HEAD
+                {((selectedModel === 'ace-step-1.5') || (lyrics.trim() && !noVocals && selectedModel !== 'facebook/audiogen-medium')) && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-slate-300 font-semibold text-[11px]">Vocal Language</span>
+                    <select value={vocalLanguage} onChange={(e) => setVocalLanguage(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500">
+                      <option value="en">English</option>
+                      <option value="es">Spanish</option>
+                      <option value="fr">French</option>
+                      <option value="de">German</option>
+                      <option value="it">Italian</option>
+                      <option value="pt">Portuguese</option>
+                      <option value="ja">Japanese</option>
+                      <option value="zh">Chinese</option>
+                    </select>
+                  </div>
+                )}
+
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
                 {/* Hidden Switch & Duration Slider */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center pt-1">
                   <label className="flex items-center justify-between p-2 rounded-xl bg-slate-900/60 border border-slate-800 cursor-pointer">
@@ -814,10 +1005,37 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
               </>
             ) : (
               <>
+<<<<<<< HEAD
+                <Sparkles className="w-5 h-5" /> {selectedModel === 'facebook/audiogen-medium' ? 'Generate SFX / Atmosphere' : ((selectedModel === 'ace-step-1.5') || (lyrics.trim() && !noVocals && selectedModel !== 'facebook/audiogen-medium')) ? 'Generate Singing Song' : 'Generate'}
+              </>
+            )}
+          </button>
+
+          {isJobActive && job?.workflowId === 'music_studio' && (
+            <div className="mt-3 p-3 rounded-xl bg-slate-950/90 border border-purple-500/30 text-xs shadow-lg">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="flex items-center gap-2 text-purple-200 font-semibold">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Live Audio Job
+                </div>
+                <span className="font-mono text-purple-300">{job.progress || 0}%</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden mb-2">
+                <div className="h-full bg-purple-500 transition-all duration-500" style={{ width: `${Math.max(0, Math.min(100, job.progress || 0))}%` }} />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[10px]">
+                <div><span className="text-slate-500">MODEL:</span> <span className="text-slate-300 font-mono">{selectedModel}</span></div>
+                <div><span className="text-slate-500">DURATION:</span> <span className="text-slate-300 font-mono">{duration}s</span></div>
+                <div className="sm:col-span-2"><span className="text-slate-500">STEP:</span> <span className="text-slate-200">{job.step || 'Starting…'}</span></div>
+              </div>
+              <div className="mt-2 text-[10px] text-emerald-300/90">Exclusive AudioCraft lane · local-only model loading · no hidden second download</div>
+            </div>
+          )}
+=======
                 <Sparkles className="w-5 h-5" /> Generate
               </>
             )}
           </button>
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
         </div>
 
         {/* Right Column: Audio Player, Active Stems & Live Studio Output */}

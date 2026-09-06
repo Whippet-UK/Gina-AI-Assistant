@@ -85,7 +85,21 @@ goto WAIT_COMFY
 echo    ComfyUI is READY.
 echo.
 
-echo [3/4] Starting Gina Dashboard...
+echo [3/5] Starting ACE-Step singing API (only if installed)...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$c=Get-NetTCPConnection -LocalPort 8101 -State Listen -ErrorAction SilentlyContinue; if($c){exit 0}else{exit 1}"
+if errorlevel 1 (
+  if exist "%GINA_ROOT%\third_party\ACE-Step-1.5\pyproject.toml" (
+    start "ACE-Step 1.5 - Singing API" cmd /k "cd /d %GINA_ROOT%\third_party\ACE-Step-1.5 && set ACESTEP_API_HOST=127.0.0.1 && set ACESTEP_API_PORT=8101 && set ACESTEP_INIT_SERVICE=true && set ACESTEP_CONFIG_PATH=acestep-v15-turbo && set ACESTEP_LM_MODEL_PATH=acestep-5Hz-lm-0.6B && set ACESTEP_LM_BACKEND=pt && set ACESTEP_OFFLOAD_TO_CPU=true && set ACESTEP_OFFLOAD_DIT_TO_CPU=true && set ACESTEP_INIT_LLM=true && set ACESTEP_LM_OFFLOAD_TO_CPU=true && uv run --no-sync acestep-api --host 127.0.0.1 --port 8101 --init-llm --lm-model-path acestep-5Hz-lm-0.6B"
+  ) else (
+    echo    ACE-Step is not installed. Singing remains unavailable until setup is run.
+  )
+) else (
+  echo    ACE-Step API is already running; reusing it.
+)
+
+echo.
+
+echo [4/5] Starting Gina Dashboard...
 REM Stop only an existing Gina node process from this install so a stale
 REM v1.x server cannot occupy 3200 and serve an older API.
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$procs=Get-CimInstance Win32_Process -Filter \"Name = 'node.exe'\" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and $_.CommandLine -match [regex]::Escape($env:GINA_ROOT) -and $_.CommandLine -match 'server\.ts|dist\\server\.cjs' }; foreach($p in $procs){ try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch {} }"
@@ -118,9 +132,16 @@ goto WAIT_GINA
 
 :GINA_READY
 echo    Gina Dashboard is READY.
+<<<<<<< HEAD
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $d=(Invoke-WebRequest -Uri '%GINA_URL%/api/version' -UseBasicParsing -TimeoutSec 3).Content | ConvertFrom-Json; if($d.version -ne 'v1.17.85'){ Write-Host ('[WARN] Dashboard reports version ' + $d.version + ' (expected v1.17.85).'); } } catch { Write-Host '[WARN] Could not verify Gina API version.' }"
+=======
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $d=(Invoke-WebRequest -Uri '%GINA_URL%/api/version' -UseBasicParsing -TimeoutSec 3).Content | ConvertFrom-Json; if($d.version -ne 'v1.17.68'){ Write-Host ('[WARN] Dashboard reports version ' + $d.version + ' (expected v1.17.68).'); } } catch { Write-Host '[WARN] Could not verify Gina API version.' }"
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 echo.
 
+echo [MusicGen] Checking local MusicGen Medium resolution...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $m=(Invoke-WebRequest -Uri '%GINA_URL%/api/music/status' -UseBasicParsing -TimeoutSec 5).Content | ConvertFrom-Json; $x=$m.availableModels | Where-Object { $_.id -eq 'facebook/musicgen-medium' }; Write-Host ('    Status: cached=' + $x.cached + ' weights=' + $x.hasWeights + ' backend=' + $x.backend); Write-Host ('    Path: ' + $x.managedPath); if($x.resolution.revision){ Write-Host ('    Revision: ' + $x.resolution.revision); }; if($x.resolution.refs){ Write-Host ('    Refs: ' + ($x.resolution.refs -join ', ')); } } catch { Write-Host '[WARN] Could not query MusicGen resolution.' }"
+echo.
 echo [5/5] Starting local Gemma engine...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r=Invoke-WebRequest -Method POST -Uri '%GINA_URL%/api/llm/start' -UseBasicParsing -TimeoutSec 180; if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 300) { exit 0 } else { exit 1 } } catch { exit 1 }"
 if errorlevel 1 (

@@ -1877,12 +1877,26 @@ const AVAILABLE_PREWARM_MODELS: PreWarmModelDef[] = [
   {
     id: 'musicgen_small', name: 'MusicGen Small (AudioCraft 300M)', filename: 'facebook/musicgen-small',
     workflowId: 'audiocraft_music', type: 'music', vramFootprintMB: 2800,
+<<<<<<< HEAD
+    description: 'Meta AudioCraft MusicGen 300M model for fast BGM generation and audio composition (cached in models/audio). Runs as an exclusive AudioCraft job.'
+  },
+  {
+    id: 'musicgen_medium', name: 'MusicGen Medium (AudioCraft 1.5B)', filename: 'facebook/musicgen-medium',
+    workflowId: 'audiocraft_music', type: 'music', vramFootprintMB: 16000,
+    description: 'Meta AudioCraft MusicGen 1.5B model for high-fidelity soundtrack generation. Official AudioCraft guidance calls for at least 16 GB GPU memory for medium models; Gina runs it exclusively and refuses silent downloads during generation.'
+  },
+  {
+    id: 'audiogen_medium', name: 'AudioGen Medium (AudioCraft 1.5B · SFX / Atmosphere)', filename: 'facebook/audiogen-medium',
+    workflowId: 'audiocraft_music', type: 'audio', vramFootprintMB: 16000,
+    description: 'Meta AudioCraft AudioGen 1.5B text-to-sound model for SFX and environmental ambience. Official AudioCraft guidance calls for at least 16 GB GPU memory; Gina runs it as an exclusive local-only job.'
+=======
     description: 'Meta AudioCraft MusicGen 300M model for fast BGM generation and audio composition (cached in models/audio).'
   },
   {
     id: 'musicgen_medium', name: 'MusicGen Medium (AudioCraft 1.5B)', filename: 'facebook/musicgen-medium',
     workflowId: 'audiocraft_music', type: 'music', vramFootprintMB: 4800,
     description: 'Meta AudioCraft MusicGen 1.5B model for high-fidelity soundtrack generation and scoring.'
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
   }
 ];
 
@@ -3026,7 +3040,21 @@ app.get("/api/jobs/:id/workflow", async (req, res) => {
   if (!job) return res.status(404).json({ ok:false, error:'Job not found' });
   const workflowId = job.workflowId;
   const definition = workflowRegistry.get(workflowId);
-  if (!definition) return res.status(404).json({ ok:false, error:'Workflow definition not found' });
+  // Not every Gina job is a ComfyUI workflow. Python/AudioCraft/StreamInject
+  // jobs still use the shared dashboard inspector, so return a valid inspection
+  // envelope instead of a misleading 404.
+  if (!definition) {
+    return res.json({
+      ok: true,
+      jobId: job.id,
+      workflowId,
+      execution: 'external',
+      workflow: job.parameters?.__workflowSnapshot || null,
+      nodes: [],
+      bindings: [],
+      message: `Job '${workflowId}' is an external Gina engine job; no ComfyUI workflow definition is required.`
+    });
+  }
   try {
     const raw = applyBindings(definition.workflow, definition.bindings, job.parameters || {});
     const resolved = await adaptWorkflowForComfySession(enforceAida64WorkflowDimensions(raw, job.parameters?.width, job.parameters?.height));
@@ -3342,12 +3370,15 @@ app.get('/api/gif-studio/capabilities', async (_req,res) => {
   } catch (e:any) {
     res.status(500).json({ ok: false, error: e?.message || 'Unable to inspect GIF Studio capabilities' });
   }
+<<<<<<< HEAD
+=======
 });
 
 app.get('/api/jobs/:id/history', (req,res) => {
   const job = jobManager.get(req.params.id);
   if (!job) return res.status(404).json({ok:false,error:'Job not found'});
   res.json({ok:true,job,history:jobManager.eventHistory(job.id)});
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 });
 
 app.get('/api/jobs/:id/events/history', (req,res) => {
@@ -4034,9 +4065,52 @@ app.use("/media/audio", express.static(musicService.getOutputDir()));
 app.get("/api/music/status", async (_req, res) => {
   try {
     const tracks = await musicService.scanTracks();
+<<<<<<< HEAD
+    const modelIds = [
+      "facebook/musicgen-small",
+      "facebook/musicgen-medium",
+      "facebook/audiogen-medium"
+    ];
+
+    const safeModelTelemetry = (modelName: string) => {
+      try {
+        const info = musicService.getModelCacheInfo(modelName);
+        const backend = musicService.getModelBackend(modelName);
+        const resolution = musicService.getModelResolution(modelName);
+        return {
+          ...info,
+          managedPath: resolution.path,
+          backend: backend.backend,
+          weightFiles: backend.weightFiles,
+          resolution,
+          statusError: null
+        };
+      } catch (error: any) {
+        const fallbackPath = musicService.getResolvedModelPath(modelName);
+        const message = error?.message || String(error);
+        console.warn(`[MusicService] Status telemetry failed for ${modelName}: ${message}`);
+        return {
+          cached: false,
+          hasWeights: false,
+          sizeLabel: "0 MB",
+          fileCount: 0,
+          managedPath: fallbackPath,
+          backend: "Telemetry unavailable",
+          weightFiles: [],
+          resolution: { path: fallbackPath, source: "Local filesystem", revision: null, refs: [] },
+          statusError: message
+        };
+      }
+    };
+
+    const smallInfo = safeModelTelemetry(modelIds[0]);
+    const mediumInfo = safeModelTelemetry(modelIds[1]);
+    const audiogenInfo = safeModelTelemetry(modelIds[2]);
+=======
     const smallInfo = musicService.getModelCacheInfo("facebook/musicgen-small");
     const mediumInfo = musicService.getModelCacheInfo("facebook/musicgen-medium");
     const audiogenInfo = musicService.getModelCacheInfo("facebook/audiogen-medium");
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 
     res.json({
       ok: true,
@@ -4048,11 +4122,25 @@ app.get("/api/music/status", async (_req, res) => {
           id: "facebook/musicgen-medium",
           name: "MusicGen Medium (1.5B High-Fidelity)",
           params: "1.5B",
+<<<<<<< HEAD
+          vramMB: 16000,
+=======
           vramMB: 4800,
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           cached: mediumInfo.cached,
           hasWeights: mediumInfo.hasWeights,
           sizeLabel: mediumInfo.sizeLabel,
           fileCount: mediumInfo.fileCount,
+<<<<<<< HEAD
+          managedPath: mediumInfo.managedPath,
+          backend: mediumInfo.backend,
+          weightFiles: mediumInfo.weightFiles,
+          resolution: mediumInfo.resolution,
+          statusError: mediumInfo.statusError,
+          hubCacheIgnored: false,
+          cacheMode: "local HF snapshot (network disabled)",
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           isDefault: true
         },
         {
@@ -4064,23 +4152,73 @@ app.get("/api/music/status", async (_req, res) => {
           hasWeights: smallInfo.hasWeights,
           sizeLabel: smallInfo.sizeLabel,
           fileCount: smallInfo.fileCount,
+<<<<<<< HEAD
+          managedPath: smallInfo.managedPath,
+          backend: smallInfo.backend,
+          weightFiles: smallInfo.weightFiles,
+          resolution: smallInfo.resolution,
+          statusError: smallInfo.statusError,
+          hubCacheIgnored: true,
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           isDefault: false
         },
         {
           id: "facebook/audiogen-medium",
           name: "AudioGen Medium (SFX/Atmosphere)",
           params: "1.5B",
+<<<<<<< HEAD
+          vramMB: 16000,
+=======
           vramMB: 4800,
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           cached: audiogenInfo.cached,
           hasWeights: audiogenInfo.hasWeights,
           sizeLabel: audiogenInfo.sizeLabel,
           fileCount: audiogenInfo.fileCount,
+<<<<<<< HEAD
+          managedPath: audiogenInfo.managedPath,
+          backend: audiogenInfo.backend,
+          weightFiles: audiogenInfo.weightFiles,
+          resolution: audiogenInfo.resolution,
+          statusError: audiogenInfo.statusError,
+          hubCacheIgnored: true,
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           isDefault: false
         }
       ]
     });
   } catch (error: any) {
+<<<<<<< HEAD
+    console.error("[MusicService] Music status endpoint unexpected failure:", error);
+    // Status is telemetry; never let a filesystem edge case turn the dashboard
+    // into a repeating HTTP 500 loop. Generation remains independently strict.
+    res.json({
+      ok: true,
+      service: "AI Music Generator Suite & AudioCraft Engine",
+      outputDir: musicService.getOutputDir(),
+      trackCount: 0,
+      availableModels: [],
+      statusError: error?.message || "Music status check failed"
+    });
+  }
+});
+
+app.get("/api/music/ace-step/status", async (_req, res) => {
+  const baseUrl = process.env.ACESTEP_API_URL || "http://127.0.0.1:8001";
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+    const response = await fetch(`${baseUrl}/health`, { signal: controller.signal });
+    clearTimeout(timer);
+    const payload: any = await response.json().catch(() => ({}));
+    res.json({ ok: response.ok && (payload?.code === 200 || payload?.data?.status === "ok"), baseUrl, detail: payload?.error || null });
+  } catch (error: any) {
+    res.json({ ok: false, baseUrl, detail: error?.message || "ACE-Step API is not reachable" });
+=======
     res.status(500).json({ ok: false, error: error?.message || "Music status check failed" });
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
   }
 });
 
