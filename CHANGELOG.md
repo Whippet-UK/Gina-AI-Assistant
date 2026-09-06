@@ -201,15 +201,15 @@ const COMFY_ROOT = process.env.COMFY_ROOT || (isWin ? "C:\\Gina_AI\\ComfyUI_wind
 const GINA_WORKFLOW_DIR = process.env.GINA_WORKFLOW_DIR || (isWin ? "C:\\Gina_AI\\workflows" : path.join(process.cwd(), "workflows"));
 ```
 
-# v1.17.89 (Update) — Real-Time Generation Preview & Fooocus Sampling Stage
+# v1.17.89 (Update) — Real-Time Generation Preview & Gina-AI-Assistant Sampling Stage
 
-- **Summary**: Resolved the issue where the generation preview area showed a blank screen during generation. Enabled ComfyUI binary preview frame extraction over WebSockets in the backend, enabled SSE preview event streaming to the frontend context, and styled `GinaImagePreview` to render intermediate latent frames live with Fooocus's active amber/orange glowing border and dynamic step progression. Also updated `Start_Factory.bat` to launch ComfyUI with `--preview-method auto`.
+- **Summary**: Resolved the issue where the generation preview area showed a blank screen during generation. Enabled ComfyUI binary preview frame extraction over WebSockets in the backend, enabled SSE preview event streaming to the frontend context, and styled `GinaImagePreview` to render intermediate latent frames live with Gina-AI-Assistant's active amber/orange glowing border and dynamic step progression. Also updated `Start_Factory.bat` to launch ComfyUI with `--preview-method auto`.
 - **Target File Paths**:
   - `/Start_Factory.bat`: Added `--preview-method auto` to the ComfyUI launch command so ComfyUI actively generates and transmits intermediate latent previews over WebSocket.
   - `/server/comfy/ComfyWebSocket.ts`: Implemented `handleBinaryMessage` to unpack ComfyUI's 8-byte binary preview header (event type 1 = PREVIEW_IMAGE), decode image bytes (JPEG/PNG) to Base64 data URLs, update the active job's `preview` field, and broadcast `preview` events.
   - `/server/jobs/JobManager.ts`: Added optional `preview?: string` field to `GinaJob`.
   - `/src/context/GenerationJobContext.tsx`: Added `preview?: string` to frontend `GinaJob` interface and added an SSE listener for `preview` events to update active job preview state in real-time.
-  - `/src/components/gina-image/GinaImagePreview.tsx`: Rendered live preview frames inside the main viewport with a pulsing orange/amber active border (`border-2 border-[#f97316]`), live step watermark, Fooocus progress bar, and dynamic latent denoiser stage.
+  - `/src/components/gina-image/GinaImagePreview.tsx`: Rendered live preview frames inside the main viewport with a pulsing orange/amber active border (`border-2 border-[#f97316]`), live step watermark, Gina-AI-Assistant progress bar, and dynamic latent denoiser stage.
 - **Key Code Snippet (`/server/comfy/ComfyWebSocket.ts`)**:
 ```ts
 private handleBinaryMessage(data: any) {
@@ -230,16 +230,16 @@ private handleBinaryMessage(data: any) {
 }
 ```
 
-# v1.17.89 (Update) — 1:1 Fooocus Layout Alignment for Gina Image Studio
+# v1.17.89 (Update) — 1:1 Gina-AI-Assistant Layout Alignment for Gina Image Studio
 
-- **Summary**: Realized an exact 1:1 structural copy of Fooocus (https://github.com/lllyasviel/Fooocus) tailored natively for Gina AI Factory. The layout places the unobstructed output canvas (`GinaImagePreview`) prominently in the left column above the prompt area, nests the 4-tab `GinaImageInput` drawer (`Upscale or Variation`, `Image Prompt`, `Inpaint or Outpaint`, `Describe`) directly above the prompt box when `[x] Input Image` is checked, and renders the 4-tab `GinaImageSettings` (`Setting`, `Style`, `Model`, `Advanced`) in the collapsible right column triggered by `[x] Advanced` (expanding the preview to full width when closed).
+- **Summary**: Realized an exact 1:1 structural copy of Gina-AI-Assistant (https://github.com/Whippet-UK/Gina-AI-Assistant) tailored natively for Gina AI Factory. The layout places the unobstructed output canvas (`GinaImagePreview`) prominently in the left column above the prompt area, nests the 4-tab `GinaImageInput` drawer (`Upscale or Variation`, `Image Prompt`, `Inpaint or Outpaint`, `Describe`) directly above the prompt box when `[x] Input Image` is checked, and renders the 4-tab `GinaImageSettings` (`Setting`, `Style`, `Model`, `Advanced`) in the collapsible right column triggered by `[x] Advanced` (expanding the preview to full width when closed).
 - **Target File Paths**:
-  - `/src/components/PromptStudio.tsx`: Restructured layout into Fooocus 2-column grid (`scale=2` left column for output canvas + prompt box + checkbox bar; `scale=1` right column for advanced drawer). Connected `handleUpscale` and `handleApplyDescribedPrompt` handlers.
+  - `/src/components/PromptStudio.tsx`: Restructured layout into Gina-AI-Assistant 2-column grid (`scale=2` left column for output canvas + prompt box + checkbox bar; `scale=1` right column for advanced drawer). Connected `handleUpscale` and `handleApplyDescribedPrompt` handlers.
   - `/src/components/gina-image/GinaImagePreview.tsx`: Styled image stage container with rounded border and dark elevation to sit seamlessly as the primary stage in the left column.
-  - `/src/components/gina-image/GinaImageInput.tsx`: Complete 4-tab Fooocus architecture (Upscale or Variation, Image Prompt with 4 multi-slots & FaceSwap/PyraCanny/CPDS, Inpaint/Outpaint, Describe) branded for Gina.
+  - `/src/components/gina-image/GinaImageInput.tsx`: Complete 4-tab Gina-AI-Assistant architecture (Upscale or Variation, Image Prompt with 4 multi-slots & FaceSwap/PyraCanny/CPDS, Inpaint/Outpaint, Describe) branded for Gina.
 - **Key Code Snippet (`/src/components/PromptStudio.tsx`)**:
 ```tsx
-{/* Authentic Fooocus Main Workspace */}
+{/* Authentic Gina-AI-Assistant Main Workspace */}
 <div
   className={`p-4 sm:p-5 bg-[#0d1117] ${
     advancedOpen
@@ -247,13 +247,13 @@ private handleBinaryMessage(data: any) {
       : 'max-w-5xl mx-auto w-full flex flex-col gap-4'
   }`}
 >
-  {/* Left Column (Fooocus scale=2): Output Canvas + (Optional Input Image) + Prompt Box + Checkboxes */}
+  {/* Left Column (Gina-AI-Assistant scale=2): Output Canvas + (Optional Input Image) + Prompt Box + Checkboxes */}
   <div className="flex flex-col gap-4 min-w-0">
     <GinaImagePreview ... />
     {inputImageOpen && <GinaImageInput ... />}
     ...
   </div>
-  {/* Right Column (Fooocus scale=1): Advanced Settings Tabs */}
+  {/* Right Column (Gina-AI-Assistant scale=1): Advanced Settings Tabs */}
   {advancedOpen && (
     <div className="w-full shrink-0 animate-in fade-in slide-in-from-right-2 duration-200">
       <GinaImageSettings ... />
@@ -359,8 +359,8 @@ import {
 
 - **Resolution**: Cleanly resolved all git merge conflict markers across configuration, backend services, Python automation scripts, and UI components from the `Whippet-UK/Gina-AI-Assistant` import.
 - **Target Files**:
-  - `package.json`, `metadata.json`, `index.html`, `src/version.ts`, `AGENTS.md`: Synchronized project version to `1.17.87` and active restore point to `RESTORE_V1.17.87_FOOOCUS_STYLE_IMAGE_STUDIO`.
-  - `src/components/MilestoneChecklist.tsx`: Preserved restore points 73–86 as locked and set `RESTORE_V1.17.87_FOOOCUS_STYLE_IMAGE_STUDIO` as active.
+  - `package.json`, `metadata.json`, `index.html`, `src/version.ts`, `AGENTS.md`: Synchronized project version to `1.17.87` and active restore point to `RESTORE_V1.17.87_Gina-AI-Assistant_STYLE_IMAGE_STUDIO`.
+  - `src/components/MilestoneChecklist.tsx`: Preserved restore points 73–86 as locked and set `RESTORE_V1.17.87_Gina-AI-Assistant_STYLE_IMAGE_STUDIO` as active.
   - `server.ts`: Preserved AudioGen/MusicGen model prewarm definitions, `/api/jobs/:id/history` endpoint for GifStudio, and robust telemetry with ACE-Step health inspection.
   - `server/music/MusicService.ts`: Preserved AudioCraft sequential lane lock (`acquireAudioLane`), ACE-Step singing routing, and offline model validation.
   - `scripts/music_generator.py`: Preserved `save_wav_pcm16` stdlib fallback, `--model_path` argument, and explicit local-only verification.
@@ -368,9 +368,9 @@ import {
   - `src/components/MusicStudio.tsx`: Preserved real singing mode selection with ACE-Step status polling, vocal language selection, and sequential GPU lane notice.
   - `Start_Factory.bat`: Updated version verification command to match `v1.17.87`.
 
-# v1.17.87 — Fooocus-Inspired Gina Image Studio
+# v1.17.87 — Gina-AI-Assistant-Inspired Gina Image Studio
 
-- Reworked the image creation workspace around a focused Fooocus-inspired layout: prompt + core image controls on the left, large preview/actions on the right.
+- Reworked the image creation workspace around a focused Gina-AI-Assistant-inspired layout: prompt + core image controls on the left, large preview/actions on the right.
 - Preserved Gina's local ComfyUI execution path and FLUX.1-Schnell GGUF Q4_K_S workflow; this is a UI/UX redesign, not a replacement of the validated backend.
 - Kept AIDA64 1024×600 support, reference-image upload, Keep Image/reference continuation, variation, download, asset save, VRAM purge, workflow-aware controls, and technical diagnostics.
 - Reduced visual noise by moving advanced/technical controls behind compact disclosure buttons.
