@@ -1,9 +1,11 @@
 {
   "name": "Gina AI Factory — Local Creator UI",
-  "version": "1.17.91",
-  "description": "Strictly local creator dashboard with ComfyUI, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, local Gemma 3 12B CUDA inference, zero-VRAM hybrid RAG knowledge engine, real-time node graph sync, and voice mode.",
+  "version": "1.18.0",
+  "description": "Strictly local creator dashboard with ComfyUI, Juggernaut XL SDXL high-speed engine, Qwen 2.5-VL 7B & Gemma 3 local CUDA inference, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, and voice mode.",
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API",
+    "QWEN_25_VL_7B_CUDA_INFERENCE",
+    "JUGGERNAUT_XL_SDXL_WORKFLOW",
     "MULTIMEDIA_MOVIEPY_STITCHER",
     "AI_MUSIC_GENERATOR_SUITE",
     "AUDIOCRAFT_MUSICGEN_INTEGRATION",

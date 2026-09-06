@@ -88,6 +88,8 @@ interface GinaImageSettingsProps {
   // Model tab
   baseModel: string;
   onChangeBaseModel: (model: string) => void;
+  selectedWorkflow?: string;
+  onSelectWorkflow?: (wfId: string) => void;
   loras: { enabled: boolean; model: string; weight: number }[];
   onChangeLora: (index: number, partial: { enabled?: boolean; model?: string; weight?: number }) => void;
   workflowModelLabel: string;
@@ -141,6 +143,8 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
   onSelectGinaV2Default,
   baseModel,
   onChangeBaseModel,
+  selectedWorkflow = 'flux_image',
+  onSelectWorkflow,
   loras,
   onChangeLora,
   workflowModelLabel,
@@ -522,31 +526,81 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
           <div className="space-y-4">
             {/* Base Model Selector */}
             <div>
-              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1 font-mono">
-                Base Model (UNet / Checkpoint)
+              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1.5 font-mono">
+                Active Generation Engine & Checkpoint
               </label>
-              <div className="p-3 bg-[#0a0e17] border border-blue-500/30 rounded-lg flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-bold text-white font-mono">{workflowModelLabel}</div>
-                  <div className="text-[10px] text-emerald-400 font-mono mt-0.5">
-                    ● Pinned: FLUX.1-Schnell GGUF Q4_K_S (High performance, low VRAM footprint)
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onSelectWorkflow) onSelectWorkflow('flux_image');
+                    onChangeBaseModel('flux1-schnell-Q4_K_S.gguf');
+                  }}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    selectedWorkflow === 'flux_image'
+                      ? 'bg-blue-950/40 border-blue-500 shadow-sm shadow-blue-500/10'
+                      : 'bg-[#0a0e17] border-[#252b3d] hover:border-zinc-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-white font-mono">FLUX.1-Schnell GGUF</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono border ${
+                      selectedWorkflow === 'flux_image'
+                        ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                        : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                    }`}>
+                      {selectedWorkflow === 'flux_image' ? 'ACTIVE' : 'READY'}
+                    </span>
                   </div>
-                </div>
-                <span className="px-2 py-1 rounded bg-blue-500/20 text-blue-300 text-[10px] font-mono border border-blue-500/30">
-                  READY
-                </span>
+                  <div className="text-[10px] text-zinc-400 font-mono">Q4_K_S UNet · 4-step generation</div>
+                  <div className="text-[9px] text-emerald-400 font-mono mt-1">~6.2 GB VRAM · T5-XXL FP8</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onSelectWorkflow) onSelectWorkflow('sdxl_juggernaut');
+                    onChangeBaseModel('Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors');
+                  }}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    selectedWorkflow === 'sdxl_juggernaut'
+                      ? 'bg-emerald-950/40 border-emerald-500 shadow-sm shadow-emerald-500/10'
+                      : 'bg-[#0a0e17] border-[#252b3d] hover:border-zinc-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-white font-mono">Juggernaut-XL v9</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono border ${
+                      selectedWorkflow === 'sdxl_juggernaut'
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                    }`}>
+                      {selectedWorkflow === 'sdxl_juggernaut' ? 'ACTIVE' : 'READY'}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-zinc-400 font-mono">RunDiffusionPhoto SDXL · Fooocus speed</div>
+                  <div className="text-[9px] text-emerald-400 font-mono mt-1">~4.9 GB VRAM · 8-12s · Zero T5</div>
+                </button>
               </div>
             </div>
 
-            {/* Model Details & CLIP */}
+            {/* Model Details & Encoders */}
             <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
               <div className="p-2.5 rounded bg-[#0a0e17] border border-[#252b3d]">
-                <span className="text-zinc-500 block uppercase">Text Encoder (CLIP)</span>
-                <span className="text-zinc-300 font-bold">t5xxl_fp8_e4m3fn.safetensors</span>
+                <span className="text-zinc-500 block uppercase">Text Encoder</span>
+                <span className="text-zinc-300 font-bold truncate block">
+                  {selectedWorkflow === 'sdxl_juggernaut'
+                    ? 'SDXL Dual OpenCLIP + ViT-L'
+                    : 't5xxl_fp8_e4m3fn.safetensors'}
+                </span>
               </div>
               <div className="p-2.5 rounded bg-[#0a0e17] border border-[#252b3d]">
                 <span className="text-zinc-500 block uppercase">VAE Decoder</span>
-                <span className="text-zinc-300 font-bold">ae.safetensors (FLUX VAE)</span>
+                <span className="text-zinc-300 font-bold truncate block">
+                  {selectedWorkflow === 'sdxl_juggernaut'
+                    ? 'SDXL Baked Native VAE'
+                    : 'ae.safetensors (FLUX VAE)'}
+                </span>
               </div>
             </div>
 

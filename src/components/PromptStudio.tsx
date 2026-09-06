@@ -300,12 +300,18 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
   const workflowModelLabel =
     workflowModelValue === 'flux1-schnell-Q4_K_S.gguf'
       ? 'FLUX.1-Schnell GGUF Q4_K_S'
+      : /juggernaut/i.test(String(workflowModelValue))
+      ? 'Juggernaut-XL v9 Photorealism'
       : String(workflowModelValue);
 
   // Active Output Detection
   const rawOutput = output?.outputs?.[0]?.url;
   const isImageJob =
-    !job?.workflowId || job?.workflowId === 'flux_image' || output?.job?.workflowId === 'flux_image';
+    !job?.workflowId ||
+    job?.workflowId === 'flux_image' ||
+    job?.workflowId === 'sdxl_juggernaut' ||
+    output?.job?.workflowId === 'flux_image' ||
+    output?.job?.workflowId === 'sdxl_juggernaut';
   const isMediaImage =
     rawOutput &&
     (isImageJob ||
@@ -1021,6 +1027,8 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
               onSelectGinaV2Default={handleSelectGinaV2Default}
               baseModel={baseModel}
               onChangeBaseModel={setBaseModel}
+              selectedWorkflow={selectedWorkflow}
+              onSelectWorkflow={setSelectedWorkflow}
               loras={loras}
               onChangeLora={(idx, partial) =>
                 setLoras((prev) => prev.map((l, i) => (i === idx ? { ...l, ...partial } : l)))

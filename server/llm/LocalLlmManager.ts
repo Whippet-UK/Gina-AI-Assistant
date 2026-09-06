@@ -185,14 +185,49 @@ export class LocalLlmManager {
     };
   }
 
+  private async resolveModelPath(): Promise<string> {
+    const directExists = await fs.stat(this.config.modelPath).then(s => s.isFile()).catch(() => false);
+    if (directExists) return this.config.modelPath;
+    const root = path.dirname(this.config.modelPath);
+    try {
+      const files = await fs.readdir(root);
+      const qwen = files.find(n => /qwen.*\.gguf$/i.test(n) && !n.includes('mmproj'));
+      if (qwen) {
+        this.config.modelPath = path.join(root, qwen);
+        return this.config.modelPath;
+      }
+      const anyModel = files.find(n => n.endsWith('.gguf') && !n.includes('mmproj'));
+      if (anyModel) {
+        this.config.modelPath = path.join(root, anyModel);
+        return this.config.modelPath;
+      }
+    } catch {}
+    return this.config.modelPath;
+  }
+
   private async resolveMmprojPath(): Promise<string | null> {
     if (this.config.mmprojPath) {
       this.resolvedMmprojPath = await fs.stat(this.config.mmprojPath).then(s => s.isFile() ? this.config.mmprojPath! : null).catch(() => null);
       return this.resolvedMmprojPath;
     }
     const root = path.dirname(this.config.modelPath);
+    const modelName = path.basename(this.config.modelPath).toLowerCase();
     try {
       const files = await fs.readdir(root);
+      if (modelName.includes('qwen')) {
+        const qwenMatch = files.find(name => (/qwen.*mmproj.*\.gguf$/i.test(name) || /mmproj-f16\.gguf$/i.test(name) || /mmproj.*qwen.*\.gguf$/i.test(name)));
+        if (qwenMatch) {
+          this.resolvedMmprojPath = path.join(root, qwenMatch);
+          return this.resolvedMmprojPath;
+        }
+      }
+      if (modelName.includes('gemma')) {
+        const gemmaMatch = files.find(name => (/gemma.*mmproj.*\.gguf$/i.test(name) || /mmproj-q8_0\.gguf$/i.test(name) || /mmproj.*gemma.*\.gguf$/i.test(name)));
+        if (gemmaMatch) {
+          this.resolvedMmprojPath = path.join(root, gemmaMatch);
+          return this.resolvedMmprojPath;
+        }
+      }
       const match = files.find(name => /mmproj.*\.gguf$/i.test(name) || /gemma.*mmproj.*\.gguf$/i.test(name));
       this.resolvedMmprojPath = match ? path.join(root, match) : null;
       return this.resolvedMmprojPath;
@@ -217,6 +252,7 @@ export class LocalLlmManager {
   }
 
   async isConfigured(): Promise<boolean> {
+    await this.resolveModelPath();
     const [exe, model] = await Promise.all([
       fs.stat(this.config.executablePath).then(s => s.isFile()).catch(() => false),
       fs.stat(this.config.modelPath).then(s => s.isFile()).catch(() => false),

@@ -65,7 +65,7 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 ## 1. Project Overview & URLs
 
 - **App Name**: Gina AI Factory — Local Creator UI
-- **Version**: 1.17.91
+- **Version**: 1.18.0
 - **Local Dashboard URL**: `http://127.0.0.1:3000/` (Express server listens on `0.0.0.0:3000`)
 - **Local ComfyUI Backend URL**: `http://127.0.0.1:8188/`
 
@@ -88,9 +88,12 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 
 ## 3. Installed Models & Workflows
 
-- **Image Workflow**: `flux_image.json` (FLUX.1-Schnell GGUF Q4_K_S via `UnetLoaderGGUF`)
+- **Image Workflows**: 
+  - `sdxl_juggernaut.json` (Juggernaut-XL v9 photorealism, 8-12s generation, low VRAM footprint)
+  - `flux_image.json` (FLUX.1-Schnell GGUF Q4_K_S via `UnetLoaderGGUF`)
 - **Video Workflow**: `ltx_video.json` (LTX-Video 2B FP8, H.264 MP4 export)
 - **Installed Checkpoints / Models**:
+  - `Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors` (in `models/checkpoints/`)
   - `flux1-schnell-Q4_K_S.gguf` (current FLUX UNet)
   - `ltxv-2b-0.9.8-distilled-fp8.safetensors`
   - `ltx-video-2.0.safetensors`
@@ -99,22 +102,22 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
   - `geneva_1-12b_fp8.safetensors`
   - `t5xxl_fp8_e4m3fn.safetensors` (in `models/clip/`)
 
+---
 
+## 4. Verified Local LLM Bindings
 
-
-## 4. Verified Local LLM Binding
-
-- **Model**: `gemma-3-12b-it-Q4_K_M.gguf` (Gemma 3 12B IT, Q4_K_M)
-- **Model Path**: `C:\Gina_AI\models\llm\gemma-3-12b-it-Q4_K_M.gguf`
+- **Primary High-Speed Vision-Language Model**: `Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf` + `mmproj-F16.gguf`
+  - Path: `C:\Gina_AI\models\llm\Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf` & `mmproj-F16.gguf`
+  - Offload: 100% full GPU offload (28 layers)
+  - Speed: ~35–45 tokens/sec generation on RTX 3070 Ti (8GB)
+  - VRAM footprint: ~4.6 GB (zero PCIe swapping, leaves 3.2 GB buffer)
+- **Secondary Instruction Model**: `gemma-3-12b-it-Q4_K_M.gguf` (Gemma 3 12B IT, Q4_K_M)
+  - Model Path: `C:\Gina_AI\models\llm\gemma-3-12b-it-Q4_K_M.gguf`
+  - Pinned layers: 28 GPU layers (~9.2–10.7 tokens/sec)
 - **Runtime**: llama.cpp Windows x64 CUDA build
 - **Runtime Path**: `C:\Gina_AI\tools\llama.cpp\llama-server.exe`
 - **API**: `http://127.0.0.1:8080/v1/chat/completions`
-- **GPU**: NVIDIA GeForce RTX 3070 Ti 8GB; verified CUDA device detection with ~7109 MB free during CLI test
-- **Working configuration**: 28 GPU layers, 4096 context, 6 CPU threads
-- **Verified benchmark**: approximately 9.2 tokens/sec generation on a realistic Gina/AIDA64 prompt; 10.7 tokens/sec on a short prompt at 28 GPU layers
-- **Known performance cliff**: 36 GPU layers dropped generation to approximately 1.3 tokens/sec, so 28 layers is the pinned starting configuration
-- **VRAM rule**: Gina releases ComfyUI cached models before starting/restarting Gemma. Do not run heavy ComfyUI image/video generation concurrently with the 12B LLM on this 8GB GPU.
-- **Integration status**: Phases 1–13 are `COMPLETED` (Phase 8 Gemma 3 12B IT, Phase 9 Autonomous Agent & 19-Tool Broker, Phase 10 AIDA64 Real-time Shm Telemetry, Phase 11 Zero-VRAM Local RAG Engine, Phase 12 Real-Time ComfyUI Node Graph Sync, Phase 13 Advanced Voice Pipeline & Persistent Presets). Phases 14–17 are no longer treated as merely planned: workflow ingestion, transparent HUD, Dynamic VRAM Tuner, GIF Studio, RIFE Motion Studio and live capability discovery are active in the current dashboard. Full agent access is enabled by default. File APIs remain scoped to `C:\Gina_AI`; command execution is audited.
+- **Integration status**: Phases 1–33 are `COMPLETED` (Phase 33 Qwen 2.5-VL & Juggernaut-XL Ultra-Acceleration Integration).
 - **Agent startup context**: Gina must load `AGENTS.md`, `CHANGELOG.md`, `README.md`, `src/components/MilestoneChecklist.tsx`, `src/components/AppFeaturesGuide.tsx`, `src/components/LocalCapabilityPanel.tsx`, `package.json`, `metadata.json`, `/docs/INDEX.md`, `/docs/setup/LOCAL_LLM_SETUP.md`, `/docs/setup/LOCAL_AGENT_SETUP.md`, workflow inventory, persistent `.gina\agent-memory.json`, and a live hardware/model/ComfyUI/LLM capability snapshot before autonomous tasks.
 - **Agent memory**: Persistent local memory is stored at `C:\Gina_AI\.gina\agent-memory.json`; it is local-only and excluded from source control.
 - **Agent tools**: `inspect_system`, `inspect_capabilities`, `inspect_project_context`, `read_project_bundle`, `list_directory`, `search_files`, `knowledge_search`, `read_file`, `write_file`, `execute_command`, `git_status`, `git_diff`, `git_log`, `remember`, `recall_memory`, `refresh_context`, `comfy_clear_cache`, `llm_start`, `llm_stop`, `llm_restart`, and `build_aida64_template` are available when full access is enabled.

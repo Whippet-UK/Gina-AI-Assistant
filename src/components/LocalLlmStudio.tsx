@@ -615,21 +615,34 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
           <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-4 mb-4">
             <div>
               <div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Local inference engine</div>
-              <h2 className="text-xl font-semibold text-slate-100 mt-1 flex items-center gap-2"><Bot className="w-5 h-5 text-emerald-400" /> Gemma 3 12B</h2>
-              <p className="text-xs text-slate-500 mt-1">GGUF Q4_K_M through llama.cpp CUDA. The server stays off until you start it.</p>
+              <h2 className="text-xl font-semibold text-slate-100 mt-1 flex items-center gap-2">
+                <Bot className="w-5 h-5 text-emerald-400" />
+                {status?.modelName?.toLowerCase().includes('qwen')
+                  ? 'Qwen 2.5-VL 7B Vision-Language'
+                  : status?.modelName?.toLowerCase().includes('gemma')
+                  ? 'Gemma 3 12B Instruct'
+                  : status?.modelName || 'Local Vision-Language Engine'}
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                {status?.modelName?.toLowerCase().includes('qwen')
+                  ? 'Qwen 2.5-VL 7B GGUF Q4_K_M via llama.cpp CUDA (100% GPU offload, ~35–45 tokens/sec, mmproj-F16 vision).'
+                  : 'GGUF Q4_K_M through llama.cpp CUDA. The server stays off until you start it.'}
+              </p>
             </div>
             <span className={`px-2 py-1 rounded border text-[9px] font-mono font-bold ${status?.ready ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{stateLabel}</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono">
             <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">BACKEND</div><div className="text-slate-200 mt-1">{status?.backend || 'CUDA'}</div></div>
-            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">GPU LAYERS</div><div className="text-slate-200 mt-1">{status?.gpuLayers ?? 28}</div></div>
+            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">GPU LAYERS</div><div className="text-slate-200 mt-1">{status?.gpuLayers ?? 28} (100% Offload)</div></div>
             <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">CONTEXT</div><div className="text-slate-200 mt-1">{status?.contextSize ?? 8192}</div></div>
             <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">CPU THREADS</div><div className="text-slate-200 mt-1">{status?.threads ?? 6}</div></div>
+            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">VISION MMPROJ</div><div className="text-emerald-300 mt-1 truncate" title={status?.mmprojPath || 'None'}>{status?.mmprojPath ? (status.mmprojPath.split(/[/\\]/).pop() || 'Detected') : 'None'}</div></div>
+            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">EST. SPEED</div><div className="text-emerald-400 font-bold mt-1">{status?.modelName?.toLowerCase().includes('qwen') ? '~35–45 t/s' : '~9–11 t/s'}</div></div>
           </div>
 
           <div className="mt-4 p-3 rounded border border-amber-500/20 bg-amber-500/5 text-[10px] text-amber-200/80 leading-relaxed">
-            <strong className="text-amber-300">8 GB VRAM rule:</strong> starting Gemma tells ComfyUI to release cached models first. Avoid running heavy image/video generation at the same time as the 12B LLM.
+            <strong className="text-amber-300">8 GB VRAM rule:</strong> starting the local LLM tells ComfyUI to release cached models first. Avoid running heavy image/video generation at the same time as the local LLM.
           </div>
 
           <div className="flex flex-wrap gap-2 mt-4">

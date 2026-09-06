@@ -3204,29 +3204,28 @@ app.post('/api/diagnostics/test-suite', async (req, res) => {
   await check('Core','Version endpoint',async()=>{ const r=await fetch(`http://127.0.0.1:${PORT}/api/version`,{signal:AbortSignal.timeout(3000)}); if(!r.ok) throw new Error(`HTTP ${r.status}`); return {details:(await r.json()).version || 'reachable'}; });
   await check('Core','Dashboard error log',async()=>{ const r=await fetch(`http://127.0.0.1:${PORT}/api/error-log`,{signal:AbortSignal.timeout(3000)}); if(!r.ok) throw new Error(`HTTP ${r.status}`); const d=await r.json(); return {details:`${Array.isArray(d.logs)?d.logs.length:0} entries`}; });
   const liveRequested = Boolean(req.body?.live);
-  const autoStartGemma = req.body?.autoStart !== false;
-  let gemmaPreparedForLive = false;
-  if (liveRequested && autoStartGemma) {
-    await check('Local AI','Gemma readiness',async()=>{
+  const autoStartLlm = req.body?.autoStart !== false && req.body?.autoStartGemma !== false;
+  if (liveRequested && autoStartLlm) {
+    await check('Local AI','Local LLM readiness',async()=>{
       let s:any = await localLlm.getStatus();
-      if (s.running && s.ready) return {details:'Already running and ready'};
+      if (s.running && s.ready) return {details:`${s.modelName || 'LLM'} already running and ready`};
       await fetch(`${COMFY_URL}/free`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({unload_models:true,free_memory:true}), signal:AbortSignal.timeout(5000) }).catch(()=>null);
       await localLlm.start();
       const deadline = Date.now() + 180000;
       while (Date.now() < deadline) {
         s = await localLlm.getStatus().catch(()=>null);
-        if (s?.running && s?.ready) { gemmaPreparedForLive = true; return {details:'Started for diagnostics and reached ready state'}; }
+        if (s?.running && s?.ready) { return {details:`${s.modelName || 'LLM'} started for diagnostics and reached ready state`}; }
         await new Promise(r=>setTimeout(r,1000));
       }
-      throw new Error(`Gemma did not become ready within 180s${s?.error ? ` · ${s.error}` : ''}`);
+      throw new Error(`Local LLM did not become ready within 180s${s?.error ? ` · ${s.error}` : ''}`);
     });
   }
-  await check('Local AI','Gemma status',async()=>{ const s:any=await localLlm.getStatus(); return {status:s.running?'PASS':'WARN',details:s.running?`Running${s.ready?' · Ready':''}`:`Stopped${s.error?` · ${s.error}`:''}`}; });
-  await check('Vision','Gemma mmproj',async()=>{ const s:any=await localLlm.getStatus(); if (s.multimodal && s.mmprojPath) return {status:'PASS',details:`Projector detected · ${path.basename(s.mmprojPath)}`}; return {status:'WARN',details:`Projector not detected · expected alongside ${path.basename(s.modelPath || 'Gemma model')}`}; });
+  await check('Local AI','Active local LLM status',async()=>{ const s:any=await localLlm.getStatus(); return {status:s.running?'PASS':'WARN',details:s.running?`${s.modelName || 'LLM'} · Running${s.ready?' · Ready':''}`:`${s.modelName || 'LLM'} · Stopped${s.error?` · ${s.error}`:''}`}; });
+  await check('Vision','Multimodal vision projector (mmproj)',async()=>{ const s:any=await localLlm.getStatus(); if (s.multimodal && s.mmprojPath) return {status:'PASS',details:`Projector detected · ${path.basename(s.mmprojPath)}`}; return {status:'WARN',details:`Projector not detected · expected alongside ${path.basename(s.modelPath || 'local model')}`}; });
   if (liveRequested) {
     await check('Vision','Live image smoke test',async()=>{
       const s:any=await localLlm.getStatus();
-      if (!s.running || !s.ready) return {status:'WARN',details:autoStartGemma?'Skipped because Gemma could not be made ready':'Skipped because Gemma is not ready'};
+      if (!s.running || !s.ready) return {status:'WARN',details:autoStartLlm?'Skipped because Local LLM could not be made ready':'Skipped because Local LLM is not ready'};
       if (!s.multimodal || !s.mmprojPath) throw new Error('No mmproj is available for the live vision test.');
       const testPath = path.join(LOCAL_AI_UPLOAD_ROOT, `.gina-vision-smoke-${Date.now()}.png`);
       // 1x1 opaque red PNG. The model only needs to prove that the multimodal
@@ -3238,13 +3237,27 @@ app.post('/api/diagnostics/test-suite', async (req, res) => {
       try {
         const data:any = await localLlm.chat([{role:'user',content:'Inspect the attached image. Reply with a very short confirmation that you received an image.'}], {temperature:0,maxTokens:64}, [{name:'gina-vision-smoke.png',mime:'image/png',localPath:testPath}]);
         const text = String(data?.choices?.[0]?.message?.content || '').trim();
-        if (!text) throw new Error('Gemma returned no vision response.');
-        return {details:`Gemma accepted image input · response ${text.slice(0,120)}`};
+        if (!text) throw new Error('Local LLM returned no vision response.');
+        return {details:`Local LLM accepted image input · response ${text.slice(0,120)}`};
       } finally { await fs.rm(testPath,{force:true}).catch(()=>undefined); }
     });
   }
   await check('Image Generation','ComfyUI health',async()=>{ const h=await getComfyHealth(); if(!h.online) throw new Error(h.error||'ComfyUI offline'); return {details:`Online · ${h.latencyMs}ms`}; });
   await check('Image Generation','Workflow registry',async()=>{ await workflowRegistry.reload(); const n=workflowRegistry.list().length; return {status:n?'PASS':'WARN',details:`${n} registered workflows`}; });
+  await check('Image Generation','Juggernaut-XL v9 workflow',async()=>{
+    await workflowRegistry.reload();
+    const w:any = workflowRegistry.get('sdxl_juggernaut');
+    if (!w) throw new Error('sdxl_juggernaut workflow is not registered');
+    const modelNode:any = Object.values(w.workflow || {}).find((n:any) => n?.class_type === 'CheckpointLoaderSimple');
+    if (!modelNode) throw new Error('sdxl_juggernaut is not using CheckpointLoaderSimple');
+    const model = String(modelNode.inputs?.ckpt_name || '');
+    return {details:`CheckpointLoaderSimple · ${model || 'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors'}`};
+  });
+  await check('Image Generation','Juggernaut-XL v9 checkpoint file',async()=>{
+    const modelPath = path.join(MODEL_ROOT, 'checkpoints', 'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors');
+    try { const stat = await fs.stat(modelPath); if (!stat.isFile()) throw new Error('Path exists but is not a file'); return {details:`Detected · ${path.basename(modelPath)} · ${(stat.size/1024/1024/1024).toFixed(2)} GB`}; }
+    catch { return {status:'WARN',details:`Not found at ${modelPath} (Place checkpoint in models/checkpoints/)`}; }
+  });
   await check('Image Generation','FLUX GGUF workflow',async()=>{
     await workflowRegistry.reload();
     const w:any = workflowRegistry.get('flux_image');
@@ -3278,7 +3291,7 @@ app.post('/api/diagnostics/test-suite', async (req, res) => {
   await check('Hardware','NVIDIA GPU',async()=>{ const g=await getNvidiaSmi(); if(!g.available) throw new Error(g.error||'GPU unavailable'); return {details:`${g.name} · ${g.memoryUsedMB}/${g.memoryTotalMB} MB`}; });
   await check('Hardware','AIDA64 telemetry',async()=>{ const r=await fetch(`http://127.0.0.1:${PORT}/api/aida64/telemetry`,{signal:AbortSignal.timeout(3000)}); if(!r.ok) throw new Error(`HTTP ${r.status}`); return {details:'Telemetry endpoint reachable'}; });
   if (Boolean(req.body?.live)) {
-    await check('Local AI','Live text smoke test',async()=>{ const r=await fetch(`http://127.0.0.1:${PORT}/api/llm/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:'Reply with exactly: TEST OK'}]}),signal:AbortSignal.timeout(300000)}); if(!r.ok) throw new Error(`HTTP ${r.status}`); return {details:'Gemma returned a response'}; });
+    await check('Local AI','Live text smoke test',async()=>{ const r=await fetch(`http://127.0.0.1:${PORT}/api/llm/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:'Reply with exactly: TEST OK'}]}),signal:AbortSignal.timeout(300000)}); if(!r.ok) throw new Error(`HTTP ${r.status}`); return {details:'Local LLM returned a response'}; });
   }
   const passed=results.filter(x=>x.status==='PASS').length, failed=results.filter(x=>x.status==='FAIL').length, warned=results.filter(x=>x.status==='WARN').length;
   const copyText=[`GINA TEST SUITE`, `Version: ${APP_VERSION}`, `Generated: ${new Date().toISOString()}`, `Result: ${passed}/${results.length} passed · ${failed} failed · ${warned} warnings`, '', ...results.map(x=>`${x.status.padEnd(4)} [${x.group}] ${x.name}: ${x.details} (${x.durationMs}ms)`)].join('\n');
@@ -3286,7 +3299,7 @@ app.post('/api/diagnostics/test-suite', async (req, res) => {
 });
 
 app.post('/api/diagnostics/full', async (_req,res) => { try { const [gpu,comfy,llm]=await Promise.all([getNvidiaSmi(),getComfyHealth(),localLlm.getStatus().catch(()=>({available:false}))]); const checks=[
- {name:'Node runtime',status:'PASS',details:process.version}, {name:'Gina API',status:'PASS',details:`${HOST}:${PORT} · ${APP_VERSION}`}, {name:'NVIDIA GPU',status:gpu.available?'PASS':'FAIL',details:gpu.available?gpu.name:gpu.error||'Unavailable'}, {name:'VRAM cage',status:gpu.available&&gpu.memoryUsedMB<gpu.memoryTotalMB*.9?'PASS':'WARN',details:gpu.available?`${gpu.memoryUsedMB}/${gpu.memoryTotalMB} MB`:'Unavailable'}, {name:'ComfyUI',status:comfy.online?'PASS':'FAIL',details:comfy.online?`${comfy.latencyMs}ms`:comfy.error||'Offline'}, {name:'Gemma',status:(llm as any)?.running?'PASS':'WARN',details:(llm as any)?.running?'Running':'Stopped'}, {name:'Gemma Vision mmproj',status:(llm as any)?.gemmaVisionReady?'PASS':'WARN',details:(llm as any)?.gemmaVisionReady?'Detected':'Missing'}, {name:'Workflow registry',status:workflowRegistry.list().length?'PASS':'WARN',details:`${workflowRegistry.list().length} workflows`}, {name:'Knowledge watcher',status:knowledgeWatcherRunning?'PASS':'WARN',details:knowledgeWatcherRunning?'Running':'Stopped'}, {name:'Asset store',status:'PASS',details:ASSET_STORE}]; const report={ok:true,generatedAt:new Date().toISOString(),checks,summary:`${checks.filter(c=>c.status==='PASS').length}/${checks.length} checks passed`,copyText:checks.map(c=>`${c.status.padEnd(5)} ${c.name}: ${c.details}`).join('\n')}; res.json(report); } catch(e:any){recordDashboardError(e?.message||'Full diagnostics failed',{source:'diagnostics',status:500,stack:e?.stack});res.status(500).json({ok:false,error:e?.message||'Diagnostics failed'});} });
+ {name:'Node runtime',status:'PASS',details:process.version}, {name:'Gina API',status:'PASS',details:`${HOST}:${PORT} · ${APP_VERSION}`}, {name:'NVIDIA GPU',status:gpu.available?'PASS':'FAIL',details:gpu.available?gpu.name:gpu.error||'Unavailable'}, {name:'VRAM cage',status:gpu.available&&gpu.memoryUsedMB<gpu.memoryTotalMB*.9?'PASS':'WARN',details:gpu.available?`${gpu.memoryUsedMB}/${gpu.memoryTotalMB} MB`:'Unavailable'}, {name:'ComfyUI',status:comfy.online?'PASS':'FAIL',details:comfy.online?`${comfy.latencyMs}ms`:comfy.error||'Offline'}, {name:'Local LLM',status:(llm as any)?.running?'PASS':'WARN',details:(llm as any)?.running?`${(llm as any)?.modelName || 'LLM'} (Running)`:'Stopped'}, {name:'Vision mmproj',status:(llm as any)?.multimodal?'PASS':'WARN',details:(llm as any)?.multimodal?`Detected (${path.basename((llm as any)?.mmprojPath || 'mmproj')})`:'Missing'}, {name:'Juggernaut-XL v9 workflow',status:workflowRegistry.get('sdxl_juggernaut')?'PASS':'WARN',details:workflowRegistry.get('sdxl_juggernaut')?'Registered (sdxl_juggernaut)':'Missing'}, {name:'FLUX GGUF workflow',status:workflowRegistry.get('flux_image')?'PASS':'WARN',details:workflowRegistry.get('flux_image')?'Registered (flux_image)':'Missing'}, {name:'Workflow registry',status:workflowRegistry.list().length?'PASS':'WARN',details:`${workflowRegistry.list().length} workflows`}, {name:'Knowledge watcher',status:knowledgeWatcherRunning?'PASS':'WARN',details:knowledgeWatcherRunning?'Running':'Stopped'}, {name:'Asset store',status:'PASS',details:ASSET_STORE}]; const report={ok:true,generatedAt:new Date().toISOString(),checks,summary:`${checks.filter(c=>c.status==='PASS').length}/${checks.length} checks passed`,copyText:checks.map(c=>`${c.status.padEnd(5)} ${c.name}: ${c.details}`).join('\n')}; res.json(report); } catch(e:any){recordDashboardError(e?.message||'Full diagnostics failed',{source:'diagnostics',status:500,stack:e?.stack});res.status(500).json({ok:false,error:e?.message||'Diagnostics failed'});} });
 
 app.post('/api/jobs/:id/cancel', async (req,res) => {
   const job=jobManager.get(req.params.id); if(!job)return res.status(404).json({ok:false,error:'Job not found'});
