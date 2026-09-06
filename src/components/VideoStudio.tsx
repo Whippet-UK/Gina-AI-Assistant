@@ -10,6 +10,7 @@ import { useGenerationJob } from '../context/GenerationJobContext';
 import { LTXWorkflowGenerator } from './LTXWorkflowGenerator';
 import { ComfyErrorOverlay } from './ComfyErrorOverlay';
 import { VRAMHistoryGraph } from './VRAMHistoryGraph';
+import { MediaStitcherModal } from './MediaStitcherModal';
 import { LogEntry, SystemTelemetry } from '../types';
 import { getRecentOOMErrors } from '../App';
 
@@ -229,6 +230,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
   const [showArchitect, setShowArchitect] = useState(false);
   const [activePresetId, setActivePresetId] = useState<string>('compact_fast');
   const [interpolationMultiplier, setInterpolationMultiplier] = useState<1 | 2 | 4>(1);
+  const [showStitchModal, setShowStitchModal] = useState(false);
 
   // Persistent Video Error and Video URL state so failures do not disappear automatically
   // and do not destroy previously generated video outputs
@@ -1097,24 +1099,36 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
 
             {/* Actions for generated video */}
             {activeVideoUrl && (
-              <div className="flex items-center gap-2 pt-2">
-                <a
-                  href={activeVideoUrl}
-                  download={`ltx_video_${seed}.${isAnimatedWebPOrGif ? 'webp' : 'mp4'}`}
-                  className="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  {isAnimatedWebPOrGif ? 'Download WebP' : 'Download MP4'}
-                </a>
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center gap-2">
+                  <a
+                    href={activeVideoUrl}
+                    download={`ltx_video_${seed}.${isAnimatedWebPOrGif ? 'webp' : 'mp4'}`}
+                    className="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    {isAnimatedWebPOrGif ? 'Download WebP' : 'Download MP4'}
+                  </a>
 
+                  <button
+                    type="button"
+                    onClick={handleSaveToAssets}
+                    disabled={savingAsset}
+                    className="flex-1 py-2 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    {savingAsset ? 'Saved!' : 'Save to Assets'}
+                  </button>
+                </div>
+
+                {/* 1-Click MoviePy Multimedia Stitch Button */}
                 <button
                   type="button"
-                  onClick={handleSaveToAssets}
-                  disabled={savingAsset}
-                  className="flex-1 py-2 px-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer"
+                  onClick={() => setShowStitchModal(true)}
+                  className="w-full py-2.5 px-3 bg-gradient-to-r from-indigo-500/20 via-fuchsia-500/20 to-emerald-500/20 hover:from-indigo-500/30 hover:to-emerald-500/30 text-indigo-200 border border-indigo-500/40 rounded-lg text-[10px] font-extrabold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-indigo-950/40 transition-all"
                 >
-                  <Save className="w-3.5 h-3.5" />
-                  {savingAsset ? 'Saved!' : 'Save to Assets'}
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-pulse" />
+                  <span>Stitch with AI Music (MoviePy Engine)</span>
                 </button>
               </div>
             )}
@@ -1144,6 +1158,15 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
           )}
         </div>
       </div>
+
+      {/* Multimedia MoviePy Video/Audio Stitching Modal */}
+      <MediaStitcherModal
+        isOpen={showStitchModal}
+        onClose={() => setShowStitchModal(false)}
+        videoSourceUrl={activeVideoUrl || undefined}
+        videoSourceName={prompt ? `LTX: ${prompt.slice(0, 30)}...` : 'LTX-Video Render'}
+        onAddLog={onAddLog}
+      />
     </div>
   );
 };

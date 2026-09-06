@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Flame, Trash2, Cpu, RefreshCw, CheckCircle2, Layers, AlertCircle, ArrowRightLeft, Sparkles, Video, Image as ImageIcon, Film, Zap } from 'lucide-react';
+import { Flame, Trash2, Cpu, RefreshCw, CheckCircle2, Layers, AlertCircle, ArrowRightLeft, Sparkles, Video, Image as ImageIcon, Film, Zap, Music } from 'lucide-react';
 import { ModelPreWarmState, PreWarmModelDef } from '../types';
 
 interface ModelPreWarmPanelProps {
@@ -213,7 +213,7 @@ export const ModelPreWarmPanel: React.FC<ModelPreWarmPanelProps> = ({ onAddLog, 
           const isWarm = state?.activeModel === m.filename && state?.status === 'warm';
           const isSwitching = actionInProgress === m.id;
 
-          const IconComponent = m.type === 'video' ? Video : m.type === 'shorts' ? Film : ImageIcon;
+          const IconComponent = m.type === 'video' ? Video : m.type === 'shorts' ? Film : m.type === 'audio' || m.type === 'music' ? Music : ImageIcon;
 
           return (
             <div

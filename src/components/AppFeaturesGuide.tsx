@@ -4,6 +4,7 @@ import {
   Cpu,
   Brain,
   Video,
+  Film,
   ImageIcon,
   ShieldCheck,
   Zap,
@@ -66,6 +67,24 @@ export const AppFeaturesGuide: React.FC = () => {
         '8GB VRAM Safe Zone Matrix: Configured with 512x512 25-frame baselines to ensure crash-free execution within 8GB GPU memory constraints.',
         'H.264 MP4 Direct Pipeline: Uses VHS_VideoCombine node for universal browser and device playback.',
         'Pre-Queue Auto-Flush Sentinel: Automatically executes /free memory purges before video tensor loading.'
+      ]
+    },
+    {
+      id: 'streaminject_studio',
+      title: 'StreamInject v2.5 Pure Render Suite',
+      icon: Film,
+      color: 'text-rose-400',
+      bgColor: 'bg-rose-500/10',
+      borderColor: 'border-rose-500/30',
+      badge: 'Headless OpenCV + FFmpeg',
+      category: 'Pure Video Engine',
+      shortDesc: 'Standalone headless post-production video suite with visual canvas builder, 6-track audio/video mixing, and background Python execution.',
+      details: [
+        'Headless Python Rendering Engine: Full programmatic timeline compositing, letterbox scaling, and audio ducking via scripts/stream_inject.py.',
+        'Interactive Canvas Layout Builder: Visually place, scale, and snap gameplay, camera, HUD, and overlay zones without terminal commands.',
+        'Preset Management & Auto-Scan: Load/save custom layout JSON presets and automatically scan project media directories.',
+        'Full Pipeline Execution: Bake standalone video templates or execute the complete multi-track master render directly from the Gina UI.',
+        'Real-Time Output Streaming: Live rendering logs, progress bars, and instant HTML5 preview playback upon completion.'
       ]
     },
     {
@@ -276,7 +295,7 @@ export const AppFeaturesGuide: React.FC = () => {
             <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wide flex items-center gap-2">
               <span>PROJECT SYSTEM ARCHITECTURE & FEATURE GUIDE</span>
               <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[9px] px-2 py-0.5 rounded font-mono">
-                GINA AI FACTORY V1.17.19
+                GINA AI FACTORY V1.17.68
               </span>
             </h2>
             <p className="text-[11px] text-slate-400 font-mono mt-0.5">

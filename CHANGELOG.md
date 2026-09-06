@@ -1,3 +1,650 @@
+# v1.17.87 — Fooocus-Inspired Gina Image Studio
+
+- Reworked the image creation workspace around a focused Fooocus-inspired layout: prompt + core image controls on the left, large preview/actions on the right.
+- Preserved Gina's local ComfyUI execution path and FLUX.1-Schnell GGUF Q4_K_S workflow; this is a UI/UX redesign, not a replacement of the validated backend.
+- Kept AIDA64 1024×600 support, reference-image upload, Keep Image/reference continuation, variation, download, asset save, VRAM purge, workflow-aware controls, and technical diagnostics.
+- Reduced visual noise by moving advanced/technical controls behind compact disclosure buttons.
+- Added local-only status/model indicators directly into the image workspace.
+
+# v1.17.86 — ACE-Step API CLI Fix
+
+- Fixed the Windows ACE-Step REST API launcher to use the current `acestep-api` CLI contract: `--init-llm` and `--lm-model-path`.
+- Removed unsupported API-server arguments (`--init-service`, `--config-path`, and `--offload-to-cpu`) that caused immediate startup failure.
+- Kept the 8GB-safe configuration in environment variables: `acestep-v15-turbo`, 0.6B LM, PyTorch backend, DiT/LM CPU offload, and localhost port 8101.
+- Updated the one-click `Start_Factory.bat` ACE-Step launch path to use the same corrected command and `uv --no-sync`.
+- Bumped the dashboard/runtime version to `v1.17.86`.
+
+# v1.17.84 — One-Click Singing + Audio Deck
+
+- Added ACE-Step 1.5 local singing backend with lyrics-aware routing.
+- Added 8GB-safe 0.6B LM / PyTorch / CPU-offload configuration.
+- Added ACE-Step install/start scripts.
+- Added automatic WAV registration and Audio Deck loading after successful generation.
+- Added vocal language selection and truthful singing-engine status.
+
+## 1.17.83 — MusicGen runtime hardening
+
+- Fixed Windows managed model path normalization: `facebook/musicgen-medium` now resolves to `facebook_musicgen-medium` instead of throwing `ReferenceError: g is not defined`.
+- Fixed PCM16 WAV writer by importing `torch` inside `save_wav_pcm16()`.
+- MusicGen model loading remains local/offline and prefers an existing Safetensors weight when both representations are present.
+- Status telemetry can now resolve the same local snapshot used by generation without crashing the `/api/music/status` endpoint.
+
+# Changelog
+
+## v1.17.85 — ACE-Step Windows uv Bootstrap
+
+- Fixed the ACE-Step 1.5 Windows singing installer so a missing `uv` is installed automatically with the official Astral PowerShell installer instead of stopping with a manual-install error.
+- Added PATH-independent `uv.exe` resolution for `%USERPROFILE%\.local\bin\uv.exe` and the Windows App Installer/WinGet link location.
+- Hardened the ACE-Step API launcher to use the resolved `uv.exe` directly.
+- Explicitly passes the 8GB-safe ACE-Step configuration: turbo DiT, 0.6B LM, PyTorch backend, CPU offload, and local API on `127.0.0.1:8101`.
+- Bumped the dashboard/runtime version to `v1.17.85`.
+
+
+## 1.17.82 — MusicGen audio-save and status hardening
+- Fixed successful MusicGen synthesis failing at WAV output because the installed torchaudio build had no save backend.
+- Added dependency-light PCM16 WAV writing through Python stdlib `wave`.
+- Hardened `/api/music/status` against Windows HF-cache filesystem edge cases so it does not repeatedly return HTTP 500.
+- Kept MusicGen Medium offline/local-only and Safetensors-first when both weight formats are present.
+
+# v1.17.81 — MusicGen HF Snapshot Path Resolution Hardening
+
+- **Fixed:** MusicGen Medium local snapshot discovery now follows Windows symlink/junction-backed Hugging Face snapshot files with `statSync()`.
+- **Fixed:** resolver now checks Gina's managed HF cache plus the standard per-user Hugging Face cache location, while remaining strictly local/offline.
+- **Fixed:** backend weight telemetry follows the resolved snapshot files instead of relying on directory-entry type flags that can misclassify Windows links.
+- **Preserved:** when both `model.safetensors` and `pytorch_model.bin` exist, Safetensors is preferred and only one weight representation is treated as active.
+- **Preserved:** Generate never downloads from Hugging Face automatically.
+
+# v1.17.81 — MusicGen Dual-Weight Snapshot Resolution
+
+- **Clarified:** a Hugging Face MusicGen Medium snapshot can legitimately contain both `model.safetensors` and `pytorch_model.bin`; these are alternate weight formats from the same checkpoint, not two separate models.
+- **Fixed:** cache telemetry now counts only the preferred active weight (`model.safetensors` when present) instead of adding both 8.04 GB weight files together.
+- **Added:** MusicGen status reports the resolved snapshot revision and any matching local refs, making it clear whether the cached copy came from `main` or an older HF revision/PR.
+- **Preserved:** generation remains local/offline and uses the exact resolved snapshot path; no automatic Hub download.
+- **Safety:** replaced the misleading “Sequential 8GB VRAM Safe” label with “Sequential GPU lane · one audio model at a time”; sequential execution does not guarantee that MusicGen Medium fits in 8 GB VRAM.
+
+# v1.17.79 — MusicGen Snapshot Status Resolution
+
+- **Target:** `server/music/MusicService.ts` — status/backend detection now inspects the exact resolved MusicGen Medium path instead of only `facebook_musicgen-medium`.
+- **Target:** `server/music/MusicService.ts` — local Hugging Face snapshot resolver now requires a complete Transformers snapshot (config + weights + processor/tokenizer), prefers `model.safetensors` when multiple snapshots exist, and never uses the Hub as a generation fallback.
+- **Target:** `src/components/MusicStudio.tsx` — MusicGen banner now reports the resolved local path as well as backend and weight files.
+- **Preserved:** Generate remains offline/local-only and the audio GPU lane remains sequential (one heavy audio generation at a time).
+- **Preserved:** existing `models--facebook--musicgen-medium` cache is not deleted or moved.
+
+# v1.17.78 — MusicGen Transformers Snapshot Routing
+- **Target:** `server/music/MusicService.ts` — MusicGen Medium now resolves the existing local `models--facebook--musicgen-medium\snapshots\<revision>` directory when it contains `model.safetensors`/compatible Transformers weights. This is an explicit local path, not a network fallback.
+- **Target:** `scripts/music_generator.py` — unchanged offline/local-only loader receives the resolved snapshot path; Generate cannot download.
+- **Target:** `server.ts` / `src/components/MusicStudio.tsx` — status and telemetry now report the actual active snapshot path/backend instead of claiming the Hub cache is ignored when it is the selected local checkpoint.
+- The 14 GB Hugging Face cache is retained; the dashboard accounts for the active snapshot/weights rather than summing the cache's blob storage with the Gina AudioCraft directory.
+- Preserved AudioGen/MusicGen separation and the exclusive sequential audio GPU lane.
+
+# v1.17.77 — AudioCraft Explicit Backend & Sequential Generation
+- **Target File:** `server/music/MusicService.ts`
+  - Fixed generation telemetry initialization ordering.
+  - Managed model directories are the only generation source; Hugging Face `models--...` caches are ignored.
+  - Reports exact backend and weight files used.
+- **Target File:** `scripts/music_generator.py`
+  - Prints local model path and weight files; generation is offline/local-only.
+- **Target File:** `scripts/download_audiocraft.py`
+  - Reuses complete managed models and isolates temporary Hub cache metadata under the managed model directory.
+- **Target File:** `src/components/MusicStudio.tsx`
+  - Shows backend, weights, managed path, and duplicate-cache exclusion; Download is clearly separate from Generate.
+- **Target File:** `server.ts`
+  - Audio model status now exposes managed backend/weight metadata.
+- Preserved the AudioGen/MusicGen separation and sequential exclusive GPU lane.
+
+# v1.17.76 — AudioCraft Single Managed Cache
+- Fixed duplicate MusicGen storage: Generate now resolves the authoritative Gina-managed local model directory instead of the Hugging Face `models--facebook--...` cache.
+- Generate now refuses to auto-download missing AudioCraft models and explicitly runs offline.
+- Downloader now writes directly into `C:\\Gina_AI\\models\\audio\\facebook_<model>` and recognizes both `pytorch_model.bin` and `model.safetensors` layouts.
+- Cache telemetry no longer sums a managed model and an old Hub cache together, preventing inflated values such as 26.12 GB.
+- Preserved AudioGen's dedicated AudioCraft runtime and the sequential exclusive GPU lane.
+- Exact modified files: `server/music/MusicService.ts`, `scripts/music_generator.py`, `scripts/download_audiocraft.py`, `src/components/MusicStudio.tsx`, version/manifest files, `src/components/MilestoneChecklist.tsx`, `docs/updates/UPDATE_NOTES_v1.17.76.md`.
+
+# v1.17.75 — AudioCraft Local Cache, Sequential Audio Lane & Dashboard Telemetry
+
+- **Target File:** `server/music/MusicService.ts`
+  - Shared MusicGen/AudioGen Hugging Face cache discovery for legacy and standard `models--...` cache layouts.
+  - AudioCraft download and generation jobs now use an exclusive audio lane so heavy audio models run sequentially.
+  - Generation passes the same cache root used by the Download button and refuses hidden network downloads.
+  - Live job progress now reports cache load, model load, synthesis, and output stages.
+- **Target File:** `scripts/music_generator.py`
+  - MusicGen uses `local_files_only=True`.
+  - AudioGen uses the official `AudioGen.get_pretrained()` AudioCraft path instead of the MusicGen Transformers loader.
+  - Added AudioCraft/Transformers cache environment alignment and offline mode.
+  - Removed the synthetic fallback so a failed requested model cannot masquerade as a successful generation.
+- **Target File:** `scripts/download_audiocraft.py`
+  - Download button now populates the same Hugging Face cache consumed by generation.
+  - AudioGen is verified as an AudioCraft checkpoint (`state_dict.bin` + `compression_state_dict.bin`).
+- **Target File:** `src/components/MusicStudio.tsx`
+  - Correct AudioGen naming: `AudioGen Medium 1.5B · SFX / Atmosphere`.
+  - Generate button now explicitly says `Generate SFX / Atmosphere` for AudioGen.
+  - Added live AudioCraft job telemetry panel with model, duration, progress, and current step.
+- **Target File:** `server.ts`
+  - `/api/jobs/:id/workflow` now returns an external-job inspection envelope for Python/AudioCraft jobs instead of 404.
+  - Added AudioGen to pre-warm inventory and corrected medium-model VRAM metadata to the official 16 GB guidance.
+- **Preserved:** existing Story stall/history fallback, LTX `batch_size=1` OOM guard, StreamInject fixes, and clean-root `docs/updates/` convention.
+
+# v1.17.73 — Multimedia MoviePy Stitcher, MusicGen Medium 1.5B Default & Neural Cache Verification
+
+### 1. Target File: `/server/music/MusicService.ts` & `/server.ts`
+```typescript
+// Verified true weights file presence (>500MB) before declaring cached
+getModelCacheInfo(modelName: string): { cached: boolean; totalBytes: number; fileCount: number; hasWeights: boolean; sizeLabel: string } {
+  // Scans folder & .cache chunks, verifies model.safetensors or state_dict.bin presence
+}
+```
+- Upgraded cache detection logic from basic file existence to deep weight verification (>500MB neural tensors), eliminating false-positive "Cached" states when only JSON metadata is downloaded.
+- Exposed live size, file count, and weight verification to `/api/music/status`.
+
+### 2. Target File: `/src/components/MusicStudio.tsx`
+```tsx
+// Live Download Progress Bar & Accurate Size/Weight Status
+{isModelDownloading && job && (
+  <div className="flex flex-col gap-1.5">
+    <div className="flex items-center justify-between text-[11px] font-mono">
+      <span>{job.step}</span>
+      <span>{job.progress}%</span>
+    </div>
+    <div className="w-full h-1.5 bg-slate-900 rounded-full">
+      <div style={{ width: `${job.progress}%` }} />
+    </div>
+  </div>
+)}
+```
+- Integrated dynamic download tracking with live progress bar and step details directly inside the Music Studio model banner.
+```python
+# Pass optional HuggingFace token for rate limits & fast downloads
+hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or None
+processor = AutoProcessor.from_pretrained(model_id, cache_dir=model_cache_dir, token=hf_token)
+model = MusicgenForConditionalGeneration.from_pretrained(model_id, cache_dir=model_cache_dir, token=hf_token)
+```
+- Added seamless support for `HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN` across AudioCraft / MusicGen weight downloading and inference scripts to avoid unauthenticated Hugging Face Hub rate limits.
+
+### 2. Target File: `/src/components/MusicStudio.tsx`
+```tsx
+// Fixed empty string "" passed to audio tag src attribute
+<audio
+  ref={audioRef}
+  src={activeTrack?.url || undefined}
+  onPause={() => setIsPlaying(false)}
+  onPlay={() => setIsPlaying(true)}
+/>
+```
+- Resolved React console error caused by passing empty string `""` to the `src` attribute on `<audio>` element when no initial track was active by substituting `undefined`.
+
+### 2. Target File: `/scripts/media_stitcher.py`
+```python
+# Headless MoviePy / FFmpeg video & audio stitching compositor
+if audio_mode == "loop" and final_duration > audio_dur:
+    repeats = int(final_duration // audio_dur) + 1
+    audio_clip = afx.audio_loop(audio_clip, nloops=repeats).subclip(0, final_duration)
+```
+- Implemented Python headless compositor supporting MoviePy with FFmpeg fallback to merge LTX-Video/GIF Studio animations with AI Music / AudioCraft generated tracks.
+- Supports volume adjustment (0.0 - 2.0x), audio fade-in, audio fade-out, audio sync modes (`match_video`, `match_audio`, `loop`, `cut`), and H.264 MP4 / AAC export.
+
+### 2. Target File: `/server/multimedia/MultimediaService.ts`
+```typescript
+// Node.js backend orchestration for moviepy installation status and job dispatch
+export class MultimediaService {
+  public async getStatus(): Promise<{ installed: boolean; version?: string }>;
+  public async installMoviePy(): Promise<{ success: boolean; message: string }>;
+  public async stitchMedia(params: StitchParams): Promise<JobResult>;
+}
+```
+- Integrated with server endpoints `/api/multimedia/status`, `/api/multimedia/install-moviepy`, `/api/multimedia/stitch`, and `/media/stitched/*`.
+
+### 3. Target File: `/src/components/MediaStitcherModal.tsx`
+```tsx
+// Cross-Studio Stitcher Modal Component
+<MediaStitcherModal
+  isOpen={showStitchModal}
+  onClose={() => setShowStitchModal(false)}
+  videoSourceUrl={activeVideoUrl}
+  videoSourceName="LTX-Video Render"
+  onAddLog={onAddLog}
+/>
+```
+- Created the `MediaStitcherModal` enabling 1-click audio-video mixing directly from VideoStudio, GifStudio, and MusicStudio with media asset selectors, volume multipliers, fade sliders, sync modes, live progress tracking, and instant MP4 video player preview.
+
+### 4. Target Files: `/src/components/VideoStudio.tsx`, `/src/components/GifStudio.tsx`, `/src/components/MusicStudio.tsx`
+- Added 1-Click "Stitch with AI Music (MoviePy Engine)" triggers into VideoStudio action deck, GIF Studio timeline tray, and MusicStudio track deck and library items.
+
+# v1.17.72 — StreamInject Studio Interactive Layer Controls & Python MP4 Centering Alignment
+
+### 1. Target File: `/scripts/stream_inject.py`
+```python
+# Text layer centered horizontal coordinate calculations in Python rendering pipeline
+if align == "center" or "x" not in tl:
+    # Exact center alignment across PIL/OpenCV and FFmpeg drawtext filter paths
+    x = int(pos_x - (text_w / 2))
+    tl_x = w // 2
+```
+- Fixed text centering alignment in `stream_inject.py` for both the PIL/OpenCV rasterization path and the FFmpeg filtergraph path, eliminating rightward text drift on rendered MP4s.
+
+### 2. Target File: `/src/components/StreamInjectStudio.tsx`
+```tsx
+// Interactive selection, mouse canvas dragging, directional nudge pad, and alignment controls
+<canvas
+  ref={canvasRef}
+  width={canvasWidth}
+  height={canvasHeight}
+  onMouseDown={handleCanvasMouseDown}
+  onMouseMove={handleCanvasMouseMove}
+  onMouseUp={handleCanvasMouseUp}
+  onMouseLeave={handleCanvasMouseUp}
+  className={`max-h-[500px] w-auto max-w-full object-contain shadow-2xl ${
+    isDragging ? "cursor-grabbing" : selectedTarget ? "cursor-grab" : "cursor-crosshair"
+  }`}
+/>
+```
+- Added full interactive direct canvas manipulation: click to select layers/boxes/profile circles, drag with real-time feedback, directional keyboard nudge keys (Arrow keys + Shift for coarse adjustment), directional nudge pad with adjustable step sizes (1px, 5px, 10px, 25px, 50px), instant 1-click auto-align buttons (Center X, Center Y, Dead Center, Top, Left, Right), and layer management (clone, delete, reorder z-index).
+- Added explicit coordinate and dimension numeric inputs (X, Y, Width, Height, Radius, Font Size) to the Text Layers, Video Box Safe-Zones, and Profile Circles inspector panels.
+
+# v1.17.71 — StreamInject Media Filename Universalization & Studio Duration Inspector
+
+### Target File: `/server/streaminject/StreamInjectService.ts`
+```typescript
+const searchDirs = [
+  { dir: path.join(this.runtimeDir, "input"), source: "StreamInject Input" },
+  { dir: this.runtimeDir, source: "StreamInject Assets" },
+  { dir: "C:\\Gina_AI\\.gina_runtime\\streaminject\\input", source: "StreamInject Input" },
+  { dir: "C:\\Gina_AI\\.gina_runtime\\streaminject", source: "StreamInject Assets" },
+  { dir: "C:\\Gina_AI\\StreamInject\\input", source: "StreamInject Input" },
+  { dir: "C:\\Gina_AI\\StreamInject", source: "StreamInject Assets" },
+  { dir: path.join(process.cwd(), "output"), source: "ComfyUI Outputs" },
+  { dir: path.join(process.cwd(), "input"), source: "ComfyUI Inputs" },
+  { dir: path.join(process.cwd(), "local_ai_uploads"), source: "User Uploads" },
+  { dir: "C:\\Gina_AI\\output", source: "Gina Output" },
+  { dir: "C:\\Gina_AI\\input", source: "Gina Input" },
+  { dir: "C:\\Gina_AI\\models\\audio", source: "AudioCraft Library" }
+];
+```
+- Added dedicated `input` directories (`.gina_runtime/streaminject/input` and `C:\Gina_AI\StreamInject\input`) to the media scanning pipeline with path-based deduplication.
+- When placing files directly in `C:\Gina_AI\.gina_runtime\streaminject\input` or `C:\Gina_AI\StreamInject\input`, StreamInject detects them in the dropdowns directly with zero duplication and zero uploads to root.
+
+### Target File: `/server/streaminject/StreamInjectService.ts` (Universal Extension Scanner)
+```typescript
+const ext = path.extname(file).toLowerCase();
+if ([".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".wmv", ".flv", ".mpeg", ".mpg", ".ts", ".mts", ".m2ts", ".3gp", ".ogv"].includes(ext)) {
+  videos.push({ name: file, path: fullPath, source: item.source, sizeBytes: stat.size });
+} else if ([".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".svg"].includes(ext)) {
+  images.push({ name: file, path: fullPath, source: item.source });
+} else if ([".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".wma", ".aiff", ".opus"].includes(ext)) {
+  audio.push({ name: file, path: fullPath, source: item.source, sizeBytes: stat.size });
+} else if ([".srt", ".ass", ".vtt", ".sub"].includes(ext)) {
+  subtitles.push({ name: file, path: fullPath, source: item.source });
+}
+```
+- Universalized media scanning across all input directories to recognize any filename with standard container extensions (`.mp4`, `.mkv`, `.webm`, `.mov`, `.avi`, `.m4v`, `.wmv`, `.flv`, `.mpeg`, `.mpg`, `.ts`, `.mts`, `.m2ts`, `.3gp`, `.ogv`, `.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`, `.aac`, `.wma`, `.aiff`, `.opus`, `.srt`, `.ass`, `.vtt`, `.sub`).
+- Completely removed any expectation or requirement for hardcoded filenames (such as `gameplay.mp4` or `audio.mp3`).
+
+### Target File: `/src/components/StreamInjectStudio.tsx`
+```tsx
+// Canvas & Duration Settings Card in Intro/Outro Studio
+<div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-xl backdrop-blur-md flex flex-col gap-3">
+  <h2 className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+    <Clock className="w-4 h-4" /> Canvas & Duration Settings
+  </h2>
+  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+    <div>
+      <span className="text-slate-400 text-[11px] font-semibold">Intro/Outro Duration (s)</span>
+      <div className="flex items-center gap-1.5 mt-1 bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-700">
+        <Clock className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
+        <input
+          type="number"
+          min="1"
+          max="120"
+          step="0.5"
+          value={duration}
+          onChange={(e) => {
+            const newDur = Math.max(1, parseFloat(e.target.value) || 10.0);
+            setDuration(newDur);
+            if (currentTime > newDur) setCurrentTime(newDur);
+          }}
+          className="w-full bg-transparent text-xs text-white font-mono font-bold focus:outline-none"
+        />
+        <span className="text-slate-500 text-[10px]">sec</span>
+      </div>
+    </div>
+    ...
+  </div>
+</div>
+```
+- Added dedicated Canvas & Duration Settings card to the Intro/Outro Studio inspector allowing users to directly configure and fine-tune duration (in seconds), aspect ratio, resolution, and background theme.
+- Added direct Outro upload action and filename verification badges to Step 1 & Step 2 in the Master Pipeline Stitcher.
+- Added comprehensive file format acceptance on all upload inputs (`accept="video/*,.mp4,.mkv,.webm,.mov..."`, `accept="audio/*,.mp3,.wav..."`, etc.).
+
+---
+
+# v1.17.71 — StreamInject v2.5 Timeline, Intro/Outro Studio & Audio Controls
+
+### Target File: `/src/components/StreamInjectStudio.tsx`
+```tsx
+// Renamed Visual Layout Studio -> Intro/Outro Studio with Duration Control
+<span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+  <Tv className="w-4 h-4" /> Intro/Outro Stage
+</span>
+<div className="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-xs">
+  <Clock className="w-3.5 h-3.5 text-purple-400" />
+  <span className="text-slate-400 text-[11px]">Duration:</span>
+  <input type="number" min="1" max="120" step="0.5" value={duration} onChange={(e) => setDuration(Math.max(1, parseFloat(e.target.value) || 10.0))} />
+  <span className="text-slate-400 text-[11px]">sec</span>
+</div>
+
+// Added Intro/Outro Audio Track Mixing Panel & Controls
+<div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-xl backdrop-blur-md flex flex-col gap-3">
+  <h2 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+    <Music className="w-4 h-4" /> Intro/Outro Audio Track
+  </h2>
+  ...
+  <input type="number" min="0" step="0.5" value={studioAudioTrimStart} onChange={(e) => setStudioAudioTrimStart(parseFloat(e.target.value) || 0)} />
+  <input type="number" min="0" step="0.5" value={studioAudioTrimEnd} onChange={(e) => setStudioAudioTrimEnd(parseFloat(e.target.value) || 0)} />
+</div>
+```
+- Renamed "Visual Layout Studio" to "Intro/Outro Studio" across navigation tabs and stage headers.
+- Added dynamic Duration input field to the Intro/Outro stage allowing custom timing instead of a fixed 10s default.
+- Harmonized the Intro/Outro Studio Audio panel to have the exact same design layout, card container styles, track selectors, upload badges, and 6-parameter precision grid (Track Start Offset, Audio Start Cut, Audio Finish Cut, Volume, Fade In, Fade Out) as the Master Pipeline Stitcher.
+- Added start/finish cut controls to the Master Pipeline Stitcher audio track.
+- Passed audio configuration from Intro/Outro Studio into Python rendering pipeline (`render_custom_layout_from_config`) with FFmpeg `atrim`, `afade`, and `amix` audio mixing.
+
+### Target File: `/scripts/stream_inject.py` & `/server/streaminject/StreamInjectService.ts`
+```python
+# Audio mixing in custom layout render
+if audio_cfg and audio_cfg.get("path") and os.path.exists(audio_cfg["path"]):
+    audio_path = audio_cfg["path"]
+    vol = float(audio_cfg.get("volume", 1.0))
+    fade_in = float(audio_cfg.get("fade_in", 0.0))
+    fade_out = float(audio_cfg.get("fade_out", 0.0))
+    trim_start = float(audio_cfg.get("trim_start", 0.0))
+    trim_end = float(audio_cfg.get("trim_end", 0.0))
+    ...
+```
+- Added JSON payload parsing and FFmpeg filter chains for trimming, delaying, fading, and mixing audio directly into programmatic studio layout templates.
+
+---
+
+# v1.17.71 (Initial) — StreamInject v2.5 Timeline & AudioCraft PreWarm Suite
+
+### Target File: `/scripts/download_audiocraft.py`
+```python
+"""
+AudioCraft & MusicGen Weight Downloader Utility for Gina AI Factory.
+Downloads and caches Meta AudioCraft (MusicGen Small 300M & Medium 1.5B) models
+locally into C:\Gina_AI\models\audio without saturating VRAM during download.
+"""
+```
+- Implemented headless model downloader for Meta AudioCraft / MusicGen models caching weights into `C:\Gina_AI\models\audio`.
+
+### Target File: `/src/components/StreamInjectStudio.tsx`
+```tsx
+// Staging & Master Pipeline Audio + Chromakey + Watermark timeline controls
+<div className="grid grid-cols-4 gap-2 mt-2">
+  <div>
+    <span className="text-slate-400 text-[10px]">Volume</span>
+    <input type="number" min="0" max="2.0" step="0.1" value={audioVolume} onChange={(e) => setAudioVolume(parseFloat(e.target.value) || 1.0)} />
+  </div>
+  <div>
+    <span className="text-slate-400 text-[10px]">Offset (s)</span>
+    <input type="number" min="0" step="0.5" value={audioStartOffset} onChange={(e) => setAudioStartOffset(parseFloat(e.target.value) || 0)} />
+  </div>
+  ...
+</div>
+```
+- Added full UI for Audio Track Mixing, start offset, volume, fade in/out, Green Screen tolerance & timeline duration, watermark start/finish times & opacity, and burned subtitle overlays.
+
+### Target File: `/server/streaminject/StreamInjectService.ts`
+```typescript
+if (options.audioTrackPath) {
+  cliArgs.push("--audio-track", options.audioTrackPath);
+  cliArgs.push("--audio-volume", String(options.audioVolume ?? 1.0));
+  cliArgs.push("--audio-start-offset", String(options.audioStartOffset ?? 0));
+  cliArgs.push("--audio-fade-in", String(options.audioFadeIn ?? 0));
+  cliArgs.push("--audio-fade-out", String(options.audioFadeOut ?? 0));
+}
+```
+- Augmented `StreamInjectService` media scanning to index `.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`, and `.aac` from `models/audio` and `output/audio`.
+- Passed all audio mixing, chromakey similarity, and watermark timeline parameters to Python subprocess.
+
+### Target File: `/server.ts` & `/src/components/ModelPreWarmPanel.tsx`
+```typescript
+{
+  id: 'musicgen_small', name: 'MusicGen Small (AudioCraft 300M)', filename: 'facebook/musicgen-small',
+  workflowId: 'audiocraft_music', type: 'music', vramFootprintMB: 2800,
+  description: 'Meta AudioCraft MusicGen 300M model for fast BGM generation and audio composition (cached in models/audio).'
+}
+```
+- Integrated AudioCraft MusicGen into Model Pre-Warm state machine and VRAM management visualizer with distinct `Music` icon badges and allocation budget tracking.
+
+---
+
+# v1.17.69 (Patch 1) — Import Migration Verification & TypeScript Fixes
+
+### Target File: `/server/jobs/JobManager.ts`
+```typescript
+export interface GinaJob {
+  id: string;
+  promptId?: string;
+  workflowId: string;
+  status: JobStatus;
+  progress: number;
+  step?: string;
+  currentNodeId?: string | null;
+  currentNodeClass?: string;
+  currentStep?: number;
+  totalSteps?: number;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+  outputs: any[];
+  parameters: Record<string, any>;
+}
+```
+- Added optional `step?: string` field to `GinaJob` interface to align with StreamInject rendering progress tracking.
+
+### Target File: `/src/components/MilestoneChecklist.tsx`
+```typescript
+{ phase: 31, name: 'STREAMINJECT v2.5 PURE RENDER SUITE', status: 'IN_PROGRESS', details: 'Add Audio import (with duration and start/finish timeline)into both Visual Layout Studio and Master Pipeline Stitcher, Add Chromakey Overlay, Watermark & Subtitles duration and start/finish timeline' }
+```
+- Corrected status enum value from `'IN PROGRESS'` to `'IN_PROGRESS'`.
+
+---
+
+# v1.17.69 — StreamInject v2.5 UI Integration & Navigation Wireup
+
+### Target File: `/src/App.tsx`
+```tsx
+import { StreamInjectStudio } from './components/StreamInjectStudio';
+
+const navItems = [
+  { id: 'create' as const, label: 'CREATE', icon: Image, isGenerating: isJobActive && isImageJob },
+  { id: 'video' as const, label: 'VIDEO', icon: Video, isGenerating: isJobActive && isVideoJob },
+  { id: 'gif' as const, label: 'GIF STUDIO', icon: Film, isGenerating: isJobActive && job?.workflowId === 'gif_studio' },
+  { id: 'streaminject' as const, label: 'STREAMINJECT', icon: Film, isGenerating: isJobActive && (job?.workflowId === 'streaminject_studio' || job?.workflowId === 'streaminject_render') },
+  { id: 'aida64' as const, label: 'AIDA64', icon: Gauge, isGenerating: false },
+  ...
+];
+
+<main className={`space-y-5 ${activeView === 'streaminject' ? 'block' : 'hidden'}`}>
+  <WorkspaceErrorBoundary name="StreamInject Studio">
+    <StreamInjectStudio />
+  </WorkspaceErrorBoundary>
+</main>
+```
+- Integrated the `StreamInjectStudio` visual layout designer and render workspace directly into the primary application navigation bar.
+- Connected real-time generation indicators for `streaminject_studio` and `streaminject_render` job types.
+
+### Target File: `/src/components/MilestoneChecklist.tsx`
+```tsx
+{ phase: 30, name: 'STREAMINJECT v2.5 PURE RENDER SUITE', status: 'COMPLETED', details: 'Headless OpenCV/FFmpeg Python render engine, visual canvas layout builder, 6-track timeline & master pipeline' }
+```
+- Added Phase 30 milestone and updated active restore point to `RESTORE_V1.17.69_STREAMINJECT_SUITE`.
+
+### Target File: `/src/components/AppFeaturesGuide.tsx`
+- Added comprehensive feature documentation for StreamInject v2.5 Pure Render Suite covering headless Python execution, canvas layout builder, and master rendering pipeline.
+
+---
+
+# v1.17.68 — StreamInject v2.5 Pure Render Suite Integration
+
+### Target File: `/scripts/stream_inject.py`
+```python
+class MasterRenderPipeline:
+    @classmethod
+    def execute(
+        cls,
+        intro_path: Optional[str],
+        main_gameplay_path: str,
+        outro_path: Optional[str],
+        output_path: str,
+        aspect_mode: str = "original",
+        split_start_sec: float = 0.0,
+        split_end_sec: Optional[float] = None,
+        green_screen_overlay: Optional[str] = None,
+        overlay_start_time: float = 5.0,
+        watermark_path: Optional[str] = None,
+        watermark_pos: str = "TR",
+        subtitle_path: Optional[str] = None
+    ) -> Dict[str, Any]:
+```
+- Integrated the complete, unabridged, single-file production-ready Python video post-production suite **StreamInject v2.5** (`scripts/stream_inject.py`).
+- Implemented in-memory Kinetic FX matrices: Glitch/Flicker, Screen-Shake Rumble (affine warp with `BORDER_REFLECT`), Ethereal Volumetric Bloom Glow (luminosity mask > 200 + Gaussian blur), and Chromatic Aberration channel separation (+4px/-4px).
+- Implemented Multi-Aspect Engine: 16:9 Widescreen mode and 9:16 Portrait Shorts mode with automated dual-layer `boxblur=40:5` blurred sidebars.
+- Implemented Master Hardcoded Render Pipeline with dynamic markers, green screen chromakey (`0x00FF00:0.1:0.2`), subtitle burns, multi-track concatenation, and automated `build_perf_log.md` telemetry reporting.
+- Implemented Intro & Outro Studio with Ready-Built Template Mode (10s kinetic loop with `OUTRO_BG_RED_MAX=55`) and Blank Template Mode with infinite multi-layer step-by-step interactive inputs and smart safe-zone hints.
+- Enforced Audio Stream Safety Rule (48kHz Stereo via `anullsrc` harmonization) and Hard Audio Peak Limiter (`alimiter` at `-0.95dB` ceiling).
+
+### Target File: `/docs/guides/STREAM_INJECT_SUITE.md`
+- Added comprehensive architecture specification and CLI command guide for the StreamInject v2.5 engine.
+
+---
+
+# v1.17.68 — RIFE Hardware Fallback & API Polling Diagnostic Stabilization
+
+### Target File: `/server.ts`
+```typescript
+async function interpolateStoryClip(sourcePath: string, destinationPath: string, targetFps: number) {
+  try {
+    await execFileAsync('ffmpeg', [
+      '-y', '-i', sourcePath, '-an',
+      '-vf', `minterpolate=fps=${targetFps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1`,
+      '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart', destinationPath
+    ], { windowsHide: true, timeout: 600000, maxBuffer: 2 * 1024 * 1024 });
+  } catch {
+    await normalizeStoryClip(sourcePath, destinationPath, targetFps);
+  }
+}
+```
+- Added automatic, hardware-safe FFmpeg frame interpolation fallback when `RIFE_VFI` custom node is not installed in ComfyUI. This prevents `Smooth Animation` / `RIFE` post-processing in GIF Studio and Sequential Story generation from throwing unhandled exceptions and crashing generation jobs.
+- Updated `buildGifStudioWorkflow` to detect missing `RIFE_VFI` gracefully, returning clean base workflows with `rifeFallback: true` rather than throwing fatal runtime errors.
+- Enhanced API diagnostic middleware to suppress transient 404s on job polling routes (`/api/jobs/:id/workflow`, `/api/jobs/:id/events/history`), preventing the dashboard error tray from being flooded with harmless expired job lookups.
+
+### Target File: `/src/components/GifStudio.tsx`
+```tsx
+<select value={storyRife} onChange={e=>setStoryRife(e.target.value as any)} className="...">
+  <option value="off">RIFE OFF ({storyBaseFps} FPS)</option>
+  <option value="2x">2× Multiplier ({storyBaseFps*2} FPS · Auto-Fallback)</option>
+  <option value="4x">4× Multiplier ({storyBaseFps*4} FPS · Auto-Fallback)</option>
+</select>
+```
+- Clarified RIFE interpolation options in the UI to indicate automatic fallback support.
+
+### Target File: `/src/components/PromptStudio.tsx`
+```typescript
+if (!isBusy && (historyRes.status === 404 || workflowRes.status === 404)) {
+  if (timer) clearInterval(timer);
+}
+```
+- Optimized runtime polling loop to automatically stop querying when a completed or expired job is no longer active in memory.
+
+---
+
+# v1.17.68 — GIF Studio LTX-Video Hardware Controls & Preview Layout Fix
+
+### Target File: `/src/components/GifStudio.tsx`
+```tsx
+{/* LTX-Video Hardware & Parameter Controls */}
+<div className="rounded-lg border border-fuchsia-500/30 bg-slate-950 p-2.5 space-y-2.5">
+  <div className="flex items-center justify-between">
+    <div className="text-[8px] font-bold tracking-wider text-fuchsia-300 flex items-center gap-1.5">
+      <Zap className="w-3 h-3 text-amber-400"/>
+      LTX-VIDEO HARDWARE ENGINE (8GB VRAM OPTIMIZED)
+    </div>
+    <button onClick={()=>setShowStoryAdvanced(v=>!v)} className="text-[8px] text-slate-400 hover:text-slate-200">
+      {showStoryAdvanced ? 'HIDE' : 'CONFIG'}
+    </button>
+  </div>
+  {/* Model Precision, Steps, Sampler/Scheduler, Resolution, Base FPS, RIFE, I2V Conditioning */}
+</div>
+```
+- Integrated comprehensive LTX-Video parameter controls for Sequential Story mode:
+  - **Model Precision**: Selection between `ltxv-2b-0.9.8-distilled-fp8` (FP8 quantized, ~50% VRAM reduction for 8GB) and FP16.
+  - **Sampling Steps & CFG**: 20-25 steps balance point with quick presets (20 fast, 22 crisp, 25 max) + CFG slider.
+  - **Sampler & Scheduler**: Euler Ancestral (Crisp), UniPC 2, Normal Scheduler (crisp detail across frames).
+  - **Resolution Presets**: 768×768 (1:1), 848×480 (16:9 cinematic), 512×512 (fast).
+  - **Frame Rate & RIFE**: Raw base FPS (12 FPS memory-safe) with RIFE 2× / 4× post-interpolation and live calculated output FPS telemetry.
+  - **I2V Continuity Conditioning**: Reference strength (0.75-0.85 lock), image noise scale, and Final-Frame I2V toggle.
+- **Fixed Preview Stretching Layout Bug**: Applied `items-start` on grid layout and constrained the live player with `aspect-video`, `min-h-[260px]`, and `max-h-[460px]` with `overflow-hidden` so expanding the Sequential Story drawer no longer elongates or distorts the preview player.
+
+---
+
+# v1.17.68 — GIF Studio 30s Sequential Story & Universal Synchronization
+
+### Target Files: `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/docs/INDEX.md`, `/Start_Factory.bat`, `/src/App.tsx`, `/src/components/MilestoneChecklist.tsx`
+- Universal version string synchronized to `1.17.68` across the entire codebase.
+- Active restore point locked and set to `RESTORE_V1.17.68_GIF_STUDIO_FIX`.
+- Verified 30-second continuous and multi-scene GIF generation pipeline via sequential LTX-Video chunking, FFmpeg frame continuity, and color palette optimization.
+
+---
+
+# v1.17.67 — Migration & Build Validation
+
+### Target File: `/server.ts`
+```typescript
+function recordComfyErrorLog(rawMessage: string, meta?: { jobId?: string; nodeId?: string; nodeType?: string; watchdog?: boolean }) { ... }
+const requested: number[] = Array.isArray(req.body?.layers) ? (req.body.layers as any[]).map((n: any) => Math.round(Number(n))).filter((n: number) => !isNaN(n) && n >= 8 && n <= 36) : [20, 24, 28, 32];
+const layers: number[] = Array.from(new Set<number>(requested)).sort((a: number, b: number) => a - b).slice(0, 6);
+```
+- Resolved TypeScript compiler errors TS2353 and TS2362/TS2363/TS2322 in `server.ts`.
+
+### Target File: `/src/components/GifStudio.tsx`
+```typescript
+const Metric = ({icon,label,value}:{icon:React.ReactElement<{className?: string}>;label:string;value:string}) => ...
+```
+- Resolved TypeScript compiler error TS2769 on `React.cloneElement` icon prop in `GifStudio.tsx`.
+
+### Target File: `/src/components/PromptStudio.tsx`
+```typescript
+interface WorkflowSummary {
+  id: string;
+  fileName: string;
+  nodeCount: number;
+  bindings: { key: string; nodeId: string; input: string; classType: string; confidence: string }[];
+  capabilities: string[];
+  warnings: string[];
+  nodes?: any[];
+  workflow?: any;
+}
+```
+- Added optional `nodes` and `workflow` properties to `WorkflowSummary` interface to resolve TS2339.
+
+### Target File: `/src/types.ts`
+```typescript
+export interface AiStudioConfig {
+  activeTab: 'creator'|'video'|'jobs'|'shorts'|'assets';
+  workflowId: string;
+  videoWorkflowId: string;
+  defaultAspectRatio: '1:1'|'16:9'|'9:16'|'aida64'|'4:3'|'3:4';
+}
+```
+- Updated `defaultAspectRatio` type union to include `'aida64'`, `'4:3'`, and `'3:4'` options.
+
+### Target Files: `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`
+- Synchronized universal app version string to `1.17.67` across all project files.
+
+---
+
 # v1.17.67 — Sequential Story ComfyUI Completion Fallback
 
 - Fixed sequential GIF Studio stories stalling after an LTX scene reaches its final progress event when the ComfyUI WebSocket completion packet is missed.
@@ -2750,7 +3397,163 @@ export const ACTIVE_LIFECYCLE_PHASE = 18;
 - **Target File Path:** `/logs/.gitkeep`
   **Exact Code Snippet:** Empty directory marker.
   **Summary:** Reserves the runtime audit-log directory without packaging runtime logs.
-- **Target File Path:** `/flux_image.json`, `/flux_image_reference.json`, `/ltx_video.json`
-  **Exact Code Snippet:** Removed duplicate root workflow files; canonical packaged workflows remain under `/workflows/`.
-  **Summary:** Prevents duplicate workflow definitions in the root while preserving the workflow registry's packaged directory.
+## v1.17.67 — FFmpeg Frame Extraction & Job Workflow Route Fixes
+
+- **Target File Path:** `/server.ts`
+- **Description:** Fixed fatal FFmpeg error `[Parsed_format_0] Invalid pixel format 'png'` in `extractStoryFinalFrame` by removing the erroneous `-vf format=png` argument and adding automatic fallback seeking. Added missing `GET /api/jobs/:id/workflow` and `GET /api/jobs/:id/events/history` routes to satisfy runtime polling from `PromptStudio.tsx`, eliminating recurring 404 errors and story generation stops.
+- **Exact Code Snippet:**
+  ```typescript
+  async function extractStoryFinalFrame(sourcePath: string, destinationPath: string) {
+    await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+    try {
+      await execFileAsync('ffmpeg', [
+        '-y', '-sseof', '-0.08', '-i', sourcePath,
+        '-frames:v', '1', destinationPath
+      ], { windowsHide: true, timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
+    } catch {
+      await execFileAsync('ffmpeg', [
+        '-y', '-i', sourcePath,
+        '-frames:v', '1', destinationPath
+      ], { windowsHide: true, timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
+    }
+  }
+
+  app.get('/api/jobs/:id/events/history', (req,res) => {
+    const job = jobManager.get(req.params.id);
+    if (!job) return res.status(404).json({ok:false,error:'Job not found'});
+    res.json({ok:true,jobId:job.id,events:jobManager.eventHistory(job.id)});
+  });
+
+  app.get('/api/jobs/:id/workflow', (req,res) => {
+    const job = jobManager.get(req.params.id);
+    if (!job) return res.status(404).json({ok:false,error:'Job not found'});
+    const workflow = job.parameters?.__workflowSnapshot || workflowRegistry.get(job.workflowId)?.workflow || null;
+    res.json({ok:true,jobId:job.id,workflowId:job.workflowId,workflow});
+  });
+  ```
+
+## v1.17.67 — ComfyUI Health & Capability Endpoint Resilience Fix
+
+- **Target File Path:** `/server.ts`
+- **Description:** Added missing `GET /api/comfy/health` route returning local ComfyUI backend connectivity status and latency. Added graceful error handling for `getComfyObjectInfo()` in `GET /api/workflows/:id/controls` and `GET /api/gif-studio/capabilities` so endpoints return HTTP 200 with default workflow bindings and fallback capability booleans when ComfyUI is offline or starting up, eliminating 503 errors and dashboard error log spam.
+- **Exact Code Snippet:**
+  ```typescript
+  app.get("/api/comfy/health", async (_req, res) => {
+    const comfy = await getComfyHealth();
+    res.json({ ok: comfy.online, ...comfy });
+  });
+
+  app.get("/api/workflows/:id/controls", async (req, res) => {
+    const workflow = workflowRegistry.get(req.params.id);
+    if (!workflow) return res.status(404).json({ error: "Workflow not found" });
+    try {
+      let objectInfo: Record<string, any> = {};
+      try { objectInfo = await getComfyObjectInfo(); } catch {}
+      const controls = workflow.bindings.map(binding => {
+        const schema = objectInfo[binding.classType]?.input?.required?.[binding.input] || objectInfo[binding.classType]?.input?.optional?.[binding.input];
+        const rawOptions = Array.isArray(schema) && Array.isArray(schema[0]) ? schema[0] : undefined;
+        return {
+          key: binding.key,
+          nodeId: binding.nodeId,
+          input: binding.input,
+          classType: binding.classType,
+          confidence: binding.confidence,
+          currentValue: workflow.workflow[binding.nodeId]?.inputs?.[binding.input],
+          options: rawOptions?.filter((x:any) => typeof x === 'string' || typeof x === 'number') || undefined,
+          min: Array.isArray(schema) && typeof schema[1]?.min === 'number' ? schema[1].min : undefined,
+          max: Array.isArray(schema) && typeof schema[1]?.max === 'number' ? schema[1].max : undefined,
+          step: Array.isArray(schema) && typeof schema[1]?.step === 'number' ? schema[1].step : undefined
+        };
+      });
+      res.json({ workflowId: workflow.id, controls });
+    } catch (error:any) {
+      res.status(500).json({ error: error?.message || 'Unable to inspect ComfyUI node inputs' });
+    }
+  });
+
+  app.get('/api/gif-studio/capabilities', async (_req,res) => {
+    try {
+      let info: Record<string, any> = {};
+      try { info = await getComfyObjectInfo(); } catch {}
+      const gpu = await getNvidiaSmi();
+      const assets = await listGifStudioAssets();
+      const rifeSchema = info.RIFE_VFI?.input?.required?.ckpt_name;
+      const rifeModels = Array.isArray(rifeSchema) && Array.isArray(rifeSchema[0]) ? rifeSchema[0] : [];
+      res.json({
+        ok: true,
+        capabilities: {
+          videoLoader: !!info.VHS_LoadVideo,
+          imageSequenceLoader: !!info.VHS_LoadImagesPath,
+          videoCombine: !!info.VHS_VideoCombine,
+          rife: !!info.RIFE_VFI,
+          rifeModels,
+          ffmpeg: true,
+          gpu,
+          thermalTargetC: 60
+        },
+        assets
+      });
+    } catch (e:any) {
+      res.status(500).json({ ok: false, error: e?.message || 'Unable to inspect GIF Studio capabilities' });
+    }
+  });
+  ```
+
+---
+
+# v1.17.72 — AI Music Generator Suite, AudioCraft / MusicGen Integration & Stem Splitter
+
+### 1. Target File Path: `/src/components/MusicStudio.tsx`
+```typescript
+// AI Music Generator Suite UI with 7 Feature Modes, Expert/Basic tiers, Style Dropdowns & Waveform Player
+export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamInject }: MusicStudioProps) {
+  const [suiteMode, setSuiteMode] = useState<
+    'text_to_song' | 'song_cover' | 'extend' | 'edit' | 'lyrics_gen' | 'stem_remover' | 'library'
+  >('text_to_song');
+  const [generatorTier, setGeneratorTier] = useState<'expert' | 'basic'>('expert');
+  const [selectedModel, setSelectedModel] = useState<string>('facebook/musicgen-small');
+  // Interactive Style Tag Popovers: # Genre, # Moods, # Voices, # Tempos
+  // AI Lyrics Generator Modal powered by local Gemma 3 12B
+  // Real-time synthetic audio waveform visualizer and BGM transfer bridge
+}
+```
+**Summary**: Created the full-featured `MusicStudio` component matching the user's reference specification with Expert/Basic mode toggle, model dropdown, tag drawers, Gemma 3 12B songwriter integration, waveform player, and 1-click BGM transfer to StreamInject.
+
+### 2. Target File Path: `/server/music/MusicService.ts`
+```typescript
+// Music Service managing Python AudioCraft execution, track indexing, and stem isolation
+export class MusicService {
+  async scanTracks(): Promise<AudioTrackMeta[]> { ... }
+  async generateMusic(jobId: string, options: MusicGenOptions, jobManager: JobManager): Promise<{ outputFilename: string; outputUrl: string; duration: number }> { ... }
+  async separateStems(jobId: string, inputPath: string, jobManager: JobManager): Promise<{ vocalsUrl: string; instrumentalUrl: string }> { ... }
+}
+```
+**Summary**: Created `MusicService.ts` to bridge Express REST routes to `/scripts/music_generator.py` with multi-step job progress tracking and automatic audio track indexing.
+
+### 3. Target File Path: `/server.ts`
+```typescript
+// Music API Endpoints:
+app.use("/media/audio", express.static(musicService.getOutputDir()));
+app.get("/api/music/status", async (_req, res) => { ... });
+app.get("/api/music/tracks", async (_req, res) => { ... });
+app.post("/api/music/generate", async (req, res) => { ... });
+app.post("/api/music/write-lyrics", async (req, res) => { ... });
+app.post("/api/music/separate-stems", async (req, res) => { ... });
+app.delete("/api/music/tracks/:filename", async (req, res) => { ... });
+```
+**Summary**: Exposed music generation, local LLM lyric writing, stem separation, and track management endpoints in `server.ts`.
+
+### 4. Target File Path: `/src/App.tsx`
+```typescript
+// Added MUSIC SUITE nav item and main workspace container
+const navItems = [
+  ...
+  { id: 'music' as const, label: 'MUSIC SUITE', icon: Music, isGenerating: isJobActive && (job?.workflowId === 'music_studio' || job?.workflowId === 'stem_separation') },
+  ...
+];
+```
+**Summary**: Integrated `MusicStudio` into the top navigation bar with active job tracking and cross-studio BGM timeline handoff.
+
+### 5. Target File Path: `/src/components/MilestoneChecklist.tsx`, `/src/version.ts`, `/metadata.json`, `/package.json`, `/index.html`, `/AGENTS.md`
+**Summary**: Marked Phase 32 as `COMPLETED`, created active restore point `RESTORE_V1.17.72_MUSIC_GENERATOR_SUITE`, and synchronized version `1.17.72` across all project manifests per Rules 7 & 8.
 

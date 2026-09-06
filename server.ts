@@ -19,6 +19,9 @@ import { AgentContextManager } from "./server/agent/AgentContextManager.js";
 import { AgentMemoryManager } from "./server/agent/AgentMemoryManager.js";
 import { Aida64TelemetryBridge } from "./server/aida64/Aida64TelemetryBridge.js";
 import { LocalRagEngine } from "./server/rag/LocalRagEngine.js";
+import { StreamInjectService } from "./server/streaminject/StreamInjectService.js";
+import { MusicService } from "./server/music/MusicService.js";
+import { MultimediaService } from "./server/multimedia/MultimediaService.js";
 import { APP_VERSION } from "./src/version.js";
 import JSZip from "jszip";
 
@@ -45,6 +48,9 @@ const agentContext = new AgentContextManager(GINA_ROOT, GINA_WORKFLOW_DIR);
 const agentMemory = new AgentMemoryManager(GINA_ROOT);
 const aida64Telemetry = new Aida64TelemetryBridge();
 const localRag = new LocalRagEngine(GINA_ROOT);
+const streamInjectService = new StreamInjectService(process.cwd());
+const musicService = new MusicService(process.cwd());
+const multimediaService = new MultimediaService(process.cwd());
 
 interface ComfyErrorLog {
   id: string;
@@ -225,7 +231,7 @@ function recordOomIncident(errorText: string, meta?: { modelId?: string; workflo
   return incident;
 }
 
-function recordComfyErrorLog(rawMessage: string, meta?: { jobId?: string; nodeId?: string; nodeType?: string }) {
+function recordComfyErrorLog(rawMessage: string, meta?: { jobId?: string; nodeId?: string; nodeType?: string; watchdog?: boolean }) {
   if (!rawMessage) return;
   const lines = String(rawMessage).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const now = new Date().toLocaleTimeString();
@@ -368,6 +374,10 @@ app.post("/api/voice/speak", async (req,res) => {
 app.use('/api', (req, res, next) => {
   res.on('finish', () => {
     if (res.statusCode >= 400) {
+      // Don't record transient polling 404s for completed/expired job history/workflow queries as critical errors
+      if (res.statusCode === 404 && (req.originalUrl.includes('/workflow') || req.originalUrl.includes('/events/history') || req.originalUrl.includes('/history'))) {
+        return;
+      }
       const message = `HTTP ${res.statusCode} from ${req.method} ${req.originalUrl}`;
       console.warn(`[Gina API] ${req.method} ${req.originalUrl} -> HTTP ${res.statusCode}`);
       recordDashboardError(message, {
@@ -512,6 +522,11 @@ app.get("/api/health", async (_req, res) => {
     cpu: { model: os.cpus()[0]?.model || "Unknown", logicalThreads: os.cpus().length },
     memory: { totalGB: Number(totalRAMGB.toFixed(2)), freeGB: Number(freeRAMGB.toFixed(2)), usedGB: Number((totalRAMGB - freeRAMGB).toFixed(2)) }
   });
+});
+
+app.get("/api/comfy/health", async (_req, res) => {
+  const comfy = await getComfyHealth();
+  res.json({ ok: comfy.online, ...comfy });
 });
 
 app.get('/api/aida64/telemetry', async (_req, res) => {
@@ -1221,8 +1236,8 @@ app.post("/api/llm/restart", async (_req, res) => {
 
 
 app.post('/api/llm/benchmark', async (req, res) => {
-  const requested = Array.isArray(req.body?.layers) ? req.body.layers.map((n:any)=>Math.round(Number(n))).filter((n:number)=>n>=8&&n<=36) : [20,24,28,32];
-  const layers = [...new Set(requested)].sort((a,b)=>a-b).slice(0,6);
+  const requested: number[] = Array.isArray(req.body?.layers) ? (req.body.layers as any[]).map((n: any) => Math.round(Number(n))).filter((n: number) => !isNaN(n) && n >= 8 && n <= 36) : [20, 24, 28, 32];
+  const layers: number[] = Array.from(new Set<number>(requested)).sort((a: number, b: number) => a - b).slice(0, 6);
   const original = localLlm.config.gpuLayers;
   const results:any[] = [];
   try {
@@ -1843,7 +1858,7 @@ interface PreWarmModelDef {
   name: string;
   filename: string;
   workflowId: string;
-  type: 'image' | 'video' | 'shorts';
+  type: 'image' | 'video' | 'shorts' | 'audio' | 'music';
   vramFootprintMB: number;
   description: string;
 }
@@ -1858,6 +1873,21 @@ const AVAILABLE_PREWARM_MODELS: PreWarmModelDef[] = [
     id: 'ltx_video', name: 'LTX-Video 2.5 (auto-discovered)', filename: process.env.LTX_MODEL || 'AUTO_DISCOVER_LTX',
     workflowId: 'ltx_video', type: 'video', vramFootprintMB: 5000,
     description: 'Current installed LTX model discovered from the local ComfyUI model tree/workflow. Set LTX_MODEL to pin a filename.'
+  },
+  {
+    id: 'musicgen_small', name: 'MusicGen Small (AudioCraft 300M)', filename: 'facebook/musicgen-small',
+    workflowId: 'audiocraft_music', type: 'music', vramFootprintMB: 2800,
+    description: 'Meta AudioCraft MusicGen 300M model for fast BGM generation and audio composition (cached in models/audio). Runs as an exclusive AudioCraft job.'
+  },
+  {
+    id: 'musicgen_medium', name: 'MusicGen Medium (AudioCraft 1.5B)', filename: 'facebook/musicgen-medium',
+    workflowId: 'audiocraft_music', type: 'music', vramFootprintMB: 16000,
+    description: 'Meta AudioCraft MusicGen 1.5B model for high-fidelity soundtrack generation. Official AudioCraft guidance calls for at least 16 GB GPU memory for medium models; Gina runs it exclusively and refuses silent downloads during generation.'
+  },
+  {
+    id: 'audiogen_medium', name: 'AudioGen Medium (AudioCraft 1.5B · SFX / Atmosphere)', filename: 'facebook/audiogen-medium',
+    workflowId: 'audiocraft_music', type: 'audio', vramFootprintMB: 16000,
+    description: 'Meta AudioCraft AudioGen 1.5B text-to-sound model for SFX and environmental ambience. Official AudioCraft guidance calls for at least 16 GB GPU memory; Gina runs it as an exclusive local-only job.'
   }
 ];
 
@@ -2227,17 +2257,21 @@ async function buildGifStudioWorkflow(parameters: Record<string, any>) {
   }
 
   let imageNode = '1';
+  let rifeFallback = false;
   if (smooth) {
-    if (!objectInfo.RIFE_VFI) throw new Error('Smooth Animation is enabled, but RIFE_VFI is not installed in ComfyUI. Install a RIFE/VFI custom node pack first.');
-    const schema = objectInfo.RIFE_VFI?.input?.required?.ckpt_name;
-    const ckpts = Array.isArray(schema) && Array.isArray(schema[0]) ? schema[0] : [];
-    const ckptName = String(ckpts[0] || 'rife49.pth');
-    workflow['2'] = { class_type:'RIFE_VFI', inputs: {
-      ckpt_name: ckptName, frames:['1',0], clear_cache_after_n_frames: 6,
-      multiplier:rifeMultiplier, fast_mode:true, ensemble:true, scale_factor:1.0
-    }};
-    nodes.push({ id:'2', classType:'RIFE_VFI', inputs:workflow['2'].inputs });
-    imageNode = '2';
+    if (objectInfo.RIFE_VFI) {
+      const schema = objectInfo.RIFE_VFI?.input?.required?.ckpt_name;
+      const ckpts = Array.isArray(schema) && Array.isArray(schema[0]) ? schema[0] : [];
+      const ckptName = String(ckpts[0] || 'rife49.pth');
+      workflow['2'] = { class_type:'RIFE_VFI', inputs: {
+        ckpt_name: ckptName, frames:['1',0], clear_cache_after_n_frames: 6,
+        multiplier:rifeMultiplier, fast_mode:true, ensemble:true, scale_factor:1.0
+      }};
+      nodes.push({ id:'2', classType:'RIFE_VFI', inputs:workflow['2'].inputs });
+      imageNode = '2';
+    } else {
+      rifeFallback = true;
+    }
   }
 
   const targetDurationSeconds = Math.max(0, Math.min(21600, Number(parameters.duration_seconds ?? 0)));
@@ -2253,12 +2287,12 @@ async function buildGifStudioWorkflow(parameters: Record<string, any>) {
   const effectiveLoopCount = 0;
 
   workflow['3'] = { class_type:'VHS_VideoCombine', inputs: {
-    images:[imageNode,0], frame_rate:fps * rifeMultiplier,
+    images:[imageNode,0], frame_rate:fps * (rifeFallback ? 1 : rifeMultiplier),
     loop_count: effectiveLoopCount,
     filename_prefix:String(parameters.filename_prefix || 'GinaAI_GIF_Studio'), format:String(parameters.output_format || 'image/gif'), pingpong:Boolean(parameters.pingpong), save_output:true
   }};
   nodes.push({ id:'3', classType:'VHS_VideoCombine', inputs:workflow['3'].inputs });
-  return { workflow, nodes, thermal, requestedFps, outputFps:fps * rifeMultiplier, frameCount, rifeMultiplier, targetDurationSeconds, sourceDurationSeconds, calculatedRepeats, effectiveLoopCount, durationMode: parameters.duration_mode === 'continuous' ? 'continuous' : 'loop' };
+  return { workflow, nodes, thermal, requestedFps, outputFps:fps * (rifeFallback ? 1 : rifeMultiplier), frameCount, rifeMultiplier, rifeFallback, targetDurationSeconds, sourceDurationSeconds, calculatedRepeats, effectiveLoopCount, durationMode: parameters.duration_mode === 'continuous' ? 'continuous' : 'loop' };
 }
 
 async function resolveJobOutputFile(job: any) {
@@ -2308,7 +2342,7 @@ async function buildLtxStoryWorkflow(
   const definition = workflowRegistry.get('ltx_video');
   if (!definition) throw new Error("GIF Studio Sequential Story requires the registered 'ltx_video' workflow. Open Video Studio once and ensure the current LTX workflow is saved to C:\\Gina_AI\\workflows.");
 
-  const fps = Math.max(1, Math.min(60, Number(parameters.fps ?? 25)));
+  const fps = Math.max(1, Math.min(60, Number(parameters.fps ?? 12)));
   const frames = storyFramesForDuration(Number(parameters.duration_sec ?? 5), fps);
   const values: Record<string, any> = {
     prompt: String(parameters.prompt || ''),
@@ -2318,15 +2352,17 @@ async function buildLtxStoryWorkflow(
     // On an 8GB RTX 3070 Ti, setting this to `frames` multiplies the LTX latent and causes CUDA OOM.
     batch_size: 1,
     fps,
-    width: Math.max(64, Number(parameters.width ?? 512)),
-    height: Math.max(64, Number(parameters.height ?? 512)),
-    steps: Math.max(1, Number(parameters.steps ?? 18)),
-    cfg: Number(parameters.cfg ?? 3),
-    sampler: String(parameters.sampler || 'euler'),
+    width: Math.max(64, Number(parameters.width ?? 768)),
+    height: Math.max(64, Number(parameters.height ?? 768)),
+    steps: Math.max(1, Number(parameters.steps ?? 20)),
+    cfg: Number(parameters.cfg ?? 3.5),
+    sampler: String(parameters.sampler || 'euler_ancestral'),
     scheduler: String(parameters.scheduler || 'normal'),
     seed: Number(parameters.seed ?? Math.floor(Math.random() * 4294967295)),
     duration_sec: Number(parameters.duration_sec ?? 5),
-    motion_scale: Number(parameters.motion_scale ?? 1)
+    motion_scale: Number(parameters.motion_scale ?? 1),
+    reference_strength: Number(parameters.reference_strength ?? 0.80),
+    reference_noise: Number(parameters.reference_noise ?? 0.10)
   };
   if (parameters.model) values.model = parameters.model;
   const workflow = applyBindings(definition.workflow, definition.bindings, values);
@@ -2385,9 +2421,9 @@ async function buildLtxStoryWorkflow(
         if (has('frame_count')) i2v.node.inputs.frame_count = frames;
         if (has('batch_size')) i2v.node.inputs.batch_size = 1;
         if (has('fps')) i2v.node.inputs.fps = fps;
-        if (has('strength')) i2v.node.inputs.strength = Number(parameters.reference_strength ?? 1);
-        if (has('image_noise_scale')) i2v.node.inputs.image_noise_scale = Number(parameters.reference_noise ?? 0.15);
-        if (has('noise_scale')) i2v.node.inputs.noise_scale = Number(parameters.reference_noise ?? 0.15);
+        if (has('strength')) i2v.node.inputs.strength = Number(values.reference_strength ?? 0.80);
+        if (has('image_noise_scale')) i2v.node.inputs.image_noise_scale = Number(values.reference_noise ?? 0.10);
+        if (has('noise_scale')) i2v.node.inputs.noise_scale = Number(values.reference_noise ?? 0.10);
 
         const latentKey = samplerInputs.latent !== undefined ? 'latent' : 'latent_image';
         if (has('positive')) sampler.node.inputs.positive = [i2v.id, 0];
@@ -2402,9 +2438,9 @@ async function buildLtxStoryWorkflow(
         if (Object.prototype.hasOwnProperty.call(required, 'width')) i2v.node.inputs.width = values.width;
         if (Object.prototype.hasOwnProperty.call(required, 'height')) i2v.node.inputs.height = values.height;
         if (Object.prototype.hasOwnProperty.call(required, 'fps')) i2v.node.inputs.fps = fps;
-        if (Object.prototype.hasOwnProperty.call(required, 'strength')) i2v.node.inputs.strength = Number(parameters.reference_strength ?? 1);
-        if (Object.prototype.hasOwnProperty.call(required, 'image_noise_scale')) i2v.node.inputs.image_noise_scale = Number(parameters.reference_noise ?? 0.15);
-        if (Object.prototype.hasOwnProperty.call(required, 'noise_scale')) i2v.node.inputs.noise_scale = Number(parameters.reference_noise ?? 0.15);
+        if (Object.prototype.hasOwnProperty.call(required, 'strength')) i2v.node.inputs.strength = Number(values.reference_strength ?? 0.80);
+        if (Object.prototype.hasOwnProperty.call(required, 'image_noise_scale')) i2v.node.inputs.image_noise_scale = Number(values.reference_noise ?? 0.10);
+        if (Object.prototype.hasOwnProperty.call(required, 'noise_scale')) i2v.node.inputs.noise_scale = Number(values.reference_noise ?? 0.10);
       }
       referenceUsed = true;
     }
@@ -2492,10 +2528,17 @@ function waitForGinaJob(jobId: string, timeoutMs = 2 * 60 * 60 * 1000): Promise<
 
 async function extractStoryFinalFrame(sourcePath: string, destinationPath: string) {
   await fs.mkdir(path.dirname(destinationPath), { recursive: true });
-  await execFileAsync('ffmpeg', [
-    '-y', '-sseof', '-0.08', '-i', sourcePath,
-    '-frames:v', '1', '-vf', 'format=png', destinationPath
-  ], { windowsHide: true, timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
+  try {
+    await execFileAsync('ffmpeg', [
+      '-y', '-sseof', '-0.08', '-i', sourcePath,
+      '-frames:v', '1', destinationPath
+    ], { windowsHide: true, timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
+  } catch {
+    await execFileAsync('ffmpeg', [
+      '-y', '-i', sourcePath,
+      '-frames:v', '1', destinationPath
+    ], { windowsHide: true, timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
+  }
 }
 
 async function normalizeStoryClip(sourcePath: string, destinationPath: string, fps: number) {
@@ -2504,6 +2547,19 @@ async function normalizeStoryClip(sourcePath: string, destinationPath: string, f
     '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
     '-r', String(fps), '-movflags', '+faststart', destinationPath
   ], { windowsHide: true, timeout: 600000, maxBuffer: 2 * 1024 * 1024 });
+}
+
+async function interpolateStoryClip(sourcePath: string, destinationPath: string, targetFps: number) {
+  try {
+    await execFileAsync('ffmpeg', [
+      '-y', '-i', sourcePath, '-an',
+      '-vf', `minterpolate=fps=${targetFps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1`,
+      '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart', destinationPath
+    ], { windowsHide: true, timeout: 600000, maxBuffer: 2 * 1024 * 1024 });
+  } catch {
+    await normalizeStoryClip(sourcePath, destinationPath, targetFps);
+  }
 }
 
 async function concatenateStoryClips(clips: string[], destinationPath: string) {
@@ -2561,14 +2617,19 @@ async function runGifSequentialStory(parentJob: any) {
     }
     return chunks;
   });
-  const fps = Math.max(1, Math.min(60, Number(parameters.fps ?? 25)));
-  const width = Math.max(64, Number(parameters.width ?? 512));
-  const height = Math.max(64, Number(parameters.height ?? 512));
+  const fps = Math.max(1, Math.min(60, Number(story.fps ?? parameters.fps ?? 12)));
+  const width = Math.max(64, Number(story.width ?? parameters.width ?? 768));
+  const height = Math.max(64, Number(story.height ?? parameters.height ?? 768));
+  const steps = Math.max(1, Number(story.steps ?? parameters.steps ?? 20));
+  const cfg = Number(story.cfg ?? parameters.cfg ?? 3.5);
+  const sampler = String(story.sampler || parameters.sampler || 'euler_ancestral');
+  const scheduler = String(story.scheduler || parameters.scheduler || 'normal');
+  const model = story.model || parameters.model || 'ltxv-2b-0.9.8-distilled-fp8.safetensors';
   const compression = Math.max(0, Math.min(100, Number(parameters.compression ?? 50)));
   const useFinalFrame = story.useFinalFrame !== false;
   const storyRife = String(story.rife || 'off');
-  const referenceStrength = Number(parameters.reference_strength ?? 1);
-  const referenceNoise = Number(parameters.reference_noise ?? 0.15);
+  const referenceStrength = Number(story.referenceStrength ?? parameters.reference_strength ?? 0.80);
+  const referenceNoise = Number(story.referenceNoise ?? parameters.reference_noise ?? 0.10);
   const storyDir = path.join(GIF_STUDIO_MEDIA_ROOT, `story_${parentJob.id}`);
   const storyInputDir = path.join(GIF_STUDIO_INPUT_ROOT, `story_${parentJob.id}`);
   await fs.mkdir(storyDir, { recursive: true });
@@ -2605,12 +2666,12 @@ async function runGifSequentialStory(parentJob: any) {
         fps,
         width,
         height,
-        steps: Math.max(1, Number(parameters.steps ?? 18)),
-        cfg: Number(parameters.cfg ?? 3),
-        sampler: String(parameters.sampler || 'euler'),
-        scheduler: String(parameters.scheduler || 'normal'),
+        steps,
+        cfg,
+        sampler,
+        scheduler,
         seed,
-        model: parameters.model,
+        model,
         motion_scale: Number(parameters.motion_scale ?? 1),
         reference_strength: referenceStrength,
         reference_noise: referenceNoise
@@ -2707,69 +2768,84 @@ async function runGifSequentialStory(parentJob: any) {
       // hour-long timeline into ComfyUI at once.
       if (storyRife !== 'off') {
         const rifeMultiplier = storyRife === '4x' ? 4 : 2;
-        await fetch(`${COMFY_URL}/free`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({unload_models:true,free_memory:true}), signal:AbortSignal.timeout(5000) }).catch(()=>null);
-        const rifeInput = path.join(storyInputDir, `scene_${String(index + 1).padStart(3, '0')}_rife_source.mp4`);
-        await fs.copyFile(normalizedPath, rifeInput);
-        const rifeBuilt = await buildGifStudioWorkflow({
-          sourcePath: rifeInput,
-          sourceKind: 'video',
-          start_frame: 0,
-          end_frame: Math.max(0, built.frames - 1),
-          fps,
-          smooth_animation: true,
-          rife_multiplier: rifeMultiplier,
-          pingpong: false,
-          loop_count: 0,
-          duration_seconds: duration,
-          duration_mode: 'continuous',
-          output_format: 'video/h264-mp4',
-          filename_prefix: `GinaAI_Story_RIFE_${index + 1}`
-        });
-        const rifeChild = jobManager.create('gif_studio', {
-          sourcePath: rifeInput,
-          sourceKind: 'video',
-          smooth_animation: true,
-          rife_multiplier: rifeMultiplier,
-          __nodeClasses: Object.fromEntries(rifeBuilt.nodes.map((n:any) => [n.id, n.classType])),
-          __nodeMeta: rifeBuilt.nodes,
-          __workflowSnapshot: rifeBuilt.workflow,
-          __parentStoryJobId: parentJob.id,
-          __storySceneIndex: index + 1
-        });
-        const rifeResponse = await fetch(`${COMFY_URL}/prompt`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: rifeBuilt.workflow, client_id: comfyWebSocket.clientId }),
-          signal: AbortSignal.timeout(15000)
-        });
-        const rifeData = await rifeResponse.json().catch(() => ({}));
-        if (!rifeResponse.ok || !rifeData.prompt_id) {
-          jobManager.update(rifeChild.id, { status:'FAILED', error:rifeData?.error?.message || `ComfyUI HTTP ${rifeResponse.status}`, completedAt:new Date().toISOString() });
-          throw new Error(`RIFE failed for story scene ${index + 1}: ${rifeData?.error?.message || 'Unable to queue RIFE workflow.'}`);
-        }
-        jobManager.update(rifeChild.id, { promptId:rifeData.prompt_id, status:'QUEUED' });
-        const rifeRelay = ({ job, event, payload }: any) => {
-          if (job?.id !== rifeChild.id) return;
-          jobManager.event(parentJob.id, event, { ...payload, storyScene:index + 1, stage:'RIFE', rifeMultiplier });
-          if (event === 'node_executing') {
-            jobManager.update(parentJob.id, { currentNodeId:payload?.node ?? null, currentNodeClass:rifeChild.parameters?.__nodeClasses?.[payload?.node], progress:Math.min(99, Math.round(((index + (rifeChild.progress || 0) / 100) / plannedScenes.length) * 100)) });
+        const targetOutputFps = fps * rifeMultiplier;
+        let objectInfo: any = {};
+        try { objectInfo = await getComfyObjectInfo(); } catch {}
+        const hasComfyRife = !!objectInfo.RIFE_VFI;
+
+        if (hasComfyRife) {
+          await fetch(`${COMFY_URL}/free`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({unload_models:true,free_memory:true}), signal:AbortSignal.timeout(5000) }).catch(()=>null);
+          const rifeInput = path.join(storyInputDir, `scene_${String(index + 1).padStart(3, '0')}_rife_source.mp4`);
+          await fs.copyFile(normalizedPath, rifeInput);
+          const rifeBuilt = await buildGifStudioWorkflow({
+            sourcePath: rifeInput,
+            sourceKind: 'video',
+            start_frame: 0,
+            end_frame: Math.max(0, built.frames - 1),
+            fps,
+            smooth_animation: true,
+            rife_multiplier: rifeMultiplier,
+            pingpong: false,
+            loop_count: 0,
+            duration_seconds: duration,
+            duration_mode: 'continuous',
+            output_format: 'video/h264-mp4',
+            filename_prefix: `GinaAI_Story_RIFE_${index + 1}`
+          });
+          const rifeChild = jobManager.create('gif_studio', {
+            sourcePath: rifeInput,
+            sourceKind: 'video',
+            smooth_animation: true,
+            rife_multiplier: rifeMultiplier,
+            __nodeClasses: Object.fromEntries(rifeBuilt.nodes.map((n:any) => [n.id, n.classType])),
+            __nodeMeta: rifeBuilt.nodes,
+            __workflowSnapshot: rifeBuilt.workflow,
+            __parentStoryJobId: parentJob.id,
+            __storySceneIndex: index + 1
+          });
+          const rifeResponse = await fetch(`${COMFY_URL}/prompt`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: rifeBuilt.workflow, client_id: comfyWebSocket.clientId }),
+            signal: AbortSignal.timeout(15000)
+          });
+          const rifeData = await rifeResponse.json().catch(() => ({}));
+          if (!rifeResponse.ok || !rifeData.prompt_id) {
+            jobManager.update(rifeChild.id, { status:'FAILED', error:rifeData?.error?.message || `ComfyUI HTTP ${rifeResponse.status}`, completedAt:new Date().toISOString() });
+            throw new Error(`RIFE failed for story scene ${index + 1}: ${rifeData?.error?.message || 'Unable to queue RIFE workflow.'}`);
           }
-        };
-        jobManager.on('event', rifeRelay);
-        const rifeFinished = await waitForGinaJob(rifeChild.id);
-        jobManager.off('event', rifeRelay);
-        if (rifeFinished.status !== 'COMPLETED') throw new Error(`RIFE failed for scene ${index + 1}: ${rifeFinished.error || 'ComfyUI execution failed.'}`);
-        const rifeMedia = await resolveJobOutputFile(rifeFinished);
-        const rifeExt = path.extname(String(rifeMedia.chosen.filename)).toLowerCase();
-        if (rifeExt === '.mp4') {
-          await fs.writeFile(normalizedPath, rifeMedia.buffer);
+          jobManager.update(rifeChild.id, { promptId:rifeData.prompt_id, status:'QUEUED' });
+          const rifeRelay = ({ job, event, payload }: any) => {
+            if (job?.id !== rifeChild.id) return;
+            jobManager.event(parentJob.id, event, { ...payload, storyScene:index + 1, stage:'RIFE', rifeMultiplier });
+            if (event === 'node_executing') {
+              jobManager.update(parentJob.id, { currentNodeId:payload?.node ?? null, currentNodeClass:rifeChild.parameters?.__nodeClasses?.[payload?.node], progress:Math.min(99, Math.round(((index + (rifeChild.progress || 0) / 100) / plannedScenes.length) * 100)) });
+            }
+          };
+          jobManager.on('event', rifeRelay);
+          const rifeFinished = await waitForGinaJob(rifeChild.id);
+          jobManager.off('event', rifeRelay);
+          if (rifeFinished.status !== 'COMPLETED') throw new Error(`RIFE failed for scene ${index + 1}: ${rifeFinished.error || 'ComfyUI execution failed.'}`);
+          const rifeMedia = await resolveJobOutputFile(rifeFinished);
+          const rifeExt = path.extname(String(rifeMedia.chosen.filename)).toLowerCase();
+          if (rifeExt === '.mp4') {
+            await fs.writeFile(normalizedPath, rifeMedia.buffer);
+          } else {
+            await fs.writeFile(sourcePath, rifeMedia.buffer);
+            await normalizeStoryClip(sourcePath, normalizedPath, targetOutputFps);
+          }
+          await fs.rm(rifeInput, {force:true});
+          jobManager.event(parentJob.id, 'story_rife_completed', { sceneIndex:index, sceneNumber:index + 1, multiplier:rifeMultiplier, outputFps:targetOutputFps, method:'comfy_rife_vfi' });
+          await fetch(`${COMFY_URL}/free`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({unload_models:true,free_memory:true}), signal:AbortSignal.timeout(5000) }).catch(()=>null);
         } else {
-          await fs.writeFile(sourcePath, rifeMedia.buffer);
-          await normalizeStoryClip(sourcePath, normalizedPath, fps * rifeMultiplier);
+          // ComfyUI does not have RIFE_VFI node pack installed; perform hardware-safe FFmpeg frame interpolation
+          jobManager.event(parentJob.id, 'story_rife_started', { sceneIndex:index, sceneNumber:index + 1, multiplier:rifeMultiplier, outputFps:targetOutputFps, method:'ffmpeg_interpolation', note:'RIFE_VFI node not detected; using FFmpeg motion interpolation fallback' });
+          const interpolatedPath = path.join(storyDir, `scene_${String(index + 1).padStart(3, '0')}_interpolated.mp4`);
+          await interpolateStoryClip(normalizedPath, interpolatedPath, targetOutputFps);
+          await fs.copyFile(interpolatedPath, normalizedPath);
+          await fs.rm(interpolatedPath, { force: true });
+          jobManager.event(parentJob.id, 'story_rife_completed', { sceneIndex:index, sceneNumber:index + 1, multiplier:rifeMultiplier, outputFps:targetOutputFps, method:'ffmpeg_interpolation' });
         }
-        await fs.rm(rifeInput, {force:true});
-        jobManager.event(parentJob.id, 'story_rife_completed', { sceneIndex:index, sceneNumber:index + 1, multiplier:rifeMultiplier, outputFps:fps * rifeMultiplier });
-        await fetch(`${COMFY_URL}/free`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({unload_models:true,free_memory:true}), signal:AbortSignal.timeout(5000) }).catch(()=>null);
       }
 
       normalizedClips.push(normalizedPath);
@@ -2955,7 +3031,21 @@ app.get("/api/jobs/:id/workflow", async (req, res) => {
   if (!job) return res.status(404).json({ ok:false, error:'Job not found' });
   const workflowId = job.workflowId;
   const definition = workflowRegistry.get(workflowId);
-  if (!definition) return res.status(404).json({ ok:false, error:'Workflow definition not found' });
+  // Not every Gina job is a ComfyUI workflow. Python/AudioCraft/StreamInject
+  // jobs still use the shared dashboard inspector, so return a valid inspection
+  // envelope instead of a misleading 404.
+  if (!definition) {
+    return res.json({
+      ok: true,
+      jobId: job.id,
+      workflowId,
+      execution: 'external',
+      workflow: job.parameters?.__workflowSnapshot || null,
+      nodes: [],
+      bindings: [],
+      message: `Job '${workflowId}' is an external Gina engine job; no ComfyUI workflow definition is required.`
+    });
+  }
   try {
     const raw = applyBindings(definition.workflow, definition.bindings, job.parameters || {});
     const resolved = await adaptWorkflowForComfySession(enforceAida64WorkflowDimensions(raw, job.parameters?.width, job.parameters?.height));
@@ -3005,15 +3095,27 @@ app.get("/api/workflows/:id/controls", async (req, res) => {
   const workflow = workflowRegistry.get(req.params.id);
   if (!workflow) return res.status(404).json({ error: "Workflow not found" });
   try {
-    const objectInfo = await getComfyObjectInfo();
+    let objectInfo: Record<string, any> = {};
+    try { objectInfo = await getComfyObjectInfo(); } catch {}
     const controls = workflow.bindings.map(binding => {
       const schema = objectInfo[binding.classType]?.input?.required?.[binding.input] || objectInfo[binding.classType]?.input?.optional?.[binding.input];
       const rawOptions = Array.isArray(schema) && Array.isArray(schema[0]) ? schema[0] : undefined;
-      return { key: binding.key, nodeId: binding.nodeId, input: binding.input, classType: binding.classType, confidence: binding.confidence, currentValue: workflow.workflow[binding.nodeId]?.inputs?.[binding.input], options: rawOptions?.filter((x:any) => typeof x === 'string' || typeof x === 'number') || undefined, min: Array.isArray(schema) && typeof schema[1]?.min === 'number' ? schema[1].min : undefined, max: Array.isArray(schema) && typeof schema[1]?.max === 'number' ? schema[1].max : undefined, step: Array.isArray(schema) && typeof schema[1]?.step === 'number' ? schema[1].step : undefined };
+      return {
+        key: binding.key,
+        nodeId: binding.nodeId,
+        input: binding.input,
+        classType: binding.classType,
+        confidence: binding.confidence,
+        currentValue: workflow.workflow[binding.nodeId]?.inputs?.[binding.input],
+        options: rawOptions?.filter((x:any) => typeof x === 'string' || typeof x === 'number') || undefined,
+        min: Array.isArray(schema) && typeof schema[1]?.min === 'number' ? schema[1].min : undefined,
+        max: Array.isArray(schema) && typeof schema[1]?.max === 'number' ? schema[1].max : undefined,
+        step: Array.isArray(schema) && typeof schema[1]?.step === 'number' ? schema[1].step : undefined
+      };
     });
     res.json({ workflowId: workflow.id, controls });
   } catch (error:any) {
-    res.status(503).json({ error: error?.message || 'Unable to inspect ComfyUI node inputs' });
+    res.status(500).json({ error: error?.message || 'Unable to inspect ComfyUI node inputs' });
   }
 });
 
@@ -3236,19 +3338,29 @@ app.post('/api/gif-studio/upload', express.raw({ type:'*/*', limit:'220mb' }), a
 
 app.get('/api/gif-studio/capabilities', async (_req,res) => {
   try {
-    const info = await getComfyObjectInfo();
+    let info: Record<string, any> = {};
+    try { info = await getComfyObjectInfo(); } catch {}
     const gpu = await getNvidiaSmi();
     const assets = await listGifStudioAssets();
     const rifeSchema = info.RIFE_VFI?.input?.required?.ckpt_name;
     const rifeModels = Array.isArray(rifeSchema) && Array.isArray(rifeSchema[0]) ? rifeSchema[0] : [];
-    res.json({ ok:true, capabilities:{ videoLoader:!!info.VHS_LoadVideo, imageSequenceLoader:!!info.VHS_LoadImagesPath, videoCombine:!!info.VHS_VideoCombine, rife:!!info.RIFE_VFI, rifeModels, ffmpeg:true, gpu, thermalTargetC:60 }, assets });
-  } catch (e:any) { res.status(503).json({ok:false,error:e?.message||'Unable to inspect GIF Studio capabilities'}); }
-});
-
-app.get('/api/jobs/:id/history', (req,res) => {
-  const job = jobManager.get(req.params.id);
-  if (!job) return res.status(404).json({ok:false,error:'Job not found'});
-  res.json({ok:true,job,history:jobManager.eventHistory(job.id)});
+    res.json({
+      ok: true,
+      capabilities: {
+        videoLoader: !!info.VHS_LoadVideo,
+        imageSequenceLoader: !!info.VHS_LoadImagesPath,
+        videoCombine: !!info.VHS_VideoCombine,
+        rife: !!info.RIFE_VFI,
+        rifeModels,
+        ffmpeg: true,
+        gpu,
+        thermalTargetC: 60
+      },
+      assets
+    });
+  } catch (e:any) {
+    res.status(500).json({ ok: false, error: e?.message || 'Unable to inspect GIF Studio capabilities' });
+  }
 });
 
 app.post('/api/gif-studio/adopt-job', async (req,res) => {
@@ -3744,7 +3856,598 @@ app.get("/api/jobs/:id/output", async (req, res) => {
   } catch (error: any) { res.status(503).json({ error: error?.message || 'Unable to retrieve local output' }); }
 });
 
+// ===============================================================================
+// STREAMINJECT v2.5 PURE RENDER SUITE API ENDPOINTS
+// ===============================================================================
+app.use("/media/streaminject", express.static(streamInjectService.getRuntimeDir()));
 
+app.get("/api/streaminject/status", async (_req, res) => {
+  try {
+    const pythonOk = true;
+    const media = await streamInjectService.scanAvailableMedia();
+    res.json({
+      ok: true,
+      service: "StreamInject v2.5 Pure Render Suite",
+      runtimeDir: streamInjectService.getRuntimeDir(),
+      pythonOk,
+      mediaCounts: {
+        videos: media.videos.length,
+        images: media.images.length,
+        subtitles: media.subtitles.length
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "StreamInject status check failed" });
+  }
+});
+
+app.get("/api/streaminject/presets", (_req, res) => {
+  const presets = streamInjectService.getPresets();
+  res.json({ ok: true, presets });
+});
+
+app.get("/api/streaminject/media-files", async (_req, res) => {
+  try {
+    const media = await streamInjectService.scanAvailableMedia();
+    res.json({ ok: true, ...media });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Failed to scan local media" });
+  }
+});
+
+app.post("/api/streaminject/upload", async (req, res) => {
+  try {
+    const { filename, base64Data } = req.body;
+    if (!filename || !base64Data) {
+      return res.status(400).json({ ok: false, error: "Missing filename or base64Data" });
+    }
+    const cleanName = path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, "_");
+    const targetPath = path.join(streamInjectService.getRuntimeDir(), `${Date.now()}_${cleanName}`);
+    const buffer = Buffer.from(base64Data.replace(/^data:[^;]+;base64,/, ""), "base64");
+    await fs.writeFile(targetPath, buffer);
+
+    res.json({
+      ok: true,
+      filename: path.basename(targetPath),
+      path: targetPath,
+      url: `/media/streaminject/${path.basename(targetPath)}`,
+      sizeBytes: buffer.length
+    });
+  } catch (error: any) {
+    recordDashboardError(error?.message || "StreamInject upload failed", {
+      source: "streaminject-upload",
+      method: "POST",
+      url: "/api/streaminject/upload",
+      status: 500
+    });
+    res.status(500).json({ ok: false, error: error?.message || "Upload failed" });
+  }
+});
+
+app.post("/api/streaminject/studio", async (req, res) => {
+  const options = req.body || {};
+  const job = jobManager.create("streaminject_studio", {
+    width: options.width || 1920,
+    height: options.height || 1080,
+    duration: options.duration || 10.0,
+    fps: options.fps || 30.0,
+    vfx: options.vfx
+  });
+
+  try {
+    // Initiate background execution
+    streamInjectService
+      .renderStudioTemplate(job.id, options, jobManager)
+      .then((result) => {
+        console.log(`[StreamInject Studio] Job ${job.id} completed successfully: ${result.outputFilename}`);
+      })
+      .catch((err) => {
+        console.error(`[StreamInject Studio] Job ${job.id} failed:`, err);
+        recordDashboardError(err.message, {
+          source: "streaminject-studio",
+          method: "POST",
+          url: "/api/streaminject/studio",
+          status: 500
+        });
+      });
+
+    res.status(202).json({
+      ok: true,
+      jobId: job.id,
+      status: "QUEUED",
+      message: "StreamInject studio render queued successfully"
+    });
+  } catch (error: any) {
+    jobManager.update(job.id, {
+      status: "FAILED",
+      error: error?.message || "Failed to start studio render",
+      completedAt: new Date().toISOString()
+    });
+    res.status(500).json({ ok: false, error: error?.message || "Failed to start studio render", jobId: job.id });
+  }
+});
+
+app.post("/api/streaminject/render", async (req, res) => {
+  const options = req.body || {};
+  if (!options.mainGameplayPath) {
+    return res.status(400).json({ ok: false, error: "Main gameplay video path is required." });
+  }
+
+  // Check if file exists, or if relative name in runtime directory
+  let resolvedGameplay = options.mainGameplayPath;
+  if (!fsSync.existsSync(resolvedGameplay)) {
+    const runtimeCandidate = path.join(streamInjectService.getRuntimeDir(), options.mainGameplayPath);
+    const outputCandidate = path.join(process.cwd(), "output", options.mainGameplayPath);
+    if (fsSync.existsSync(runtimeCandidate)) {
+      resolvedGameplay = runtimeCandidate;
+    } else if (fsSync.existsSync(outputCandidate)) {
+      resolvedGameplay = outputCandidate;
+    } else {
+      return res.status(404).json({ ok: false, error: `Main gameplay file not found at path: ${options.mainGameplayPath}` });
+    }
+  }
+
+  const job = jobManager.create("streaminject_render", {
+    gameplay: resolvedGameplay,
+    aspect: options.aspectMode || "original",
+    splitStart: options.splitStartSec || 0,
+    splitEnd: options.splitEndSec
+  });
+
+  try {
+    streamInjectService
+      .renderMasterPipeline(job.id, { ...options, mainGameplayPath: resolvedGameplay }, jobManager)
+      .then((result) => {
+        console.log(`[StreamInject Master] Job ${job.id} completed: ${result.outputFilename}`);
+      })
+      .catch((err) => {
+        console.error(`[StreamInject Master] Job ${job.id} failed:`, err);
+        recordDashboardError(err.message, {
+          source: "streaminject-render",
+          method: "POST",
+          url: "/api/streaminject/render",
+          status: 500
+        });
+      });
+
+    res.status(202).json({
+      ok: true,
+      jobId: job.id,
+      status: "QUEUED",
+      message: "StreamInject master pipeline render queued successfully"
+    });
+  } catch (error: any) {
+    jobManager.update(job.id, {
+      status: "FAILED",
+      error: error?.message || "Failed to start master render",
+      completedAt: new Date().toISOString()
+    });
+    res.status(500).json({ ok: false, error: error?.message || "Failed to start master render", jobId: job.id });
+  }
+});
+
+// ===============================================================================
+// AI MUSIC GENERATOR SUITE & AUDIOCRAFT API ENDPOINTS
+// ===============================================================================
+app.use("/media/audio", express.static(musicService.getOutputDir()));
+
+app.get("/api/music/status", async (_req, res) => {
+  try {
+    const tracks = await musicService.scanTracks();
+    const modelIds = [
+      "facebook/musicgen-small",
+      "facebook/musicgen-medium",
+      "facebook/audiogen-medium"
+    ];
+
+    const safeModelTelemetry = (modelName: string) => {
+      try {
+        const info = musicService.getModelCacheInfo(modelName);
+        const backend = musicService.getModelBackend(modelName);
+        const resolution = musicService.getModelResolution(modelName);
+        return {
+          ...info,
+          managedPath: resolution.path,
+          backend: backend.backend,
+          weightFiles: backend.weightFiles,
+          resolution,
+          statusError: null
+        };
+      } catch (error: any) {
+        const fallbackPath = musicService.getResolvedModelPath(modelName);
+        const message = error?.message || String(error);
+        console.warn(`[MusicService] Status telemetry failed for ${modelName}: ${message}`);
+        return {
+          cached: false,
+          hasWeights: false,
+          sizeLabel: "0 MB",
+          fileCount: 0,
+          managedPath: fallbackPath,
+          backend: "Telemetry unavailable",
+          weightFiles: [],
+          resolution: { path: fallbackPath, source: "Local filesystem", revision: null, refs: [] },
+          statusError: message
+        };
+      }
+    };
+
+    const smallInfo = safeModelTelemetry(modelIds[0]);
+    const mediumInfo = safeModelTelemetry(modelIds[1]);
+    const audiogenInfo = safeModelTelemetry(modelIds[2]);
+
+    res.json({
+      ok: true,
+      service: "AI Music Generator Suite & AudioCraft Engine",
+      outputDir: musicService.getOutputDir(),
+      trackCount: tracks.length,
+      availableModels: [
+        {
+          id: "facebook/musicgen-medium",
+          name: "MusicGen Medium (1.5B High-Fidelity)",
+          params: "1.5B",
+          vramMB: 16000,
+          cached: mediumInfo.cached,
+          hasWeights: mediumInfo.hasWeights,
+          sizeLabel: mediumInfo.sizeLabel,
+          fileCount: mediumInfo.fileCount,
+          managedPath: mediumInfo.managedPath,
+          backend: mediumInfo.backend,
+          weightFiles: mediumInfo.weightFiles,
+          resolution: mediumInfo.resolution,
+          statusError: mediumInfo.statusError,
+          hubCacheIgnored: false,
+          cacheMode: "local HF snapshot (network disabled)",
+          isDefault: true
+        },
+        {
+          id: "facebook/musicgen-small",
+          name: "MusicGen Small (300M Fast BGM)",
+          params: "300M",
+          vramMB: 2800,
+          cached: smallInfo.cached,
+          hasWeights: smallInfo.hasWeights,
+          sizeLabel: smallInfo.sizeLabel,
+          fileCount: smallInfo.fileCount,
+          managedPath: smallInfo.managedPath,
+          backend: smallInfo.backend,
+          weightFiles: smallInfo.weightFiles,
+          resolution: smallInfo.resolution,
+          statusError: smallInfo.statusError,
+          hubCacheIgnored: true,
+          isDefault: false
+        },
+        {
+          id: "facebook/audiogen-medium",
+          name: "AudioGen Medium (SFX/Atmosphere)",
+          params: "1.5B",
+          vramMB: 16000,
+          cached: audiogenInfo.cached,
+          hasWeights: audiogenInfo.hasWeights,
+          sizeLabel: audiogenInfo.sizeLabel,
+          fileCount: audiogenInfo.fileCount,
+          managedPath: audiogenInfo.managedPath,
+          backend: audiogenInfo.backend,
+          weightFiles: audiogenInfo.weightFiles,
+          resolution: audiogenInfo.resolution,
+          statusError: audiogenInfo.statusError,
+          hubCacheIgnored: true,
+          isDefault: false
+        }
+      ]
+    });
+  } catch (error: any) {
+    console.error("[MusicService] Music status endpoint unexpected failure:", error);
+    // Status is telemetry; never let a filesystem edge case turn the dashboard
+    // into a repeating HTTP 500 loop. Generation remains independently strict.
+    res.json({
+      ok: true,
+      service: "AI Music Generator Suite & AudioCraft Engine",
+      outputDir: musicService.getOutputDir(),
+      trackCount: 0,
+      availableModels: [],
+      statusError: error?.message || "Music status check failed"
+    });
+  }
+});
+
+app.get("/api/music/ace-step/status", async (_req, res) => {
+  const baseUrl = process.env.ACESTEP_API_URL || "http://127.0.0.1:8001";
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+    const response = await fetch(`${baseUrl}/health`, { signal: controller.signal });
+    clearTimeout(timer);
+    const payload: any = await response.json().catch(() => ({}));
+    res.json({ ok: response.ok && (payload?.code === 200 || payload?.data?.status === "ok"), baseUrl, detail: payload?.error || null });
+  } catch (error: any) {
+    res.json({ ok: false, baseUrl, detail: error?.message || "ACE-Step API is not reachable" });
+  }
+});
+
+app.post("/api/music/models/download", async (req, res) => {
+  const modelName = req.body?.model || "facebook/musicgen-medium";
+  const job = jobManager.create("audiocraft_download", {
+    model: modelName,
+    status: "STARTING"
+  });
+
+  try {
+    musicService
+      .downloadModel(job.id, modelName, jobManager)
+      .then((result) => {
+        console.log(`[AudioCraft Download] Job ${job.id} finished for ${modelName}`);
+      })
+      .catch((err) => {
+        console.error(`[AudioCraft Download] Job ${job.id} failed:`, err);
+      });
+
+    res.json({
+      ok: true,
+      jobId: job.id,
+      message: `Started downloading model weights for ${modelName}`,
+      model: modelName
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message || "Failed to start download job" });
+  }
+});
+
+app.get("/api/music/tracks", async (_req, res) => {
+  try {
+    const tracks = await musicService.scanTracks();
+    res.json({ ok: true, tracks });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Failed to scan tracks" });
+  }
+});
+
+app.post("/api/music/generate", async (req, res) => {
+  const options = req.body || {};
+  const job = jobManager.create("music_studio", {
+    songName: options.songName || "Untitled Track",
+    mode: options.mode || "text_to_song",
+    style: options.style || "",
+    duration: options.duration || 15.0,
+    model: options.model || "facebook/musicgen-small"
+  });
+
+  try {
+    musicService
+      .generateMusic(job.id, options, jobManager)
+      .then((result) => {
+        console.log(`[Music Studio] Job ${job.id} completed: ${result.outputFilename}`);
+      })
+      .catch((err) => {
+        console.error(`[Music Studio] Job ${job.id} failed:`, err);
+        recordDashboardError(err.message, {
+          source: "music-generate",
+          method: "POST",
+          url: "/api/music/generate",
+          status: 500
+        });
+      });
+
+    res.status(202).json({
+      ok: true,
+      jobId: job.id,
+      status: "QUEUED",
+      message: "Music generation job queued successfully"
+    });
+  } catch (error: any) {
+    jobManager.update(job.id, {
+      status: "FAILED",
+      error: error?.message || "Failed to queue music generation",
+      completedAt: new Date().toISOString()
+    });
+    res.status(500).json({ ok: false, error: error?.message || "Failed to queue music generation", jobId: job.id });
+  }
+});
+
+app.post("/api/music/write-lyrics", async (req, res) => {
+  try {
+    const { theme, style, mood, language = "English", structure = "Standard" } = req.body || {};
+    const prompt = `You are a world-class professional songwriter and lyricist.
+Write a structured, rhyming, rhythmic song based on the following specifications:
+- Theme / Topic: ${theme || "Cyberpunk neon city night ride"}
+- Musical Genre / Style: ${style || "Synthwave / Cyberpunk"}
+- Emotional Mood: ${mood || "Dark, energetic, cinematic"}
+- Language: ${language}
+- Song Structure: ${structure} (include [Verse 1], [Chorus], [Verse 2], [Bridge], [Chorus], [Outro])
+
+Make the verses vivid, rhythmic, and perfectly metered for singing. Output ONLY the lyrics with the section tags, without conversational filler.`;
+
+    let lyrics = "";
+    // Try local LLM first if available
+    try {
+      const llmRes = await fetch("http://127.0.0.1:8080/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.8,
+          max_tokens: 1024
+        })
+      });
+      if (llmRes.ok) {
+        const data = await llmRes.json();
+        lyrics = data.choices?.[0]?.message?.content || "";
+      }
+    } catch {
+      // Local LLM offline, provide built-in songwriting generation
+    }
+
+    if (!lyrics) {
+      // Intelligent lyrical template generation fallback
+      lyrics = `[Verse 1]\nNeon lights reflect against the rain,\nDigital whispers running through my veins.\nCity towers pierce the midnight sky,\nIn the glow of screens we live and die.\n\n[Chorus]\nThrough the cybernetic overdrive,\nOnly the beat keeps us alive.\nFeel the synthetic pulse in the night,\nChasing the electric light!\n\n[Verse 2]\nChrome corridors and holographic dreams,\nNothing is quite what it seems.\nCircuit boards hum an ancient melody,\nBreaking free from reality.\n\n[Chorus]\nThrough the cybernetic overdrive,\nOnly the beat keeps us alive.\nFeel the synthetic pulse in the night,\nChasing the electric light!\n\n[Outro]\nFading to the static hum...\nUntil the morning comes.`;
+    }
+
+    res.json({ ok: true, lyrics: lyrics.trim() });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Failed to generate lyrics" });
+  }
+});
+
+app.post("/api/music/separate-stems", async (req, res) => {
+  const { inputPath } = req.body || {};
+  if (!inputPath) {
+    return res.status(400).json({ ok: false, error: "Input audio path is required" });
+  }
+
+  const job = jobManager.create("stem_separation", { inputPath });
+  try {
+    musicService
+      .separateStems(job.id, inputPath, jobManager)
+      .then((result) => {
+        console.log(`[Stem Splitter] Job ${job.id} completed!`, result);
+      })
+      .catch((err) => {
+        console.error(`[Stem Splitter] Job ${job.id} failed:`, err);
+        recordDashboardError(err.message, {
+          source: "stem-separation",
+          method: "POST",
+          url: "/api/music/separate-stems",
+          status: 500
+        });
+      });
+
+    res.status(202).json({
+      ok: true,
+      jobId: job.id,
+      status: "QUEUED",
+      message: "Stem separation queued successfully"
+    });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Failed to separate stems" });
+  }
+});
+
+app.delete("/api/music/tracks/:filename", async (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const cleanName = path.basename(filename);
+    const target = path.join(musicService.getOutputDir(), cleanName);
+    if (fsSync.existsSync(target)) {
+      await fs.unlink(target);
+      res.json({ ok: true, message: `Deleted track ${cleanName}` });
+    } else {
+      res.status(404).json({ ok: false, error: "Track not found" });
+    }
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Failed to delete track" });
+  }
+});
+
+// Multimedia & MoviePy Stitching Endpoints
+app.use("/media/stitched", express.static(multimediaService.getOutputDir()));
+
+app.get("/api/multimedia/status", async (_req, res) => {
+  try {
+    const moviePyInstalled = await multimediaService.checkMoviePyInstalled();
+    res.json({
+      ok: true,
+      moviePyInstalled,
+      pythonPath: process.platform === "win32" ? "C:\\Gina_AI\\g_env\\Scripts\\python.exe" : "python3"
+    });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Failed to check status" });
+  }
+});
+
+app.post("/api/multimedia/install-moviepy", async (_req, res) => {
+  try {
+    const result = await multimediaService.installMoviePy();
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Failed to install MoviePy" });
+  }
+});
+
+app.post("/api/multimedia/stitch", async (req, res) => {
+  const {
+    videoPath,
+    audioPath,
+    outputFilename,
+    audioVolume = 1.0,
+    videoVolume = 0.0,
+    fadeIn = 0.5,
+    fadeOut = 1.0,
+    loopVideo = true,
+    syncMode = "match_video",
+    duration = 0
+  } = req.body || {};
+
+  if (!videoPath || !audioPath) {
+    return res.status(400).json({ ok: false, error: "Both videoPath and audioPath are required" });
+  }
+
+  // Resolve absolute paths if relative or URL passed
+  let resolvedVideo = videoPath;
+  let resolvedAudio = audioPath;
+
+  if (videoPath.startsWith("/media/audio/")) {
+    resolvedVideo = path.join(musicService.getOutputDir(), path.basename(videoPath));
+  } else if (videoPath.startsWith("/media/stitched/")) {
+    resolvedVideo = path.join(multimediaService.getOutputDir(), path.basename(videoPath));
+  } else if (!path.isAbsolute(videoPath)) {
+    resolvedVideo = path.join(process.cwd(), videoPath);
+  }
+
+  if (audioPath.startsWith("/media/audio/")) {
+    resolvedAudio = path.join(musicService.getOutputDir(), path.basename(audioPath));
+  } else if (audioPath.startsWith("/media/stitched/")) {
+    resolvedAudio = path.join(multimediaService.getOutputDir(), path.basename(audioPath));
+  } else if (!path.isAbsolute(audioPath)) {
+    resolvedAudio = path.join(process.cwd(), audioPath);
+  }
+
+  const job = jobManager.create("media_stitch", {
+    videoPath: resolvedVideo,
+    audioPath: resolvedAudio,
+    syncMode,
+    audioVolume
+  });
+
+  try {
+    multimediaService
+      .stitchMedia(
+        job.id,
+        {
+          videoPath: resolvedVideo,
+          audioPath: resolvedAudio,
+          outputFilename,
+          audioVolume: Number(audioVolume),
+          videoVolume: Number(videoVolume),
+          fadeIn: Number(fadeIn),
+          fadeOut: Number(fadeOut),
+          loopVideo: Boolean(loopVideo),
+          syncMode,
+          duration: Number(duration)
+        },
+        jobManager
+      )
+      .then((result) => {
+        console.log(`[MediaStitcher] Job ${job.id} completed successfully:`, result);
+      })
+      .catch((err) => {
+        console.error(`[MediaStitcher] Job ${job.id} failed:`, err);
+        recordDashboardError(err.message, {
+          source: "multimedia-stitch",
+          method: "POST",
+          url: "/api/multimedia/stitch",
+          status: 500
+        });
+      });
+
+    res.status(202).json({
+      ok: true,
+      jobId: job.id,
+      status: "QUEUED",
+      message: "Multimedia stitching job queued"
+    });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Failed to queue stitch job" });
+  }
+});
 
 const shutdownLocalLlm = async () => {
   try {

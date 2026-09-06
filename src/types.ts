@@ -56,7 +56,7 @@ export interface AiStudioConfig {
   activeTab: 'creator'|'video'|'jobs'|'shorts'|'assets';
   workflowId: string;
   videoWorkflowId: string;
-  defaultAspectRatio: '1:1'|'16:9'|'9:16';
+  defaultAspectRatio: '1:1'|'16:9'|'9:16'|'aida64'|'4:3'|'3:4';
 }
 
 export interface ActiveAida64LayoutData {
@@ -82,7 +82,7 @@ export interface PreWarmModelDef {
   name: string;
   filename: string;
   workflowId: string;
-  type: 'image' | 'video' | 'shorts';
+  type: 'image' | 'video' | 'shorts' | 'audio' | 'music';
   vramFootprintMB: number;
   description: string;
 }
