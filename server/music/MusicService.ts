@@ -23,6 +23,11 @@ export interface MusicGenOptions {
   temperature?: number;
   audioRef?: string;
   splitStart?: number;
+<<<<<<< HEAD
+  vocalLanguage?: string;
+  engine?: string;
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 }
 
 export interface AudioTrackMeta {
@@ -44,6 +49,13 @@ export class MusicService {
   private pythonPath: string;
   private scriptPath: string;
   private downloaderScriptPath: string;
+<<<<<<< HEAD
+  // AudioCraft models are mutually exclusive on the target 8 GB workstation.
+  // This lane serializes downloads and generations so a second heavy audio model
+  // cannot start while another one is resident.
+  private audioLane: Promise<void> = Promise.resolve();
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 
   constructor(workspaceRoot: string) {
     this.outputDir = path.join(workspaceRoot, "local_ai_uploads", "audio");
@@ -61,11 +73,230 @@ export class MusicService {
     fsSync.mkdirSync(this.stemsDir, { recursive: true });
   }
 
+<<<<<<< HEAD
+  private async acquireAudioLane(): Promise<() => void> {
+    let release!: () => void;
+    const turn = new Promise<void>((resolve) => { release = resolve; });
+    const previous = this.audioLane;
+    this.audioLane = previous.then(() => turn);
+    await previous;
+    return release;
+  }
+
+  private getManagedModelPath(modelName: string): string {
+    return path.join(this.modelsDir, modelName.replace(/[\\\/]+/g, "_"));
+  }
+
+  private getHubSnapshotPath(modelName: string): string | null {
+    // Resolve an already-downloaded Hugging Face snapshot without contacting the
+    // Hub. Hugging Face snapshots on Windows can contain symlink/junction-like
+    // entries, so use statSync() on the actual paths instead of Dirent.isFile().
+    if (modelName !== "facebook/musicgen-medium") return null;
+
+    const candidateRoots = [
+      path.join(this.modelsDir, "models--facebook--musicgen-medium", "snapshots"),
+      path.join("C:\\Users", process.env.USERNAME || "", ".cache", "huggingface", "hub", "models--facebook--musicgen-medium", "snapshots")
+    ];
+
+    const isRegularFile = (filePath: string): boolean => {
+      try { return fsSync.statSync(filePath).isFile(); } catch { return false; }
+    };
+
+    const isCompleteSnapshot = (candidate: string) => {
+      const hasConfig = isRegularFile(path.join(candidate, "config.json"));
+      const hasProcessorConfig = isRegularFile(path.join(candidate, "preprocessor_config.json"));
+      const hasTokenizer = isRegularFile(path.join(candidate, "tokenizer.json")) ||
+        isRegularFile(path.join(candidate, "spiece.model"));
+      const hasWeights = isRegularFile(path.join(candidate, "model.safetensors")) ||
+        isRegularFile(path.join(candidate, "pytorch_model.bin")) ||
+        isRegularFile(path.join(candidate, "model.safetensors.index.json")) ||
+        isRegularFile(path.join(candidate, "pytorch_model.bin.index.json"));
+      return hasConfig && hasWeights && (hasProcessorConfig || hasTokenizer);
+    };
+
+    const found: { path: string; mtime: number; hasSafe: boolean }[] = [];
+    for (const hubRoot of candidateRoots) {
+      try {
+        if (!fsSync.existsSync(hubRoot)) continue;
+        for (const entry of fsSync.readdirSync(hubRoot, { withFileTypes: true })) {
+          const candidate = path.join(hubRoot, entry.name);
+          let stat;
+          try { stat = fsSync.statSync(candidate); } catch { continue; }
+          if (!stat.isDirectory() || !isCompleteSnapshot(candidate)) continue;
+          found.push({
+            path: candidate,
+            mtime: stat.mtimeMs,
+            hasSafe: isRegularFile(path.join(candidate, "model.safetensors"))
+          });
+        }
+      } catch { /* local cache may be absent/inaccessible */ }
+    }
+
+    found.sort((a, b) => (Number(b.hasSafe) - Number(a.hasSafe)) || (b.mtime - a.mtime));
+    return found[0]?.path || null;
+  }
+
+  private getSnapshotRevision(snapshotPath: string): string | null {
+    const normalized = path.normalize(snapshotPath);
+    const marker = `${path.sep}models--facebook--musicgen-medium${path.sep}snapshots${path.sep}`;
+    const index = normalized.toLowerCase().indexOf(marker.toLowerCase());
+    if (index < 0) return null;
+    const tail = normalized.slice(index + marker.length);
+    return tail.split(path.sep)[0] || null;
+  }
+
+  private getSnapshotRefs(snapshotPath: string): string[] {
+    const revision = this.getSnapshotRevision(snapshotPath);
+    if (!revision) return [];
+    const root = path.join(this.modelsDir, "models--facebook--musicgen-medium", "refs");
+    const refs: string[] = [];
+    const walk = (dir: string, prefix = "") => {
+      try {
+        for (const entry of fsSync.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          const refName = prefix ? `${prefix}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) walk(full, refName);
+          else if (entry.isFile()) {
+            try {
+              if (fsSync.readFileSync(full, "utf8").trim() === revision) refs.push(refName);
+            } catch { /* ignore unreadable ref */ }
+          }
+        }
+      } catch { /* refs are optional */ }
+    };
+    walk(root);
+    return refs;
+  }
+
+  getModelResolution(modelName: string): { path: string; source: string; revision: string | null; refs: string[] } {
+    try {
+      const resolved = this.getResolvedModelPath(modelName);
+      const revision = modelName === "facebook/musicgen-medium" ? this.getSnapshotRevision(resolved) : null;
+      const refs = revision ? this.getSnapshotRefs(resolved) : [];
+      return {
+        path: resolved,
+        source: revision ? "Hugging Face local snapshot" : "Gina managed model directory",
+        revision,
+        refs
+      };
+    } catch (error: any) {
+      console.warn(`[MusicService] Model resolution telemetry failed for ${modelName}: ${error?.message || error}`);
+      return {
+        path: this.getManagedModelPath(modelName),
+        source: "Gina managed model directory",
+        revision: null,
+        refs: []
+      };
+    }
+  }
+
+  getResolvedModelPath(modelName: string): string {
+    return this.getModelCacheCandidates(modelName)[0] || this.getManagedModelPath(modelName);
+  }
+
+  private getModelCacheCandidates(modelName: string): string[] {
+    // MusicGen Medium uses the already-complete Transformers/Hugging Face
+    // snapshot when present. This is a LOCAL snapshot only: HF Hub network
+    // resolution is disabled during generation. Other models continue to use
+    // Gina's managed directories.
+    const hubSnapshot = this.getHubSnapshotPath(modelName);
+    if (hubSnapshot) return [hubSnapshot];
+    const managed = this.getManagedModelPath(modelName);
+    return fsSync.existsSync(managed) ? [managed] : [];
+  }
+
+  private getModelWeightPath(modelName: string): string {
+    return this.getResolvedModelPath(modelName);
+  }
+
+  getModelBackend(modelName: string): { backend: string; weightFiles: string[] } {
+    const resolved = this.getResolvedModelPath(modelName);
+    const weightFiles: string[] = [];
+    try {
+      for (const entry of fsSync.readdirSync(resolved, { withFileTypes: true })) {
+        const fullPath = path.join(resolved, entry.name);
+        let stat;
+        try { stat = fsSync.statSync(fullPath); } catch { continue; }
+        if (!stat.isFile()) continue;
+        const lower = entry.name.toLowerCase();
+        if ((lower.endsWith('.safetensors') || lower.endsWith('.bin') || lower.endsWith('.pt')) && stat.size > 200 * 1024 * 1024) {
+          weightFiles.push(entry.name);
+        }
+      }
+    } catch { /* resolved model directory may not exist yet */ }
+
+    if (modelName === 'facebook/audiogen-medium') {
+      return { backend: 'AudioCraft / AudioGen checkpoint', weightFiles };
+    }
+    if (weightFiles.some(f => f.toLowerCase().endsWith('.safetensors'))) {
+      return { backend: 'Transformers / Safetensors', weightFiles };
+    }
+    if (weightFiles.some(f => f.toLowerCase() === 'pytorch_model.bin')) {
+      return { backend: 'Transformers / PyTorch weights', weightFiles };
+    }
+    return { backend: 'Transformers local checkpoint', weightFiles };
+  }
+
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
   getOutputDir(): string {
     return this.outputDir;
   }
 
   getModelCacheInfo(modelName: string): { cached: boolean; totalBytes: number; fileCount: number; hasWeights: boolean; sizeLabel: string } {
+<<<<<<< HEAD
+    const candidates = this.getModelCacheCandidates(modelName);
+    let totalBytes = 0;
+    let fileCount = 0;
+    let hasWeights = false;
+    const seen = new Set<string>();
+
+    for (const candidate of candidates) {
+      try {
+        const entries = fsSync.readdirSync(candidate, { withFileTypes: true });
+        let preferredWeight: { name: string; bytes: number } | null = null;
+        const alternateWeights: { name: string; bytes: number }[] = [];
+
+        for (const entry of entries) {
+          const fullPath = path.join(candidate, entry.name);
+          let stats;
+          try { stats = fsSync.statSync(fullPath); } catch { continue; }
+          if (!stats.isFile()) continue;
+          if (seen.has(fullPath.toLowerCase())) continue;
+          seen.add(fullPath.toLowerCase());
+          fileCount++;
+          const lower = entry.name.toLowerCase();
+          const isWeight = (lower.endsWith(".safetensors") || lower.endsWith(".bin") || lower.endsWith(".pt")) &&
+            stats.size > 200 * 1024 * 1024;
+          if (isWeight) {
+            if (lower === "model.safetensors") preferredWeight = { name: entry.name, bytes: stats.size };
+            else if (lower === "pytorch_model.bin") alternateWeights.push({ name: entry.name, bytes: stats.size });
+            else alternateWeights.push({ name: entry.name, bytes: stats.size });
+          } else {
+            // Config/tokenizer/metadata files are tiny; include them in the
+            // cache footprint without double-counting alternate model formats.
+            totalBytes += stats.size;
+          }
+        }
+
+        const selectedWeight = preferredWeight || alternateWeights[0] || null;
+        if (selectedWeight) {
+          totalBytes += selectedWeight.bytes;
+          hasWeights = true;
+        }
+
+        // A complete AudioGen checkpoint is represented by state_dict.bin plus
+        // compression_state_dict.bin. For MusicGen, only one large Transformers
+        // weight representation is counted even when a snapshot contains both.
+        if (modelName === "facebook/audiogen-medium") {
+          hasWeights = fsSync.existsSync(path.join(candidate, "state_dict.bin")) &&
+            fsSync.existsSync(path.join(candidate, "compression_state_dict.bin"));
+        }
+      } catch {
+        // Ignore read permission or locked file warnings.
+      }
+    }
+=======
     const cleanName = modelName.replace(/\//g, "_");
     const targetDir = path.join(this.modelsDir, cleanName);
     if (!fsSync.existsSync(targetDir)) {
@@ -101,10 +332,14 @@ export class MusicService {
     };
 
     scanDir(targetDir);
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 
     const sizeMB = (totalBytes / (1024 * 1024)).toFixed(1);
     const sizeGB = (totalBytes / (1024 * 1024 * 1024)).toFixed(2);
     const sizeLabel = totalBytes > 1024 * 1024 * 1024 ? `${sizeGB} GB` : `${sizeMB} MB`;
+<<<<<<< HEAD
+    return { cached: hasWeights, totalBytes, fileCount, hasWeights, sizeLabel };
+=======
 
     return {
       cached: hasWeights,
@@ -113,6 +348,7 @@ export class MusicService {
       hasWeights,
       sizeLabel
     };
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
   }
 
   checkModelCached(modelName: string): boolean {
@@ -120,6 +356,10 @@ export class MusicService {
   }
 
   async downloadModel(jobId: string, modelName: string, jobManager: JobManager): Promise<{ ok: boolean; message: string }> {
+<<<<<<< HEAD
+    const releaseLane = await this.acquireAudioLane();
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
     jobManager.update(jobId, {
       status: "RUNNING",
       progress: 5,
@@ -144,13 +384,21 @@ export class MusicService {
         const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
         for (const line of lines) {
           console.log(`[AudioCraft Download] ${line}`);
+<<<<<<< HEAD
+          if (line.includes("Starting weight snapshot") || line.includes("Starting/resuming Hugging Face cache download")) {
+=======
           if (line.includes("Starting weight snapshot")) {
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
             jobManager.update(jobId, {
               progress: 15,
               step: `2/3: Fetching file manifest for ${modelName}...`,
               currentStep: 2
             });
+<<<<<<< HEAD
+          } else if (line.includes("Downloading") || line.includes("Fetching") || line.includes("Reconstructing") || line.includes("%|")) {
+=======
           } else if (line.includes("Downloading bytes") || line.includes("Fetching") || line.includes("Reconstructing") || line.includes("%|")) {
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
             // Extract percentage if available
             const pctMatch = line.match(/(\d+)%/);
             const pct = pctMatch ? Math.min(90, Math.max(15, parseInt(pctMatch[1], 10))) : undefined;
@@ -172,6 +420,16 @@ export class MusicService {
       child.stdout.on("data", (data) => handleLog(data.toString()));
       child.stderr.on("data", (data) => handleLog(data.toString()));
 
+<<<<<<< HEAD
+      child.on("error", (error) => {
+        const message = `AudioCraft download process error: ${error.message}`;
+        jobManager.update(jobId, { status: "FAILED", error: message, completedAt: new Date().toISOString() });
+        releaseLane();
+        reject(error);
+      });
+
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
       child.on("close", (code) => {
         if (code === 0) {
           const cacheInfo = this.getModelCacheInfo(modelName);
@@ -181,10 +439,18 @@ export class MusicService {
             step: `SUCCESS: ${modelName} fully cached (${cacheInfo.sizeLabel}). Ready for generation.`,
             outputs: [{ model: modelName, cached: true, size: cacheInfo.sizeLabel }]
           });
+<<<<<<< HEAD
+          releaseLane();
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           resolve({ ok: true, message: `Model ${modelName} downloaded and cached successfully (${cacheInfo.sizeLabel})` });
         } else {
           const err = `AudioCraft download failed with exit code ${code}`;
           jobManager.update(jobId, { status: "FAILED", error: err });
+<<<<<<< HEAD
+          releaseLane();
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           reject(new Error(err));
         }
       });
@@ -225,12 +491,252 @@ export class MusicService {
     }
   }
 
+<<<<<<< HEAD
+  private getAceStepBaseUrl(): string {
+    return process.env.ACESTEP_API_URL || "http://127.0.0.1:8001";
+  }
+
+  private async fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async getAceStepHealth(): Promise<{ ok: boolean; detail?: string }> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.getAceStepBaseUrl()}/health`, {}, 5000);
+      if (!response.ok) return { ok: false, detail: `HTTP ${response.status}` };
+      const payload: any = await response.json();
+      return payload?.code === 200 || payload?.data?.status === "ok"
+        ? { ok: true }
+        : { ok: false, detail: payload?.error || "ACE-Step health response was not ready" };
+    } catch (error: any) {
+      return { ok: false, detail: error?.message || "ACE-Step API is not reachable" };
+    }
+  }
+
+  private async generateAceStepSong(
+    jobId: string,
+    options: MusicGenOptions,
+    outputPath: string,
+    outputFilename: string,
+    jobManager: JobManager,
+    releaseLane: () => void
+  ): Promise<{ outputFilename: string; outputUrl: string; duration: number }> {
+    const baseUrl = this.getAceStepBaseUrl();
+    const duration = Math.max(10, Math.min(600, Number(options.duration || 20)));
+    const lyrics = (options.lyrics || "").trim();
+    if (!lyrics) {
+      const message = "Singing generation requires lyrics. Enter lyrics or enable No Vocals for an instrumental track.";
+      jobManager.update(jobId, { status: "FAILED", error: message, completedAt: new Date().toISOString() });
+      releaseLane();
+      throw new Error(message);
+    }
+
+    const health = await this.getAceStepHealth();
+    if (!health.ok) {
+      const message = `ACE-Step singing service is not ready at ${baseUrl}. ${health.detail || "Start the ACE-Step API first."}`;
+      jobManager.update(jobId, { status: "FAILED", error: message, completedAt: new Date().toISOString() });
+      releaseLane();
+      throw new Error(message);
+    }
+
+    const vocalLanguage = options.vocalLanguage || "en";
+    const vocalHint = options.vocalType && options.vocalType !== "Surprise Me" ? ` ${options.vocalType}.` : "";
+    const prompt = [
+      options.style || "modern song",
+      options.moods || "",
+      options.tempo || "",
+      vocalHint,
+      options.negativeStyle ? `Avoid: ${options.negativeStyle}` : "",
+      "Create a complete song with a clearly audible lead vocal singing the supplied lyrics."
+    ].filter(Boolean).join(", ");
+
+    jobManager.update(jobId, {
+      status: "RUNNING",
+      progress: 10,
+      step: "1/5: ACE-Step singing engine connected — lyrics + vocal conditioning",
+      currentStep: 1,
+      totalSteps: 5,
+      parameters: {
+        ...options,
+        engine: "ace-step-1.5",
+        __audioSnapshot: {
+          engine: "ACE-Step 1.5",
+          api: baseUrl,
+          lmModel: "acestep-5Hz-lm-0.6B",
+          backend: "pt",
+          offloadToCpu: true,
+          network: "local-only"
+        }
+      }
+    });
+
+    try {
+      const requestBody = {
+        prompt,
+        lyrics,
+        thinking: true,
+        vocal_language: vocalLanguage,
+        audio_format: "wav",
+        audio_duration: duration,
+        model: "acestep-v15-turbo",
+        inference_steps: 8,
+        guidance_scale: 7.0,
+        batch_size: 1,
+        lm_model_path: "acestep-5Hz-lm-0.6B",
+        lm_backend: "pt",
+        lm_temperature: 0.85,
+        use_random_seed: true,
+        use_format: false
+      };
+
+      const submitResponse = await this.fetchWithTimeout(`${baseUrl}/release_task`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody)
+      }, 15000);
+      const submitPayload: any = await submitResponse.json().catch(() => ({}));
+      if (!submitResponse.ok || submitPayload?.code !== 200 || !submitPayload?.data?.task_id) {
+        throw new Error(submitPayload?.error || submitPayload?.detail || `ACE-Step task submission failed (HTTP ${submitResponse.status})`);
+      }
+
+      const taskId = submitPayload.data.task_id;
+      jobManager.update(jobId, {
+        progress: 25,
+        step: `2/5: ACE-Step task queued (${taskId.slice(0, 8)})`,
+        currentStep: 2,
+        totalSteps: 5,
+        parameters: { ...options, engine: "ace-step-1.5", aceStepTaskId: taskId }
+      });
+
+      let resultItem: any = null;
+      let pollCount = 0;
+      const deadline = Date.now() + Math.max(180000, duration * 30000);
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        pollCount += 1;
+        const queryResponse = await this.fetchWithTimeout(`${baseUrl}/query_result`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ task_id_list: [taskId] })
+        }, 15000);
+        const queryPayload: any = await queryResponse.json().catch(() => ({}));
+        if (!queryResponse.ok || queryPayload?.code !== 200) {
+          throw new Error(queryPayload?.error || `ACE-Step status query failed (HTTP ${queryResponse.status})`);
+        }
+
+        const item = Array.isArray(queryPayload.data) ? queryPayload.data[0] : null;
+        if (!item || item.status === 0) {
+          jobManager.update(jobId, {
+            progress: Math.min(85, 30 + Math.min(55, pollCount * 2)),
+            step: "3/5: ACE-Step synthesizing music + sung vocals",
+            currentStep: 3,
+            totalSteps: 5
+          });
+          continue;
+        }
+        if (item.status === 2) {
+          throw new Error(typeof item.result === "string" ? item.result : "ACE-Step generation failed");
+        }
+        if (item.status === 1) {
+          let parsed: any[] = [];
+          try { parsed = typeof item.result === "string" ? JSON.parse(item.result) : (Array.isArray(item.result) ? item.result : []); } catch {}
+          resultItem = parsed[0] || null;
+          break;
+        }
+      }
+
+      if (!resultItem?.file) throw new Error("ACE-Step timed out before returning an audio file.");
+
+      jobManager.update(jobId, { progress: 90, step: "4/5: Downloading completed WAV into Gina Audio Library", currentStep: 4, totalSteps: 5 });
+      const audioUrl = resultItem.file.startsWith("http") ? resultItem.file : `${baseUrl}${resultItem.file}`;
+      const audioResponse = await this.fetchWithTimeout(audioUrl, {}, Math.max(30000, Math.round(duration * 5000)));
+      if (!audioResponse.ok) throw new Error(`ACE-Step audio download failed (HTTP ${audioResponse.status})`);
+      const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
+      await fs.writeFile(outputPath, audioBuffer);
+
+      jobManager.update(jobId, {
+        status: "COMPLETED",
+        progress: 100,
+        completedAt: new Date().toISOString(),
+        step: "5/5: Song saved — Audio Deck can load the finished WAV",
+        currentStep: 5,
+        totalSteps: 5,
+        outputs: [{
+          filename: outputFilename,
+          url: `/media/audio/${encodeURIComponent(outputFilename)}`,
+          duration,
+          engine: "ACE-Step 1.5",
+          hasVocals: true,
+          lyrics
+        }]
+      });
+
+      return {
+        outputFilename,
+        outputUrl: `/media/audio/${encodeURIComponent(outputFilename)}`,
+        duration
+      };
+    } catch (error) {
+      jobManager.update(jobId, { status: "FAILED", error: error instanceof Error ? error.message : String(error), completedAt: new Date().toISOString() });
+      throw error;
+    } finally {
+      releaseLane();
+    }
+  }
+
   async generateMusic(jobId: string, options: MusicGenOptions, jobManager: JobManager): Promise<{ outputFilename: string; outputUrl: string; duration: number }> {
+    const releaseLane = await this.acquireAudioLane();
+=======
+  async generateMusic(jobId: string, options: MusicGenOptions, jobManager: JobManager): Promise<{ outputFilename: string; outputUrl: string; duration: number }> {
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
     const timestamp = Date.now();
     const cleanTitle = (options.songName || "track").trim().replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
     const outputFilename = `music_${timestamp}_${cleanTitle}.wav`;
     const outputPath = path.join(this.outputDir, outputFilename);
 
+<<<<<<< HEAD
+    const requestedModel = options.model || "facebook/musicgen-small";
+    const wantsSinging = !!options.lyrics?.trim() && options.noVocals !== true && requestedModel !== "facebook/audiogen-medium";
+    const useAceStep = requestedModel === "ace-step-1.5" || requestedModel === "auto" || wantsSinging;
+
+    if (useAceStep) {
+      return this.generateAceStepSong(jobId, { ...options, engine: "ace-step-1.5" }, outputPath, outputFilename, jobManager, releaseLane);
+    }
+
+    const modelName = requestedModel === "auto" ? "facebook/musicgen-small" : requestedModel;
+    const modelPath = this.getModelWeightPath(modelName);
+    const cacheInfo = this.getModelCacheInfo(modelName);
+    const backendInfo = this.getModelBackend(modelName);
+
+    jobManager.update(jobId, {
+      status: "RUNNING",
+      progress: 5,
+      step: `1/5: Audio lane acquired — ${modelName} verified locally (${cacheInfo.sizeLabel})`,
+      currentStep: 1,
+      totalSteps: 5,
+      parameters: { ...options, engine: modelName === 'facebook/audiogen-medium' ? 'audiogen' : 'musicgen', __audioSnapshot: { modelName, modelPath, backend: backendInfo.backend, weightFiles: backendInfo.weightFiles, sequential: true, network: 'disabled' } }
+    });
+
+    if (!cacheInfo.cached) {
+      releaseLane();
+      const message = `Model ${modelName} is not installed in Gina's managed model directory: ${modelPath}. Use Download Model first. Generate will not download models.`;
+      jobManager.update(jobId, {
+        status: "FAILED",
+        progress: 0,
+        step: `ERROR: ${message}`,
+        error: message,
+        completedAt: new Date().toISOString()
+      });
+      throw new Error(message);
+    }
+
+=======
     jobManager.update(jobId, {
       status: "RUNNING",
       progress: 10,
@@ -239,13 +745,20 @@ export class MusicService {
       totalSteps: 4
     });
 
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
     const args = [
       this.scriptPath,
       "generate",
       "--mode", options.mode || "text_to_song",
       "--duration", String(options.duration || 15.0),
       "--output_path", outputPath,
+<<<<<<< HEAD
+      "--model", modelName,
+      "--model_path", modelPath,
+      "--cache_dir", this.modelsDir,
+=======
       "--model", options.model || "facebook/musicgen-small",
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
       "--guidance_scale", String(options.guidanceScale || 3.0),
       "--temperature", String(options.temperature || 1.0)
     ];
@@ -270,6 +783,24 @@ export class MusicService {
 
       let jsonResult: any = null;
 
+<<<<<<< HEAD
+      const handleEngineLog = (text: string) => {
+        const lines = text.toString().split(/\r?\n/);
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          console.log(`[AudioCraft] ${line}`);
+
+          if (line.includes("Loading cached MusicGen") || line.includes("Loading cached AudioGen")) {
+            jobManager.update(jobId, { progress: 20, step: `2/5: Loading cached neural model (local-only) — ${options.model}`, currentStep: 2, totalSteps: 5 });
+          } else if (line.includes("Processor ready") || line.includes("Model loaded")) {
+            jobManager.update(jobId, { progress: 40, step: "3/5: Model loaded; preparing generation tensors", currentStep: 3, totalSteps: 5 });
+          } else if (line.includes("Generating audio tensors") || (line.includes("Generating") && line.includes("tokens"))) {
+            jobManager.update(jobId, { progress: 65, step: `4/5: Synthesizing ${options.duration || 15}s of ${options.model === 'facebook/audiogen-medium' ? 'SFX / atmosphere' : 'music'}`, currentStep: 4, totalSteps: 5 });
+          } else if (line.includes("Saved master audio") || line.includes("Saved SFX/atmosphere")) {
+            jobManager.update(jobId, { progress: 95, step: "5/5: Writing master WAV and releasing VRAM", currentStep: 5, totalSteps: 5 });
+          } else if (line.includes("Local generation error")) {
+            jobManager.update(jobId, { step: `ERROR: ${line.substring(0, 180)}` });
+=======
       child.stdout.on("data", (data) => {
         const lines = data.toString().split("\n");
         for (const line of lines) {
@@ -282,6 +813,7 @@ export class MusicService {
             jobManager.update(jobId, { progress: 65, step: "3/4: Synthesizing Audio Tokens", currentStep: 3 });
           } else if (line.includes("Saved master audio") || line.includes("Saved fallback")) {
             jobManager.update(jobId, { progress: 95, step: "4/4: Writing Master WAV", currentStep: 4 });
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           }
 
           if (line.startsWith("JSON_RESULT:")) {
@@ -292,10 +824,23 @@ export class MusicService {
             }
           }
         }
+<<<<<<< HEAD
+      };
+
+      child.stdout.on("data", (data) => handleEngineLog(data.toString()));
+      child.stderr.on("data", (data) => handleEngineLog(data.toString()));
+
+      child.on("error", (error) => {
+        const message = `AudioCraft generation process error: ${error.message}`;
+        jobManager.update(jobId, { status: "FAILED", error: message, completedAt: new Date().toISOString() });
+        releaseLane();
+        reject(error);
+=======
       });
 
       child.stderr.on("data", (data) => {
         console.warn(`[MusicGen STDERR] ${data.toString()}`);
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
       });
 
       child.on("close", (code) => {
@@ -310,18 +855,30 @@ export class MusicService {
               duration: options.duration || 15
             }]
           });
+<<<<<<< HEAD
+          releaseLane();
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           resolve({
             outputFilename,
             outputUrl: `/media/audio/${encodeURIComponent(outputFilename)}`,
             duration: options.duration || 15
           });
         } else {
+<<<<<<< HEAD
+          const errMessage = `AudioCraft generation exited with code ${code}`;
+=======
           const errMessage = `Music generation exited with code ${code}`;
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           jobManager.update(jobId, {
             status: "FAILED",
             error: errMessage,
             completedAt: new Date().toISOString()
           });
+<<<<<<< HEAD
+          releaseLane();
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           reject(new Error(errMessage));
         }
       });

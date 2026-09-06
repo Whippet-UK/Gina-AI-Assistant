@@ -25,6 +25,35 @@ def get_device():
         return "cuda"
     return "cpu"
 
+<<<<<<< HEAD
+
+
+def save_wav_pcm16(output_path, audio_tensor, sampling_rate):
+    """Write a standard PCM-16 WAV without relying on torchaudio's optional backend dispatcher.
+
+    Some torchaudio Windows installs have no registered save backend even though
+    model inference works. MusicGen/AudioGen already return normalized float audio,
+    so the stdlib wave writer is a reliable local-only fallback.
+    """
+    import wave
+    import numpy as np
+    import torch
+
+    audio = audio_tensor.detach().cpu().to(torch.float32) if hasattr(audio_tensor, "detach") else audio_tensor
+    if audio.dim() == 1:
+        audio = audio.unsqueeze(0)
+    # [channels, samples] -> [samples, channels]
+    audio = audio.clamp(-1.0, 1.0).transpose(0, 1).contiguous().numpy()
+    pcm = (audio * 32767.0).round().astype(np.int16).tobytes()
+    channels = int(audio.shape[1]) if audio.ndim == 2 else 1
+    with wave.open(str(output_path), "wb") as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(2)
+        wf.setframerate(int(sampling_rate))
+        wf.writeframes(pcm)
+
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 def generate_music(args):
     print(f"[MusicGen Engine] Initializing generation mode: {args.mode}...")
     import torch
@@ -41,6 +70,12 @@ def generate_music(args):
     # Model resolution
     model_id = args.model if args.model else "facebook/musicgen-small"
     model_cache_dir = args.cache_dir if args.cache_dir else "C:\\Gina_AI\\models\\audio"
+<<<<<<< HEAD
+    local_model_path = args.model_path or os.path.join(model_cache_dir, model_id.replace("/", "_"))
+    if not os.path.isdir(local_model_path):
+        raise RuntimeError(f"Local model directory does not exist: {local_model_path}. Generate will not download models.")
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
     os.makedirs(model_cache_dir, exist_ok=True)
     os.makedirs(os.path.dirname(os.path.abspath(args.output_path)), exist_ok=True)
 
@@ -64,10 +99,122 @@ def generate_music(args):
 
     full_prompt = ", ".join(prompt_components) if prompt_components else "ambient electronic synthwave melody"
     print(f"[MusicGen Engine] Compiled Prompt: \"{full_prompt}\"")
+<<<<<<< HEAD
+    print(f"[Audio Lane] SEQUENTIAL=TRUE | CONCURRENCY=1 | NETWORK=DISABLED")
+    print(f"[Audio Lane] Local model path: {local_model_path}")
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
     print(f"[MusicGen Engine] Target Duration: {args.duration}s | Guidance Scale: {args.guidance_scale} | Temp: {args.temperature}")
 
     # Audio synthesis pipeline
     success = False
+<<<<<<< HEAD
+    if not os.path.isdir(local_model_path):
+        raise RuntimeError(f"Managed model path does not exist: {local_model_path}. Generate never downloads models.")
+    model_is_audiogen = model_id == "facebook/audiogen-medium"
+    # Gina's managed model directory is authoritative. Generation is explicitly
+    # offline and receives the resolved local path; it must never fall back to
+    # facebook/<repo-id> network resolution.
+    os.environ["AUDIOCRAFT_CACHE_DIR"] = model_cache_dir
+    os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    try:
+        local_weights = [
+            f for f in os.listdir(local_model_path)
+            if os.path.isfile(os.path.join(local_model_path, f))
+            and f.lower().endswith((".safetensors", ".bin", ".pt"))
+            and os.path.getsize(os.path.join(local_model_path, f)) > 200 * 1024 * 1024
+        ]
+        print(f"[Audio Lane] Weight files: {', '.join(local_weights) if local_weights else 'NONE'}")
+    except Exception:
+        pass
+
+    try:
+        if model_is_audiogen:
+            print(f"[AudioGen Engine] Loading local AudioGen Medium 1.5B from '{local_model_path}' (offline/local-only)...")
+            from audiocraft.models import AudioGen
+            model = AudioGen.get_pretrained(local_model_path, device=device)
+            model.set_generation_params(
+                duration=float(args.duration),
+                temperature=float(args.temperature),
+                cfg_coef=float(args.guidance_scale),
+            )
+            print(f"[AudioGen Engine] Model loaded. Generating {args.duration:.1f}s SFX/atmosphere tokens...")
+            start_t = time.time()
+            with torch.inference_mode():
+                wav = model.generate([full_prompt])
+            print(f"[AudioGen Engine] Synthesis completed in {time.time() - start_t:.2f}s! Sample rate: {model.sample_rate}Hz")
+            audio_tensor = wav[0].detach().cpu().to(torch.float32)
+            if audio_tensor.dim() == 1:
+                audio_tensor = audio_tensor.unsqueeze(0)
+            save_wav_pcm16(args.output_path, audio_tensor, model.sample_rate)
+            print(f"[AudioGen Engine] Saved SFX/atmosphere master audio (PCM16 WAV): {args.output_path}")
+            success = True
+            if device == "cuda":
+                del model
+                del wav
+                torch.cuda.empty_cache()
+        else:
+            from transformers import AutoProcessor, MusicgenForConditionalGeneration
+            hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or None
+            print(f"[MusicGen Engine] Loading local MusicGen '{model_id}' from '{local_model_path}' (offline/local-only)...")
+            processor = AutoProcessor.from_pretrained(
+                local_model_path, local_files_only=True
+            )
+            print("[MusicGen Engine] Processor ready. Loading neural weights into VRAM...")
+            model = MusicgenForConditionalGeneration.from_pretrained(
+                local_model_path,
+                torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+                local_files_only=True
+            ).to(device)
+
+            inputs = processor(
+                text=[full_prompt],
+                padding=True,
+                return_tensors="pt"
+            ).to(device)
+
+            # Calculate max new tokens (MusicGen generates ~50 tokens per second of audio at 32kHz)
+            tokens_per_sec = 50
+            max_tokens = int(args.duration * tokens_per_sec)
+            max_tokens = max(100, min(max_tokens, 1500))
+
+            print(f"[MusicGen Engine] Generating audio tensors (max_tokens={max_tokens})...")
+            start_t = time.time()
+            with torch.inference_mode():
+                audio_values = model.generate(
+                    **inputs,
+                    do_sample=True,
+                    guidance_scale=float(args.guidance_scale),
+                    max_new_tokens=max_tokens,
+                    temperature=float(args.temperature)
+                )
+
+            sampling_rate = model.config.audio_encoder.sampling_rate
+            print(f"[MusicGen Engine] Synthesis completed in {time.time() - start_t:.2f}s! Sample rate: {sampling_rate}Hz")
+
+            audio_tensor = audio_values[0, 0].cpu().to(torch.float32)
+            if audio_tensor.dim() == 1:
+                audio_tensor = audio_tensor.unsqueeze(0)
+            save_wav_pcm16(args.output_path, audio_tensor, sampling_rate)
+            print(f"[MusicGen Engine] Saved master audio (PCM16 WAV): {args.output_path}")
+            success = True
+
+            if device == "cuda":
+                del model
+                del processor
+                del inputs
+                del audio_values
+                torch.cuda.empty_cache()
+
+    except Exception as e:
+        print(f"[{ 'AudioGen' if model_is_audiogen else 'MusicGen' } Engine] Local generation error: {e}")
+        traceback.print_exc()
+        # Do NOT fall back to a synthetic fake track. A model/cache failure must be
+        # visible to the dashboard so the user knows the requested model did not run.
+        success = False
+=======
     try:
         from transformers import AutoProcessor, MusicgenForConditionalGeneration
         hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or None
@@ -168,6 +315,7 @@ def generate_music(args):
         torchaudio.save(args.output_path, audio_tensor, sr)
         print(f"[MusicGen Engine] Saved fallback harmonic master audio: {args.output_path}")
         success = True
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 
     output_meta = {
         "ok": success,
@@ -245,6 +393,10 @@ def main():
     gen_parser.add_argument("--guidance_scale", type=float, default=3.0)
     gen_parser.add_argument("--temperature", type=float, default=1.0)
     gen_parser.add_argument("--cache_dir", type=str, default="C:\\Gina_AI\\models\\audio")
+<<<<<<< HEAD
+    gen_parser.add_argument("--model_path", type=str, default="", help="Authoritative Gina-managed local model directory; never download from Hub during generation")
+=======
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
     gen_parser.add_argument("--output_path", type=str, required=True)
     gen_parser.add_argument("--audio_ref", type=str, default="")
     gen_parser.add_argument("--split_start", type=float, default=0.0)
@@ -256,7 +408,12 @@ def main():
     args = parser.parse_args()
 
     if args.command == "generate":
+<<<<<<< HEAD
+        ok = generate_music(args)
+        sys.exit(0 if ok else 1)
+=======
         generate_music(args)
+>>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
     elif args.command == "separate":
         separate_stems(args)
     else:
