@@ -3,6 +3,8 @@ import fsSync from "fs";
 import path from "path";
 import { spawn, ChildProcessWithoutNullStreams } from "child_process";
 
+export type LocalLlmEngine = "qwen" | "gemma";
+
 export interface LocalLlmConfig {
   executablePath: string;
   modelPath: string;
@@ -32,118 +34,64 @@ export interface LocalLlmStatus {
   recentLog: string[];
   multimodal: boolean;
   mmprojPath: string | null;
+  engine: LocalLlmEngine;
 }
+
+type ChatMessage = { role: "system" | "user" | "assistant"; content: any };
+type ImageAttachment = { name: string; mime: string; localPath: string };
 
 function envNumber(name: string, fallback: number): number {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value > 0 ? Math.round(value) : fallback;
 }
 
-
-type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
-type ImageAttachment = { name: string; mime: string; localPath: string };
-
-/**
- * Gemma's Jinja template is intentionally strict: after the optional system
- * instruction it expects user/assistant/user/assistant turns.  Frontends and
- * agents can legitimately produce consecutive messages (especially after a
- * failed request), so the LLM boundary must be defensive and repair them.
- */
-function normalizeChatMessages(messages: ChatMessage[], contextSize: number, hardFallback = false): ChatMessage[] {
+function normalizeChatMessages(messages: ChatMessage[], hardFallback = false): ChatMessage[] {
   const source = Array.isArray(messages) ? messages : [];
   const systemParts: string[] = [];
   const turns: ChatMessage[] = [];
 
   for (const message of source) {
     if (!message || !["system", "user", "assistant"].includes(message.role)) continue;
-    const content = String(message.content ?? "")
-      .replace(/\u0000/g, "")
-      .trim();
-    if (!content) continue;
-
+    const content = typeof message.content === "string" ? message.content.replace(/\u0000/g, "").trim() : message.content;
+    if (typeof content === "string" && !content) continue;
     if (message.role === "system") {
-      systemParts.push(content);
+      systemParts.push(String(content));
       continue;
     }
-
     const previous = turns[turns.length - 1];
-    if (previous && previous.role === message.role) {
+    if (previous && previous.role === message.role && typeof previous.content === "string" && typeof content === "string") {
       previous.content = `${previous.content}\n\n${content}`;
     } else {
       turns.push({ role: message.role, content });
     }
   }
 
-  // Drop orphaned assistant turns at the beginning. A conversation must start
-  // with a user turn for Gemma.
   while (turns.length && turns[0].role !== "user") turns.shift();
   if (!turns.length) return [];
-
-  // A hard fallback intentionally sends only the latest user request. This is
-  // used after a template/parser failure so one malformed history can never
-  // make Gina permanently unusable.
-  if (hardFallback) {
-    const latestUser = [...turns].reverse().find(t => t.role === "user");
-    return latestUser ? [{ role: "user", content: latestUser.content.slice(0, 24000) }] : [];
-  }
-
-  // Keep only a small number of turns. Current-task text gets priority over old
-  // history, which is especially important for pasted CVs and documents.
   while (turns.length > 8) turns.shift();
 
-  // Do not send a separate system role to Gemma. Folding the instruction into
-  // the first user turn guarantees that the Jinja template sees only the strict
-  // user/assistant alternation it requires across llama.cpp versions.
-  if (systemParts.length) {
+  if (systemParts.length && typeof turns[0].content === "string") {
     turns[0].content = `${systemParts.join("\n\n")}\n\n${turns[0].content}`;
   }
 
-  const safeContext = Math.max(4096, contextSize);
-  // Keep a generous margin for tokenizer differences, chat-template tokens and
-  // generated output. This is deliberately below the advertised context size.
-  // Keep a conservative prompt budget. llama.cpp counts tokens, not characters,
-  // and pasted CVs can contain unusually token-dense text. Leave headroom for
-  // the model output and template overhead.
-  const budgetChars = Math.max(8000, Math.min(18000, Math.floor(safeContext * 1.85)));
-  const selected: ChatMessage[] = [];
-  let used = 0;
-
-  for (let i = turns.length - 1; i >= 0; i--) {
-    const turn = turns[i];
-    const allowance = i === turns.length - 1
-      ? Math.min(18000, budgetChars - used)
-      : Math.min(3500, budgetChars - used);
-    if (allowance <= 0) break;
-    const content = turn.content.length <= allowance
-      ? turn.content
-      : `${turn.content.slice(0, Math.max(0, allowance - 120))}\n...[older context clipped]`;
-    selected.unshift({ role: turn.role, content });
-    used += content.length;
-    if (used >= budgetChars) break;
+  if (hardFallback) {
+    const latestUser = [...turns].reverse().find(t => t.role === "user");
+    return latestUser ? [{ role: "user", content: String(latestUser.content).slice(0, 16000) }] : [];
   }
 
-  // If clipping happened to leave an invalid beginning, recover from the newest
-  // user request rather than ever sending an invalid role sequence.
-  while (selected.length && selected[0].role !== "user") selected.shift();
-
-  // Final invariant: after system folding, every role must alternate and the
-  // request must end on user. If anything violates that invariant, fall back to
-  // the newest user turn rather than ever handing malformed history to Jinja.
-  const valid = selected.length > 0 && selected[selected.length - 1].role === "user" &&
-    selected.every((m, i) => m.role === (i % 2 === 0 ? "user" : "assistant"));
+  while (turns.length && turns[0].role !== "user") turns.shift();
+  const valid = turns.length > 0 && turns[turns.length - 1].role === "user" &&
+    turns.every((m, i) => m.role === (i % 2 === 0 ? "user" : "assistant"));
   if (!valid) {
     const latestUser = [...turns].reverse().find(t => t.role === "user");
-    return latestUser ? [{ role: "user", content: latestUser.content.slice(0, 16000) }] : [];
+    return latestUser ? [{ role: "user", content: String(latestUser.content).slice(0, 16000) }] : [];
   }
-  return selected;
+  return turns;
 }
 
 function isRecoverableTemplateError(message: string): boolean {
   const text = String(message || "").toLowerCase();
-  return text.includes("conversation roles must alternate") ||
-    text.includes("unable to generate parser for this template") ||
-    text.includes("automatic parser generation failed") ||
-    text.includes("jinja exception");
+  return text.includes("conversation roles must alternate") || text.includes("unable to generate parser") || text.includes("automatic parser generation failed") || text.includes("jinja exception");
 }
 
 function isContextError(message: string): boolean {
@@ -160,94 +108,90 @@ export class LocalLlmManager {
   private startPromise: Promise<void> | null = null;
   private resolvedMmprojPath: string | null = null;
   private activeChatController: AbortController | null = null;
+  private engine: LocalLlmEngine = (process.env.GINA_LLM_ENGINE === "gemma" ? "gemma" : "qwen");
 
   readonly config: LocalLlmConfig;
 
   constructor() {
     const root = process.env.GINA_LLM_ROOT || "C:\\Gina_AI\\models\\llm";
     const toolsRoot = process.env.GINA_LLAMA_ROOT || "C:\\Gina_AI\\tools\\llama.cpp";
-    const modelPath = process.env.GINA_LLM_MODEL || path.join(root, "gemma-3-12b-it-Q4_K_M.gguf");
+    const configuredModel = process.env.GINA_LLM_MODEL || "";
     const executablePath = process.env.GINA_LLM_EXE || path.join(toolsRoot, "llama-server.exe");
-
-    const configuredMmproj = process.env.GINA_LLM_MMPROJ || "";
-    const autoMmproj = configuredMmproj || "";
 
     this.config = {
       executablePath,
-      modelPath,
+      modelPath: configuredModel || this.defaultModelPath(root, this.engine),
       host: process.env.GINA_LLM_HOST || "127.0.0.1",
       port: envNumber("GINA_LLM_PORT", 8080),
       gpuLayers: envNumber("GINA_LLM_GPU_LAYERS", 28),
       contextSize: envNumber("GINA_LLM_CONTEXT", 8192),
       threads: envNumber("GINA_LLM_THREADS", 6),
       timeoutMs: envNumber("GINA_LLM_TIMEOUT_MS", 300000),
-      mmprojPath: autoMmproj || undefined,
+      mmprojPath: process.env.GINA_LLM_MMPROJ || undefined,
     };
   }
 
+  private defaultModelPath(root: string, engine: LocalLlmEngine): string {
+    return path.join(root, engine === "qwen" ? "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf" : "gemma-3-12b-it-Q4_K_M.gguf");
+  }
+
+  getEngine(): LocalLlmEngine { return this.engine; }
+
+  async setEngine(engine: LocalLlmEngine): Promise<LocalLlmStatus> {
+    if (engine !== "qwen" && engine !== "gemma") throw new Error("Unsupported local LLM engine. Use qwen or gemma.");
+    if (this.child && !this.child.killed) await this.stop();
+    this.engine = engine;
+    const root = process.env.GINA_LLM_ROOT || "C:\\Gina_AI\\models\\llm";
+    this.config.modelPath = this.defaultModelPath(root, engine);
+    this.config.mmprojPath = undefined;
+    this.resolvedMmprojPath = null;
+    return this.status(await this.isConfigured());
+  }
+
   private async resolveModelPath(): Promise<string> {
+    if (process.env.GINA_LLM_MODEL) {
+      this.config.modelPath = process.env.GINA_LLM_MODEL;
+      return this.config.modelPath;
+    }
     const directExists = await fs.stat(this.config.modelPath).then(s => s.isFile()).catch(() => false);
     if (directExists) return this.config.modelPath;
     const root = path.dirname(this.config.modelPath);
     try {
       const files = await fs.readdir(root);
-      const qwen = files.find(n => /qwen.*\.gguf$/i.test(n) && !n.includes('mmproj'));
-      if (qwen) {
-        this.config.modelPath = path.join(root, qwen);
-        return this.config.modelPath;
-      }
-      const anyModel = files.find(n => n.endsWith('.gguf') && !n.includes('mmproj'));
-      if (anyModel) {
-        this.config.modelPath = path.join(root, anyModel);
-        return this.config.modelPath;
+      const patterns = this.engine === "qwen"
+        ? [/^qwen.*2\.5.*vl.*\.gguf$/i, /^qwen.*\.gguf$/i]
+        : [/^gemma.*\.gguf$/i];
+      for (const pattern of patterns) {
+        const match = files.find(n => pattern.test(n) && !/mmproj/i.test(n));
+        if (match) { this.config.modelPath = path.join(root, match); return this.config.modelPath; }
       }
     } catch {}
     return this.config.modelPath;
   }
 
   private async resolveMmprojPath(): Promise<string | null> {
+    if (this.engine !== "qwen" && !this.config.mmprojPath) {
+      this.resolvedMmprojPath = null;
+      return null;
+    }
     if (this.config.mmprojPath) {
       this.resolvedMmprojPath = await fs.stat(this.config.mmprojPath).then(s => s.isFile() ? this.config.mmprojPath! : null).catch(() => null);
       return this.resolvedMmprojPath;
     }
     const root = path.dirname(this.config.modelPath);
-    const modelName = path.basename(this.config.modelPath).toLowerCase();
     try {
       const files = await fs.readdir(root);
-      if (modelName.includes('qwen')) {
-        const qwenMatch = files.find(name => (/qwen.*mmproj.*\.gguf$/i.test(name) || /mmproj-f16\.gguf$/i.test(name) || /mmproj.*qwen.*\.gguf$/i.test(name)));
-        if (qwenMatch) {
-          this.resolvedMmprojPath = path.join(root, qwenMatch);
-          return this.resolvedMmprojPath;
-        }
-      }
-      if (modelName.includes('gemma')) {
-        const gemmaMatch = files.find(name => (/gemma.*mmproj.*\.gguf$/i.test(name) || /mmproj-q8_0\.gguf$/i.test(name) || /mmproj.*gemma.*\.gguf$/i.test(name)));
-        if (gemmaMatch) {
-          this.resolvedMmprojPath = path.join(root, gemmaMatch);
-          return this.resolvedMmprojPath;
-        }
-      }
-      const match = files.find(name => /mmproj.*\.gguf$/i.test(name) || /gemma.*mmproj.*\.gguf$/i.test(name));
+      const match = files.find(name => /qwen.*mmproj.*\.gguf$/i.test(name) || /^mmproj-f16\.gguf$/i.test(name) || /mmproj.*qwen.*\.gguf$/i.test(name));
       this.resolvedMmprojPath = match ? path.join(root, match) : null;
       return this.resolvedMmprojPath;
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   }
 
   async getStatus(): Promise<LocalLlmStatus> {
     const configured = await this.isConfigured();
-    // Resolve the projector independently of the child process so diagnostics
-    // can report the real on-disk multimodal capability even before/restart of
-    // llama-server. This also keeps externally started/previously running
-    // servers from producing a false "mmproj missing" warning.
     await this.resolveMmprojPath();
-    if (this.child && !this.child.killed) {
-      this.ready = await this.checkHealth();
-    } else {
-      this.ready = false;
-    }
+    if (this.child && !this.child.killed) this.ready = await this.checkHealth();
+    else this.ready = false;
     return this.status(configured);
   }
 
@@ -265,7 +209,6 @@ export class LocalLlmManager {
       await this.waitForReady(5000).catch(() => undefined);
       return this.status(await this.isConfigured());
     }
-
     if (this.startPromise) {
       await this.startPromise;
       return this.status(await this.isConfigured());
@@ -274,12 +217,13 @@ export class LocalLlmManager {
     const configured = await this.isConfigured();
     this.resolvedMmprojPath = await this.resolveMmprojPath();
     if (!configured) {
-      throw new Error(`Local LLM is not configured. Expected llama-server at ${this.config.executablePath} and model at ${this.config.modelPath}.`);
+      throw new Error(`Local LLM is not configured for ${this.engine}. Expected llama-server at ${this.config.executablePath} and model at ${this.config.modelPath}.`);
     }
 
     this.lastError = null;
     this.ready = false;
     this.recentLog = [];
+    const engine = this.engine;
 
     this.startPromise = new Promise<void>((resolve, reject) => {
       const args = [
@@ -289,172 +233,110 @@ export class LocalLlmManager {
         "--n-gpu-layers", String(this.config.gpuLayers),
         "--ctx-size", String(this.config.contextSize),
         "--threads", String(this.config.threads),
+        "--jinja",
       ];
       if (this.resolvedMmprojPath) args.push("--mmproj", this.resolvedMmprojPath);
 
       const child = spawn(this.config.executablePath, args, {
-        cwd: path.dirname(this.config.executablePath),
-        windowsHide: true,
-        stdio: ["ignore", "pipe", "pipe"],
-        env: { ...process.env },
+        cwd: path.dirname(this.config.executablePath), windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"], env: { ...process.env },
       });
-
       this.child = child;
       this.startedAt = new Date().toISOString();
 
       const addLog = (chunk: Buffer | string) => {
         const lines = String(chunk).split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-        for (const line of lines) this.recentLog.push(line.slice(0, 500));
-        if (this.recentLog.length > 40) this.recentLog.splice(0, this.recentLog.length - 40);
+        for (const line of lines) this.recentLog.push(line.slice(0, 1000));
+        if (this.recentLog.length > 60) this.recentLog.splice(0, this.recentLog.length - 60);
       };
-
       child.stdout.on("data", addLog);
       child.stderr.on("data", addLog);
-
-      child.once("error", (error) => {
-        this.lastError = error.message;
-        this.ready = false;
-        this.child = null;
-        reject(error);
+      child.once("error", error => {
+        this.lastError = `${engine} llama-server spawn error: ${error.message}`;
+        this.ready = false; this.child = null; reject(error);
       });
-
       child.once("exit", (code, signal) => {
-        addLog(`[llama-server exited] code=${code ?? "null"} signal=${signal ?? "null"}`);
-        if (!this.ready && code !== 0 && !this.lastError) {
-          this.lastError = `llama-server exited before becoming ready (code ${code ?? "unknown"}).`;
+        addLog(`[llama-server exited] engine=${engine} code=${code ?? "null"} signal=${signal ?? "null"}`);
+        if (!this.ready && code !== 0) {
+          const detail = this.recentLog.slice(-8).join(" | ");
+          this.lastError = `${engine} llama-server exited before becoming ready (code ${code ?? "unknown"}).${detail ? ` ${detail}` : ""}`;
         }
-        this.ready = false;
-        this.child = null;
+        this.ready = false; this.child = null;
       });
 
-      void this.waitForReady(this.config.timeoutMs)
-        .then(() => {
-          this.ready = true;
-          resolve();
-        })
-        .catch(error => {
-          this.lastError = error instanceof Error ? error.message : String(error);
-          if (this.child && !this.child.killed) this.child.kill();
-          this.child = null;
-          reject(error);
-        });
-    }).finally(() => {
-      this.startPromise = null;
-    });
+      void this.waitForReady(this.config.timeoutMs).then(() => {
+        this.ready = true; resolve();
+      }).catch(error => {
+        this.lastError = error instanceof Error ? error.message : String(error);
+        if (this.child && !this.child.killed) this.child.kill();
+        this.child = null; reject(error);
+      });
+    }).finally(() => { this.startPromise = null; });
 
     await this.startPromise;
     return this.status(true);
   }
 
   async stop(): Promise<LocalLlmStatus> {
-    if (!this.child || this.child.killed) {
-      this.ready = false;
-      return this.status(await this.isConfigured());
-    }
-
+    if (!this.child || this.child.killed) { this.ready = false; return this.status(await this.isConfigured()); }
     const child = this.child;
     this.ready = false;
     child.kill();
     await new Promise<void>(resolve => {
       const timer = setTimeout(resolve, 3000);
-      child.once("exit", () => {
-        clearTimeout(timer);
-        resolve();
-      });
+      child.once("exit", () => { clearTimeout(timer); resolve(); });
     });
     this.child = null;
     return this.status(await this.isConfigured());
   }
 
-  async restart(): Promise<LocalLlmStatus> {
-    await this.stop();
-    return this.start();
-  }
+  async restart(): Promise<LocalLlmStatus> { await this.stop(); return this.start(); }
 
   async cancelChat(): Promise<boolean> {
     const controller = this.activeChatController;
     if (!controller) return false;
     controller.abort();
     this.activeChatController = null;
-    this.appendDiagnostic("CHAT CANCELLED BY USER — flushing llama.cpp process/VRAM");
-
-    // llama.cpp does not provide a reliable model-unload endpoint across the
-    // versions Gina supports. Stopping the managed server is the deterministic
-    // way to release its CUDA allocations after a cancelled generation.
-    if (this.child && !this.child.killed) {
-      const child = this.child;
-      this.ready = false;
-      child.kill();
-      await new Promise<void>(resolve => {
-        const timer = setTimeout(resolve, 5000);
-        child.once("exit", () => { clearTimeout(timer); resolve(); });
-      });
-      this.child = null;
-    }
+    if (this.child && !this.child.killed) await this.stop();
     this.appendDiagnostic("CHAT CANCEL COMPLETE — llama.cpp stopped and VRAM released; restart Local AI to continue");
     return true;
   }
 
-  async chat(messages: Array<{ role: "system" | "user" | "assistant"; content: string }>, options?: { temperature?: number; maxTokens?: number }, attachments: ImageAttachment[] = []) {
+  async chat(messages: ChatMessage[], options?: { temperature?: number; maxTokens?: number }, attachments: ImageAttachment[] = []) {
     const status = await this.getStatus();
-    if (!status.ready) throw new Error("Local LLM is not running. Start Gemma first.");
-
-    const requestedMax = Number.isFinite(Number(options?.maxTokens)) ? Number(options?.maxTokens) : 768;
-    const maxTokens = Math.min(1024, Math.max(64, Math.round(requestedMax)));
+    if (!status.ready) throw new Error(`Local ${this.engine === "qwen" ? "Qwen" : "Gemma"} engine is not running. Start the local AI engine first.`);
+    const maxTokens = Math.min(1024, Math.max(64, Math.round(Number(options?.maxTokens) || 768)));
 
     const request = async (normalized: ChatMessage[], label: string) => {
-      if (!normalized.length || normalized[normalized.length - 1].role !== "user") {
-        throw new Error("Local LLM conversation could not be normalized into a valid user turn.");
-      }
-      const requestMessages: any[] = normalized.map(message => ({ ...message }));
-      const imageAttachments = attachments.filter(a => a && a.localPath && /^image\//i.test(a.mime));
+      if (!normalized.length || normalized[normalized.length - 1].role !== "user") throw new Error("Local LLM conversation could not be normalized into a valid user turn.");
+      const requestMessages: any[] = normalized.map(m => ({ ...m }));
+      const imageAttachments = attachments.filter(a => a?.localPath && /^image\//i.test(a.mime));
       if (imageAttachments.length) {
-        const mmprojPath = await this.resolveMmprojPath();
-        if (!mmprojPath) throw new Error("Image attachment received, but no local multimodal projector (mmproj) is configured. Set GINA_LLM_MMPROJ or place an *mmproj*.gguf beside the Gemma model.");
+        if (this.engine !== "qwen") throw new Error("Gemma engine does not have the configured Qwen vision projector. Select Qwen 2.5-VL for image input.");
+        if (!this.resolvedMmprojPath) throw new Error("Qwen vision is selected, but no mmproj GGUF was found beside the Qwen model.");
         const latest = requestMessages[requestMessages.length - 1];
-        if (!latest || latest.role !== "user") throw new Error("Image attachments require a user turn.");
         const parts: any[] = [{ type: "text", text: String(latest.content || "") }];
         for (const attachment of imageAttachments.slice(0, 5)) {
           const buffer = await fs.readFile(attachment.localPath);
-          const base64 = buffer.toString("base64");
-          parts.push({ type: "image_url", image_url: { url: `data:${attachment.mime};base64,${base64}` } });
+          parts.push({ type: "image_url", image_url: { url: `data:${attachment.mime};base64,${buffer.toString("base64")}` } });
         }
         latest.content = parts;
       }
-      this.appendDiagnostic(`${label}: ${requestMessages.length} turns, latest=${String(normalized[normalized.length - 1].content).length} chars${imageAttachments.length ? `, images=${imageAttachments.length}` : ""}`);
+      this.appendDiagnostic(`${label}: engine=${this.engine}, model=${path.basename(this.config.modelPath)}, turns=${requestMessages.length}${imageAttachments.length ? `, images=${imageAttachments.length}` : ""}`);
       const controller = new AbortController();
       this.activeChatController = controller;
       const timeout = setTimeout(() => controller.abort(), this.config.timeoutMs);
       try {
         const response = await fetch(`http://${this.config.host}:${this.config.port}/v1/chat/completions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: path.basename(this.config.modelPath),
-            messages: requestMessages,
-            temperature: options?.temperature ?? 0.7,
-            max_tokens: maxTokens,
-            stream: false,
-          }),
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: path.basename(this.config.modelPath), messages: requestMessages, temperature: options?.temperature ?? 0.7, max_tokens: maxTokens, stream: false }),
           signal: controller.signal,
         });
-
         const bodyText = await response.text();
-        if (!bodyText.trim()) {
-          throw new Error(`llama-server returned an empty response (HTTP ${response.status}).`);
-        }
-
+        if (!bodyText.trim()) throw new Error(`llama-server returned an empty response (HTTP ${response.status}).`);
         let data: any;
-        try {
-          data = JSON.parse(bodyText);
-        } catch {
-          throw new Error(`llama-server returned invalid JSON (HTTP ${response.status}).`);
-        }
-
-        if (!response.ok) {
-          const detail = data?.error?.message || data?.error || `llama-server returned HTTP ${response.status}`;
-          throw new Error(String(detail));
-        }
+        try { data = JSON.parse(bodyText); } catch { throw new Error(`llama-server returned invalid JSON (HTTP ${response.status}).`); }
+        if (!response.ok) throw new Error(String(data?.error?.message || data?.error || `llama-server returned HTTP ${response.status}`));
         return data;
       } finally {
         clearTimeout(timeout);
@@ -462,7 +344,7 @@ export class LocalLlmManager {
       }
     };
 
-    const normalized = normalizeChatMessages(messages, this.config.contextSize);
+    const normalized = normalizeChatMessages(messages);
     try {
       const data = await request(normalized, "CHAT");
       this.lastError = null;
@@ -471,49 +353,25 @@ export class LocalLlmManager {
       const firstMessage = firstError?.message || String(firstError);
       this.lastError = firstMessage;
       this.appendDiagnostic(`CHAT ERROR: ${firstMessage}`);
-
-      // First recovery: remove all history/system instructions and retry only the
-      // current user request. This specifically defeats Gemma role-template errors.
-      if (isRecoverableTemplateError(firstMessage)) {
-        const fallback = normalizeChatMessages(messages, this.config.contextSize, true);
+      if (isRecoverableTemplateError(firstMessage) || isContextError(firstMessage) || /HTTP 5\d\d|temporar|server busy|overloaded|empty response/i.test(firstMessage)) {
+        const fallback = normalizeChatMessages(messages, true);
         try {
-          this.appendDiagnostic("RECOVERY: retrying with a single user turn");
           const data = await request(fallback, "RECOVERY");
           this.lastError = null;
           return data;
         } catch (fallbackError: any) {
-          const fallbackMessage = fallbackError?.message || String(fallbackError);
-          this.lastError = fallbackMessage;
-          this.appendDiagnostic(`RECOVERY FAILED: ${fallbackMessage}`);
+          this.lastError = fallbackError?.message || String(fallbackError);
         }
       }
-
-      // Second recovery: context failures and transient server failures are retried
-      // with only the newest user message. The user should never have to manually
-      // clear the conversation after a bad turn, 503, or oversized document.
-      if (isContextError(firstMessage) || isRecoverableTemplateError(firstMessage) || /HTTP 5\d\d|temporar|server busy|overloaded|empty response/i.test(firstMessage)) {
-        const minimal = normalizeChatMessages(messages, this.config.contextSize, true);
-        try {
-          this.appendDiagnostic("RECOVERY: retrying minimal context");
-          const data = await request(minimal, "MINIMAL");
-          this.lastError = null;
-          return data;
-        } catch (minimalError: any) {
-          const minimalMessage = minimalError?.message || String(minimalError);
-          this.lastError = minimalMessage;
-          this.appendDiagnostic(`MINIMAL RECOVERY FAILED: ${minimalMessage}`);
-        }
-      }
-
       throw new Error(`${firstMessage} (Gina recovery attempts were also exhausted.)`);
     }
   }
 
   private appendDiagnostic(message: string) {
-    const line = String(message).replace(/\s+/g, " ").trim().slice(0, 500);
+    const line = String(message).replace(/\s+/g, " ").trim().slice(0, 1000);
     if (!line) return;
     this.recentLog.push(`[chat] ${line}`);
-    if (this.recentLog.length > 40) this.recentLog.splice(0, this.recentLog.length - 40);
+    if (this.recentLog.length > 60) this.recentLog.splice(0, this.recentLog.length - 60);
   }
 
   private async waitForReady(timeoutMs: number): Promise<void> {
@@ -523,38 +381,25 @@ export class LocalLlmManager {
       if (await this.checkHealth()) return;
       await new Promise(resolve => setTimeout(resolve, 350));
     }
-    throw new Error(`Timed out waiting for llama-server on http://${this.config.host}:${this.config.port}.`);
+    throw new Error(`Timed out waiting for llama-server on http://${this.config.host}:${this.config.port} using ${this.engine}. Recent server log: ${this.recentLog.slice(-8).join(" | ")}`);
   }
 
   private async checkHealth(): Promise<boolean> {
     try {
-      const response = await fetch(`http://${this.config.host}:${this.config.port}/health`, {
-        signal: AbortSignal.timeout(1200),
-      });
+      const response = await fetch(`http://${this.config.host}:${this.config.port}/health`, { signal: AbortSignal.timeout(1200) });
       return response.ok;
-    } catch {
-      return false;
-    }
+    } catch { return false; }
   }
 
   private status(configured: boolean): LocalLlmStatus {
     return {
-      configured,
-      running: !!this.child && !this.child.killed,
-      ready: this.ready,
-      pid: this.child?.pid ?? null,
-      port: this.config.port,
-      modelPath: this.config.modelPath,
-      modelName: path.basename(this.config.modelPath),
-      gpuLayers: this.config.gpuLayers,
-      contextSize: this.config.contextSize,
-      threads: this.config.threads,
+      configured, running: !!this.child && !this.child.killed, ready: this.ready,
+      pid: this.child?.pid ?? null, port: this.config.port,
+      modelPath: this.config.modelPath, modelName: path.basename(this.config.modelPath),
+      gpuLayers: this.config.gpuLayers, contextSize: this.config.contextSize, threads: this.config.threads,
       backend: fsSync.existsSync(path.join(path.dirname(this.config.executablePath), "ggml-cuda.dll")) ? "CUDA" : "unknown",
-      lastError: this.lastError,
-      startedAt: this.startedAt,
-      recentLog: [...this.recentLog],
-      multimodal: !!this.resolvedMmprojPath,
-      mmprojPath: this.resolvedMmprojPath,
+      lastError: this.lastError, startedAt: this.startedAt, recentLog: [...this.recentLog],
+      multimodal: !!this.resolvedMmprojPath, mmprojPath: this.resolvedMmprojPath, engine: this.engine,
     };
   }
 }
