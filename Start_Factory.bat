@@ -132,11 +132,7 @@ goto WAIT_GINA
 
 :GINA_READY
 echo    Gina Dashboard is READY.
-<<<<<<< HEAD
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $d=(Invoke-WebRequest -Uri '%GINA_URL%/api/version' -UseBasicParsing -TimeoutSec 3).Content | ConvertFrom-Json; if($d.version -ne 'v1.17.85'){ Write-Host ('[WARN] Dashboard reports version ' + $d.version + ' (expected v1.17.85).'); } } catch { Write-Host '[WARN] Could not verify Gina API version.' }"
-=======
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $d=(Invoke-WebRequest -Uri '%GINA_URL%/api/version' -UseBasicParsing -TimeoutSec 3).Content | ConvertFrom-Json; if($d.version -ne 'v1.17.68'){ Write-Host ('[WARN] Dashboard reports version ' + $d.version + ' (expected v1.17.68).'); } } catch { Write-Host '[WARN] Could not verify Gina API version.' }"
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $d=(Invoke-WebRequest -Uri '%GINA_URL%/api/version' -UseBasicParsing -TimeoutSec 3).Content | ConvertFrom-Json; if($d.version -ne 'v1.17.87'){ Write-Host ('[WARN] Dashboard reports version ' + $d.version + ' (expected v1.17.87).'); } } catch { Write-Host '[WARN] Could not verify Gina API version.' }"
 echo.
 
 echo [MusicGen] Checking local MusicGen Medium resolution...

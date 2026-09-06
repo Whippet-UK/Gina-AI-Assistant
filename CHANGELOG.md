@@ -1,4 +1,16 @@
-<<<<<<< HEAD
+# v1.17.87 — GitHub Import Stabilization & Conflict Resolution
+
+- **Resolution**: Cleanly resolved all git merge conflict markers across configuration, backend services, Python automation scripts, and UI components from the `Whippet-UK/Gina-AI-Assistant` import.
+- **Target Files**:
+  - `package.json`, `metadata.json`, `index.html`, `src/version.ts`, `AGENTS.md`: Synchronized project version to `1.17.87` and active restore point to `RESTORE_V1.17.87_FOOOCUS_STYLE_IMAGE_STUDIO`.
+  - `src/components/MilestoneChecklist.tsx`: Preserved restore points 73–86 as locked and set `RESTORE_V1.17.87_FOOOCUS_STYLE_IMAGE_STUDIO` as active.
+  - `server.ts`: Preserved AudioGen/MusicGen model prewarm definitions, `/api/jobs/:id/history` endpoint for GifStudio, and robust telemetry with ACE-Step health inspection.
+  - `server/music/MusicService.ts`: Preserved AudioCraft sequential lane lock (`acquireAudioLane`), ACE-Step singing routing, and offline model validation.
+  - `scripts/music_generator.py`: Preserved `save_wav_pcm16` stdlib fallback, `--model_path` argument, and explicit local-only verification.
+  - `scripts/download_audiocraft.py`: Preserved single-copy managed model caching under `models/audio` avoiding duplicate Hugging Face root caches.
+  - `src/components/MusicStudio.tsx`: Preserved real singing mode selection with ACE-Step status polling, vocal language selection, and sequential GPU lane notice.
+  - `Start_Factory.bat`: Updated version verification command to match `v1.17.87`.
+
 # v1.17.87 — Fooocus-Inspired Gina Image Studio
 
 - Reworked the image creation workspace around a focused Fooocus-inspired layout: prompt + core image controls on the left, large preview/actions on the right.
@@ -125,8 +137,6 @@
   - Added AudioGen to pre-warm inventory and corrected medium-model VRAM metadata to the official 16 GB guidance.
 - **Preserved:** existing Story stall/history fallback, LTX `batch_size=1` OOM guard, StreamInject fixes, and clean-root `docs/updates/` convention.
 
-=======
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 # v1.17.73 — Multimedia MoviePy Stitcher, MusicGen Medium 1.5B Default & Neural Cache Verification
 
 ### 1. Target File: `/server/music/MusicService.ts` & `/server.ts`

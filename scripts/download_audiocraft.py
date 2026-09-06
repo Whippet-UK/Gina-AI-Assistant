@@ -3,21 +3,12 @@
 Gina AI Factory — AudioCraft / MusicGen / Transformers Weight Downloader & Preflight Inspector
 Location: scripts/download_audiocraft.py
 
-<<<<<<< HEAD
 Downloads and caches HuggingFace AudioCraft / MusicGen / AudioGen models directly
 to the local Hugging Face cache sandbox:
   C:\\Gina_AI\\models\\audio\\
   - facebook/musicgen-small (300M parameters)
   - facebook/musicgen-medium (1.5B parameters)
   - facebook/audiogen-medium (1.5B text-to-sound / SFX)
-=======
-Downloads and caches HuggingFace transformers AudioCraft / MusicGen models directly
-to the local models sandbox:
-  C:\\Gina_AI\\models\\audio\\
-  - facebook/musicgen-small (300M parameters, ~1.5GB VRAM safe for RTX 3070 Ti)
-  - facebook/musicgen-medium (1.5B parameters, ~4.5GB VRAM)
-  - facebook/audiogen-medium (sound effects)
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 """
 
 import os
@@ -40,7 +31,6 @@ def main():
     args = parse_args()
     model_name = args.model
     output_dir = os.path.abspath(args.output_dir)
-<<<<<<< HEAD
     managed_dir = os.path.join(output_dir, model_name.replace("/", "_"))
 
     print(f"[AudioCraft Downloader] Target Model: {model_name}")
@@ -117,55 +107,6 @@ def main():
         print(f"[AudioCraft Downloader] SUCCESS: {model_name} managed locally at {snapshot_path} in {time.time() - start_time:.1f}s")
     except Exception as e:
         print(f"[AudioCraft Downloader] ERROR during managed model download/verification: {e}", file=sys.stderr)
-=======
-
-    print(f"[AudioCraft Downloader] Target Model: {model_name}")
-    print(f"[AudioCraft Downloader] Destination Directory: {output_dir}")
-
-    os.makedirs(output_dir, exist_ok=True)
-
-    try:
-        print("[AudioCraft Downloader] Importing transformers & huggingface_hub...")
-        from huggingface_hub import snapshot_download
-        from transformers import AutoProcessor, MusicgenForConditionalGeneration
-    except ImportError:
-        print("[AudioCraft Downloader] 'transformers' or 'audiocraft' package not found in current environment.")
-        print("[AudioCraft Downloader] Please ensure you are running in 'g_env' or install via:")
-        print("  pip install transformers scipy torch torchaudio")
-        if args.check_only:
-            sys.exit(1)
-        sys.exit(1)
-
-    # Sanitize model repo for folder name
-    clean_name = model_name.replace("/", "_")
-    target_path = os.path.join(output_dir, clean_name)
-
-    if args.check_only:
-        if os.path.exists(target_path) and os.path.isdir(target_path):
-            files = os.listdir(target_path)
-            print(f"[AudioCraft Downloader] Weights present ({len(files)} files found at {target_path})")
-            sys.exit(0)
-        else:
-            print(f"[AudioCraft Downloader] Weights NOT found for {model_name}")
-            sys.exit(2)
-
-    print(f"[AudioCraft Downloader] Starting weight snapshot download for '{model_name}'...")
-    start_time = time.time()
-    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or None
-    try:
-        local_dir = snapshot_download(
-            repo_id=model_name,
-            local_dir=target_path,
-            local_dir_use_symlinks=False,
-            resume_download=True,
-            token=hf_token
-        )
-        print(f"[AudioCraft Downloader] Pre-loading processor and configuration to verify weights...")
-        processor = AutoProcessor.from_pretrained(target_path, token=hf_token)
-        print(f"[AudioCraft Downloader] SUCCESS: Model cached and verified at {local_dir} in {time.time() - start_time:.1f}s")
-    except Exception as e:
-        print(f"[AudioCraft Downloader] ERROR during snapshot download: {e}", file=sys.stderr)
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
         sys.exit(1)
 
 if __name__ == "__main__":

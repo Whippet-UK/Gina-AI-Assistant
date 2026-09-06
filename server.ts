@@ -1877,7 +1877,6 @@ const AVAILABLE_PREWARM_MODELS: PreWarmModelDef[] = [
   {
     id: 'musicgen_small', name: 'MusicGen Small (AudioCraft 300M)', filename: 'facebook/musicgen-small',
     workflowId: 'audiocraft_music', type: 'music', vramFootprintMB: 2800,
-<<<<<<< HEAD
     description: 'Meta AudioCraft MusicGen 300M model for fast BGM generation and audio composition (cached in models/audio). Runs as an exclusive AudioCraft job.'
   },
   {
@@ -1889,14 +1888,6 @@ const AVAILABLE_PREWARM_MODELS: PreWarmModelDef[] = [
     id: 'audiogen_medium', name: 'AudioGen Medium (AudioCraft 1.5B · SFX / Atmosphere)', filename: 'facebook/audiogen-medium',
     workflowId: 'audiocraft_music', type: 'audio', vramFootprintMB: 16000,
     description: 'Meta AudioCraft AudioGen 1.5B text-to-sound model for SFX and environmental ambience. Official AudioCraft guidance calls for at least 16 GB GPU memory; Gina runs it as an exclusive local-only job.'
-=======
-    description: 'Meta AudioCraft MusicGen 300M model for fast BGM generation and audio composition (cached in models/audio).'
-  },
-  {
-    id: 'musicgen_medium', name: 'MusicGen Medium (AudioCraft 1.5B)', filename: 'facebook/musicgen-medium',
-    workflowId: 'audiocraft_music', type: 'music', vramFootprintMB: 4800,
-    description: 'Meta AudioCraft MusicGen 1.5B model for high-fidelity soundtrack generation and scoring.'
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
   }
 ];
 
@@ -3370,15 +3361,12 @@ app.get('/api/gif-studio/capabilities', async (_req,res) => {
   } catch (e:any) {
     res.status(500).json({ ok: false, error: e?.message || 'Unable to inspect GIF Studio capabilities' });
   }
-<<<<<<< HEAD
-=======
 });
 
 app.get('/api/jobs/:id/history', (req,res) => {
   const job = jobManager.get(req.params.id);
   if (!job) return res.status(404).json({ok:false,error:'Job not found'});
   res.json({ok:true,job,history:jobManager.eventHistory(job.id)});
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 });
 
 app.get('/api/jobs/:id/events/history', (req,res) => {
@@ -4065,7 +4053,6 @@ app.use("/media/audio", express.static(musicService.getOutputDir()));
 app.get("/api/music/status", async (_req, res) => {
   try {
     const tracks = await musicService.scanTracks();
-<<<<<<< HEAD
     const modelIds = [
       "facebook/musicgen-small",
       "facebook/musicgen-medium",
@@ -4106,11 +4093,6 @@ app.get("/api/music/status", async (_req, res) => {
     const smallInfo = safeModelTelemetry(modelIds[0]);
     const mediumInfo = safeModelTelemetry(modelIds[1]);
     const audiogenInfo = safeModelTelemetry(modelIds[2]);
-=======
-    const smallInfo = musicService.getModelCacheInfo("facebook/musicgen-small");
-    const mediumInfo = musicService.getModelCacheInfo("facebook/musicgen-medium");
-    const audiogenInfo = musicService.getModelCacheInfo("facebook/audiogen-medium");
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 
     res.json({
       ok: true,
@@ -4122,16 +4104,11 @@ app.get("/api/music/status", async (_req, res) => {
           id: "facebook/musicgen-medium",
           name: "MusicGen Medium (1.5B High-Fidelity)",
           params: "1.5B",
-<<<<<<< HEAD
           vramMB: 16000,
-=======
-          vramMB: 4800,
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           cached: mediumInfo.cached,
           hasWeights: mediumInfo.hasWeights,
           sizeLabel: mediumInfo.sizeLabel,
           fileCount: mediumInfo.fileCount,
-<<<<<<< HEAD
           managedPath: mediumInfo.managedPath,
           backend: mediumInfo.backend,
           weightFiles: mediumInfo.weightFiles,
@@ -4139,8 +4116,6 @@ app.get("/api/music/status", async (_req, res) => {
           statusError: mediumInfo.statusError,
           hubCacheIgnored: false,
           cacheMode: "local HF snapshot (network disabled)",
-=======
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           isDefault: true
         },
         {
@@ -4152,45 +4127,34 @@ app.get("/api/music/status", async (_req, res) => {
           hasWeights: smallInfo.hasWeights,
           sizeLabel: smallInfo.sizeLabel,
           fileCount: smallInfo.fileCount,
-<<<<<<< HEAD
           managedPath: smallInfo.managedPath,
           backend: smallInfo.backend,
           weightFiles: smallInfo.weightFiles,
           resolution: smallInfo.resolution,
           statusError: smallInfo.statusError,
           hubCacheIgnored: true,
-=======
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           isDefault: false
         },
         {
           id: "facebook/audiogen-medium",
           name: "AudioGen Medium (SFX/Atmosphere)",
           params: "1.5B",
-<<<<<<< HEAD
           vramMB: 16000,
-=======
-          vramMB: 4800,
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           cached: audiogenInfo.cached,
           hasWeights: audiogenInfo.hasWeights,
           sizeLabel: audiogenInfo.sizeLabel,
           fileCount: audiogenInfo.fileCount,
-<<<<<<< HEAD
           managedPath: audiogenInfo.managedPath,
           backend: audiogenInfo.backend,
           weightFiles: audiogenInfo.weightFiles,
           resolution: audiogenInfo.resolution,
           statusError: audiogenInfo.statusError,
           hubCacheIgnored: true,
-=======
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
           isDefault: false
         }
       ]
     });
   } catch (error: any) {
-<<<<<<< HEAD
     console.error("[MusicService] Music status endpoint unexpected failure:", error);
     // Status is telemetry; never let a filesystem edge case turn the dashboard
     // into a repeating HTTP 500 loop. Generation remains independently strict.
@@ -4216,9 +4180,6 @@ app.get("/api/music/ace-step/status", async (_req, res) => {
     res.json({ ok: response.ok && (payload?.code === 200 || payload?.data?.status === "ok"), baseUrl, detail: payload?.error || null });
   } catch (error: any) {
     res.json({ ok: false, baseUrl, detail: error?.message || "ACE-Step API is not reachable" });
-=======
-    res.status(500).json({ ok: false, error: error?.message || "Music status check failed" });
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
   }
 });
 

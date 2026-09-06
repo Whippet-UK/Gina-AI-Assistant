@@ -25,7 +25,6 @@ def get_device():
         return "cuda"
     return "cpu"
 
-<<<<<<< HEAD
 
 
 def save_wav_pcm16(output_path, audio_tensor, sampling_rate):
@@ -52,8 +51,6 @@ def save_wav_pcm16(output_path, audio_tensor, sampling_rate):
         wf.setframerate(int(sampling_rate))
         wf.writeframes(pcm)
 
-=======
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 def generate_music(args):
     print(f"[MusicGen Engine] Initializing generation mode: {args.mode}...")
     import torch
@@ -70,12 +67,9 @@ def generate_music(args):
     # Model resolution
     model_id = args.model if args.model else "facebook/musicgen-small"
     model_cache_dir = args.cache_dir if args.cache_dir else "C:\\Gina_AI\\models\\audio"
-<<<<<<< HEAD
     local_model_path = args.model_path or os.path.join(model_cache_dir, model_id.replace("/", "_"))
     if not os.path.isdir(local_model_path):
         raise RuntimeError(f"Local model directory does not exist: {local_model_path}. Generate will not download models.")
-=======
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
     os.makedirs(model_cache_dir, exist_ok=True)
     os.makedirs(os.path.dirname(os.path.abspath(args.output_path)), exist_ok=True)
 
@@ -99,16 +93,12 @@ def generate_music(args):
 
     full_prompt = ", ".join(prompt_components) if prompt_components else "ambient electronic synthwave melody"
     print(f"[MusicGen Engine] Compiled Prompt: \"{full_prompt}\"")
-<<<<<<< HEAD
     print(f"[Audio Lane] SEQUENTIAL=TRUE | CONCURRENCY=1 | NETWORK=DISABLED")
     print(f"[Audio Lane] Local model path: {local_model_path}")
-=======
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
     print(f"[MusicGen Engine] Target Duration: {args.duration}s | Guidance Scale: {args.guidance_scale} | Temp: {args.temperature}")
 
     # Audio synthesis pipeline
     success = False
-<<<<<<< HEAD
     if not os.path.isdir(local_model_path):
         raise RuntimeError(f"Managed model path does not exist: {local_model_path}. Generate never downloads models.")
     model_is_audiogen = model_id == "facebook/audiogen-medium"
@@ -214,108 +204,6 @@ def generate_music(args):
         # Do NOT fall back to a synthetic fake track. A model/cache failure must be
         # visible to the dashboard so the user knows the requested model did not run.
         success = False
-=======
-    try:
-        from transformers import AutoProcessor, MusicgenForConditionalGeneration
-        hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or None
-        print(f"[MusicGen Engine] Loading model '{model_id}' (HF Auth: {'Enabled' if hf_token else 'Public/Anonymous'})...")
-        processor = AutoProcessor.from_pretrained(model_id, cache_dir=model_cache_dir, token=hf_token)
-        model = MusicgenForConditionalGeneration.from_pretrained(
-            model_id,
-            cache_dir=model_cache_dir,
-            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-            token=hf_token
-        ).to(device)
-
-        inputs = processor(
-            text=[full_prompt],
-            padding=True,
-            return_tensors="pt"
-        ).to(device)
-
-        # Calculate max new tokens (MusicGen generates ~50 tokens per second of audio at 32kHz)
-        tokens_per_sec = 50
-        max_tokens = int(args.duration * tokens_per_sec)
-        max_tokens = max(100, min(max_tokens, 1500))
-
-        print(f"[MusicGen Engine] Generating audio tensors (max_tokens={max_tokens})...")
-        start_t = time.time()
-        with torch.inference_mode():
-            audio_values = model.generate(
-                **inputs,
-                do_sample=True,
-                guidance_scale=float(args.guidance_scale),
-                max_new_tokens=max_tokens,
-                temperature=float(args.temperature)
-            )
-
-        sampling_rate = model.config.audio_encoder.sampling_rate
-        print(f"[MusicGen Engine] Synthesis completed in {time.time() - start_t:.2f}s! Sample rate: {sampling_rate}Hz")
-
-        # Save audio file
-        audio_tensor = audio_values[0, 0].cpu().to(torch.float32)
-        if audio_tensor.dim() == 1:
-            audio_tensor = audio_tensor.unsqueeze(0)
-
-        torchaudio.save(args.output_path, audio_tensor, sampling_rate)
-        print(f"[MusicGen Engine] Saved master audio: {args.output_path}")
-        success = True
-
-        # Clean VRAM after generation
-        if device == "cuda":
-            del model
-            del processor
-            del inputs
-            del audio_values
-            torch.cuda.empty_cache()
-
-    except Exception as e:
-        print(f"[MusicGen Engine] Transformers pipeline fallback/error: {e}")
-        traceback.print_exc()
-
-        # Fallback synthesizer tone generator if weights aren't downloaded yet or offline
-        print("[MusicGen Engine] Synthesizing high-fidelity harmonic preview track...")
-        import numpy as np
-        sr = 44100
-        duration = float(args.duration)
-        t = np.linspace(0, duration, int(sr * duration), False)
-        
-        # Base chords progression: Cyberpunk / Synthwave progression (A minor -> F -> C -> G)
-        bpm = 120
-        if "140" in full_prompt or "fast" in full_prompt.lower():
-            bpm = 140
-        elif "90" in full_prompt or "slow" in full_prompt.lower() or "lo-fi" in full_prompt.lower():
-            bpm = 90
-
-        beat_dur = 60.0 / bpm
-        frequencies = [220.0, 174.61, 261.63, 196.0] # A3, F3, C4, G3
-        waveform = np.zeros_like(t)
-
-        for i, freq in enumerate(frequencies):
-            t_slice = (t >= i * beat_dur * 2) & (t < (i + 1) * beat_dur * 2)
-            # Sawtooth-like rich synthesizer harmonics
-            synth = (
-                0.4 * np.sin(2 * np.pi * freq * t) +
-                0.2 * np.sin(2 * np.pi * freq * 2 * t) +
-                0.1 * np.sin(2 * np.pi * freq * 3 * t) +
-                0.05 * np.sin(2 * np.pi * freq * 4 * t)
-            )
-            # Sub bass
-            sub = 0.3 * np.sin(2 * np.pi * (freq / 2) * t)
-            waveform[t_slice] += (synth[t_slice] + sub[t_slice])
-
-        # Add kick drum pulses on beat
-        kick_env = np.exp(-15 * (t % beat_dur))
-        kick = 0.6 * np.sin(2 * np.pi * 55 * t) * kick_env
-        waveform += kick
-
-        # Normalize and save
-        waveform = waveform / (np.max(np.abs(waveform)) + 1e-6) * 0.85
-        audio_tensor = torch.tensor(waveform, dtype=torch.float32).unsqueeze(0)
-        torchaudio.save(args.output_path, audio_tensor, sr)
-        print(f"[MusicGen Engine] Saved fallback harmonic master audio: {args.output_path}")
-        success = True
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
 
     output_meta = {
         "ok": success,
@@ -393,10 +281,7 @@ def main():
     gen_parser.add_argument("--guidance_scale", type=float, default=3.0)
     gen_parser.add_argument("--temperature", type=float, default=1.0)
     gen_parser.add_argument("--cache_dir", type=str, default="C:\\Gina_AI\\models\\audio")
-<<<<<<< HEAD
     gen_parser.add_argument("--model_path", type=str, default="", help="Authoritative Gina-managed local model directory; never download from Hub during generation")
-=======
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
     gen_parser.add_argument("--output_path", type=str, required=True)
     gen_parser.add_argument("--audio_ref", type=str, default="")
     gen_parser.add_argument("--split_start", type=float, default=0.0)
@@ -408,12 +293,8 @@ def main():
     args = parser.parse_args()
 
     if args.command == "generate":
-<<<<<<< HEAD
         ok = generate_music(args)
         sys.exit(0 if ok else 1)
-=======
-        generate_music(args)
->>>>>>> 10ed9ea9ac000fbc3d4b9116f5c947e2561fe3de
     elif args.command == "separate":
         separate_stems(args)
     else:
