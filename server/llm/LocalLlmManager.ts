@@ -114,6 +114,7 @@ export class LocalLlmManager {
   }
 
   getEngine():LocalLlmEngine{return this.engine;}
+  getModelSelection(){return { engine:this.engine, modelPath:this.config.modelPath, modelName:path.basename(this.config.modelPath), mmprojPath:this.resolvedMmprojPath, multimodal:!!this.resolvedMmprojPath };}
   async setEngine(engine:LocalLlmEngine):Promise<LocalLlmStatus>{if(engine!=='qwen'&&engine!=='gemma')throw new Error('Unsupported local LLM engine. Use qwen or gemma.');if(this.child&&!this.child.killed)await this.stop();this.engine=engine;const root=process.env.GINA_LLM_ROOT||'C:\\Gina_AI\\models\\llm';this.config.modelPath=process.env.GINA_LLM_MODEL||this.defaultModelPath(root,engine);this.config.mmprojPath=undefined;this.resolvedMmprojPath=null;return this.status(await this.isConfigured());}
 
   private async resolveModelPath():Promise<string>{if(process.env.GINA_LLM_MODEL){this.config.modelPath=process.env.GINA_LLM_MODEL;return this.config.modelPath;}const directExists=await fs.stat(this.config.modelPath).then(s=>s.isFile()).catch(()=>false);if(directExists)return this.config.modelPath;const root=path.dirname(this.config.modelPath);try{const files=await fs.readdir(root);const patterns=this.engine==='qwen'?[/^qwen.*2\.5.*vl.*\.gguf$/i,/^qwen.*\.gguf$/i]:[/^gemma.*\.gguf$/i];for(const pattern of patterns){const match=files.find(n=>pattern.test(n)&&!/mmproj/i.test(n));if(match){this.config.modelPath=path.join(root,match);return this.config.modelPath;}}}catch{}return this.config.modelPath;}
