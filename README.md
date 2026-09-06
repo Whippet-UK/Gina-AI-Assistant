@@ -1,3 +1,18 @@
+# Gina AI Factory — v1.18.2
+
+## Phase 36 follow-up — Create Studio completion finalisation
+
+Create Studio now reconciles active ComfyUI jobs against authoritative `/history` when a WebSocket completion event is missed. A generation that reaches 25/25 and 100% can therefore transition through final output retrieval to COMPLETED without a browser refresh.
+
+## Phase 34 + Phase 36 — Qwen/Gemma routing, generation telemetry & persistent edit queue
+
+- **Qwen 2.5-VL 7B + mmproj-F16** is now an explicit Local AI engine choice and deterministically routes image creation/reference editing to **Juggernaut-XL v9**.
+- **Gemma 3 12B Q4_K_M** routes image creation/reference editing to **FLUX.1-Schnell GGUF Q4_K_S**.
+- Added the missing **Juggernaut-XL reference-edit workflow** so Qwen vision edits no longer fall back to FLUX.
+- Generation jobs now record and display the exact LLM, vision projector, image model and workflow used while a job is running.
+- Added `docs/EDIT_REQUESTS.md` as the persistent human-to-agent edit queue.
+- Phase 34 is implementation-complete; live Windows/ComfyUI acceptance should verify the Qwen vision → Juggernaut reference-edit path end-to-end.
+
 ## v1.17.27 System UI reorganization
 
 The System workspace is now organized into focused tabs: Overview, Hardware, Models & Workflows, Safeguards, and Logs. The Logs tab contains the copy-ready Dashboard Error Log and telemetry console.

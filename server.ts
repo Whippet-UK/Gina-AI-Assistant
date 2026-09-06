@@ -1197,6 +1197,22 @@ app.get("/api/llm/status", async (_req, res) => {
   }
 });
 
+app.post("/api/llm/engine", async (req, res) => {
+  try {
+    const engine = String(req.body?.engine || '').toLowerCase();
+    if (engine !== 'qwen' && engine !== 'gemma') return res.status(400).json({ success:false, error:'Engine must be qwen or gemma.' });
+    // Switching the local engine is an explicit VRAM-affecting operation. Stop
+    // the current llama-server first, release ComfyUI memory, then start the
+    // requested engine so the selector and runtime cannot disagree.
+    await fetch(`${COMFY_URL}/free`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ unload_models:true, free_memory:true }), signal:AbortSignal.timeout(5000) }).catch(() => null);
+    await localLlm.setEngine(engine as 'qwen'|'gemma');
+    const status = await localLlm.start();
+    res.json({ success:true, status });
+  } catch (error:any) {
+    res.status(500).json({ success:false, error:error?.message || 'Failed to switch local LLM engine.', status:await localLlm.getStatus().catch(()=>null) });
+  }
+});
+
 app.post("/api/llm/start", async (_req, res) => {
   try {
     // Gina's 8 GB GPU is a shared resource. Release ComfyUI's cached models before
@@ -1375,12 +1391,10 @@ app.post("/api/llm/cancel", async (_req, res) => {
 
 function detectImageGenerationIntent(text: string) {
   const normalized = String(text || '').trim();
-  if (!normalized) return false;
-  const hasImageVerb = /\b(create|generate|make|draw|render|produce|design|visuali[sz]e|paint|illustrate)\b/i.test(normalized);
-  const hasImageNoun = /\b(image|picture|photo|artwork|illustration|render|portrait|wallpaper|logo|icon|bezel|watch face|scene)\b/i.test(normalized);
-  const hasModifyVerb = /\b(edit|modify|change|alter|transform|retouch|remove|add|replace|restyle|improve)\b/i.test(normalized);
-  const hasAttachedReferenceLanguage = /\b(this image|attached image|attached photo|reference image|use (this|the) image|from this image|based on this image)\b/i.test(normalized);
-  return (hasImageVerb && hasImageNoun) || (hasModifyVerb && hasAttachedReferenceLanguage);
+  if (!normalized) return { create:false, modify:false, explicit:false };
+  const create = /\b(create|generate|make|draw|render|produce|design|visuali[sz]e|paint|illustrate)\b/i.test(normalized) && /\b(image|picture|photo|artwork|illustration|render|portrait|wallpaper|logo|icon|bezel|watch face|scene)\b/i.test(normalized);
+  const modify = /\b(edit|modify|change|alter|transform|retouch|remove|add|replace|restyle|improve)\b/i.test(normalized) && /\b(this image|attached image|attached photo|reference image|use (this|the) image|from this image|based on this image)\b/i.test(normalized);
+  return { create, modify, explicit:create || modify };
 }
 
 function isAida64Resolution(width: any, height: any) {
@@ -1413,59 +1427,49 @@ async function assertGeneratedImageDimensions(file: any, expectedWidth: number, 
   const buffer = Buffer.from(await response.arrayBuffer());
   const dims = readPngDimensions(buffer);
   if (!dims) throw new Error('AIDA64 output validation could not read PNG dimensions. Generation was not accepted as a verified 1024×600 panel.');
-  if (dims.width !== expectedWidth || dims.height !== expectedHeight) {
-    throw new Error(`AIDA64 GENERATION SIZE MISMATCH: expected ${expectedWidth}×${expectedHeight}, ComfyUI returned ${dims.width}×${dims.height}. The image was rejected.`);
-  }
+  if (dims.width !== expectedWidth || dims.height !== expectedHeight) throw new Error(`AIDA64 GENERATION SIZE MISMATCH: expected ${expectedWidth}×${expectedHeight}, ComfyUI returned ${dims.width}×${dims.height}. The image was rejected.`);
 }
 
 async function queueAiToolImageGeneration(prompt: string, attachment?: { localPath: string; name?: string; mime?: string }) {
   await workflowRegistry.reload();
+  const llmStatus:any = await localLlm.getStatus();
+  const engine = llmStatus.engine === 'qwen' ? 'qwen' : 'gemma';
+  // Phase 34 routing contract: Qwen 2.5-VL pairs with Juggernaut-XL v9;
+  // Gemma 3 pairs with FLUX. Reference edits use the matching reference workflow.
   const useReference = !!attachment;
-  const workflowId = useReference ? 'flux_image_reference' : 'flux_image';
+  const workflowId = engine === 'qwen'
+    ? (useReference ? 'sdxl_juggernaut_reference' : 'sdxl_juggernaut')
+    : (useReference ? 'flux_image_reference' : 'flux_image');
   const definition = workflowRegistry.get(workflowId);
-  if (!definition) throw new Error(`Required image workflow '${workflowId}' is not installed.`);
+  if (!definition) throw new Error(`Required image workflow '${workflowId}' is not installed for ${engine.toUpperCase()}.`);
   if (!definition.capabilities.includes('image-output')) throw new Error(`Workflow '${workflowId}' has no image output.`);
   if (!definition.bindings.some(b => b.key === 'prompt')) throw new Error(`Workflow '${workflowId}' has no prompt binding.`);
   if (useReference && !definition.bindings.some(b => b.key === 'input_image')) throw new Error(`Workflow '${workflowId}' cannot accept a reference image.`);
 
   const parameters: Record<string, any> = {
-    prompt: prompt.trim(),
-    width: 1024,
-    height: 600,
-    steps: 4,
-    sampler: 'euler',
-    scheduler: 'simple',
-    denoise: useReference ? 0.28 : 1,
-    seed: Math.floor(Math.random() * 4294967295),
-    ...(useReference ? { input_image: path.basename(attachment!.localPath) } : {})
+    prompt: prompt.trim(), width: engine === 'qwen' ? 1024 : 1024, height: engine === 'qwen' ? 1024 : 600,
+    steps: engine === 'qwen' ? 25 : 4, sampler: engine === 'qwen' ? 'dpmpp_2m_sde' : 'euler', scheduler: engine === 'qwen' ? 'karras' : 'simple',
+    denoise: useReference ? (engine === 'qwen' ? 0.45 : 0.28) : 1, seed: Math.floor(Math.random() * 4294967295),
+    ...(useReference ? { input_image: path.basename(attachment!.localPath) } : {}),
+    __generationAudit: { source:'phase-34-router', intent:useReference?'image-modification':'image-generation', engine, llmModel:llmStatus.modelName, visionProjector:llmStatus.mmprojPath ? path.basename(llmStatus.mmprojPath) : null, workflowId, generationModel:engine==='qwen'?'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors':'flux1-schnell-Q4_K_S.gguf' }
   };
   if (useReference) {
-    const root = path.resolve(COMFY_ROOT, 'input');
-    const candidate = path.resolve(attachment!.localPath);
+    const root = path.resolve(COMFY_ROOT, 'input'); const candidate = path.resolve(attachment!.localPath);
     if (!candidate.startsWith(root + path.sep)) throw new Error('Reference image is outside the ComfyUI input directory.');
-    const stat = await fs.stat(candidate);
-    if (!stat.isFile()) throw new Error('Reference image is not a file.');
+    const stat = await fs.stat(candidate); if (!stat.isFile()) throw new Error('Reference image is not a file.');
   }
   const rawWorkflow = applyBindings(definition.workflow, definition.bindings, parameters);
   const dimensionLockedWorkflow = enforceAida64WorkflowDimensions(rawWorkflow, parameters.width, parameters.height);
   const workflow = await adaptWorkflowForComfySession(dimensionLockedWorkflow);
-  const job = jobManager.create(workflowId, { ...parameters, __generationAudit: {
-    source: 'ai-tool-router', intent: 'image-generation', usedReference: useReference,
-    referenceImage: useReference ? path.basename(attachment!.localPath) : null,
-    prompt: prompt.trim(), workflowId
-  }});
+  const job = jobManager.create(workflowId, parameters);
   try {
-    const response = await fetch(`${COMFY_URL}/prompt`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: workflow, client_id: comfyWebSocket.clientId }), signal: AbortSignal.timeout(10000)
-    });
+    const response = await fetch(`${COMFY_URL}/prompt`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ prompt:workflow, client_id:comfyWebSocket.clientId }), signal:AbortSignal.timeout(10000) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.prompt_id) throw new Error(data?.error?.message || `ComfyUI HTTP ${response.status}`);
-    jobManager.update(job.id, { promptId: data.prompt_id, parameters: { ...job.parameters, __generationAudit: { ...job.parameters.__generationAudit, requestedWidth: parameters.width, requestedHeight: parameters.height, workflowWidth: workflow['9']?.inputs?.width, workflowHeight: workflow['9']?.inputs?.height, resolutionLocked: isAida64Resolution(parameters.width, parameters.height) } } });
-    return { jobId: job.id, promptId: data.prompt_id, workflowId, usedReference: useReference, width: parameters.width, height: parameters.height };
-  } catch (error: any) {
-    jobManager.update(job.id, { status: 'FAILED', error: error?.message || 'Unable to queue image generation', completedAt: new Date().toISOString() });
-    throw error;
+    jobManager.update(job.id, { promptId:data.prompt_id, parameters:{...job.parameters, __generationAudit:{...parameters.__generationAudit, requestedWidth:parameters.width, requestedHeight:parameters.height, workflowWidth:workflow['9']?.inputs?.width, workflowHeight:workflow['9']?.inputs?.height}} });
+    return { jobId:job.id, promptId:data.prompt_id, workflowId, usedReference:useReference, engine, llmModel:llmStatus.modelName, generationModel:parameters.__generationAudit.generationModel, width:parameters.width, height:parameters.height };
+  } catch(error:any) {
+    jobManager.update(job.id,{status:'FAILED',error:error?.message||'Unable to queue image generation',completedAt:new Date().toISOString()}); throw error;
   }
 }
 
@@ -1563,6 +1567,21 @@ app.post("/api/llm/chat", async (req, res) => {
     // documents need to reach the model intact.
     if (!nonSystem.some((m:any) => m.role === 'user')) {
       return res.status(400).json({ error: "A user message is required." });
+    }
+
+    const imageIntent = detectImageGenerationIntent(rawLatestUser);
+    if (imageIntent.explicit) {
+      const rawImage = Array.isArray(req.body?.attachments) ? req.body.attachments.find((a:any)=>a?.kind==='image' && typeof a.localPath==='string') : null;
+      let generationAttachment:any = rawImage;
+      if (generationAttachment) {
+        const root=path.resolve(LOCAL_AI_UPLOAD_ROOT); const candidate=path.resolve(String(generationAttachment.localPath));
+        if (!candidate.startsWith(root+path.sep)) throw new Error('Reference image is outside Gina local storage.');
+        const comfyInput=path.resolve(path.join(COMFY_ROOT,'input',path.basename(candidate)));
+        try { await fs.access(comfyInput); generationAttachment={...generationAttachment,localPath:comfyInput}; } catch { const buffer=await fs.readFile(candidate); await fs.writeFile(comfyInput,buffer); generationAttachment={...generationAttachment,localPath:comfyInput}; }
+      }
+      const result=await queueAiToolImageGeneration(rawLatestUser,generationAttachment?{localPath:String(generationAttachment.localPath),name:generationAttachment.name,mime:generationAttachment.mime}:undefined);
+      res.status(202).json({choices:[{message:{role:'assistant',content:`Generation started. Using ${result.llmModel} for routing and ${result.generationModel} for image generation. Job ${result.jobId}.`}}],generation:result});
+      return;
     }
 
     // Automatically ground local conversations with facts from the zero-VRAM RAG engine
@@ -3305,10 +3324,50 @@ app.post('/api/jobs/:id/cancel', async (req,res) => {
   const job=jobManager.get(req.params.id); if(!job)return res.status(404).json({ok:false,error:'Job not found'});
   try { await fetch(`${COMFY_URL}/interrupt`,{method:'POST',signal:AbortSignal.timeout(5000)}).catch(()=>null); await fetch(`${COMFY_URL}/queue`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clear:true}),signal:AbortSignal.timeout(3000)}).catch(()=>null); await fetch(`${COMFY_URL}/free`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({unload_models:true,free_memory:true}),signal:AbortSignal.timeout(5000)}).catch(()=>null); jobManager.update(job.id,{status:'CANCELLED',error:'Cancelled by user; ComfyUI interrupted and VRAM flush requested.',completedAt:new Date().toISOString()}); res.json({ok:true,job:jobManager.get(job.id),flushed:true}); } catch(e:any){jobManager.update(job.id,{status:'CANCELLED',error:e?.message||'Cancelled; cleanup incomplete',completedAt:new Date().toISOString()});res.json({ok:true,job:jobManager.get(job.id),flushed:false});}
 });
+async function reconcileComfyJobFromHistory(job: any): Promise<any> {
+  if (!job?.promptId || !['QUEUED', 'RUNNING'].includes(job.status)) return job;
+  try {
+    const response = await fetch(`${COMFY_URL}/history/${encodeURIComponent(job.promptId)}`, { signal: AbortSignal.timeout(5000) });
+    if (!response.ok) return job;
+    const history = await response.json() as Record<string, any>;
+    const record = history[job.promptId];
+    if (!record) return job;
+
+    const status = record.status || {};
+    const statusStr = String(status.status_str || status.status || '').toLowerCase();
+    const messages = Array.isArray(status.messages) ? status.messages : [];
+    const executionError = messages.find((m:any) => Array.isArray(m) && String(m[0]).toLowerCase() === 'execution_error');
+    if (executionError) {
+      const payload = executionError[1] || {};
+      const error = payload.exception_message || payload.exception_type || 'ComfyUI execution error';
+      return jobManager.update(job.id, { status:'FAILED', error, completedAt:new Date().toISOString() }) || job;
+    }
+
+    const outputs = record.outputs || {};
+    const hasOutput = Object.values(outputs).some((value:any) => {
+      if (!value || typeof value !== 'object') return false;
+      return Object.values(value).some((items:any) => Array.isArray(items) && items.some((item:any) => item?.filename));
+    });
+    const completed = status.completed === true || statusStr === 'success' || statusStr === 'completed';
+    if (completed && (hasOutput || status.completed === true)) {
+      return jobManager.update(job.id, { status:'COMPLETED', progress:100, currentNodeId:null, completedAt:job.completedAt || new Date().toISOString() }) || job;
+    }
+  } catch {
+    // ComfyUI history is an authoritative fallback, but a transient history failure
+    // must never make an otherwise running job fail.
+  }
+  return job;
+}
+
 app.get("/api/jobs", (_req, res) => res.json({ jobs: jobManager.list() }));
-app.get("/api/jobs/:id", (req, res) => {
-  const job = jobManager.get(req.params.id);
+app.get("/api/jobs/:id", async (req, res) => {
+  let job = jobManager.get(req.params.id);
   if (!job) return res.status(404).json({ error: "Job not found" });
+  // If the browser missed ComfyUI's final WebSocket packet, reconcile from
+  // /history before reporting RUNNING forever at 100%.
+  if (job.promptId && (job.status === 'RUNNING' || job.status === 'QUEUED')) {
+    job = await reconcileComfyJobFromHistory(job);
+  }
   res.json(job);
 });
 
@@ -3875,6 +3934,7 @@ app.get("/api/jobs/:id/output", async (req, res) => {
   }
   if (!job?.promptId) return res.status(404).json({ error: "Job has no ComfyUI prompt id" });
   try {
+    job = await reconcileComfyJobFromHistory(job);
     const response = await fetch(`${COMFY_URL}/history/${encodeURIComponent(job.promptId)}`, { signal: AbortSignal.timeout(5000) });
     if (!response.ok) return res.status(response.status).json({ error: `ComfyUI returned HTTP ${response.status}` });
     const history = await response.json() as Record<string, any>;

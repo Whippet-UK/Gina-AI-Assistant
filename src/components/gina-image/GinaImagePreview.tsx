@@ -116,7 +116,13 @@ export const GinaImagePreview: React.FC<GinaImagePreviewProps> = ({
           {job?.status === 'RUNNING' && (
             <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-[10px] font-mono font-bold text-amber-300 flex items-center gap-1.5">
               <Sparkles className="w-3 h-3 animate-spin text-amber-400" />
-              SAMPLING · {progressPercent}%
+              {progressPercent >= 100 ? 'FINALISING OUTPUT…' : `SAMPLING · ${progressPercent}%`}
+            </span>
+          )}
+
+          {job?.parameters?.__generationAudit && (
+            <span className="px-2 py-0.5 rounded bg-sky-500/10 border border-sky-500/30 text-[9px] font-mono text-sky-300" title="Exact local models selected for this generation">
+              {job.parameters.__generationAudit.engine?.toUpperCase()} → {job.parameters.__generationAudit.generationModel}
             </span>
           )}
 
@@ -127,6 +133,15 @@ export const GinaImagePreview: React.FC<GinaImagePreviewProps> = ({
           )}
         </div>
       </div>
+
+      {job?.parameters?.__generationAudit && (
+        <div className="px-4 py-2 border-b border-[#21262d] bg-[#0b111c] text-[9px] font-mono text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
+          <span>LLM: <b className="text-slate-200">{job.parameters.__generationAudit.llmModel || 'n/a'}</b></span>
+          {job.parameters.__generationAudit.visionProjector && <span>MMPROJ: <b className="text-slate-200">{job.parameters.__generationAudit.visionProjector}</b></span>}
+          <span>IMAGE: <b className="text-emerald-300">{job.parameters.__generationAudit.generationModel || 'n/a'}</b></span>
+          <span>WORKFLOW: <b className="text-slate-200">{job.parameters.__generationAudit.workflowId || job.workflowId}</b></span>
+        </div>
+      )}
 
       {/* Main Canvas Viewport */}
       <div className="relative flex-1 min-h-[380px] lg:min-h-[460px] flex items-center justify-center p-3 bg-[#05080f] overflow-hidden group">

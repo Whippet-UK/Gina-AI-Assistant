@@ -114,7 +114,7 @@ export const GenerationJobProvider: React.FC<{
     if (outputResolvedJobRef.current === jobId || outputLoadingJobRef.current === jobId) return;
     outputLoadingJobRef.current = jobId;
     setOutputLoading(true);
-    for (let attempt = 0; attempt < 15; attempt += 1) {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
       if (activeJobIdRef.current !== jobId) return;
       try {
         const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/output?attempt=${attempt + 1}&_=${Date.now()}`, { cache: 'no-store' });
@@ -133,7 +133,7 @@ export const GenerationJobProvider: React.FC<{
       } catch {
         // Keep polling; ComfyUI may expose history a moment after execution completes.
       }
-      await new Promise(resolve => setTimeout(resolve, 350));
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
     if (activeJobIdRef.current === jobId) setOutputLoading(false);
     if (outputLoadingJobRef.current === jobId) outputLoadingJobRef.current = null;
@@ -176,7 +176,8 @@ export const GenerationJobProvider: React.FC<{
         status: 'RUNNING',
         progress: data.max ? Math.min(100, Math.round((data.value / data.max) * 100)) : prev.progress,
         currentStep: data.value,
-        totalSteps: data.max
+        totalSteps: data.max,
+        step: data.max && data.value >= data.max ? 'Finalising output…' : prev.step
       } : prev);
     });
 

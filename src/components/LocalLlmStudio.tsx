@@ -20,6 +20,7 @@ interface LocalLlmStatus {
   recentLog: string[];
   multimodal: boolean;
   mmprojPath: string | null;
+  engine: 'qwen' | 'gemma';
 }
 
 interface ChatMessage {
@@ -283,15 +284,15 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     };
   }, []);
 
-  const runAction = async (action: 'start' | 'stop' | 'restart') => {
+  const runAction = async (action: 'start' | 'stop' | 'restart', engine?: 'qwen' | 'gemma') => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/llm/${action}`, { method: 'POST' });
+      const response = await fetch(engine ? '/api/llm/engine' : `/api/llm/${action}`, { method: 'POST', headers: engine ? {'Content-Type':'application/json'} : undefined, body: engine ? JSON.stringify({engine}) : undefined });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || `Failed to ${action} local LLM`);
       setStatus(data.status);
-      onAddLog('INFO', `Local Gemma ${action} request completed.`);
+      onAddLog('INFO', engine ? `Local AI engine switched to ${engine.toUpperCase()}.` : `Local ${status?.engine === 'qwen' ? 'Qwen' : 'Gemma'} ${action} request completed.`);
     } catch (err: any) {
       setError(err?.message || `Failed to ${action} local LLM`);
       onAddLog('WARN', `Local Gemma ${action} failed: ${err?.message || 'unknown error'}`);
@@ -641,6 +642,22 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
             <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">EST. SPEED</div><div className="text-emerald-400 font-bold mt-1">{status?.modelName?.toLowerCase().includes('qwen') ? '~35–45 t/s' : '~9–11 t/s'}</div></div>
           </div>
 
+          <div className="mt-4 p-3 rounded border border-sky-500/20 bg-sky-500/5">
+            <div className="text-[9px] font-bold uppercase tracking-widest text-sky-300 mb-2">Phase 34 Engine Selector</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => void runAction('restart','qwen')} disabled={loading || status?.engine === 'qwen'} className={`p-2 rounded border text-left ${status?.engine === 'qwen' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-700 bg-slate-900'}`}>
+                <div className="text-[10px] font-bold text-slate-100">Qwen 2.5-VL 7B</div>
+                <div className="text-[8px] text-slate-500 mt-1">Q4_K_M + mmproj-F16 · vision</div>
+                <div className="text-[8px] text-emerald-400 mt-1">→ Juggernaut-XL v9</div>
+              </button>
+              <button onClick={() => void runAction('restart','gemma')} disabled={loading || status?.engine === 'gemma'} className={`p-2 rounded border text-left ${status?.engine === 'gemma' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-700 bg-slate-900'}`}>
+                <div className="text-[10px] font-bold text-slate-100">Gemma 3 12B</div>
+                <div className="text-[8px] text-slate-500 mt-1">Q4_K_M · instruction</div>
+                <div className="text-[8px] text-emerald-400 mt-1">→ FLUX.1-Schnell</div>
+              </button>
+            </div>
+          </div>
+
           <div className="mt-4 p-3 rounded border border-amber-500/20 bg-amber-500/5 text-[10px] text-amber-200/80 leading-relaxed">
             <strong className="text-amber-300">8 GB VRAM rule:</strong> starting the local LLM tells ComfyUI to release cached models first. Avoid running heavy image/video generation at the same time as the local LLM.
           </div>
@@ -787,7 +804,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
               {loading ? <button onClick={() => void cancelChat()} className="self-end px-4 py-2 rounded border border-rose-500/50 bg-rose-500/10 text-rose-300 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"><Square className="w-3 h-3" /> Stop & Flush</button> : <button onClick={() => void sendMessage()} disabled={!status?.ready || (!input.trim() && !attachedFiles.length)} className="self-end px-4 py-2 rounded bg-emerald-500 text-slate-950 text-[10px] font-bold uppercase tracking-wider disabled:opacity-30">Send</button>}
             </div>
           </div>
-          <div className="mt-2 text-[8px] font-mono text-slate-700">Local AI attachments stay on this machine: text/code/config ≤2 MB, images ≤12 MB, ZIP archives ≤25 MB · max 5 per turn. ZIP text is extracted locally. {status?.multimodal ? <span className="text-emerald-500">Vision attachments are enabled.</span> : <span>Image uploads are stored locally; add a Gemma mmproj to enable pixel vision.</span>}</div>
+          <div className="mt-2 text-[8px] font-mono text-slate-700">Local AI attachments stay on this machine: text/code/config ≤2 MB, images ≤12 MB, ZIP archives ≤25 MB · max 5 per turn. ZIP text is extracted locally. {status?.multimodal ? <span className="text-emerald-500">Vision attachments are enabled.</span> : <span>Image uploads are stored locally; select Qwen 2.5-VL with its mmproj-F16 projector to enable pixel vision.</span>}</div>
           {(voiceAvailable || browserVoiceAvailable) && <div className="mt-2 flex flex-wrap items-center gap-2 text-[9px] font-mono text-slate-600"><Volume2 className="w-3 h-3" /> SPEECH RATE <input aria-label="Speech rate" type="range" min="-5" max="5" value={voiceRate} onChange={e=>setVoiceRate(Number(e.target.value))} /><span>{voiceRate > 0 ? '+' : ''}{voiceRate}</span><button onClick={testVoice} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200">TEST</button>{speaking && <span className="text-emerald-400 animate-pulse">SPEAKING</span>}</div>}
         </div>
       </div>

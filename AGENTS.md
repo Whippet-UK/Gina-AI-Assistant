@@ -65,7 +65,7 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 ## 1. Project Overview & URLs
 
 - **App Name**: Gina AI Factory — Local Creator UI
-- **Version**: 1.18.0
+- **Version**: 1.18.2
 - **Local Dashboard URL**: `http://127.0.0.1:3000/` (Express server listens on `0.0.0.0:3000`)
 - **Local ComfyUI Backend URL**: `http://127.0.0.1:8188/`
 
@@ -121,3 +121,49 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 - **Agent startup context**: Gina must load `AGENTS.md`, `CHANGELOG.md`, `README.md`, `src/components/MilestoneChecklist.tsx`, `src/components/AppFeaturesGuide.tsx`, `src/components/LocalCapabilityPanel.tsx`, `package.json`, `metadata.json`, `/docs/INDEX.md`, `/docs/setup/LOCAL_LLM_SETUP.md`, `/docs/setup/LOCAL_AGENT_SETUP.md`, workflow inventory, persistent `.gina\agent-memory.json`, and a live hardware/model/ComfyUI/LLM capability snapshot before autonomous tasks.
 - **Agent memory**: Persistent local memory is stored at `C:\Gina_AI\.gina\agent-memory.json`; it is local-only and excluded from source control.
 - **Agent tools**: `inspect_system`, `inspect_capabilities`, `inspect_project_context`, `read_project_bundle`, `list_directory`, `search_files`, `knowledge_search`, `read_file`, `write_file`, `execute_command`, `git_status`, `git_diff`, `git_log`, `remember`, `recall_memory`, `refresh_context`, `comfy_clear_cache`, `llm_start`, `llm_stop`, `llm_restart`, and `build_aida64_template` are available when full access is enabled.
+
+### Log Entry # Phase 36 — Create Studio completion finalisation
+- **Target File**: `/server.ts`
+- **Exact Code Snippet**:
+  ```typescript
+  async function reconcileComfyJobFromHistory(job: any): Promise<any> { ... }
+  app.get("/api/jobs/:id", async (req, res) => { ... job = await reconcileComfyJobFromHistory(job); ... });
+  ```
+- **Why**: A missed ComfyUI WebSocket completion packet could leave Create Studio at 25/25 (100%) with the job still RUNNING. The server now reconciles active jobs against ComfyUI `/history` before reporting state and while resolving output.
+
+- **Target File**: `/src/context/GenerationJobContext.tsx`
+- **Exact Code Snippet**:
+  ```typescript
+  for (let attempt = 0; attempt < 30; attempt += 1) { ... setTimeout(resolve, 500) ... }
+  step: data.max && data.value >= data.max ? 'Finalising output…' : prev.step
+  ```
+- **Why**: Give completed ComfyUI jobs a longer output-finalisation window and distinguish 100% sampling from final output retrieval.
+
+- **Target File**: `/src/components/gina-image/GinaImagePreview.tsx`
+- **Exact Code Snippet**:
+  ```typescript
+  {progressPercent >= 100 ? 'FINALISING OUTPUT…' : `SAMPLING · ${progressPercent}%`}
+  ```
+- **Why**: Prevent the preview from falsely implying sampling is still active after the final sampling step has completed.
+
+### Log Entry # Phase 36 — v1.18.2 Create Studio completion finalisation save point
+- **Target File**: `/src/version.ts`
+- **Exact Code Snippet**:
+  ```typescript
+  export const APP_VERSION = '1.18.2';
+  export const ACTIVE_SAVE_POINT_ID = 'RESTORE_V1.18.2_CREATE_STUDIO_FINALISATION';
+  export const ACTIVE_LIFECYCLE_PHASE = 36;
+  export const ACTIVE_LIFECYCLE_NAME = 'PHASE 36 — CREATE STUDIO FINALISATION & PERSISTENT EDIT QUEUE';
+  ```
+- **Why**: Synchronize the active restore point and release version for the Create Studio completion fix.
+
+- **Target File**: `/src/components/MilestoneChecklist.tsx`
+- **Exact Code Snippet**:
+  ```typescript
+  { id: 'RESTORE_V1.18.2_CREATE_STUDIO_FINALISATION', label: 'Create Studio Completion Finalisation', description: 'Authoritative ComfyUI history reconciliation, resilient final output retrieval, and 100% finalisation state handling', timestamp: '2026-09-06 23:15', status: 'ACTIVE' }
+  ```
+- **Why**: Establish the new active Phase 36 restore point.
+
+- **Target Files**: `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`
+- **Exact Change**: synchronized release/version references to `1.18.2` and documented the Create Studio completion/finalisation fix.
+- **Why**: Maintain the project's mandatory version synchronization and documentation contract.
