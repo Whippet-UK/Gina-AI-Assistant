@@ -18,7 +18,7 @@ LOG:
 [INFO] 0 models unloaded.
 [INFO] Unloaded partially: 159.56 MB freed, 0.00 MB remains loaded, 13.50 MB buffer reserved, lowvram patches: 0
 [INFO] Prompt executed in 559.26 seconds
+2. Create Studio: after generating an image the image unloads from the preview window and so i no longer get the edit options (keep photo, subtle prompt ect.)
 ## Completed Requests
-## Completed Requests
-2. Create Studio: after generating an image the image unloads it from the preview and so i longer get the edit options (keep photo, subtle prompt ect.)
+
 <!-- Move completed requests here with the completion date and affected files. -->
