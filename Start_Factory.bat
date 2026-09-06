@@ -59,7 +59,7 @@ if not exist "%GINA_ROOT%\node_modules\jszip\package.json" (
 echo [1/4] Starting ComfyUI (only if port 8188 is free)...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$c=Get-NetTCPConnection -LocalPort 8188 -State Listen -ErrorAction SilentlyContinue; if($c){exit 0}else{exit 1}"
 if errorlevel 1 (
-  start "ComfyUI - Gina Backend" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && python ComfyUI_windows_portable\ComfyUI\main.py --lowvram --fp8_e4m3fn-text-enc"
+  start "ComfyUI - Gina Backend" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && python ComfyUI_windows_portable\ComfyUI\main.py --lowvram --fp8_e4m3fn-text-enc --preview-method auto"
 ) else (
   echo    ComfyUI is already running; reusing it.
 )

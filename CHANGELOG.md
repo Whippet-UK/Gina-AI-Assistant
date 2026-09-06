@@ -1,3 +1,32 @@
+# v1.17.89 (Update) — Real-Time Generation Preview & Fooocus Sampling Stage
+
+- **Summary**: Resolved the issue where the generation preview area showed a blank screen during generation. Enabled ComfyUI binary preview frame extraction over WebSockets in the backend, enabled SSE preview event streaming to the frontend context, and styled `GinaImagePreview` to render intermediate latent frames live with Fooocus's active amber/orange glowing border and dynamic step progression. Also updated `Start_Factory.bat` to launch ComfyUI with `--preview-method auto`.
+- **Target File Paths**:
+  - `/Start_Factory.bat`: Added `--preview-method auto` to the ComfyUI launch command so ComfyUI actively generates and transmits intermediate latent previews over WebSocket.
+  - `/server/comfy/ComfyWebSocket.ts`: Implemented `handleBinaryMessage` to unpack ComfyUI's 8-byte binary preview header (event type 1 = PREVIEW_IMAGE), decode image bytes (JPEG/PNG) to Base64 data URLs, update the active job's `preview` field, and broadcast `preview` events.
+  - `/server/jobs/JobManager.ts`: Added optional `preview?: string` field to `GinaJob`.
+  - `/src/context/GenerationJobContext.tsx`: Added `preview?: string` to frontend `GinaJob` interface and added an SSE listener for `preview` events to update active job preview state in real-time.
+  - `/src/components/gina-image/GinaImagePreview.tsx`: Rendered live preview frames inside the main viewport with a pulsing orange/amber active border (`border-2 border-[#f97316]`), live step watermark, Fooocus progress bar, and dynamic latent denoiser stage.
+- **Key Code Snippet (`/server/comfy/ComfyWebSocket.ts`)**:
+```ts
+private handleBinaryMessage(data: any) {
+  let buffer: Buffer | null = Buffer.isBuffer(data) ? data : data instanceof ArrayBuffer ? Buffer.from(data) : ArrayBuffer.isView(data) ? Buffer.from(data.buffer, data.byteOffset, data.byteLength) : null;
+  if (!buffer || buffer.length < 8) return;
+  const eventType = buffer.readUInt32BE(0);
+  const imageType = buffer.readUInt32BE(4);
+  if (eventType === 1 || eventType === 2) {
+    const imageBytes = buffer.subarray(8);
+    const mime = imageType === 2 || (imageBytes[0] === 0x89 && imageBytes[1] === 0x50) ? 'image/png' : 'image/jpeg';
+    const previewDataUrl = `data:${mime};base64,${imageBytes.toString('base64')}`;
+    const runningJob = this.jobs.list().find(j => j.status === 'RUNNING');
+    if (runningJob) {
+      this.jobs.update(runningJob.id, { preview: previewDataUrl });
+      this.jobs.event(runningJob.id, 'preview', { preview: previewDataUrl, step: runningJob.currentStep, totalSteps: runningJob.totalSteps });
+    }
+  }
+}
+```
+
 # v1.17.89 (Update) — 1:1 Fooocus Layout Alignment for Gina Image Studio
 
 - **Summary**: Realized an exact 1:1 structural copy of Fooocus (https://github.com/lllyasviel/Fooocus) tailored natively for Gina AI Factory. The layout places the unobstructed output canvas (`GinaImagePreview`) prominently in the left column above the prompt area, nests the 4-tab `GinaImageInput` drawer (`Upscale or Variation`, `Image Prompt`, `Inpaint or Outpaint`, `Describe`) directly above the prompt box when `[x] Input Image` is checked, and renders the 4-tab `GinaImageSettings` (`Setting`, `Style`, `Model`, `Advanced`) in the collapsible right column triggered by `[x] Advanced` (expanding the preview to full width when closed).

@@ -35,10 +35,62 @@ export class ComfyWebSocket extends EventEmitter {
     this.socket.addEventListener('error', (event) => {
       this.emit('comfy_error', event);
     });
-    this.socket.addEventListener('message', (event) => this.handleMessage(String(event.data)));
+    this.socket.addEventListener('message', (event) => {
+      const data = event.data;
+      if (typeof data === 'string') {
+        this.handleMessage(data);
+      } else {
+        this.handleBinaryMessage(data);
+      }
+    });
   }
 
   private scheduleReconnect() { if (!this.reconnectTimer) this.reconnectTimer = setTimeout(() => { this.reconnectTimer = undefined; this.connect(); }, 2000); }
+
+  private handleBinaryMessage(data: any) {
+    try {
+      let buffer: Buffer | null = null;
+      if (Buffer.isBuffer(data)) {
+        buffer = data;
+      } else if (data instanceof ArrayBuffer) {
+        buffer = Buffer.from(data);
+      } else if (ArrayBuffer.isView(data)) {
+        buffer = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+      }
+
+      if (!buffer || buffer.length < 8) return;
+
+      // ComfyUI binary preview frame format:
+      // bytes 0..3: event type (1 = PREVIEW_IMAGE, 2 = UNENCODED)
+      // bytes 4..7: image format type (1 = JPEG, 2 = PNG)
+      // bytes 8+: image payload
+      const eventType = buffer.readUInt32BE(0);
+      const imageType = buffer.readUInt32BE(4);
+
+      if (eventType === 1 || eventType === 2) {
+        const imageBytes = buffer.subarray(8);
+        if (imageBytes.length > 0) {
+          const isPng = imageType === 2 || (imageBytes[0] === 0x89 && imageBytes[1] === 0x50);
+          const mime = isPng ? 'image/png' : 'image/jpeg';
+          const base64 = imageBytes.toString('base64');
+          const previewDataUrl = `data:${mime};base64,${base64}`;
+
+          // Find the active running job
+          const runningJob = this.jobs.list().find(j => j.status === 'RUNNING');
+          if (runningJob) {
+            this.jobs.update(runningJob.id, { preview: previewDataUrl });
+            this.jobs.event(runningJob.id, 'preview', {
+              preview: previewDataUrl,
+              step: runningJob.currentStep,
+              totalSteps: runningJob.totalSteps
+            });
+          }
+        }
+      }
+    } catch (err) {
+      // Non-critical; ignore corrupted intermediate preview frame
+    }
+  }
 
   private handleMessage(raw: string) {
     let message: any;

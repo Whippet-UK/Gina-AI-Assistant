@@ -19,6 +19,7 @@ export interface GinaJob {
   error?: string;
   outputs: any[];
   parameters: Record<string, any>;
+  preview?: string;
 }
 
 export interface QueuedJobRequest {
@@ -179,6 +180,18 @@ export const GenerationJobProvider: React.FC<{
       if (activeJobIdRef.current !== jobId) return;
       const data = JSON.parse((event as MessageEvent).data);
       setJob(prev => prev && prev.id === jobId ? { ...prev, currentNodeId: data.node } : prev);
+    });
+
+    source.addEventListener('preview', (event) => {
+      if (activeJobIdRef.current !== jobId) return;
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        if (data?.preview) {
+          setJob(prev => prev && prev.id === jobId ? { ...prev, preview: data.preview } : prev);
+        }
+      } catch {
+        // Ignore unparseable preview frame
+      }
     });
 
     source.onerror = () => {
