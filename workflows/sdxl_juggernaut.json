@@ -37,9 +37,9 @@
     "class_type": "KSampler",
     "inputs": {
       "seed": 123456789,
-      "steps": 25,
+      "steps": 20,
       "cfg": 6.0,
-      "sampler_name": "dpmpp_2m_sde",
+      "sampler_name": "dpmpp_2m",
       "scheduler": "karras",
       "denoise": 1.0,
       "model": [

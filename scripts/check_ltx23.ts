@@ -124,7 +124,7 @@ export async function runLtxDiagnostic(): Promise<LtxDiagnosticResult> {
 }
 
 // Allow direct CLI execution: npx tsx scripts/check_ltx23.ts
-if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('check_ltx23.ts')) {
+if (process.argv[1]?.endsWith('check_ltx23.ts') || process.argv[1]?.endsWith('check_ltx23.js')) {
   runLtxDiagnostic().then((res) => {
     console.log('====================================================');
     console.log(' GINA AI FACTORY — LTX-2.3 & COMFYUI DIAGNOSTIC');

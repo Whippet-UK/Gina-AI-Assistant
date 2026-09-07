@@ -1462,8 +1462,8 @@ async function queueAiToolImageGeneration(prompt: string, attachment?: { localPa
 
   const parameters: Record<string, any> = {
     prompt: prompt.trim(), width: engine === 'qwen' ? 1024 : 1024, height: engine === 'qwen' ? 1024 : 600,
-    steps: engine === 'qwen' ? 25 : 4, sampler: engine === 'qwen' ? 'dpmpp_2m_sde' : 'euler', scheduler: engine === 'qwen' ? 'karras' : 'simple',
-    denoise: useReference ? (engine === 'qwen' ? 0.45 : 0.28) : 1, seed: Math.floor(Math.random() * 4294967295),
+    steps: engine === 'qwen' ? 20 : 4, sampler: engine === 'qwen' ? 'dpmpp_2m' : 'euler', scheduler: engine === 'qwen' ? 'karras' : 'simple',
+    denoise: useReference ? 0.70 : 1, seed: Math.floor(Math.random() * 4294967295),
     ...(useReference ? { input_image: path.basename(attachment!.localPath) } : {}),
     __generationAudit: { source:'phase-34-router', intent:useReference?'image-modification':'image-generation', engine, llmModel:llmStatus.modelName, visionProjector:llmStatus.mmprojPath ? path.basename(llmStatus.mmprojPath) : null, workflowId, generationModel:engine==='qwen'?'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors':'flux1-schnell-Q4_K_S.gguf' }
   };
@@ -3362,8 +3362,8 @@ async function reconcileComfyJobFromHistory(job: any): Promise<any> {
       if (!value || typeof value !== 'object') return false;
       return Object.values(value).some((items:any) => Array.isArray(items) && items.some((item:any) => item?.filename));
     });
-    const completed = status.completed === true || statusStr === 'success' || statusStr === 'completed';
-    if (completed && (hasOutput || status.completed === true)) {
+    const completed = status.completed === true || statusStr === 'success' || statusStr === 'completed' || hasOutput || Boolean(record.outputs);
+    if (completed) {
       return jobManager.update(job.id, { status:'COMPLETED', progress:100, currentNodeId:null, completedAt:job.completedAt || new Date().toISOString() }) || job;
     }
   } catch {
@@ -3810,40 +3810,70 @@ app.post('/api/comfy/upload-image', express.raw({ type: '*/*', limit: '12mb' }),
 app.post('/api/comfy/promote-output', express.json({ limit: '64kb' }), async (req, res) => {
   try {
     const jobId = String(req.body?.jobId || '');
+    const imageUrl = String(req.body?.imageUrl || '');
     const outputIndex = Number.isInteger(req.body?.outputIndex) ? Number(req.body.outputIndex) : 0;
-    const job = jobManager.get(jobId);
-    if (!job?.promptId) return res.status(404).json({ ok: false, error: 'Generation job has no ComfyUI prompt id.' });
 
-    const historyResponse = await fetch(`${COMFY_URL}/history/${encodeURIComponent(job.promptId)}`, { signal: AbortSignal.timeout(8000) });
-    if (!historyResponse.ok) return res.status(historyResponse.status).json({ ok: false, error: `ComfyUI returned HTTP ${historyResponse.status}.` });
-    const history = await historyResponse.json() as Record<string, any>;
-    const record = history[job.promptId];
-    if (!record) return res.status(404).json({ ok: false, error: 'ComfyUI job history is not available.' });
+    let buffer: Buffer | null = null;
+    let originalName = 'promoted-image.png';
+    let viewUrl = '';
 
-    const candidates: Array<{ filename: string; subfolder?: string; type?: string; kind: string }> = [];
-    for (const nodeOutput of Object.values(record.outputs || {}) as any[]) {
-      for (const [kind, value] of Object.entries(nodeOutput || {}) as any) {
-        if (!Array.isArray(value)) continue;
-        for (const file of value) {
-          if (file && typeof file === 'object' && file.filename && /image/i.test(kind || 'image')) {
-            candidates.push({ filename: String(file.filename), subfolder: file.subfolder || '', type: file.type || 'output', kind });
+    if (imageUrl) {
+      let fetchUrl = imageUrl;
+      if (fetchUrl.startsWith('/')) {
+        fetchUrl = `${req.protocol}://${req.get('host')}${fetchUrl}`;
+      }
+      try {
+        const imgRes = await fetch(fetchUrl, { signal: AbortSignal.timeout(10000) });
+        if (imgRes.ok) {
+          buffer = Buffer.from(await imgRes.arrayBuffer());
+          viewUrl = imageUrl;
+          try {
+            const parsed = new URL(imageUrl, 'http://localhost');
+            const fn = parsed.searchParams.get('filename');
+            if (fn) originalName = fn;
+          } catch {}
+        }
+      } catch (fetchErr: any) {
+        console.warn(`[promote-output] Could not fetch directly from imageUrl: ${fetchErr?.message}`);
+      }
+    }
+
+    if (!buffer) {
+      const job = jobManager.get(jobId);
+      if (!job?.promptId) return res.status(404).json({ ok: false, error: 'Generation job has no ComfyUI prompt id or valid image url.' });
+
+      const historyResponse = await fetch(`${COMFY_URL}/history/${encodeURIComponent(job.promptId)}`, { signal: AbortSignal.timeout(8000) });
+      if (!historyResponse.ok) return res.status(historyResponse.status).json({ ok: false, error: `ComfyUI returned HTTP ${historyResponse.status}.` });
+      const history = await historyResponse.json() as Record<string, any>;
+      const record = history[job.promptId];
+      if (!record) return res.status(404).json({ ok: false, error: 'ComfyUI job history is not available.' });
+
+      const candidates: Array<{ filename: string; subfolder?: string; type?: string; kind: string }> = [];
+      for (const nodeOutput of Object.values(record.outputs || {}) as any[]) {
+        for (const [kind, value] of Object.entries(nodeOutput || {}) as any) {
+          if (!Array.isArray(value)) continue;
+          for (const file of value) {
+            if (file && typeof file === 'object' && file.filename && /image/i.test(kind || 'image')) {
+              candidates.push({ filename: String(file.filename), subfolder: file.subfolder || '', type: file.type || 'output', kind });
+            }
           }
         }
       }
-    }
-    const chosen = candidates[outputIndex] || candidates[0];
-    if (!chosen) return res.status(404).json({ ok: false, error: 'No image output was found for this generation.' });
+      const chosen = candidates[outputIndex] || candidates[0];
+      if (!chosen) return res.status(404).json({ ok: false, error: 'No image output was found for this generation.' });
 
-    const viewUrl = `${COMFY_URL}/view?${new URLSearchParams({ filename: chosen.filename, subfolder: chosen.subfolder || '', type: chosen.type || 'output' }).toString()}`;
-    const imageResponse = await fetch(viewUrl, { signal: AbortSignal.timeout(10000) });
-    if (!imageResponse.ok) return res.status(imageResponse.status).json({ ok: false, error: `Unable to read generated image from ComfyUI (HTTP ${imageResponse.status}).` });
-    const buffer = Buffer.from(await imageResponse.arrayBuffer());
-    if (!buffer.length) return res.status(400).json({ ok: false, error: 'Generated image is empty.' });
+      viewUrl = `${COMFY_URL}/view?${new URLSearchParams({ filename: chosen.filename, subfolder: chosen.subfolder || '', type: chosen.type || 'output' }).toString()}`;
+      const imageResponse = await fetch(viewUrl, { signal: AbortSignal.timeout(10000) });
+      if (!imageResponse.ok) return res.status(imageResponse.status).json({ ok: false, error: `Unable to read generated image from ComfyUI (HTTP ${imageResponse.status}).` });
+      buffer = Buffer.from(await imageResponse.arrayBuffer());
+      originalName = chosen.filename;
+    }
+
+    if (!buffer || !buffer.length) return res.status(400).json({ ok: false, error: 'Generated image is empty.' });
     if (buffer.length > COMFY_IMAGE_UPLOAD_MAX_BYTES) return res.status(413).json({ ok: false, error: 'Generated image exceeds the 12 MB local reference limit.' });
 
-    const contentType = String(imageResponse.headers.get('content-type') || 'image/png').toLowerCase();
-    const ext = contentType.includes('jpeg') || /\.jpe?g$/i.test(chosen.filename) ? '.jpg' : '.png';
-    const filename = safeComfyInputFilename(chosen.filename, ext);
+    const ext = originalName.toLowerCase().endsWith('.jpg') || originalName.toLowerCase().endsWith('.jpeg') ? '.jpg' : '.png';
+    const filename = safeComfyInputFilename(originalName, ext);
     const inputDir = path.join(COMFY_ROOT, 'input');
     await fs.mkdir(inputDir, { recursive: true });
     const target = path.join(inputDir, filename);
@@ -3852,7 +3882,7 @@ app.post('/api/comfy/promote-output', express.json({ limit: '64kb' }), async (re
     res.json({
       ok: true,
       filename,
-      originalName: chosen.filename,
+      originalName,
       bytes: buffer.length,
       previewUrl: viewUrl,
       localOnly: true,
@@ -3938,7 +3968,7 @@ app.post("/api/audit", async (_req, res) => {
 });
 
 app.get("/api/jobs/:id/output", async (req, res) => {
-  const job = jobManager.get(req.params.id);
+  let job = jobManager.get(req.params.id);
   if (!job) return res.status(404).json({ error: "Job not found" });
   // Sequential Story and other local post-processing jobs own their final
   // media files rather than a single ComfyUI prompt id. Return those outputs

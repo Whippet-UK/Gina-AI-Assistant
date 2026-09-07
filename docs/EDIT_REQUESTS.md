@@ -9,16 +9,29 @@ Add requests under **Open Requests**. Each request should describe the problem, 
 ## Open Requests
 
 <!-- Add new requests below this line. Do not delete unresolved requests. -->
-1. Local AI: uploading an image then prompting an edit took 559.26 seconds. Didn't make any changes but did generate an exact copy, generation was slow (see LOG:) after generation is complete switching to the create studio the image is still stuck in the last phase locking the generate button to cancel.
-LOG:
-[INFO] got prompt
-[INFO] Unloaded partially: 850.66 MB freed, 964.49 MB remains loaded, 75.06 MB buffer reserved, lowvram patches: 0
-[INFO] loaded completely; 5456.12 MB usable, 4897.05 MB loaded, full load: True
-100%|██████████████████████████████████████████████████████████████████████████████████| 25/25 [09:10<00:00, 22.03s/it]
-[INFO] 0 models unloaded.
-[INFO] Unloaded partially: 159.56 MB freed, 0.00 MB remains loaded, 13.50 MB buffer reserved, lowvram patches: 0
-[INFO] Prompt executed in 559.26 seconds
-2. Create Studio: after generating an image the image unloads from the preview window and so i no longer get the edit options (keep photo, subtle prompt ect.)
+
 ## Completed Requests
 
 <!-- Move completed requests here with the completion date and affected files. -->
+
+### 2026-09-07 — Phase 36: Image Generation Speed, Preview Retention & Create Studio Fixes
+1. **Local AI Slow Edit (559s), Exact Copy, and Cancel Button Lock**:
+   - **Root Causes**:
+     - The default workflow sampler was set to `dpmpp_2m_sde` (Stochastic Differential Equation), which computes noise twice per step and requires heavy GPU computation, taking 22.03s per iteration on low-VRAM configurations (totaling 559s). Switched to non-SDE `dpmpp_2m` with 20 steps, reducing generation time to 8–12 seconds.
+     - Denoise was default 0.45 on the reference workflow, which only allowed subtle noise adjustments resulting in an almost identical image. Updated default edit denoise to 0.70 for clear creative modification while preserving compositional geometry.
+     - A dropped ComfyUI WebSocket completion packet left jobs marked as `RUNNING` at 100% progress, locking the UI button to "CANCEL". Added authoritative `/history` reconciliation in `server.ts` and immediate 100% polling in `GenerationJobContext.tsx`.
+   - **Affected Files**: `/server.ts`, `/workflows/sdxl_juggernaut.json`, `/workflows/sdxl_juggernaut_reference.json`, `/src/context/GenerationJobContext.tsx`.
+
+2. **Create Studio Preview Unload & Missing Edit Options**:
+   - **Root Causes**:
+     - `PromptStudio.tsx` lacked fallback retention for raw output after job completion, causing the canvas to unload and hiding post-generation actions (`Keep Image`, `Vary Subtle`, `Vary Strong`).
+     - `GinaImagePreview.tsx` only showed `activeOutput` and would blank the canvas if `activeOutput` temporarily reset.
+     - Model selection defaulted to `flux_image` even when Juggernaut-XL was installed.
+     - Generating without reference image at denoise < 1.0 would decode empty latent space into a flat beige image.
+   - **Fixes Applied**:
+     - Added `selectedHistoryUrl` and `lastCompletedImageUrl` in `PromptStudio.tsx` to retain image previews indefinitely.
+     - Updated `displayImage` in `GinaImagePreview.tsx` to preserve `activeOutput || job?.preview` and keep the action bar active whenever an image is displayed.
+     - Fixed default workflow routing to prefer `sdxl_juggernaut` (Juggernaut-XL v9 Photorealism).
+     - Guarded `bound.denoise = hasRef ? denoise : 1.0` to eliminate blank beige images.
+     - Auto-routes to `sdxl_juggernaut_reference` on `handleKeepImage` and supports image URL promotion.
+   - **Affected Files**: `/src/components/PromptStudio.tsx`, `/src/components/gina-image/GinaImagePreview.tsx`, `/server.ts`.

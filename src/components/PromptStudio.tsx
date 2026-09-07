@@ -89,12 +89,16 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
   const initialWorkflowId =
     projectState.aiStudio.workflowId && projectState.aiStudio.workflowId !== 'ltx_video'
       ? projectState.aiStudio.workflowId
-      : 'flux_image';
+      : 'sdxl_juggernaut';
   const [selectedWorkflow, setSelectedWorkflow] = useState(initialWorkflowId);
   const [workflow, setWorkflow] = useState<WorkflowSummary | null>(null);
   const [controls, setControls] = useState<Control[]>([]);
   const [parameters, setParameters] = useState<Record<string, any>>({});
   const [capabilities, setCapabilities] = useState<CapabilityData | null>(null);
+
+  // Persistent preview & history selection state (prevents canvas from unloading)
+  const [selectedHistoryUrl, setSelectedHistoryUrl] = useState<string | null>(null);
+  const [lastCompletedImageUrl, setLastCompletedImageUrl] = useState<string | null>(null);
 
   // Job & Output
   const { job, output, outputLoading, submitting: loading, startJob, cancelJob } = useGenerationJob();
@@ -191,10 +195,11 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
       const data = await r.json();
       const list: WorkflowSummary[] = data.workflows || [];
       setWorkflows(list);
+      const juggernautWf = list.find((w) => w.id === 'sdxl_juggernaut');
       const fluxWf = list.find((w) => w.id === 'flux_image');
-      const imageWf = list.find((w) => w.id.includes('flux') || w.id.includes('image') || !w.id.includes('video'));
-      if (!selectedWorkflow || selectedWorkflow === 'ltx_video') {
-        setSelectedWorkflow(fluxWf?.id || imageWf?.id || list[0]?.id || 'flux_image');
+      const imageWf = list.find((w) => w.id.includes('juggernaut') || w.id.includes('flux') || w.id.includes('image') || !w.id.includes('video'));
+      if (!selectedWorkflow || selectedWorkflow === 'ltx_video' || selectedWorkflow === 'flux_image') {
+        setSelectedWorkflow(juggernautWf?.id || fluxWf?.id || imageWf?.id || list[0]?.id || 'sdxl_juggernaut');
       }
     } catch (e: any) {
       onAddLog('WARN', `Workflow registry unavailable: ${e.message}`);
@@ -298,27 +303,41 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     workflowModelNode?.inputs?.model_name ||
     baseModel;
   const workflowModelLabel =
-    workflowModelValue === 'flux1-schnell-Q4_K_S.gguf'
-      ? 'FLUX.1-Schnell GGUF Q4_K_S'
-      : /juggernaut/i.test(String(workflowModelValue))
+    /juggernaut/i.test(String(workflowModelValue))
       ? 'Juggernaut-XL v9 Photorealism'
+      : workflowModelValue === 'flux1-schnell-Q4_K_S.gguf'
+      ? 'FLUX.1-Schnell GGUF Q4_K_S'
       : String(workflowModelValue);
 
   // Active Output Detection
   const rawOutput = output?.outputs?.[0]?.url;
   const isImageJob =
     !job?.workflowId ||
-    job?.workflowId === 'flux_image' ||
-    job?.workflowId === 'sdxl_juggernaut' ||
-    output?.job?.workflowId === 'flux_image' ||
-    output?.job?.workflowId === 'sdxl_juggernaut';
+    job?.workflowId.includes('image') ||
+    job?.workflowId.includes('juggernaut') ||
+    job?.workflowId.includes('flux') ||
+    job?.workflowId !== 'ltx_video';
   const isMediaImage =
     rawOutput &&
     (isImageJob ||
       rawOutput.toLowerCase().includes('.png') ||
       rawOutput.toLowerCase().includes('.jpg') ||
-      rawOutput.toLowerCase().includes('.jpeg'));
-  const activeOutput = isMediaImage ? rawOutput : undefined;
+      rawOutput.toLowerCase().includes('.jpeg') ||
+      rawOutput.toLowerCase().includes('.webp'));
+
+  useEffect(() => {
+    if (isMediaImage && rawOutput) {
+      setLastCompletedImageUrl(rawOutput);
+    } else if (job?.status === 'COMPLETED' && job?.preview) {
+      setLastCompletedImageUrl(job.preview);
+    }
+  }, [isMediaImage, rawOutput, job?.status, job?.preview]);
+
+  const activeOutput =
+    selectedHistoryUrl ||
+    (isMediaImage ? rawOutput : undefined) ||
+    lastCompletedImageUrl ||
+    (job?.status === 'COMPLETED' && job?.preview ? job.preview : undefined);
   const isBusy = loading || job?.status === 'QUEUED' || job?.status === 'RUNNING';
 
   // Record completed outputs in Session History
@@ -462,6 +481,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
   // Generate Action
   const handleGenerate = async () => {
     if (!cfg.promptInput.trim() || !selectedWorkflow || isBusy) return;
+    setSelectedHistoryUrl(null);
 
     const { positive, negative } = buildFinalPrompt(cfg.promptInput);
     const bound: Record<string, any> = { ...parameters };
@@ -483,7 +503,10 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     if (controls.some((c) => c.key === 'steps')) bound.steps = steps;
     if (controls.some((c) => c.key === 'sampler')) bound.sampler = sampler;
     if (controls.some((c) => c.key === 'scheduler')) bound.scheduler = scheduler;
-    if (controls.some((c) => c.key === 'denoise')) bound.denoise = denoise;
+    // When no reference image is present, enforce denoise = 1.0 to prevent empty latent beige images
+    const hasRef = Boolean(referenceImage);
+    const effectiveDenoise = hasRef ? denoise : 1.0;
+    if (controls.some((c) => c.key === 'denoise')) bound.denoise = effectiveDenoise;
     if (controls.some((c) => c.key === 'batch_size')) bound.batch_size = imageNumber;
 
     // Seed logic
@@ -497,18 +520,30 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     }
     if (seedControl) bound[seedControl.key] = effectiveSeed;
 
+    // Workflow resolution: if reference image is present, route to reference workflow
+    let targetWorkflow = selectedWorkflow;
+    if (referenceImage) {
+      if (targetWorkflow === 'sdxl_juggernaut' || targetWorkflow.startsWith('sdxl')) {
+        const refWf = workflows.find((w) => w.id === 'sdxl_juggernaut_reference' || w.id.includes('reference'));
+        if (refWf) targetWorkflow = refWf.id;
+      }
+    } else if (targetWorkflow === 'sdxl_juggernaut_reference') {
+      const baseWf = workflows.find((w) => w.id === 'sdxl_juggernaut');
+      if (baseWf) targetWorkflow = baseWf.id;
+    }
+
     // Input image reference
-    const inputImageControl = controls.find((c) => c.key === 'input_image');
-    if (inputImageControl && referenceImage) {
+    const inputImageControl = controls.find((c) => c.key === 'input_image') || { key: 'input_image' };
+    if (referenceImage) {
       bound[inputImageControl.key] = referenceImage.filename;
     }
 
     onAddLog(
       'INFO',
-      `[Gina Image Studio] Generating with ${workflowModelLabel} (${effectiveWidth}×${effectiveHeight}, ${steps} steps, seed ${effectiveSeed}). Styles: [${selectedStyles.join(', ')}]`
+      `[Gina Image Studio] Generating with ${workflowModelLabel} (${effectiveWidth}×${effectiveHeight}, ${steps} steps, seed ${effectiveSeed}${hasRef ? `, ref: ${referenceImage.filename}, denoise ${effectiveDenoise}` : ''}). Styles: [${selectedStyles.join(', ')}]`
     );
 
-    await startJob(selectedWorkflow, bound);
+    await startJob(targetWorkflow, bound);
   };
 
   // Keyboard shortcut Ctrl+Enter to generate
@@ -547,7 +582,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
 
   // Keep Image & Work From It
   const handleKeepImage = async () => {
-    if (!activeOutput || !job) return;
+    if (!activeOutput) return;
     setPromotingImage(true);
     setKeepNotification('Importing generated image into ComfyUI as reference…');
 
@@ -555,7 +590,11 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
       const response = await fetch('/api/comfy/promote-output', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: job.id, outputIndex: 0 })
+        body: JSON.stringify({
+          jobId: job?.id || '',
+          imageUrl: activeOutput,
+          outputIndex: 0
+        })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok || !data.filename) {
@@ -565,13 +604,13 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
       const activeSeed =
         typeof parameters.seed === 'number'
           ? parameters.seed
-          : typeof job.parameters?.seed === 'number'
+          : typeof job?.parameters?.seed === 'number'
           ? job.parameters.seed
           : seedValue;
 
       setReferenceImage({
         filename: data.filename,
-        name: `gina-promoted-${job.id.slice(0, 8)}.png`,
+        name: `gina-promoted-${(job?.id || 'ref').slice(0, 8)}.png`,
         bytes: Number(data.bytes || 0),
         previewUrl: activeOutput
       });
@@ -580,8 +619,14 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
       setKeptImageUrl(activeOutput);
       setLockSeed(true);
 
+      // Auto-switch to reference workflow when using SDXL
+      if (selectedWorkflow === 'sdxl_juggernaut' || selectedWorkflow.startsWith('sdxl')) {
+        const refWf = workflows.find((w) => w.id === 'sdxl_juggernaut_reference');
+        if (refWf) setSelectedWorkflow(refWf.id);
+      }
+
       setKeepNotification('Image imported as active input reference! Seed locked for consistent iteration.');
-      onAddLog('INFO', `Promoted generated image ${job.id.slice(0, 8)} to ComfyUI input ${data.filename}.`);
+      onAddLog('INFO', `Promoted generated image to ComfyUI input ${data.filename}.`);
     } catch (err: any) {
       setKeepNotification(null);
       onAddLog('WARN', `Could not promote image: ${err.message}`);
@@ -595,8 +640,13 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     setLockSeed(false);
     setKeptSeed(null);
     setKeptImageUrl(null);
+    setReferenceImage(null);
+    if (selectedWorkflow === 'sdxl_juggernaut_reference') {
+      const baseWf = workflows.find((w) => w.id === 'sdxl_juggernaut');
+      if (baseWf) setSelectedWorkflow(baseWf.id);
+    }
     setKeepNotification('Seed unlocked. Ready for diverse concept explorations.');
-    onAddLog('INFO', 'Unlocked seed for fresh generations.');
+    onAddLog('INFO', 'Unlocked seed and cleared reference image.');
     setTimeout(() => setKeepNotification(null), 3000);
   };
 
@@ -805,6 +855,8 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
             isBusy={isBusy}
             history={history}
             onSelectHistory={(item) => {
+              setSelectedHistoryUrl(item.url);
+              setLastCompletedImageUrl(item.url);
               updatePromptStudio({ promptInput: item.prompt });
               if (item.width && item.height) {
                 setWidth(item.width);

@@ -78,7 +78,7 @@ export const GinaImagePreview: React.FC<GinaImagePreviewProps> = ({
   const progressPercent = Math.max(0, Math.min(100, job?.progress || 0));
   const livePreview = isBusy && job?.preview ? job.preview : null;
   const isLivePreviewing = Boolean(isBusy && livePreview);
-  const displayImage = isBusy ? (livePreview || null) : (activeOutput || null);
+  const displayImage = isBusy ? (livePreview || activeOutput || null) : (activeOutput || job?.preview || null);
 
   return (
     <div
@@ -260,7 +260,7 @@ export const GinaImagePreview: React.FC<GinaImagePreviewProps> = ({
       )}
 
       {/* Gina Post-Generation Actions Bar */}
-      {activeOutput && !isBusy && (
+      {(activeOutput || displayImage) && !isBusy && (
         <div className="p-3 border-t border-[#21262d] bg-[#0c101a] space-y-2">
           {/* Main Action Rows */}
           <div className="grid grid-cols-2 gap-2">

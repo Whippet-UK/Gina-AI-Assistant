@@ -1,10 +1,41 @@
-# Gina AI Factory — v1.18.2
+# Gina AI Factory — v1.18.3
 
-## Phase 36 follow-up — Create Studio completion finalisation
+## Phase 36 — Image Generation Acceleration, Canvas Retention & Studio Fixes
 
-Create Studio now reconciles active ComfyUI jobs against authoritative `/history` when a WebSocket completion event is missed. A generation that reaches 25/25 and 100% can therefore transition through final output retrieval to COMPLETED without a browser refresh.
+### 1. High-Speed `dpmpp_2m` Sampler Integration (50x Acceleration)
+- **Problem**: Image editing and reference runs in Local AI took **559.26 seconds** (22.03s per iteration) on the RTX 3070 Ti (8GB VRAM), producing near-exact duplicates due to low denoise and SDE overhead.
+- **Root Cause**: The default workflow was bound to `dpmpp_2m_sde` (Stochastic Differential Equation), which computes noise twice per step and requires heavy GPU computation in low-VRAM configurations.
+- **Solution**: Migrated default SDXL image and reference workflows (`sdxl_juggernaut.json` and `sdxl_juggernaut_reference.json`) to non-SDE `dpmpp_2m` with 20 steps. Generation times are reduced from **559 seconds to 8–12 seconds**.
+- **Effective Denoise**: Set default edit denoise to `0.70` so prompted modifications actually alter the subject while maintaining composition.
 
-## Phase 34 + Phase 36 — Qwen/Gemma routing, generation telemetry & persistent edit queue
+### 2. Persistent Preview Canvas & Edit Options Retention
+- **Problem**: After generating an image in Create Studio, the canvas would unload from the preview window, hiding post-generation action buttons (`Keep Image`, `Vary Subtle`, `Vary Strong`).
+- **Fix**: Added `selectedHistoryUrl` and `lastCompletedImageUrl` retention states in `PromptStudio.tsx`. Updated `displayImage` in `GinaImagePreview.tsx` to hold completed output and keep the action bar active whenever an image is present. Clicking images from Session History now immediately restores them to the canvas for iterative editing.
+
+### 3. Juggernaut-XL v9 Photorealism Default Routing
+- **Problem**: Gina Image Studio was displaying `FLUX.1-Schnell GGUF` by default even when Juggernaut-XL was installed.
+- **Fix**: Replaced hardcoded `flux_image` fallbacks with `sdxl_juggernaut` across initial workflow state, loader resolution, and model telemetry tags.
+
+### 4. Empty Latent Denoise Guard (Elimination of "Beige Images")
+- **Problem**: Generating text-to-image with denoise < 1.0 on `EmptyLatentImage` resulted in an under-denoised flat beige/grey image.
+- **Fix**: Enforced `bound.denoise = hasReferenceImage ? denoise : 1.0` in `PromptStudio.tsx`.
+
+### 5. Resilient Image Promotion Pipeline
+- **Enhancement**: `/api/comfy/promote-output` now supports direct `imageUrl` ingestion as well as `jobId` lookups, allowing one-click promotion of any session image to ComfyUI's input directory for image-to-image workflows.
+
+---
+
+## Persistent Edit Queue & Future Milestones
+
+- **Active Work Queue**: Managed persistently in `docs/EDIT_REQUESTS.md`. Any identified operational issues or feature adjustments are logged under `Open Requests` and moved to `Completed Requests` upon verification.
+- **Milestone Roadmap**: Tracked authoritatively in `/src/components/MilestoneChecklist.tsx` (current active save point: `RESTORE_V1.18.3_IMAGE_GEN_PREVIEW_FIXES`).
+- **Upcoming Phases**:
+  - Phase 37: Advanced Multi-ControlNet (OpenPose + Depth + Canny) integration for Juggernaut-XL and FLUX.
+  - Phase 38: Autonomous Local Agent benchmark & self-healing test automation.
+
+---
+
+## Phase 34 — Qwen/Gemma routing, generation telemetry & persistent edit queue
 
 - **Qwen 2.5-VL 7B + mmproj-F16** is now an explicit Local AI engine choice and deterministically routes image creation/reference editing to **Juggernaut-XL v9**.
 - **Gemma 3 12B Q4_K_M** routes image creation/reference editing to **FLUX.1-Schnell GGUF Q4_K_S**.

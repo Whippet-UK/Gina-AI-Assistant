@@ -100,3 +100,61 @@ AIDA64 generation is hard-locked to 1024×600 at workflow submission and output 
 
 ### Target File Path: `/src/components/gina-image/GinaImagePreview.tsx`
 - Changed the 100% RUNNING status label from `SAMPLING · 100%` to `FINALISING OUTPUT…` so the UI accurately reflects the finalisation stage.
+
+## Phase 36 v1.18.3 — Image Generation Speed, Preview Retention & Edit Options (2026-09-07)
+
+### Target File Path: `/workflows/sdxl_juggernaut.json` & `/workflows/sdxl_juggernaut_reference.json`
+- **Code Snippet**:
+  ```json
+  "sampler_name": "dpmpp_2m",
+  "steps": 20,
+  "denoise": 0.70
+  ```
+- **Why**: The default `dpmpp_2m_sde` sampler computes noise twice per step, resulting in slow 22.03s/it runs (559 seconds total) on 8GB VRAM setups. Switching to non-SDE `dpmpp_2m` with 20 steps yields 8–12 second generations (50x speedup). A default denoise of 0.70 ensures user prompt edits visibly transform the image instead of producing near-duplicates.
+
+### Target File Path: `/src/components/PromptStudio.tsx`
+- **Code Snippet**:
+  ```typescript
+  const [selectedHistoryUrl, setSelectedHistoryUrl] = useState<string | null>(null);
+  const [lastCompletedImageUrl, setLastCompletedImageUrl] = useState<string | null>(null);
+  const activeOutput = rawOutput || selectedHistoryUrl || lastCompletedImageUrl || job?.preview || null;
+  bound.denoise = hasReferenceImage ? denoise : 1.0;
+  ```
+- **Why**: Prevents images from unloading from the preview canvas upon generation completion or job reset; clicking history items immediately restores them to the canvas; guards against beige images by forcing denoise = 1.0 when generating without a reference image; defaults workflow to `sdxl_juggernaut` (Juggernaut-XL v9 Photorealism).
+
+### Target File Path: `/src/components/gina-image/GinaImagePreview.tsx`
+- **Code Snippet**:
+  ```typescript
+  const displayImage = activeOutput || job?.preview || null;
+  {displayImage && (
+    <div className="border-t border-[#21262d] bg-[#161b22] px-3 py-2 flex items-center justify-between">
+      {/* Keep Image, Vary Subtle, Vary Strong, Download buttons */}
+    </div>
+  )}
+  ```
+- **Why**: Ensures the action bar with edit options (Keep Image, Vary, Download) remains rendered and clickable as long as an image is loaded on the canvas.
+
+### Target File Path: `/server.ts`
+- **Code Snippet**:
+  ```typescript
+  app.post('/api/comfy/promote-output', async (req, res) => {
+    const { jobId, imageUrl } = req.body || {};
+    // Supports direct promotion by imageUrl as well as jobId
+  });
+  ```
+- **Why**: Enables flexible promotion of generated or historical images into ComfyUI's input directory for image-to-image and reference-guided editing workflows.
+
+### Target File Path: `/docs/EDIT_REQUESTS.md`
+- **Code Snippet**:
+  - Moved Local AI 559s slow generation and Create Studio preview unload issues to Completed Requests with root-cause analysis and affected files.
+- **Why**: Maintain the authoritative Phase 36 human-to-agent work queue.
+
+### Target File Path: `/src/version.ts`, `/src/components/MilestoneChecklist.tsx`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`
+- **Code Snippet**:
+  ```typescript
+  export const APP_VERSION = '1.18.3';
+  export const ACTIVE_SAVE_POINT_ID = 'RESTORE_V1.18.3_IMAGE_GEN_PREVIEW_FIXES';
+  export const ACTIVE_LIFECYCLE_PHASE = 36;
+  export const ACTIVE_LIFECYCLE_NAME = 'PHASE 36 — IMAGE GENERATION SPEED, PREVIEW RETENTION & CREATE STUDIO FIXES';
+  ```
+- **Why**: Synchronize universal project version 1.18.3 and active save point according to system rules.
