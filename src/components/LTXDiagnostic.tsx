@@ -100,7 +100,7 @@ export const LTXDiagnostic: React.FC = () => {
 
     try {
       const diagRes = await fetch('/api/comfy/diagnostics', { cache: 'no-store' });
-      if (diagRes.ok) {
+      if (diagRes.ok && (diagRes.headers.get('content-type') || '').includes('application/json')) {
         const diag = await diagRes.json();
         setWatchdog(diag.watchdog || null);
       }
@@ -110,6 +110,9 @@ export const LTXDiagnostic: React.FC = () => {
     try {
       const capRes = await fetch('/api/capabilities', { cache: 'no-store' });
       if (!capRes.ok) throw new Error(`HTTP ${capRes.status} reading capability inventory`);
+      if (!(capRes.headers.get('content-type') || '').includes('application/json')) {
+        throw new Error('Non-JSON response reading capability inventory');
+      }
       const cap = await capRes.json();
       const ltx = (cap.models || []).find((m:any) => m.exists && /ltx/i.test(m.fileName));
       setModelFileStatus({ checked:true, exists:!!ltx, path:ltx?.path, sizeGB:ltx?.sizeGB, fileName:ltx?.fileName, error:ltx ? undefined : 'No LTX model discovered in the local ComfyUI model tree.' });

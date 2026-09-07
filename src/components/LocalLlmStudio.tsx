@@ -39,7 +39,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
   const [status, setStatus] = useState<LocalLlmStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const chatAbortRef = useRef<AbortController | null>(null);
-  const { job: generationJob, adoptJob, cancelJob } = useGenerationJob();
+  const { job: generationJob, adoptJob, adoptCompletedOutput, cancelJob } = useGenerationJob();
   const [aiImageJobId, setAiImageJobId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -493,6 +493,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       if (data.status === 'FAILED') throw new Error(data.error || 'Local image generation failed.');
       if (data.status === 'CANCELLED') throw new Error('Local image generation was cancelled.');
       if (data.ready && data.imageUrl) {
+        adoptCompletedOutput(data.jobId || jobId, data.imageUrl, data.filename);
         setMessages(prev => [...prev, { role: 'assistant', content: usedReference ? `Done — I generated the image from your supplied reference.` : `Done — I generated the image locally from your prompt.`, imageUrl: data.imageUrl }]);
         try {
           await fetch('/api/assets', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ title:`AI Tools · ${new Date().toLocaleString()}`, type:'image', url:data.imageUrl, fileFormat:'PNG', timestamp:new Date().toISOString(), promptUsed:promptText, jobId:data.jobId || jobId, workflowId:'flux_image' }) });

@@ -33,7 +33,7 @@ import imageRoutes from './server/routes/imageRoute.ts';
 
 const app = express();
 const isWin = process.platform === "win32";
-const PORT = process.env.PORT ? Number(process.env.PORT) : (isWin ? 3200 : 3000);
+const PORT = isWin ? 3200 : 3000;
 const HOST = process.env.HOST || (isWin ? "127.0.0.1" : "0.0.0.0");
 const COMFY_URL = process.env.COMFY_URL || "http://127.0.0.1:8188";
 const GINA_ROOT = process.env.GINA_ROOT || (isWin ? "C:\\Gina_AI" : process.cwd());
@@ -1515,9 +1515,12 @@ app.post('/api/ai-tools/image-generate', async (req, res) => {
 
 app.get('/api/jobs/:id/result', async (req, res) => {
   try {
-    const job = jobManager.get(req.params.id);
+    let job = jobManager.get(req.params.id);
     if (!job) return res.status(404).json({ ok: false, error: 'Job not found.' });
     if (job.status === 'FAILED' || job.status === 'CANCELLED') return res.json({ ok: true, status: job.status, error: job.error || null });
+    if (job.status !== 'COMPLETED' && job.promptId) {
+      job = await reconcileComfyJobFromHistory(job);
+    }
     if (job.status !== 'COMPLETED' || !job.promptId) return res.json({ ok: true, status: job.status, ready: false });
     const historyResponse = await fetch(`${COMFY_URL}/history/${encodeURIComponent(job.promptId)}`, { signal: AbortSignal.timeout(8000) });
     if (!historyResponse.ok) return res.status(historyResponse.status).json({ ok: false, error: `ComfyUI returned HTTP ${historyResponse.status}.` });
@@ -1538,8 +1541,15 @@ app.get('/api/jobs/:id/result', async (req, res) => {
       recordComfyErrorLog(message, { jobId: job.id });
       return res.status(422).json({ ok: false, status: 'FAILED', error: message, jobId: job.id });
     }
-    const viewUrl = `${COMFY_URL}/view?${new URLSearchParams({ filename: String(file.filename), subfolder: String(file.subfolder || ''), type: String(file.type || 'output') }).toString()}`;
-    return res.json({ ok: true, status: job.status, ready: true, imageUrl: viewUrl, filename: file.filename, jobId: job.id });
+    const outputs = images.map((img, idx) => ({
+      nodeId: 'output',
+      kind: 'images',
+      file: img,
+      url: `${COMFY_URL}/view?${new URLSearchParams({ filename: String(img.filename), subfolder: String(img.subfolder || ''), type: String(img.type || 'output') }).toString()}`
+    }));
+    jobManager.update(job.id, { status: 'COMPLETED', progress: 100, currentNodeId: null, outputs, completedAt: job.completedAt || new Date().toISOString() });
+    const viewUrl = outputs[0].url;
+    return res.json({ ok: true, status: 'COMPLETED', ready: true, imageUrl: viewUrl, filename: file.filename, jobId: job.id, outputs });
   } catch (error: any) {
     res.status(503).json({ ok: false, error: error?.message || 'Unable to retrieve generated image.' });
   }
@@ -3970,10 +3980,8 @@ app.post("/api/audit", async (_req, res) => {
 app.get("/api/jobs/:id/output", async (req, res) => {
   let job = jobManager.get(req.params.id);
   if (!job) return res.status(404).json({ error: "Job not found" });
-  // Sequential Story and other local post-processing jobs own their final
-  // media files rather than a single ComfyUI prompt id. Return those outputs
-  // directly so the originating studio can preview them without "Adopt".
-  if (!job.promptId && Array.isArray(job.outputs) && job.outputs.length) {
+  // Return populated outputs directly when already resolved or for local jobs
+  if (Array.isArray(job.outputs) && job.outputs.length && (job.status === 'COMPLETED' || !job.promptId)) {
     return res.json({ job, outputs: job.outputs });
   }
   if (!job?.promptId) return res.status(404).json({ error: "Job has no ComfyUI prompt id" });
@@ -4699,7 +4707,9 @@ async function startServer() {
   // the launcher and browser can never silently attach to different instances.
   // Gina's launcher and browser use a single canonical port. Falling back to a
   // different port can leave the browser pointed at a stale Gina instance.
-  const candidatePorts = [PORT];
+  const candidatePorts = isWin
+    ? [3200, 3201, 3202, 3203, 3204, 3205, 3206, 3207, 3208, 3209, 3210]
+    : [3000];
   let lastError: NodeJS.ErrnoException | undefined;
 
   for (const port of candidatePorts) {

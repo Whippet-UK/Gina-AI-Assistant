@@ -158,3 +158,109 @@ AIDA64 generation is hard-locked to 1024×600 at workflow submission and output 
   export const ACTIVE_LIFECYCLE_NAME = 'PHASE 36 — IMAGE GENERATION SPEED, PREVIEW RETENTION & CREATE STUDIO FIXES';
   ```
 - **Why**: Synchronize universal project version 1.18.3 and active save point according to system rules.
+
+## Phase 36 v1.18.4 — Local AI to Create Studio Preview Bridge (2026-09-07)
+
+### Target File Path: `/src/context/GenerationJobContext.tsx`
+- **Code Snippet**:
+  ```typescript
+  const adoptCompletedOutput = useCallback((jobId: string, imageUrl: string, filename?: string) => {
+    activeJobIdRef.current = jobId;
+    outputResolvedJobRef.current = jobId;
+    setOutputLoading(false);
+    setSubmitting(false);
+    const syntheticOutput = { nodeId: 'output', kind: 'images', file: { filename: filename || 'output.png' }, url: withCacheBust(imageUrl, jobId) };
+    setJob(prev => ({ ...prev, id: jobId, status: 'COMPLETED', progress: 100, outputs: [syntheticOutput] }));
+    setOutput({ job: ..., outputs: [syntheticOutput] });
+  }, []);
+  ```
+- **Why**: Allows instant synchronization of finished external/AI tool generations into Create Studio context so the preview canvas immediately displays the image with full editing controls. Guarded the `progress` event so late packets cannot revert a `COMPLETED` job back to `RUNNING`.
+
+### Target File Path: `/src/components/LocalLlmStudio.tsx`
+- **Code Snippet**:
+  ```typescript
+  if (data.ready && data.imageUrl) {
+    adoptCompletedOutput(data.jobId || jobId, data.imageUrl, data.filename);
+    setMessages(prev => [...prev, { role: 'assistant', content: ..., imageUrl: data.imageUrl }]);
+    ...
+  }
+  ```
+- **Why**: Directly pushes the completed local AI image output into the shared generation job context the moment the polling loop detects output completion.
+
+### Target File Path: `/src/components/PromptStudio.tsx`
+- **Code Snippet**:
+  ```typescript
+  const rawOutput = output?.outputs?.[0]?.url || (Array.isArray(job?.outputs) ? job?.outputs?.[0]?.url : undefined);
+  const activeOutput = selectedHistoryUrl || (isMediaImage ? rawOutput : undefined) || lastCompletedImageUrl || (job?.status === 'COMPLETED' ? (job?.outputs?.[0]?.url || job?.preview) : undefined);
+  const isBusy = loading || job?.status === 'QUEUED' || (job?.status === 'RUNNING' && (!activeOutput || (job.progress || 0) < 100));
+  ```
+- **Why**: Allows Create Studio preview to resolve output immediately from `job.outputs` when `output` is not yet fetched, and releases `isBusy` when output is resolved or progress is 100%, enabling immediate editing without "Output not finalised" blockage.
+
+### Target File Path: `/server.ts`
+- **Code Snippet**:
+  ```typescript
+  // In /api/jobs/:id/result:
+  if (job.status !== 'COMPLETED' && job.promptId) {
+    job = await reconcileComfyJobFromHistory(job);
+  }
+  jobManager.update(job.id, { status: 'COMPLETED', progress: 100, currentNodeId: null, outputs, completedAt: ... });
+  // In /api/jobs/:id/output:
+  if (Array.isArray(job.outputs) && job.outputs.length && (job.status === 'COMPLETED' || !job.promptId)) {
+    return res.json({ job, outputs: job.outputs });
+  }
+  ```
+- **Why**: Ensures server-side job manager state is synchronized with ComfyUI history and outputs are persisted, preventing unnecessary re-queries or race conditions.
+
+### Target File Path: `/src/version.ts`, `/src/components/MilestoneChecklist.tsx`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`
+- **Code Snippet**:
+  ```typescript
+  export const APP_VERSION = '1.18.4';
+  export const ACTIVE_SAVE_POINT_ID = 'RESTORE_V1.18.4_LOCAL_AI_CREATE_BRIDGE';
+  export const ACTIVE_LIFECYCLE_PHASE = 36;
+  export const ACTIVE_LIFECYCLE_NAME = 'PHASE 36 — LOCAL AI TO CREATE STUDIO PREVIEW BRIDGE & OUTPUT FINALISATION SYNCHRONIZATION';
+  ```
+- **Why**: Maintain mandatory 100% universal version synchronization and active save point protocol.
+
+## Phase 36 v1.18.5 — Network Binding Port 3000 Restoration & Music Studio Robustness (2026-09-07)
+
+### Target File Path: `/server.ts`
+- **Code Snippet**:
+  ```typescript
+  const isWin = process.platform === "win32";
+  const PORT = isWin ? 3200 : 3000;
+  const candidatePorts = isWin
+    ? [3200, 3201, 3202, 3203, 3204, 3205, 3206, 3207, 3208, 3209, 3210]
+    : [3000];
+  ```
+- **Why**: In cloud container environments, `process.env.PORT` is populated with `8080` for container ingress. Binding to `process.env.PORT` caused `Error: listen EADDRINUSE: address already in use 0.0.0.0:8080` because the container nginx reverse proxy was already bound to 8080. Express failed to listen on port 3000, causing nginx to proxy 502/HTML error pages to API callers. Restored strict platform-aware binding to port 3000 on Linux/container environments and port 3200 on Windows.
+
+### Target File Path: `/src/components/MusicStudio.tsx`
+- **Code Snippet**:
+  ```typescript
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Expected application/json but received ${contentType || 'non-JSON response'}`);
+  }
+  const data = await res.json();
+  ```
+- **Why**: Prevents `JSON.parse: unexpected character at line 1 column 1` error if a proxy or network error returns an HTML payload instead of valid JSON.
+
+### Target File Path: `/src/components/LTXDiagnostic.tsx`
+- **Code Snippet**:
+  ```typescript
+  if (diagRes.ok && (diagRes.headers.get('content-type') || '').includes('application/json')) {
+    const diag = await diagRes.json();
+  ```
+- **Why**: Guards against non-JSON responses when polling system diagnostics.
+
+### Target File Path: `/src/version.ts`, `/src/components/MilestoneChecklist.tsx`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/EDIT_REQUESTS.md`
+- **Code Snippet**:
+  ```typescript
+  export const APP_VERSION = '1.18.5';
+  export const ACTIVE_SAVE_POINT_ID = 'RESTORE_V1.18.5_NETWORK_BINDING_MUSIC_STATUS_FIX';
+  export const ACTIVE_LIFECYCLE_PHASE = 36;
+  export const ACTIVE_LIFECYCLE_NAME = 'PHASE 36 — NETWORK BINDING PORT 3000 RESTORATION & MUSIC STATUS ROBUSTNESS';
+  ```
+- **Why**: Universal version synchronization and active save point protocol.
+
+

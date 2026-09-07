@@ -43,6 +43,7 @@ interface GenerationJobContextValue {
   startJob: (workflowId: string, parameters: Record<string, any>) => Promise<GinaJob | null>;
   cancelJob: () => Promise<void>;
   adoptJob: (jobId: string) => Promise<GinaJob | null>;
+  adoptCompletedOutput: (jobId: string, imageUrl: string, filename?: string) => void;
   refreshJob: () => Promise<void>;
   clearCurrentOutput: () => void;
 }
@@ -173,7 +174,7 @@ export const GenerationJobProvider: React.FC<{
       const data = JSON.parse((event as MessageEvent).data);
       setJob(prev => prev && prev.id === jobId ? {
         ...prev,
-        status: 'RUNNING',
+        status: prev.status === 'COMPLETED' ? 'COMPLETED' : (prev.status === 'FAILED' ? 'FAILED' : 'RUNNING'),
         progress: data.max ? Math.min(100, Math.round((data.value / data.max) * 100)) : prev.progress,
         currentStep: data.value,
         totalSteps: data.max,
@@ -366,16 +367,70 @@ export const GenerationJobProvider: React.FC<{
       if (!response.ok) return null;
       const adopted = await response.json() as GinaJob;
       activeJobIdRef.current = adopted.id;
-      outputResolvedJobRef.current = null;
-      outputLoadingJobRef.current = null;
-      setOutput(null);
       setJob(adopted);
       setSubmitting(adopted.status === 'QUEUED' || adopted.status === 'RUNNING');
+      if (adopted.status === 'COMPLETED') {
+        if (adopted.outputs?.length) {
+          const freshOutputs = adopted.outputs.map((item: any) => ({ ...item, url: withCacheBust(item.url, adopted.id) }));
+          setOutput({ job: adopted, outputs: freshOutputs });
+          outputResolvedJobRef.current = adopted.id;
+          outputLoadingJobRef.current = null;
+          setOutputLoading(false);
+          setSubmitting(false);
+        } else {
+          outputResolvedJobRef.current = null;
+          outputLoadingJobRef.current = null;
+          void loadOutput(adopted.id);
+        }
+      } else {
+        outputResolvedJobRef.current = null;
+        outputLoadingJobRef.current = null;
+        setOutput(null);
+      }
       return adopted;
     } catch (error: any) {
       onAddLogRef.current?.('WARN', `Unable to attach UI to generation job ${jobId.slice(0, 8)}: ${error?.message || 'request failed'}`);
       return null;
     }
+  }, [loadOutput]);
+
+  const adoptCompletedOutput = useCallback((jobId: string, imageUrl: string, filename?: string) => {
+    activeJobIdRef.current = jobId;
+    outputResolvedJobRef.current = jobId;
+    outputLoadingJobRef.current = null;
+    setOutputLoading(false);
+    setSubmitting(false);
+
+    const syntheticOutput = {
+      nodeId: 'output',
+      kind: 'images',
+      file: { filename: filename || 'output.png' },
+      url: withCacheBust(imageUrl, jobId)
+    };
+
+    setJob(prev => ({
+      ...(prev || { id: jobId, workflowId: 'flux_image', createdAt: new Date().toISOString(), parameters: {} }),
+      id: jobId,
+      status: 'COMPLETED',
+      progress: 100,
+      completedAt: new Date().toISOString(),
+      outputs: [syntheticOutput],
+      step: undefined
+    }));
+
+    setOutput({
+      job: {
+        id: jobId,
+        status: 'COMPLETED',
+        progress: 100,
+        workflowId: 'flux_image',
+        createdAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        outputs: [syntheticOutput],
+        parameters: {}
+      },
+      outputs: [syntheticOutput]
+    });
   }, []);
 
   const cancelJob = useCallback(async () => {
@@ -433,6 +488,7 @@ export const GenerationJobProvider: React.FC<{
       startJob,
       cancelJob,
       adoptJob,
+      adoptCompletedOutput,
       refreshJob,
       clearCurrentOutput
     }}>

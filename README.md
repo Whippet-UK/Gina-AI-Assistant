@@ -1,34 +1,33 @@
-# Gina AI Factory — v1.18.3
+# Gina AI Factory — v1.18.5
 
-## Phase 36 — Image Generation Acceleration, Canvas Retention & Studio Fixes
+## Phase 36 — Network Binding Port 3000 Restoration & Music Studio Robustness
 
-### 1. High-Speed `dpmpp_2m` Sampler Integration (50x Acceleration)
-- **Problem**: Image editing and reference runs in Local AI took **559.26 seconds** (22.03s per iteration) on the RTX 3070 Ti (8GB VRAM), producing near-exact duplicates due to low denoise and SDE overhead.
-- **Root Cause**: The default workflow was bound to `dpmpp_2m_sde` (Stochastic Differential Equation), which computes noise twice per step and requires heavy GPU computation in low-VRAM configurations.
-- **Solution**: Migrated default SDXL image and reference workflows (`sdxl_juggernaut.json` and `sdxl_juggernaut_reference.json`) to non-SDE `dpmpp_2m` with 20 steps. Generation times are reduced from **559 seconds to 8–12 seconds**.
-- **Effective Denoise**: Set default edit denoise to `0.70` so prompted modifications actually alter the subject while maintaining composition.
+### 1. Network Binding Port 3000 Restoration
+- **Problem**: In cloud container environments, Cloud Run injects `PORT=8080` for container ingress. Reading `process.env.PORT` in `server.ts` caused Express to attempt to bind to `0.0.0.0:8080`, triggering `Error: listen EADDRINUSE: address already in use 0.0.0.0:8080` because the container's nginx reverse proxy was already listening on 8080. The failure to bind to port 3000 caused nginx to return proxy error pages, surfacing `Failed to query music model status: JSON.parse: unexpected character at line 1 column 1`.
+- **Root Cause & Fix**:
+  - Enforced strict platform-aware binding in `server.ts`: port `3000` (`0.0.0.0`) on Linux/container environments and port `3200` (`127.0.0.1` with `[3200..3210]` candidate ports) on Windows, strictly adhering to Rule 4 and container ingress specifications.
+  - Added Content-Type validation to client-side API callers (`MusicStudio.tsx` and `LTXDiagnostic.tsx`) before attempting `res.json()`, preventing HTML error payloads from throwing parsing crashes.
 
-### 2. Persistent Preview Canvas & Edit Options Retention
-- **Problem**: After generating an image in Create Studio, the canvas would unload from the preview window, hiding post-generation action buttons (`Keep Image`, `Vary Subtle`, `Vary Strong`).
-- **Fix**: Added `selectedHistoryUrl` and `lastCompletedImageUrl` retention states in `PromptStudio.tsx`. Updated `displayImage` in `GinaImagePreview.tsx` to hold completed output and keep the action bar active whenever an image is present. Clicking images from Session History now immediately restores them to the canvas for iterative editing.
+### 2. Local AI to Create Studio Preview Bridge
+- **Problem**: Generating an image via Local AI printed the image into the chat window, but switching to the Create tab displayed an "Output not finalised" error or stuck preview stage, preventing the user from editing, varying, or keeping the image.
+- **Solution**:
+  - Added `adoptCompletedOutput` in `GenerationJobContext.tsx` which immediately sets `job` to `COMPLETED` and populates `output` with the verified image URL.
+  - Connected `adoptCompletedOutput` in `LocalLlmStudio.tsx` upon job completion.
+  - Enhanced `server.ts` `/api/jobs/:id/result` and `/api/jobs/:id/output` to reconcile ComfyUI history and persist `outputs` onto `jobManager`.
+  - Protected `PromptStudio.tsx` and `GinaImagePreview.tsx` so that `activeOutput` falls back to `job.outputs?.[0]?.url` and `isBusy` is released when progress is 100% or output is resolved.
 
-### 3. Juggernaut-XL v9 Photorealism Default Routing
-- **Problem**: Gina Image Studio was displaying `FLUX.1-Schnell GGUF` by default even when Juggernaut-XL was installed.
-- **Fix**: Replaced hardcoded `flux_image` fallbacks with `sdxl_juggernaut` across initial workflow state, loader resolution, and model telemetry tags.
+### 3. High-Speed `dpmpp_2m` Sampler Integration (50x Acceleration)
+- **Improvement**: Migrated default SDXL image and reference workflows (`sdxl_juggernaut.json` and `sdxl_juggernaut_reference.json`) to non-SDE `dpmpp_2m` with 20 steps, reducing edit times from **559 seconds to 8–12 seconds**.
 
-### 4. Empty Latent Denoise Guard (Elimination of "Beige Images")
-- **Problem**: Generating text-to-image with denoise < 1.0 on `EmptyLatentImage` resulted in an under-denoised flat beige/grey image.
-- **Fix**: Enforced `bound.denoise = hasReferenceImage ? denoise : 1.0` in `PromptStudio.tsx`.
-
-### 5. Resilient Image Promotion Pipeline
-- **Enhancement**: `/api/comfy/promote-output` now supports direct `imageUrl` ingestion as well as `jobId` lookups, allowing one-click promotion of any session image to ComfyUI's input directory for image-to-image workflows.
+### 4. Persistent Preview Canvas & Edit Options Retention
+- **Improvement**: Added `selectedHistoryUrl` and `lastCompletedImageUrl` retention states in `PromptStudio.tsx`. Post-generation action bar (`Keep Image`, `Vary Subtle`, `Vary Strong`) stays permanently available.
 
 ---
 
 ## Persistent Edit Queue & Future Milestones
 
-- **Active Work Queue**: Managed persistently in `docs/EDIT_REQUESTS.md`. Any identified operational issues or feature adjustments are logged under `Open Requests` and moved to `Completed Requests` upon verification.
-- **Milestone Roadmap**: Tracked authoritatively in `/src/components/MilestoneChecklist.tsx` (current active save point: `RESTORE_V1.18.3_IMAGE_GEN_PREVIEW_FIXES`).
+- **Active Work Queue**: Managed persistently in `docs/EDIT_REQUESTS.md`.
+- **Milestone Roadmap**: Tracked authoritatively in `/src/components/MilestoneChecklist.tsx` (current active save point: `RESTORE_V1.18.5_NETWORK_BINDING_MUSIC_STATUS_FIX`).
 - **Upcoming Phases**:
   - Phase 37: Advanced Multi-ControlNet (OpenPose + Depth + Canny) integration for Juggernaut-XL and FLUX.
   - Phase 38: Autonomous Local Agent benchmark & self-healing test automation.

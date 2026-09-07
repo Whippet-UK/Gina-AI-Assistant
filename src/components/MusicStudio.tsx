@@ -123,28 +123,32 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
       try {
         const res = await fetch('/api/music/status', { cache: 'no-store' });
         if (res.ok) {
+          const contentType = res.headers.get('content-type') || '';
+          if (!contentType.includes('application/json')) {
+            throw new Error(`Expected application/json but received ${contentType || 'non-JSON response'}`);
+          }
           const data = await res.json();
-        if (data.availableModels) {
-          const map: Record<string, { cached: boolean; hasWeights: boolean; sizeLabel: string; fileCount: number; backend?: string; weightFiles?: string[]; managedPath?: string; hubCacheIgnored?: boolean; resolution?: { path?: string; source?: string; revision?: string | null; refs?: string[] } }> = {};
-          data.availableModels.forEach((m: any) => {
-            map[m.id] = {
-              cached: !!m.cached,
-              hasWeights: !!m.hasWeights,
-              sizeLabel: m.sizeLabel || '0 MB',
-              fileCount: m.fileCount || 0,
-              backend: m.backend,
-              weightFiles: Array.isArray(m.weightFiles) ? m.weightFiles : [],
-              managedPath: m.managedPath,
-              hubCacheIgnored: m.hubCacheIgnored !== false,
-              resolution: m.resolution
-            };
-          });
-          setModelStatusMap(map);
+          if (data?.availableModels) {
+            const map: Record<string, { cached: boolean; hasWeights: boolean; sizeLabel: string; fileCount: number; backend?: string; weightFiles?: string[]; managedPath?: string; hubCacheIgnored?: boolean; resolution?: { path?: string; source?: string; revision?: string | null; refs?: string[] } }> = {};
+            data.availableModels.forEach((m: any) => {
+              map[m.id] = {
+                cached: !!m.cached,
+                hasWeights: !!m.hasWeights,
+                sizeLabel: m.sizeLabel || '0 MB',
+                fileCount: m.fileCount || 0,
+                backend: m.backend,
+                weightFiles: Array.isArray(m.weightFiles) ? m.weightFiles : [],
+                managedPath: m.managedPath,
+                hubCacheIgnored: m.hubCacheIgnored !== false,
+                resolution: m.resolution
+              };
+            });
+            setModelStatusMap(map);
           }
           return;
         }
-      } catch (err) {
-        if (attempt === 3) console.error('Failed to query music model status:', err);
+      } catch (err: any) {
+        if (attempt === 3) console.warn('Failed to query music model status:', err?.message || err);
       }
       await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
     }
@@ -153,8 +157,17 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
   const fetchAceStepStatus = useCallback(async () => {
     try {
       const res = await fetch('/api/music/ace-step/status', { cache: 'no-store' });
+      if (!res.ok) {
+        setAceStepReady(false);
+        return;
+      }
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        setAceStepReady(false);
+        return;
+      }
       const data = await res.json();
-      setAceStepReady(!!data.ok);
+      setAceStepReady(!!data?.ok);
     } catch {
       setAceStepReady(false);
     }
@@ -188,16 +201,19 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
     try {
       const res = await fetch('/api/music/tracks');
       if (res.ok) {
-        const data = await res.json();
-        if (data.tracks) {
-          setTracks(data.tracks);
-          if (!activeTrack && data.tracks.length > 0) {
-            setActiveTrack(data.tracks[0]);
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await res.json();
+          if (data?.tracks) {
+            setTracks(data.tracks);
+            if (!activeTrack && data.tracks.length > 0) {
+              setActiveTrack(data.tracks[0]);
+            }
           }
         }
       }
-    } catch (err) {
-      console.error('Failed to load music tracks:', err);
+    } catch (err: any) {
+      console.warn('Failed to load music tracks:', err?.message || err);
     }
   }, [activeTrack]);
 

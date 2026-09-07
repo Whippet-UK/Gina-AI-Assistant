@@ -1,6 +1,6 @@
 {
   "name": "Gina AI Factory — Local Creator UI",
-  "version": "1.18.3",
+  "version": "1.18.5",
   "description": "Strictly local creator dashboard with ComfyUI, Juggernaut XL SDXL high-speed engine, Qwen 2.5-VL 7B & Gemma 3 local CUDA inference, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, and voice mode.",
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API",
@@ -65,5 +65,5 @@
     "QWEN_25_VL_JUGGERNAUT_ROUTING",
     "PERSISTENT_EDIT_REQUEST_QUEUE"
   ],
-  "release": "Phase 36 v1.18.3: Fast dpmpp_2m sampler, persistent image preview retention, Juggernaut-XL default routing, empty latent denoise guard"
+  "release": "Phase 36 v1.18.5: Network binding port 3000 restoration in cloud environments and robust JSON content-type validation in Music Studio"
 }

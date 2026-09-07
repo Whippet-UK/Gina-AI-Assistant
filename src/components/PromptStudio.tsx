@@ -310,7 +310,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
       : String(workflowModelValue);
 
   // Active Output Detection
-  const rawOutput = output?.outputs?.[0]?.url;
+  const rawOutput = output?.outputs?.[0]?.url || (Array.isArray(job?.outputs) ? job?.outputs?.[0]?.url : undefined);
   const isImageJob =
     !job?.workflowId ||
     job?.workflowId.includes('image') ||
@@ -328,17 +328,21 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
   useEffect(() => {
     if (isMediaImage && rawOutput) {
       setLastCompletedImageUrl(rawOutput);
-    } else if (job?.status === 'COMPLETED' && job?.preview) {
-      setLastCompletedImageUrl(job.preview);
+    } else if (job?.status === 'COMPLETED') {
+      const outputUrl = job.outputs?.[0]?.url || job.preview;
+      if (outputUrl) setLastCompletedImageUrl(outputUrl);
     }
-  }, [isMediaImage, rawOutput, job?.status, job?.preview]);
+  }, [isMediaImage, rawOutput, job?.status, job?.preview, job?.outputs]);
 
   const activeOutput =
     selectedHistoryUrl ||
     (isMediaImage ? rawOutput : undefined) ||
     lastCompletedImageUrl ||
-    (job?.status === 'COMPLETED' && job?.preview ? job.preview : undefined);
-  const isBusy = loading || job?.status === 'QUEUED' || job?.status === 'RUNNING';
+    (job?.status === 'COMPLETED' ? (job?.outputs?.[0]?.url || job?.preview) : undefined);
+  const isBusy =
+    loading ||
+    job?.status === 'QUEUED' ||
+    (job?.status === 'RUNNING' && (!activeOutput || (job.progress || 0) < 100));
 
   // Record completed outputs in Session History
   useEffect(() => {
