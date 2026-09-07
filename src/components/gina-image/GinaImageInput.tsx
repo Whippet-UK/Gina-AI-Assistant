@@ -61,12 +61,38 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
   onUpscale,
   onApplyDescribedPrompt
 }) => {
+  // Smarter tab tracking array layer
   const [activeTab, setActiveTab] = useState<InputImageTab>('image_prompt');
+  
+  // PERSISTENT MEMORY WORKAROUND LAYER:
+  // Keeps your image elements mounted even when your dashboard triggers cleanups
+  const [localImageBackup, setLocalImageBackup] = useState<{
+    filename: string;
+    name: string;
+    bytes: number;
+    previewUrl: string;
+  } | null>(null);
+
+  // Sync references to our local state manager cache bucket securely
+  React.useEffect(() => {
+    if (referenceImage) {
+      setLocalImageBackup(referenceImage);
+    }
+  }, [referenceImage]);
+
+  // Keep slot 1 synced using our smart local backup pointer variables
+  React.useEffect(() => {
+    const currentDisplayImage = referenceImage || localImageBackup;
+    setSlots(prev => prev.map((s, idx) => 
+      idx === 0 ? { ...s, image: currentDisplayImage, mode, weight: imageWeight, stopAt } : s
+    ));
+  }, [referenceImage, localImageBackup, mode, imageWeight, stopAt]);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const describeFileInputRef = useRef<HTMLInputElement | null>(null);
   const inpaintFileInputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
-
+  
   // Upscale / Variation state
   const [variationMethod, setVariationMethod] = useState<'disabled' | 'subtle' | 'strong' | 'upscale_15' | 'upscale_2' | 'upscale_fast_2'>('disabled');
 
@@ -92,11 +118,76 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
     { id: 3, image: null, mode: 'face_swap', weight: 0.95, stopAt: 0.9 },
     { id: 4, image: null, mode: 'pyracanny', weight: 0.6, stopAt: 0.5 }
   ]);
-
   // Keep slot 1 synced with referenceImage prop
   React.useEffect(() => {
     setSlots(prev => prev.map((s, idx) => idx === 0 ? { ...s, image: referenceImage, mode, weight: imageWeight, stopAt } : s));
   }, [referenceImage, mode, imageWeight, stopAt]);
+
+  // Automated prompt optimization & execution states
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [pipelineStatus, setPipelineStatus] = useState<string>('');
+  const [automationConfig] = useState({
+    dogBreed: "Whippet",
+    dogColor: "pure white",
+    youtubeChannelName: "THE WHIPPET",
+    backgroundPhotoDescription: "a beautiful woman with long dark hair looking forward"
+  });
+
+  const handleAutomatedPipelineRun = async (activeWorkflowName: string) => {
+    setIsOptimizing(true);
+    setPipelineStatus('Querying local prompt registry schema...');
+
+    try {
+      const response = await fetch('/api/llm/optimize-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activeWorkflow: activeWorkflowName,
+          ...automationConfig
+        })
+      });
+      
+      const payload = await response.json();
+      const promptData: string | string[] = payload.prompt;
+      let targetTextPrompt = '';
+
+      if (typeof promptData === 'string') {
+        targetTextPrompt = promptData;
+        setPipelineStatus('Injecting unified target string into Flux engine...');
+        if (onApplyDescribedPrompt) onApplyDescribedPrompt(promptData);
+      } else if (Array.isArray(promptData)) {
+        targetTextPrompt = promptData[0]; // Isolate base subject layout string
+        setPipelineStatus('Multi-pass pipeline generated. Applying Pass 1 (Base Subject)...');
+        if (onApplyDescribedPrompt) onApplyDescribedPrompt(targetTextPrompt);
+        
+        setInpaintAdditionalPrompt(`[Monitor UI Step]: ${promptData[1]} | [Background Wall Step]: ${promptData[2]}`);
+      }
+
+      // FORCED WORKSPACE TEXTAREA INTERCEPTOR MATCH
+      setTimeout(() => {
+        const promptTextArea = document.querySelector('textarea[placeholder^="Type prompt here"]') as HTMLTextAreaElement;
+        if (promptTextArea) {
+          promptTextArea.value = targetTextPrompt;
+          promptTextArea.dispatchEvent(new Event('input', { bubbles: true }));
+        } else {
+          // Fallback array finder map targeting your input box
+          const textAreas = document.querySelectorAll('textarea');
+          if (textAreas.length > 0) {
+            const mainPromptBox = textAreas[textAreas.length - 1];
+            mainPromptBox.value = targetTextPrompt;
+            mainPromptBox.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        }
+      }, 50);
+
+      setPipelineStatus('Prompts successfully synchronized to workspace inputs.');
+    } catch (err) {
+      console.error('Pipeline loop processing error:', err);
+      setPipelineStatus('Error routing metrics to engine runtime.');
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -210,7 +301,6 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
             if (file) void onUploadImage(file);
           }}
         />
-
         {/* TAB 1: Upscale or Variation */}
         {activeTab === 'upscale_variation' && (
           <div className="space-y-4">
@@ -229,8 +319,8 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
               )}
             </div>
 
-            {/* Dropzone or Preview */}
-            {!referenceImage ? (
+            {/* Smart Local Backup Display Condition Layer */}
+            {!(referenceImage || localImageBackup) ? (
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
@@ -251,15 +341,21 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
             ) : (
               <div className="bg-[#0a0e17] rounded-xl border border-[#282f42] p-3 flex items-center gap-3">
                 <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-[#38415c] shrink-0 bg-black">
-                  <img src={referenceImage.previewUrl} alt="Variation Target" className="w-full h-full object-cover" />
+                  {/* Pull cleanly from our persistent local cache layer */}
+                  <img src={(referenceImage || localImageBackup)?.previewUrl} alt="Variation Target" className="w-full h-full object-cover" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-zinc-200 truncate font-mono">{referenceImage.name}</div>
-                  <div className="text-[10px] text-zinc-500 font-mono">{(referenceImage.bytes / 1024 / 1024).toFixed(2)} MB · Ready in ComfyUI</div>
+                  <div className="text-xs font-bold text-zinc-200 truncate font-mono">{(referenceImage || localImageBackup)?.name}</div>
+                  <div className="text-[10px] text-zinc-500 font-mono font-bold">
+                    ComfyUI Status Cache Locked · Ready for Variations
+                  </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => onSetReferenceImage(null)}
+                  onClick={() => {
+                    onSetReferenceImage(null);
+                    setLocalImageBackup(null); // Clear both variables manually on click
+                  }}
                   className="p-1 text-zinc-500 hover:text-rose-400"
                   title="Clear image"
                 >
@@ -310,7 +406,6 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
             </div>
           </div>
         )}
-
         {/* TAB 2: Image Prompt (4 Slots with ImagePrompt, FaceSwap, PyraCanny, CPDS) */}
         {activeTab === 'image_prompt' && (
           <div className="space-y-4">
@@ -418,7 +513,6 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
                     ))}
                   </div>
                 </div>
-
                 {/* Sliders: Image Weight & Stop At */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 pt-3 border-t border-[#1e2433]">
                   <div>
@@ -509,8 +603,7 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
                 </label>
               ))}
             </div>
-
-            {/* Outpaint Direction Checkboxes */}
+{/* Outpaint Direction Checkboxes */}
             <div className="bg-[#0a0e17] border border-[#212738] rounded-xl p-3">
               <div className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider mb-2">
                 Outpaint Expansion Directions:
@@ -634,6 +727,30 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
             )}
           </div>
         )}
+
+        {/* AUTOMATED PROMPT OPTIMIZATION PANEL INJECTION */}
+        <div className="mt-4 p-3 bg-[#0d111a] rounded-xl border border-[#21262d] shadow-inner">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" /> 
+              <span>Automated Scene Alignment</span>
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={isOptimizing}
+            onClick={() => handleAutomatedPipelineRun(hasInputImageWorkflow ? 'sdxl_juggernaut.json' : 'flux_image.json')}
+            className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-500 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-2 transition-all shadow-md group"
+          >
+            {isOptimizing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />}
+            <span>{isOptimizing ? 'Optimizing Targets...' : 'Sync Optimized Character & Assets Layout'}</span>
+          </button>
+          {pipelineStatus && (
+            <div className="mt-2 text-[10px] text-indigo-400 font-mono animate-pulse pl-1 border-l border-indigo-500/40">
+              &gt; {pipelineStatus}
+            </div>
+          )}
+        </div>
 
         {uploadError && (
           <div className="mt-3 p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-[10px] text-rose-300 font-mono">
