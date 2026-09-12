@@ -51,6 +51,64 @@ def save_wav_pcm16(output_path, audio_tensor, sampling_rate):
         wf.setframerate(int(sampling_rate))
         wf.writeframes(pcm)
 
+def load_audio_tensor(path):
+    import torchaudio
+    waveform, sr = torchaudio.load(path)
+    import torch
+    return waveform.to(dtype=torch.float32), sr
+
+def concat_audio_segments(segments):
+    import torch
+    if not segments:
+        raise RuntimeError("No audio segments were produced.")
+    max_channels = max(int(x.shape[0]) for x in segments)
+    normalized = []
+    for x in segments:
+        if x.shape[0] < max_channels:
+            x = x.repeat(max_channels, 1)
+        normalized.append(x)
+    return torch.cat(normalized, dim=1)
+
+def resample_audio(waveform, source_sr, target_sr):
+    if source_sr == target_sr:
+        return waveform
+    import torchaudio
+    return torchaudio.functional.resample(waveform, source_sr, target_sr)
+
+def apply_audio_mode(args, generated, generated_sr):
+    """Apply real audio-editing semantics around the AI-generated segment."""
+    mode = args.mode
+    ref = str(args.audio_ref or "").strip()
+    if not ref or mode not in {"song_cover", "extend", "edit"}:
+        return generated, generated_sr
+    if not os.path.isfile(ref):
+        raise RuntimeError(f"Audio reference does not exist: {ref}")
+    source, source_sr = load_audio_tensor(ref)
+    source = resample_audio(source, source_sr, generated_sr)
+    generated = resample_audio(generated, generated_sr, generated_sr)
+    if generated.shape[0] != source.shape[0]:
+        if generated.shape[0] == 1:
+            generated = generated.repeat(source.shape[0], 1)
+        elif source.shape[0] == 1:
+            source = source.repeat(generated.shape[0], 1)
+    if mode == "extend":
+        split = max(0, min(source.shape[1], int(float(args.split_start or 0) * generated_sr)))
+        base = source[:, :split] if split > 0 else source
+        return concat_audio_segments([base, generated]), generated_sr
+    if mode == "edit":
+        start = max(0, min(source.shape[1], int(float(args.split_start or 0) * generated_sr)))
+        end_seconds = float(args.edit_end or 0)
+        end = max(start, min(source.shape[1], int(end_seconds * generated_sr))) if end_seconds > 0 else start
+        tail = source[:, end:]
+        return concat_audio_segments([source[:, :start], generated, tail]), generated_sr
+    # Song cover: preserve a quiet amount of the reference performance as a
+    # melodic/vocal guide while the newly synthesized track supplies the cover.
+    length = min(source.shape[1], generated.shape[1])
+    mixed = generated[:, :length] * 0.88 + source[:, :length] * 0.12
+    if generated.shape[1] > length:
+        mixed = concat_audio_segments([mixed, generated[:, length:]])
+    return mixed.clamp(-1.0, 1.0), generated_sr
+
 def generate_music(args):
     print(f"[MusicGen Engine] Initializing generation mode: {args.mode}...")
     import torch
@@ -91,6 +149,12 @@ def generate_music(args):
     elif args.no_vocals:
         prompt_components.append("instrumental backing track without vocals")
 
+    if args.mode == "song_cover":
+        prompt_components.append("AI cover re-imagination with a new arrangement inspired by the supplied reference track")
+    elif args.mode == "extend":
+        prompt_components.append("seamless continuation matching the supplied reference track's mood and arrangement")
+    elif args.mode == "edit":
+        prompt_components.append("replacement section matching the supplied reference track's style and energy")
     full_prompt = ", ".join(prompt_components) if prompt_components else "ambient electronic synthwave melody"
     print(f"[MusicGen Engine] Compiled Prompt: \"{full_prompt}\"")
     print(f"[Audio Lane] SEQUENTIAL=TRUE | CONCURRENCY=1 | NETWORK=DISABLED")
@@ -125,20 +189,30 @@ def generate_music(args):
             print(f"[AudioGen Engine] Loading local AudioGen Medium 1.5B from '{local_model_path}' (offline/local-only)...")
             from audiocraft.models import AudioGen
             model = AudioGen.get_pretrained(local_model_path, device=device)
-            model.set_generation_params(
-                duration=float(args.duration),
-                temperature=float(args.temperature),
-                cfg_coef=float(args.guidance_scale),
-            )
-            print(f"[AudioGen Engine] Model loaded. Generating {args.duration:.1f}s SFX/atmosphere tokens...")
+            chunks = []
+            remaining = max(1.0, float(args.duration))
+            chunk_index = 0
             start_t = time.time()
-            with torch.inference_mode():
-                wav = model.generate([full_prompt])
+            while remaining > 0.01:
+                chunk_duration = min(30.0, remaining)
+                model.set_generation_params(
+                    duration=chunk_duration,
+                    temperature=float(args.temperature),
+                    cfg_coef=float(args.guidance_scale),
+                )
+                chunk_index += 1
+                print(f"[AudioGen Engine] Model loaded. Generating chunk {chunk_index} ({chunk_duration:.1f}s)...")
+                with torch.inference_mode():
+                    wav = model.generate([full_prompt])
+                chunk = wav[0].detach().cpu().to(torch.float32)
+                if chunk.dim() == 1:
+                    chunk = chunk.unsqueeze(0)
+                chunks.append(chunk)
+                remaining -= chunk_duration
+            audio_tensor = concat_audio_segments(chunks)
             print(f"[AudioGen Engine] Synthesis completed in {time.time() - start_t:.2f}s! Sample rate: {model.sample_rate}Hz")
-            audio_tensor = wav[0].detach().cpu().to(torch.float32)
-            if audio_tensor.dim() == 1:
-                audio_tensor = audio_tensor.unsqueeze(0)
-            save_wav_pcm16(args.output_path, audio_tensor, model.sample_rate)
+            audio_tensor, output_sr = apply_audio_mode(args, audio_tensor, model.sample_rate)
+            save_wav_pcm16(args.output_path, audio_tensor, output_sr)
             print(f"[AudioGen Engine] Saved SFX/atmosphere master audio (PCM16 WAV): {args.output_path}")
             success = True
             if device == "cuda":
@@ -165,28 +239,36 @@ def generate_music(args):
                 return_tensors="pt"
             ).to(device)
 
-            # Calculate max new tokens (MusicGen generates ~50 tokens per second of audio at 32kHz)
+            # MusicGen is memory-safe when long requests are split into <=30s
+            # sequential chunks. This also makes the UI's 8-minute duration real
+            # instead of reporting a long duration for a 30s tensor.
             tokens_per_sec = 50
-            max_tokens = int(args.duration * tokens_per_sec)
-            max_tokens = max(100, min(max_tokens, 1500))
-
-            print(f"[MusicGen Engine] Generating audio tensors (max_tokens={max_tokens})...")
+            remaining = max(1.0, float(args.duration))
+            chunks = []
+            chunk_index = 0
             start_t = time.time()
-            with torch.inference_mode():
-                audio_values = model.generate(
-                    **inputs,
-                    do_sample=True,
-                    guidance_scale=float(args.guidance_scale),
-                    max_new_tokens=max_tokens,
-                    temperature=float(args.temperature)
-                )
+            while remaining > 0.01:
+                chunk_duration = min(30.0, remaining)
+                max_tokens = max(100, int(chunk_duration * tokens_per_sec))
+                chunk_index += 1
+                print(f"[MusicGen Engine] Generating chunk {chunk_index} ({chunk_duration:.1f}s, max_tokens={max_tokens})...")
+                with torch.inference_mode():
+                    audio_values = model.generate(
+                        **inputs,
+                        do_sample=True,
+                        guidance_scale=float(args.guidance_scale),
+                        max_new_tokens=max_tokens,
+                        temperature=float(args.temperature)
+                    )
+                chunks.append(audio_values[0, 0].cpu().to(torch.float32))
+                remaining -= chunk_duration
 
             sampling_rate = model.config.audio_encoder.sampling_rate
+            audio_tensor = concat_audio_segments([c.unsqueeze(0) if c.dim() == 1 else c for c in chunks])
+            target_samples = int(float(args.duration) * sampling_rate)
+            audio_tensor = audio_tensor[:, :target_samples]
+            audio_tensor, sampling_rate = apply_audio_mode(args, audio_tensor, sampling_rate)
             print(f"[MusicGen Engine] Synthesis completed in {time.time() - start_t:.2f}s! Sample rate: {sampling_rate}Hz")
-
-            audio_tensor = audio_values[0, 0].cpu().to(torch.float32)
-            if audio_tensor.dim() == 1:
-                audio_tensor = audio_tensor.unsqueeze(0)
             save_wav_pcm16(args.output_path, audio_tensor, sampling_rate)
             print(f"[MusicGen Engine] Saved master audio (PCM16 WAV): {args.output_path}")
             success = True
@@ -285,6 +367,7 @@ def main():
     gen_parser.add_argument("--output_path", type=str, required=True)
     gen_parser.add_argument("--audio_ref", type=str, default="")
     gen_parser.add_argument("--split_start", type=float, default=0.0)
+    gen_parser.add_argument("--edit_end", type=float, default=0.0)
 
     stem_parser = subparsers.add_parser("separate")
     stem_parser.add_argument("--input_path", type=str, required=True)

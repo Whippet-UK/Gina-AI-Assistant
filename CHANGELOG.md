@@ -1,3 +1,102 @@
+# v1.19.2 — Phase 42: Unified Gina AI Coding Assistant
+
+- Local Gina Chat is now the primary coding interface when a project workspace is active.
+- Upload a project ZIP, automatically import it into a dedicated workspace, inspect it and edit it from natural-language prompts.
+- Export the active workspace back to a clean updated ZIP.
+- Added simple GitHub clone-to-workspace flow and retained agent pull/commit/push tooling.
+- Live coding activity is shown in the normal Gina conversation instead of requiring the legacy Agent panel.
+- Removed the separate Gina Agent panel from the Local AI page.
+
+# Gina AI Factory — v1.19.2
+
+## 2026-09-07 — Phase 41: Persistent Agent Workbench & Streaming Execution
+
+- **Target File:** `/server/agent/AgentRunManager.ts`
+  - **Exact Code Change:** Added `AgentRunManager` with durable JSON run records under `.gina/agent-runs`, monotonic event IDs, event subscriptions, run listing/loading, terminal state persistence, and cancellation tracking.
+  - **Why:** Make Gina Agent execution persistent and reconnectable instead of keeping progress only in the browser response.
+
+- **Target File:** `/server.ts`
+  - **Exact Code Change:** Added `executeAgentRun(...)` as the shared coding-loop executor with phase/status events; added `GET /api/agent/runs`, `GET /api/agent/runs/:id`, `POST /api/agent/runs/:id/cancel`, `GET /api/agent/runs/:id/stream`, and `POST /api/agent/run-stream`.
+  - **Exact Code Snippet:** `app.get('/api/agent/runs/:id/stream', async (req,res) => { ... })` and `app.post("/api/agent/run-stream", async (req,res) => { ... })`.
+  - **Why:** Stream live `INSPECTING FILES → READING FILES → EDITING → RUNNING VALIDATION → REPAIRING → VERIFYING DIFF → REPORTING` progress while retaining the existing non-streaming `/api/agent/run` compatibility route.
+
+- **Target File:** `/src/components/GinaAgentPanel.tsx`
+  - **Exact Code Change:** Replaced the blocking `/api/agent/run` UI call with `/api/agent/run-stream` plus `EventSource` subscription; added live event timeline, current phase, run ID, cancellation control, local active-run recovery and reconnect handling.
+  - **Why:** The Agent Workbench now shows Gina's actual execution as it happens and can recover the visible run after a browser refresh or transient connection loss.
+
+- **Target File:** `/src/components/MilestoneChecklist.tsx`
+  - **Exact Code Change:** Added completed phases 39–41 and activated `RESTORE_V1.19.2_PERSISTENT_AGENT_WORKBENCH_STREAMING`; locked the Phase 40 restore point.
+  - **Why:** Keep the authoritative milestone/save-point record synchronized with the completed implementation.
+
+- **Target Files:** `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`
+  - **Exact Code Change:** Synchronized the project to `v1.19.2`, Phase 41, and restore point `RESTORE_V1.19.2_PERSISTENT_AGENT_WORKBENCH_STREAMING`; documented the persistent run/event model and streaming endpoints.
+  - **Why:** Maintain the project's zero-discrepancy version/metadata contract and make Phase 41 discoverable from the repository root.
+
+- **Target File:** `/src/components/AppFeaturesGuide.tsx`
+  - **Exact Code Change:** Renamed the autonomous-agent feature to the Persistent Workbench, marked it LIVE, and documented Phase 40 coding-loop plus Phase 41 durable SSE execution/reconnect/cancellation support.
+  - **Why:** Keep the in-app feature/status guide aligned with the implemented Agent Workbench.
+
+- **Target File:** `/docs/setup/LOCAL_AGENT_SETUP.md`
+  - **Exact Code Change:** Added the Phase 41 persistent-run, SSE, reconnect, inspection, cancellation and legacy compatibility documentation.
+  - **Why:** Document the new Agent Workbench runtime contract for future coding sessions.
+
+# Gina AI Factory — v1.19.0
+
+## 2026-09-07 — Phase 40: Gina Agent Coding Loop & GitHub Workbench
+- Added a multi-step inspect → read → edit → validate → diff → report coding loop.
+- Added workspace inspection with package-manager/script discovery.
+- Added automatic validation-script selection and retry guidance after failures.
+- Added workspace-scoped diff inspection before success reporting.
+- Expanded planner/recovery action vocabulary for coding and repository tasks.
+- Extended agent iteration budget from 6 to 10 controlled tool steps.
+
+# Gina AI Factory — v1.18.8
+
+## 2026-09-07 — Phase 39: Gina Agent Coding Workspaces & GitHub
+
+- Added dedicated Gina repository workspaces under `.gina/workspaces`.
+- Added project ZIP upload/import with archive path-traversal protection.
+- Added GitHub clone, pull, push, branch and commit agent actions.
+- Added optional GitHub PR creation through `GITHUB_TOKEN`.
+- Added code-task validation loop and location lookup planning.
+- Added token redaction in the local agent audit log.
+- Added Gina Agent upload, GitHub Repo and Code Task controls.
+
+# Gina AI Factory — v1.18.7
+
+## 2026-09-07 — Phase 38: Gina Intelligence & Model Routing
+
+- **Target File**: `/server.ts`
+- **Exact Code Change**: Replaced the image-only keyword gate with `detectImageGenerationIntent(text, hasImageAttachment)` and added `imageGenerationPolicy(engine, multimodal, hasReference)`. The same classifier now powers `/api/llm/chat` and `/api/ai-tools/route`.
+- **Why**: Prevent false negatives such as “give me a top-down view of …” and prevent conflicting UI/server routers from making different decisions.
+
+- **Target File**: `/server.ts`
+- **Exact Code Change**: Qwen routes to `sdxl_juggernaut` / `sdxl_juggernaut_reference`; Gemma routes to FLUX only when `multimodal` is true. Non-vision Gemma now hard-fails the FLUX route instead of silently using it.
+- **Why**: Enforce the requested model policy: Qwen + Juggernaut is primary; FLUX is reserved for Gemma 3 Vision fallback/alternate use.
+
+- **Target File**: `/server/llm/LocalLlmManager.ts`
+- **Exact Code Change**: Multimodal projector discovery is no longer Qwen-only; Gemma `mmproj` files such as `mmproj-q8_0.gguf` are accepted, and image attachments are passed to either configured multimodal engine.
+- **Why**: Make the Gemma 3 + Vision + FLUX lane real instead of advertising vision support while rejecting Gemma image input.
+
+- **Target File**: `/src/components/LocalLlmStudio.tsx`
+- **Exact Code Change**: Removed the duplicated client-side image keyword classifier and made the UI query `/api/ai-tools/route` before invoking ComfyUI. Generation status now reports the actual `generationModel`.
+- **Why**: Establish one routing authority and eliminate accidental image generation caused by UI/server classifier drift.
+
+- **Target Files**: `/src/components/gina-image/GinaImageSettings.tsx`, `/src/components/AiStudioSuite.tsx`, `/README.md`, `/AGENTS.md`, `/metadata.json`, `/index.html`, `/src/version.ts`, `/package.json`, `/src/components/MilestoneChecklist.tsx`
+- **Exact Code Change**: Updated defaults, model-policy labels, documentation, version metadata, milestone/restore point, and release description for Phase 38.
+- **Why**: Keep the UI and project memory consistent with the authoritative routing policy.
+
+
+## 2026-09-07 — Edit Request Queue Implementation
+
+- Implemented all open requests recorded in `docs/EDIT_REQUESTS.md`.
+- Image Creation Studio now defaults to Qwen 2.5-VL + Juggernaut-XL v9, keeps reference edits on the Juggernaut reference workflow, exposes a direct upload action, and reports the correct model.
+- Removed the workflow-inspector feedback loop that forced the selected ComfyUI workflow back to the active runtime job.
+- Added Qwen/Juggernaut entries to pre-warm and OOM diagnostic inventories.
+- Music Studio now supports 480-second requests through sequential MusicGen chunking and has working source-audio upload flows for cover, extension, edit, and voice removal modes.
+- Fixed local AI completion metadata so saved images retain their real workflow/model identity.
+- Updated README, metadata, version, and UI labels.
+
 # Gina AI Factory — v1.18.1
 
 ## Phase 34 + Phase 36 — Qwen/Gemma routing, generation telemetry & persistent edit queue

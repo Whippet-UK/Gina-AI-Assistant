@@ -4,6 +4,12 @@
 
 ---
 
+## 📌 Project Overview
+- **Current version:** `v1.19.2`
+- **Active lifecycle:** `PHASE 41 — PERSISTENT AGENT WORKBENCH & STREAMING EXECUTION`
+- **Active save point:** `RESTORE_V1.19.2_PERSISTENT_AGENT_WORKBENCH_STREAMING`
+- **Phase 41:** Gina Agent runs are persisted under `.gina/agent-runs`, expose live Server-Sent Events, can reconnect after browser refresh, and support explicit cancellation.
+
 ## 🛑 AI OPERATING DIRECTIVES & MEMORY
 
 ### RULE 1: Session Startup Context & Milestone Tracking
@@ -65,7 +71,7 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 ## 1. Project Overview & URLs
 
 - **App Name**: Gina AI Factory — Local Creator UI
-- **Version**: 1.18.5
+- **Version**: 1.18.7
 - **Local Dashboard URL**: `http://127.0.0.1:3000/` (Express server listens on `0.0.0.0:3000`)
 - **Local ComfyUI Backend URL**: `http://127.0.0.1:8188/`
 

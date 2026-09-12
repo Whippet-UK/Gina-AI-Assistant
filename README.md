@@ -1,3 +1,60 @@
+# Gina AI Factory — v1.19.2
+
+## v1.19.2 — Persistent Agent Workbench & Streaming Execution (2026-09-07)
+
+Gina Agent now behaves like a live local development assistant instead of a black-box batch operation. Agent runs are persisted under `.gina/agent-runs`, every planning/tool/status transition is streamed to the Agent Workbench through Server-Sent Events, browser reconnects replay the saved event history, and active runs can be cancelled without losing their execution record.
+
+- **Live execution:** `INSPECTING FILES → READING FILES → EDITING → RUNNING VALIDATION → REPAIRING → VERIFYING DIFF → REPORTING`.
+- **Persistent runs:** each run has a durable JSON record with prompt, state, event history, summary and result.
+- **Reconnect-safe UI:** the active run ID is retained locally and the workbench reconnects to the server event stream after a page refresh or dropped connection.
+- **Validation visibility:** individual agent steps and failures are shown while the task is executing instead of only after completion.
+- **Cancellation:** active runs expose a cancellation endpoint and record the final `CANCELLED` state.
+- **Compatibility:** the existing `/api/agent/run` request remains available for non-streaming callers; the new `/api/agent/run-stream` + `/api/agent/runs/:id/stream` flow powers the live workbench.
+
+# Gina AI Factory — v1.18.8
+
+## v1.18.8 — Gina Agent Coding Workspaces, Planner & GitHub (2026-09-07)
+
+Gina Agent can now import project archives, create isolated coding workspaces, clone/read/edit/validate GitHub repositories, create branches and commits, push changes when authorised, and open GitHub pull requests. GitHub access is scoped through a `GITHUB_TOKEN` environment variable; tokens are never written to project files or audit entries.
+
+### v1.18.7 — Gina Intelligence & Model Routing (2026-09-07)
+
+- Added a single server-owned intent router so Local AI and AI Tools no longer use competing image-generation keyword classifiers.
+- Natural visual requests such as “give me a top-down view of …” can now be recognised as image-generation intent without requiring the words “create” or “generate”.
+- Qwen 2.5-VL + mmproj-F16 is the primary reasoning/vision lane and routes image generation/reference edits to Juggernaut-XL v9.
+- FLUX.1-Schnell is restricted to the Gemma 3 + Vision projector lane; it is never silently selected for Qwen or non-vision Gemma.
+- Gemma 3 multimodal projector detection is now enabled so uploaded images can actually reach Gemma Vision when configured.
+- Generation status text reports the actual generation model instead of claiming FLUX for every automatic image job.
+
+## v1.18.6 — Edit Request Queue Implementation (2026-09-07)
+
+This release implements the open requests in `docs/EDIT_REQUESTS.md` and fixes several adjacent routing/UI defects.
+
+### Image Creation Studio
+- Renamed the Create workspace to **IMAGE CREATION STUDIO**.
+- Default image lane is now **Qwen 2.5-VL 7B + mmproj-F16 → Juggernaut-XL v9 SDXL**; reference edits use `sdxl_juggernaut_reference`.
+- Keeping an image now cannot silently route the next generation to FLUX.
+- Added a prominent **UPLOAD IMAGE** action while retaining the full reference-image workflow.
+- Fixed Automated Scene Alignment so the optimized prompt is applied through React state instead of a DOM textarea hack.
+- Updated model labels so the studio no longer falsely advertises FLUX when Juggernaut is active.
+
+### System / Diagnostics
+- Added Qwen 2.5-VL and Juggernaut-XL v9 to the model safety/pre-warm inventory and OOM correlation data.
+- Fixed the registered-workflow inspector so runtime jobs no longer overwrite the workflow the user is inspecting.
+- Updated System architecture documentation to distinguish Qwen/Gemma local LLMs from ComfyUI image checkpoints.
+
+### Music Studio
+- Track duration now supports **5 seconds through 8 minutes (480 seconds)**.
+- Long MusicGen requests are generated in sequential ≤30-second chunks so the requested duration is actually rendered rather than reporting a long duration for a short tensor.
+- Built functional **AI Song Cover**, **Music Extension**, **AI Music Editor**, and **Voice Remover** controls with local audio upload and job routing.
+- Extension and edit modes use the uploaded source audio; cover mode creates an AI re-imagining and blends a small reference layer for continuity.
+- Updated Music Studio primary controls toward the StreamInject cyan/magenta visual language.
+- Added local audio-reference upload endpoint with size/type validation.
+
+### Additional correctness fixes
+- Corrected Local AI completed-image asset/job metadata to preserve the actual Qwen/Juggernaut workflow instead of hard-coding `flux_image`.
+- Versioned the project as v1.18.6.
+
 # Gina AI Factory — v1.18.5
 
 ## Phase 36 — Network Binding Port 3000 Restoration & Music Studio Robustness
@@ -27,17 +84,15 @@
 ## Persistent Edit Queue & Future Milestones
 
 - **Active Work Queue**: Managed persistently in `docs/EDIT_REQUESTS.md`.
-- **Milestone Roadmap**: Tracked authoritatively in `/src/components/MilestoneChecklist.tsx` (current active save point: `RESTORE_V1.18.5_NETWORK_BINDING_MUSIC_STATUS_FIX`).
-- **Upcoming Phases**:
-  - Phase 37: Advanced Multi-ControlNet (OpenPose + Depth + Canny) integration for Juggernaut-XL and FLUX.
-  - Phase 38: Autonomous Local Agent benchmark & self-healing test automation.
+- **Milestone Roadmap**: Tracked authoritatively in `/src/components/MilestoneChecklist.tsx` (current active save point: `RESTORE_V1.18.8_GINA_AGENT_WORKSPACES_GITHUB`).
+- **Upcoming Phase 39**: Autonomous Local Agent benchmark & self-healing test automation, followed by location/web tooling so Gina can resolve real-world places before generating geographic visualisations.
 
 ---
 
 ## Phase 34 — Qwen/Gemma routing, generation telemetry & persistent edit queue
 
 - **Qwen 2.5-VL 7B + mmproj-F16** is now an explicit Local AI engine choice and deterministically routes image creation/reference editing to **Juggernaut-XL v9**.
-- **Gemma 3 12B Q4_K_M** routes image creation/reference editing to **FLUX.1-Schnell GGUF Q4_K_S**.
+- **Qwen 2.5-VL 7B + mmproj-F16** is the default reasoning/vision lane and routes image generation/reference editing to **Juggernaut-XL v9 (SDXL)**. **Gemma 3 12B + Vision projector** may use **FLUX.1-Schnell GGUF Q4_K_S** only as the fallback/alternate high-VRAM lane; FLUX is never silently selected for Qwen or non-vision Gemma.
 - Added the missing **Juggernaut-XL reference-edit workflow** so Qwen vision edits no longer fall back to FLUX.
 - Generation jobs now record and display the exact LLM, vision projector, image model and workflow used while a job is running.
 - Added `docs/EDIT_REQUESTS.md` as the persistent human-to-agent edit queue.

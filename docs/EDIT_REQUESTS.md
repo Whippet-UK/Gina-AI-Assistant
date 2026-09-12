@@ -9,42 +9,72 @@ Add requests under **Open Requests**. Each request should describe the problem, 
 ## Open Requests
 
 <!-- Add new requests below this line. Do not delete unresolved requests. -->
-problem 1: Create tab: after Generating an imamge then pressing the "Keep Image" to lock the image to work on. Clicking the "Generate" button will load Flux.1 instead of Qwen 2.5 Juggernaut-XL v9 (see LOG:) and causes a massive slowdown in interation (upto 118.77s/it and a completion time of 18:57 ).
-LOG:
-[INFO] got prompt
-[INFO] Using pytorch attention in VAE
-[INFO] Using pytorch attention in VAE
-[INFO] VAE load device: cuda:0, offload device: cpu, dtype: torch.bfloat16
-[INFO] Requested to load AutoencodingEngine
-[INFO] loaded completely; 1133.88 MB usable, 159.87 MB loaded, full load: True
-[INFO] gguf qtypes: F32 (468), Q4_K (304), F16 (4)
-[INFO] model weight dtype torch.bfloat16, manual cast: None
-[INFO] model_type FLOW
-[WARNING] clip missing: ['text_projection.weight']
-[INFO] Requested to load FluxClipModel_
-[INFO] loaded completely;  4659.62 MB loaded, full load: True
-[INFO] CLIP/text encoder model load device: cpu, offload device: cpu, current: cpu, dtype: torch.float8_e4m3fn
-[INFO] Requested to load Flux
-[INFO] loaded partially; 4911.16 MB usable, 4850.35 MB loaded, 1745.24 MB offloaded, 60.79 MB buffer reserved, lowvram patches: 0
-100%|██████████████████████████████████████████████████████████████████████████████████| 20/20 [18:26<00:00, 55.33s/it]
-[INFO] Requested to load AutoencodingEngine
-[INFO] 0 models unloaded.
-[INFO] loaded partially; 0.00 MB usable, 0.00 MB loaded, 159.87 MB offloaded, 13.50 MB buffer reserved, lowvram patches: 0
-[INFO] Prompt executed in 00:18:57
-problem 2: Create tab: Change tab name from "CREATE" to "IMAGE CREATION STUDIO"
-problem 3: Create tab: create an upload button so i can upload an image and work off that and edit it.
-problem 4: Create tab: Automated Scene Alignment: Sync Optimized Character & Assets Layout button not working as intended.
-problem 5: Create tab: GINA IMAGE STUDIO label shows FLUX.1-Schnell GGUF next to it this is false information needs to be corrected.
-problem 6: System tab: overview tab: STUDIOS & ENGINES tab: PROJECT SYSTEM ARCHITECTURE & FEATURE GUIDE: needs updating to show the new Qwen 2.5 model
-problem 7: System tab: HARDWARE tab: Model Checkpoint VRAM Safety & OOM Correlation Matrix: update with new models
-problem 8: System tab: MODELS & WORKFLOWS tab: update and add qwen 2.5 to the diagnotics and workflows model prewarm.
-problem 9: System tab: MODELS & WORKFLOWS tab: REAL-TIME COMFYUI NODE GRAPH SYNC: REGISTERED WORKFLOWS: when trying to select another workflow tab ie gif_studio (gif_studio.json) it jumps back to the pre selected tab it was on now allowing you to stay on any tab.
-problem 10: Music Suite: Track Duration update to create a track upto 8 minutes long.
-problem 11: Music Suite: Change button colours ect to match STREAMINJECT colours
-problem 12: Music Suite: AI Song Cover tab Music Extension tab AI Music Editor tab Voice Remover tab Tracks (16)tab none of these tabs do anything so need to be built and actually do what they say.
+The next upgrade is Phase 43: ### 🚀 Target Update: Local AI Stack Optimization & UI Toggle Swap (RTX 3070 Ti 8GB)
+
+#### 📦 PRE-FLIGHT ASSET STATUS: VERIFIED & DOWNLOADED
+The local hardware sentinel paths have been populated. Do not attempt to download or download-wrap these models; the weights are verified on disk and ready for immediate framework mapping:
+- **Wan 2.1 Video Pipeline:** Installed (`wan2.1_t2v_1.3B_bf16.safetensors`, `umt5_xxl_fp8_e4m3fn_scaled.safetensors`, `wan_2.1_vae.safetensors`, `clip_vision_h.safetensors`).
+- **FLUX.1 Lite Engine:** Installed (`FLUX.1-lite-pure-Q4_0.gguf`).
+- **Qwen Coder Loop:** Installed (`qwen2.5-coder-7b-instruct-q5_k_m.gguf`).
+
+---
+
+#### 1. Local AI Tab: Refactor "PHASE 38 MODEL ROUTING" Side Buttons
+- **Target Files:** `src/components/LocalLlmStudio.tsx`, `server/llm/LocalLlmManager.ts`
+- **Request:** Repurpose the macro button toggle layout inside the left sidebar panel under the **PHASE 38 MODEL ROUTING** header block:
+  - **CRITICAL COMPONENT DEFAULT:** **Qwen 2.5-VL 7B remains the active default selection upon application boot and tab initialization.**
+  - **Button 1 (Left Toggle):** Retain as **"Qwen 2.5-VL 7B"**. Underlying execution properties must manage the multi-modal vision projector (`Qwen 2.5-VL + mmproj-F16`). This serves as the primary system fallback for standard chats, image analysis, and default text-to-image workflow strings.
+  - **Button 2 (Right Toggle - Target Swap):** Replace the legacy "Gemma 3 12B" button slot entirely, renaming it to **"Qwen Coder 7B"**. Clicking this button must hot-swap the text engine path to load `models/llm/qwen2.5-coder-7b-instruct-q5_k_m.gguf`.
+  - **Coder Optimization Rules:** When "Qwen Coder 7B" is active, initialize a pure text execution profile (completely unmounting the `mmproj` vision layer to open the maximum ~2.5 GB context window memory cache directly inside VRAM).
+  - **UI Safeguard Control:** Because the Coder model cannot parse image attachments or handle image prompts, grey out or disable the bottom-right **"ATTACH"** layout file button *only* while the "Qwen Coder 7B" button is toggled on. Display a tool-tip error message: *"Switch to Vision Mode (Qwen 2.5-VL 7B) on the left panel to re-enable image/vision capabilities."*
+  - **UI Subtitle Cleanup:** Update the global header text status subtitle beneath the main "Local AI" title to remove the hardcoded reference string text (`Gemma 3 12B Q4_K_M served locally...`) and make it dynamically update or reference your active Qwen selections instead.
+
+#### 2. Image Studio & Creative Suites: "Text-in-Image" Selector (FLUX.1 Lite Toggle)
+- **Target Files:** `src/components/AiStudioSuite.tsx`, `src/components/gina-image/GinaImageSettings.tsx`, `server/comfy/WorkflowRegistry.ts`
+- **Request:** On all suite control panels featuring image generation (including **Image Creation Studio** and **Local AI Image Gen** triggers), add a **"Render In-Image Text / High Precision"** toggle switch.
+  - **Toggle OFF (Default Speed Mode):** Runs your lightning-fast `Juggernaut-XL v9 (SDXL)` engine, completing iterations in 8–12 seconds.
+  - **Toggle ON (Text-in-Image Mode):** Dynamically alters the ComfyUI backend call to route text parsing through `umt5_xxl_fp8_e4m3fn_scaled.safetensors` and targets the newly downloaded `FLUX.1-lite-pure-Q4_0.gguf` workflow to guarantee crisp text spelling and perfect hands.
+  
+#### 3. Video Studio: Complete Wan 2.1 Native Migration
+- **Target Files:** `server/comfy/WorkflowRegistry.ts`, `server/comfy/WorkflowParser.ts`
+- **Request:** Register the native Wan 2.1 video nodes and completely deprecate the heavy LTX-Video 2.5 default fallback mapping. Update all automated backend scripts inside your execution loops to map directly to these local paths:
+  - **Diffusion Engine:** `models/diffusion_models/wan2.1_t2v_1.3B_bf16.safetensors`
+  - **Text Encoder:** `models/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors`
+  - **VAE Engine:** `models/vae/wan_2.1_vae.safetensors`
+  - **Clip Vision:** `models/clip_vision/clip_vision_h.safetensors`
+
+#### 4. Legacy Model Deprecation & Workspace Cleanup
+- **Target Files:** `server/llm/LocalLlmManager.ts`, `server/comfy/WorkflowRegistry.ts`, `scripts/check_ltx23.ts`, and fallback config templates.
+- **Context:** The user is permanently deleting the legacy model files to free up drive space. The following models are no longer physically present on disk:
+  - `gemma-3-12b-it-Q4_K_M.gguf` & corresponding `mmproj-model-f16.gguf` / `mmproj-q8_0.gguf` layers.
+  - `ltxv-2b-0.9.8-distilled-fp8.safetensors`, `ltxv-13b-0.9.8-distilled-fp8.safetensors`, and `ltx-2.3-22b-distilled-fp8.safetensors`.
+  - `flux1SchnellFp8_schnellFp8.safetensors` & `flux1-schnell-Q4_K_S.gguf`.
+- **Request:** Scan the full workspace architecture and completely clean out all fallback logic, auto-discovery strings, and hardcoded references pointing to these deleted files. Ensure that if `scripts/check_ltx23.ts` loops through video models, it no longer flags LTX-Video paths as valid fallback targets. **Ensure the global system default remains strictly bound to `Qwen 2.5-VL 7B` for vision orchestration.**
+
+
 ## Completed Requests
 
 <!-- Move completed requests here with the completion date and affected files. -->
+
+### 2026-09-07 — Phase 37: EDIT_REQUESTS.md Open Queue Implemented
+1. **Create tab — Keep Image routed to FLUX instead of Juggernaut/Qwen lane** — Fixed by making Qwen 2.5-VL + Juggernaut-XL v9 the Create Studio default and preventing a kept reference from falling back to `flux_image`.
+2. **Create tab — Rename CREATE** — Renamed the workspace to `IMAGE CREATION STUDIO`.
+3. **Create tab — image upload** — Added a prominent upload action plus the existing reference-image workflow.
+4. **Create tab — Automated Scene Alignment** — Removed the DOM textarea interception and applied optimized prompts through the React state path; reference workflow selection now uses the actual Juggernaut reference workflow.
+5. **Create tab — false FLUX label** — Replaced the false studio badge with `Qwen 2.5-VL + Juggernaut-XL v9`.
+6. **System — architecture guide** — Updated the architecture/feature guide to document Qwen 2.5-VL, mmproj-F16, and Juggernaut-XL v9 routing.
+7. **System — VRAM/OOM matrix** — Added Juggernaut-XL v9 and Qwen 2.5-VL model metadata and simulation targets.
+8. **System — models/workflows/pre-warm** — Added Qwen/Juggernaut targets and corrected the default image target; Qwen is represented as an armed local-LLM target rather than being falsely treated as a ComfyUI checkpoint.
+9. **System — registered workflow selection** — Stopped runtime telemetry from overwriting the workflow selected by the user.
+10. **Music Suite — 8-minute tracks** — Duration is now 5–480 seconds; MusicGen renders long requests as sequential <=30-second chunks.
+11. **Music Suite — StreamInject colours** — Updated the primary Music Studio controls to the StreamInject cyan/magenta visual language.
+12. **Music Suite — non-functional modes** — Built source-audio upload and execution controls for AI Song Cover, Music Extension, AI Music Editor, and Voice Remover; extension/edit operations preserve source audio around generated sections and cover mode produces an AI re-imagining with reference continuity.
+
+### 2026-09-07 — Phase 37: Additional correctness fixes
+- Corrected Local AI completed-image job/asset metadata so the actual workflow identity is retained instead of hard-coding `flux_image`.
+- Updated version, README, metadata, and changelog to v1.18.6.
+- Added local audio reference upload validation and kept audio references constrained to Gina's local audio library.
+
 
 ### 2026-09-07 — Phase 36: Network Binding Port 3000 Restoration & Music Studio Robustness
 1. **Failed to query music model status: JSON.parse unexpected character at line 1 column 1**:

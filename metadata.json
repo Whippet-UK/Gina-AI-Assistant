@@ -1,6 +1,6 @@
 {
   "name": "Gina AI Factory — Local Creator UI",
-  "version": "1.18.5",
+  "version": "1.19.2",
   "description": "Strictly local creator dashboard with ComfyUI, Juggernaut XL SDXL high-speed engine, Qwen 2.5-VL 7B & Gemma 3 local CUDA inference, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, and voice mode.",
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API",
@@ -63,7 +63,23 @@
     "STORY_BLOCK_RIFE",
     "ACE_STEP_SINGING_PIPELINE",
     "QWEN_25_VL_JUGGERNAUT_ROUTING",
-    "PERSISTENT_EDIT_REQUEST_QUEUE"
+    "PERSISTENT_EDIT_REQUEST_QUEUE",
+    "CENTRAL_GINA_INTENT_ROUTER",
+    "QWEN_JUGGERNAUT_PRIMARY_IMAGE_POLICY",
+    "GEMMA_VISION_FLUX_FALLBACK_POLICY",
+    "NATURAL_LOCATION_VISUAL_INTENT_DETECTION",
+    "AGENT_PROJECT_UPLOAD_WORKSPACES",
+    "AGENT_GITHUB_REPOSITORY_OPERATIONS",
+    "AGENT_CODE_EDIT_VALIDATE_LOOP",
+    "AGENT_LOCATION_LOOKUP_PLANNER",
+    "AGENT_MULTI_STEP_CODING_LOOP",
+    "AGENT_WORKSPACE_INSPECTION",
+    "AGENT_VALIDATION_AUTOREPAIR",
+    "AGENT_DIFF_REVIEW_GATE",
+    "AGENT_GITHUB_BRANCH_PR_WORKFLOW",
+    "AGENT_LOCATION_RESEARCH_PLANNING",
+    "PERSISTENT_AGENT_WORKBENCH",
+    "AGENT_STREAMING_EXECUTION"
   ],
-  "release": "Phase 36 v1.18.5: Network binding port 3000 restoration in cloud environments and robust JSON content-type validation in Music Studio"
+  "release": "Phase 41 v1.19.2: persistent Agent Workbench, live streaming execution, reconnect-safe run history and cancellation"
 }

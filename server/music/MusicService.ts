@@ -23,6 +23,7 @@ export interface MusicGenOptions {
   temperature?: number;
   audioRef?: string;
   splitStart?: number;
+  editEnd?: number;
   vocalLanguage?: string;
   engine?: string;
 }
@@ -620,7 +621,10 @@ export class MusicService {
 
     const requestedModel = options.model || "facebook/musicgen-small";
     const wantsSinging = !!options.lyrics?.trim() && options.noVocals !== true && requestedModel !== "facebook/audiogen-medium";
-    const useAceStep = requestedModel === "ace-step-1.5" || requestedModel === "auto" || wantsSinging;
+    const isSongwritingMode = options.mode === "text_to_song" || options.mode === "lyrics_to_song" || !options.mode;
+    // ACE-Step is reserved for actual singing requests. Cover/extend/edit modes
+    // require the MusicGen lane so their uploaded audio reference is honoured.
+    const useAceStep = isSongwritingMode && (requestedModel === "ace-step-1.5" || wantsSinging);
 
     if (useAceStep) {
       return this.generateAceStepSong(jobId, { ...options, engine: "ace-step-1.5" }, outputPath, outputFilename, jobManager, releaseLane);
@@ -657,7 +661,7 @@ export class MusicService {
       this.scriptPath,
       "generate",
       "--mode", options.mode || "text_to_song",
-      "--duration", String(options.duration || 15.0),
+      "--duration", String(Math.max(5, Math.min(480, Number(options.duration) || 15))),
       "--output_path", outputPath,
       "--model", modelName,
       "--model_path", modelPath,
@@ -674,8 +678,16 @@ export class MusicService {
     if (options.negativeStyle) args.push("--negative_style", options.negativeStyle);
     if (options.vocalType) args.push("--vocal_type", options.vocalType);
     if (options.noVocals) args.push("--no_vocals");
-    if (options.audioRef) args.push("--audio_ref", options.audioRef);
-    if (options.splitStart) args.push("--split_start", String(options.splitStart));
+    if (options.audioRef) {
+      const candidate = path.resolve(options.audioRef);
+      const allowedRoot = path.resolve(this.outputDir) + path.sep;
+      if (!candidate.startsWith(allowedRoot)) throw new Error("Audio reference must be a local Gina Audio Library file.");
+      const stat = await fs.stat(candidate);
+      if (!stat.isFile()) throw new Error("Audio reference is not a file.");
+      args.push("--audio_ref", candidate);
+    }
+    if (options.splitStart !== undefined) args.push("--split_start", String(options.splitStart));
+    if ((options as any).editEnd !== undefined) args.push("--edit_end", String((options as any).editEnd));
 
     return new Promise((resolve, reject) => {
       console.log(`[MusicService] Executing Python: ${this.pythonPath} ${args.join(" ")}`);
