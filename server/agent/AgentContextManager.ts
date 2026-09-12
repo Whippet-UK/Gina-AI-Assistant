@@ -8,6 +8,7 @@ export interface AgentContextSnapshot {
   milestoneExcerpt: string;
   changelogExcerpt: string;
   agentsExcerpt: string;
+  checklistExcerpt: string;
   readmeExcerpt: string;
   workflowSummary: Array<{ file: string; sizeBytes: number }>;
 }
@@ -28,6 +29,7 @@ export class AgentContextManager {
   async buildSnapshot(): Promise<AgentContextSnapshot> {
     const files = [
       'AGENTS.md',
+      'docs/AI_UPDATE_CHECKLIST.md',
       'CHANGELOG.md',
       'README.md',
       'docs/INDEX.md',
@@ -39,7 +41,8 @@ export class AgentContextManager {
       'package.json',
       'metadata.json',
       'docs/setup/LOCAL_LLM_SETUP.md',
-      'docs/setup/LOCAL_AGENT_SETUP.md'
+      'docs/setup/LOCAL_AGENT_SETUP.md',
+      'docs/setup/GINA_WEB_RESEARCH.md'
     ];
     const inspected = await Promise.all(files.map(async relative => ({ relative, ...(await fileExcerpt(path.join(this.root, relative), relative.includes('CHANGELOG') ? 18000 : 12000)) })));
     const workflowSummary: AgentContextSnapshot['workflowSummary'] = [];
@@ -57,11 +60,12 @@ export class AgentContextManager {
       milestoneExcerpt: get('src/components/MilestoneChecklist.tsx')?.excerpt || '',
       changelogExcerpt: get('CHANGELOG.md')?.excerpt || '',
       agentsExcerpt: get('AGENTS.md')?.excerpt || '',
+      checklistExcerpt: get('docs/AI_UPDATE_CHECKLIST.md')?.excerpt || '',
       readmeExcerpt: get('README.md')?.excerpt || '', workflowSummary,
     };
   }
 
   compact(snapshot: AgentContextSnapshot): string {
-    return JSON.stringify({ generatedAt: snapshot.generatedAt, projectRoot: snapshot.projectRoot, primaryFiles: snapshot.primaryFiles, workflowSummary: snapshot.workflowSummary, milestones: snapshot.milestoneExcerpt.slice(0,7000), agents: snapshot.agentsExcerpt.slice(0,9000), changelog: snapshot.changelogExcerpt.slice(0,9000) });
+    return JSON.stringify({ generatedAt: snapshot.generatedAt, projectRoot: snapshot.projectRoot, primaryFiles: snapshot.primaryFiles, workflowSummary: snapshot.workflowSummary, milestones: snapshot.milestoneExcerpt.slice(0,7000), agents: snapshot.agentsExcerpt.slice(0,9000), checklist: snapshot.checklistExcerpt.slice(0,12000), changelog: snapshot.changelogExcerpt.slice(0,9000) });
   }
 }

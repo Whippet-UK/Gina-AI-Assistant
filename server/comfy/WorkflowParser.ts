@@ -32,12 +32,12 @@ const aliases: Record<string, { key: string; inputs: string[]; classes?: string[
   cfg: [{ key: 'cfg', inputs: ['cfg'], classes: ['KSampler', 'KSamplerAdvanced', 'LTXVideoSampler', 'LTXVSampler'] }],
   sampler: [{ key: 'sampler', inputs: ['sampler_name'], classes: ['KSampler', 'KSamplerAdvanced', 'KSamplerSelect', 'LTXVideoSampler', 'LTXVSampler'] }],
   scheduler: [{ key: 'scheduler', inputs: ['scheduler'], classes: ['BasicScheduler', 'KSampler', 'KSamplerAdvanced', 'LTXVideoSampler', 'LTXVSampler'] }],
-  width: [{ key: 'width', inputs: ['width'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage', 'LTXVEmptyLatentVideo', 'EmptyLTXVLatentVideo', 'EmptyLatentVideo'] }],
-  height: [{ key: 'height', inputs: ['height'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage', 'LTXVEmptyLatentVideo', 'EmptyLTXVLatentVideo', 'EmptyLatentVideo'] }],
-  // Keep video temporal length separate from sample batch size. LTX's batch_size is normally 1;
+  width: [{ key: 'width', inputs: ['width'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage', 'EmptyHunyuanLatentVideo', 'LTXVEmptyLatentVideo', 'EmptyLTXVLatentVideo', 'EmptyLatentVideo'] }],
+  height: [{ key: 'height', inputs: ['height'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage', 'EmptyHunyuanLatentVideo', 'LTXVEmptyLatentVideo', 'EmptyLTXVLatentVideo', 'EmptyLatentVideo'] }],
+  // Keep video temporal length separate from sample batch size. Wan 2.1 video batch_size is normally 1;
   // frame_count/length/num_frames are temporal controls and must never be aliased to batch_size.
   batchSize: [{ key: 'batch_size', inputs: ['batch_size'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage'] }],
-  model: [{ key: 'model', inputs: ['ckpt_name'], classes: ['CheckpointLoaderSimple', 'CheckpointLoader', 'LTXVLoader', 'LTXVideoLoader', 'LTXVideoModelLoader'] }],
+  model: [{ key: 'model', inputs: ['ckpt_name'], classes: ['CheckpointLoaderSimple', 'CheckpointLoader', 'UNETLoader', 'LTXVLoader', 'LTXVideoLoader', 'LTXVideoModelLoader'] }],
   fps: [{ key: 'fps', inputs: ['frame_rate', 'fps'], classes: ['VHS_VideoCombine', 'SaveAnimatedWEBP', 'SaveAnimatedPNG'] }],
   startFrame: [{ key: 'start_frame', inputs: ['skip_first_frames', 'skip_first_images'], classes: ['VHS_LoadVideo', 'VHS_LoadImagesPath'] }],
   endFrame: [{ key: 'end_frame', inputs: ['frame_load_cap', 'image_load_cap'], classes: ['VHS_LoadVideo', 'VHS_LoadImagesPath'] }],

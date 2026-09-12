@@ -34,8 +34,8 @@ Gina AI Factory is a strictly local, bare-metal creator and telemetry dashboard 
 | Service | Protocol | Host / Port | Role |
 | :--- | :--- | :--- | :--- |
 | **Creator UI & Dev Server** | HTTP / WS | `127.0.0.1:3200` | Express REST broker + Vite dev server |
-| **ComfyUI Backend** | HTTP / WS | `127.0.0.1:8188` | FLUX.1 Schnell & LTX-Video 2B execution |
-| **llama-server.exe** | HTTP REST | `127.0.0.1:8080` | Gemma 3 12B IT (28 GPU layers, 4096 ctx) |
+| **ComfyUI Backend** | HTTP / WS | `127.0.0.1:8188` | Juggernaut-XL / FLUX.1 Lite & Wan 2.1 execution |
+| **llama-server.exe** | HTTP REST | `127.0.0.1:8080` | Qwen 2.5-VL / Qwen 2.5 Coder (28 GPU layers, up to 16K ctx) |
 | **AIDA64 Telemetry** | Shared Memory | Win32 Handle | `AIDA64_SensorValues` memory mapped file |
 | **Zero-VRAM RAG** | In-Memory | Express Memory | BM25 + Vector semantic query engine |
 
@@ -44,5 +44,5 @@ Gina AI Factory is a strictly local, bare-metal creator and telemetry dashboard 
 ## 3. GPU VRAM Safety Cage & Mutual Exclusion Rules
 
 1. **7372 MB VRAM Cap**: Total allocations across all runtimes are capped at 90% of 8GB to prevent Windows Desktop Window Manager (DWM) driver crashes.
-2. **Mutual Exclusion**: Before starting or restarting Gemma 3 12B, Gina triggers `POST /free` on ComfyUI to unload latent diffusion tensors from VRAM.
+2. **Mutual Exclusion**: Before starting or restarting a local Qwen engine, Gina triggers `POST /free` on ComfyUI to unload latent diffusion tensors from VRAM.
 3. **Thermal Brake**: NVML polling checks core temperature every 3000ms. If GPU temperature exceeds 80°C, render pipelines pause and trigger a 5-second cooldown breath.
