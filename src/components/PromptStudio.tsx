@@ -91,6 +91,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
       ? projectState.aiStudio.workflowId
       : 'sdxl_juggernaut';
   const [selectedWorkflow, setSelectedWorkflow] = useState(initialWorkflowId);
+  const [highPrecisionText, setHighPrecisionText] = useState(false);
   const [workflow, setWorkflow] = useState<WorkflowSummary | null>(null);
   const [controls, setControls] = useState<Control[]>([]);
   const [parameters, setParameters] = useState<Record<string, any>>({});
@@ -306,7 +307,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
   const workflowModelLabel =
     /juggernaut/i.test(String(workflowModelValue))
       ? 'Juggernaut-XL v9 Photorealism'
-      : workflowModelValue === 'flux1-schnell-Q4_K_S.gguf'
+      : workflowModelValue === 'FLUX.1-lite-pure-Q4_0.gguf'
       ? 'FLUX.1-Schnell GGUF Q4_K_S'
       : String(workflowModelValue);
 
@@ -526,7 +527,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     if (seedControl) bound[seedControl.key] = effectiveSeed;
 
     // Workflow resolution: if reference image is present, route to reference workflow
-    let targetWorkflow = selectedWorkflow;
+    let targetWorkflow = highPrecisionText ? 'flux_lite_image' : selectedWorkflow;
     // Create Studio's primary image lane is Qwen 2.5-VL + Juggernaut-XL v9.
     // Once an image has been kept/promoted, never silently fall back to FLUX.
     const hasKeptReference = Boolean(referenceImage || keptImageUrl);
@@ -554,7 +555,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
 
     onAddLog(
       'INFO',
-      `[Gina Image Studio] Generating with ${workflowModelLabel} (${effectiveWidth}×${effectiveHeight}, ${steps} steps, seed ${effectiveSeed}${hasRef ? `, ref: ${referenceImage.filename}, denoise ${effectiveDenoise}` : ''}). Styles: [${selectedStyles.join(', ')}]`
+      `[Gina Image Studio] Generating with ${workflowModelLabel} (${effectiveWidth}×${effectiveHeight}, ${steps} steps, seed ${effectiveSeed}${hasRef ? `, ref: ${referenceImage.filename}, denoise ${effectiveDenoise}` : ''}). Styles: [${selectedStyles.join(', ')}]${highPrecisionText ? ', HIGH PRECISION / FLUX.1 LITE' : ''}`
     );
 
     await startJob(targetWorkflow, bound);
@@ -1112,6 +1113,8 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
               randomSeed={randomSeed}
               onToggleRandomSeed={() => setRandomSeed((v) => !v)}
               onRandomizeSeed={() => setSeedValue(Math.floor(Math.random() * 2147483647))}
+              highPrecisionText={highPrecisionText}
+              onToggleHighPrecisionText={() => setHighPrecisionText(v => !v)}
               selectedStyles={selectedStyles}
               onToggleStyle={handleToggleStyle}
               onClearStyles={handleClearStyles}

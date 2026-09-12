@@ -16,6 +16,7 @@ export const GinaAgentPanel: React.FC<GinaAgentPanelProps> = ({ disabled = false
   const [workspace, setWorkspace] = useState('');
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
+  const [webStatus, setWebStatus] = useState<any>(null);
   const [liveEvents, setLiveEvents] = useState<any[]>([]);
   const [currentPhase, setCurrentPhase] = useState('READY');
   const streamRef = useRef<EventSource | null>(null);
@@ -24,9 +25,9 @@ export const GinaAgentPanel: React.FC<GinaAgentPanelProps> = ({ disabled = false
 
   const refresh = async () => {
     try {
-      const [a, l, c] = await Promise.all([fetch('/api/agent/access'), fetch('/api/agent/audit'), fetch('/api/agent/context')]);
+      const [a, l, c, w] = await Promise.all([fetch('/api/agent/access'), fetch('/api/agent/audit'), fetch('/api/agent/context'), fetch('/api/agent/web-status')]);
       const ad = await a.json(); const ld = await l.json();
-      setAccess(Boolean(ad.enabled)); setAudit(Array.isArray(ld.entries) ? ld.entries : []); setContextInfo(c.ok ? await c.json() : null);
+      setAccess(Boolean(ad.enabled)); setWebStatus(w.ok ? await w.json() : null); setAudit(Array.isArray(ld.entries) ? ld.entries : []); setContextInfo(c.ok ? await c.json() : null);
     } catch { /* dashboard can still operate */ }
   };
   useEffect(() => {
@@ -166,11 +167,14 @@ export const GinaAgentPanel: React.FC<GinaAgentPanelProps> = ({ disabled = false
         <div>
           <div className="text-[10px] uppercase tracking-[0.25em] text-amber-400 font-bold">Autonomous local orchestration</div>
           <h2 className="text-xl font-semibold text-slate-100 mt-1 flex items-center gap-2"><Bot className="w-5 h-5 text-amber-400" /> Gina Agent</h2>
-          <p className="text-xs text-slate-500 mt-1">Gina can inspect, read, write, execute local project tools, control ComfyUI and manage Gemma.</p>
+          <p className="text-xs text-slate-500 mt-1">Gina can inspect, read, write, execute local project tools, research the live internet when useful, control ComfyUI and manage the active Qwen local AI engines.</p>
         </div>
         <div className="flex items-center gap-2">
           <span className={`text-[9px] font-mono px-2 py-1 rounded border ${access ? 'text-rose-300 border-rose-500/30 bg-rose-500/5' : 'text-slate-500 border-slate-700'}`}>
             {access ? 'FULL LOCAL ACCESS' : 'READ-ONLY / DISABLED'}
+          </span>
+          <span className={`text-[9px] font-mono px-2 py-1 rounded border ${webStatus?.enabled ? 'text-cyan-300 border-cyan-500/30 bg-cyan-500/5' : 'text-slate-500 border-slate-700'}`}>
+            {webStatus?.enabled ? 'WEB RESEARCH ON' : 'WEB RESEARCH OFF'}
           </span>
           <button onClick={() => void toggleAccess()} className={`px-3 py-2 rounded border text-[9px] font-bold uppercase tracking-wider flex items-center gap-2 ${access ? 'border-rose-500/30 bg-rose-500/10 text-rose-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'}`}>
             <Power className="w-3.5 h-3.5" /> {access ? 'Disable' : 'Enable'}

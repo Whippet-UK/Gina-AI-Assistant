@@ -142,7 +142,7 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
           err: 'CUDA out of memory in Hunyuan 3D cross-attention pass (exceeded 7372 MB limit)'
         },
         ltx_video_2b: {
-          name: 'LTX-Video 2B FP8',
+          name: 'Wan 2.1 1.3B BF16',
           workflow: 'ltx_video',
           vram: 7550,
           node: 'VAEDecode (Node #6)',
@@ -499,7 +499,7 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
                         rx={1}
                       />
                     )}
-                    {/* LTX (Sky) */}
+                    {/* Wan 2.1 */}
                     {hLtx > 0 && (
                       <rect
                         x={x}
@@ -610,7 +610,7 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
                   </span>
                   <span className="text-[#f43f5e]">Hunyuan OOM:</span>
                   <span className="text-slate-200">{timelineData[hoveredIndex].hunyuan}</span>
-                  <span className="text-[#38bdf8]">LTX-Video OOM:</span>
+                  <span className="text-[#38bdf8]">Wan 2.1 OOM:</span>
                   <span className="text-slate-200">{timelineData[hoveredIndex].ltxVideo2b}</span>
                   <span className="text-[#10b981]">Flux.1 OOM:</span>
                   <span className="text-slate-200">{timelineData[hoveredIndex].fluxSchnell}</span>
@@ -628,7 +628,7 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded bg-[#38bdf8]" />
-                <span>LTX-Video 2B</span>
+                <span>Wan 2.1 1.3B</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded bg-[#10b981]" />
@@ -916,7 +916,7 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
               onClick={() => handleSimulateOOM('ltx_video_2b')}
               className="px-2.5 py-1.5 rounded bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[10px] font-bold uppercase transition-colors cursor-pointer"
             >
-              + Log LTX-2B VAE Spike
+              + Log Wan 2.1 VRAM Spike
             </button>
             <button
               type="button"

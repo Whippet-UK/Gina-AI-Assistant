@@ -78,6 +78,8 @@ interface GinaImageSettingsProps {
   randomSeed: boolean;
   onToggleRandomSeed: () => void;
   onRandomizeSeed: () => void;
+  highPrecisionText?: boolean;
+  onToggleHighPrecisionText?: () => void;
 
   // Style tab
   selectedStyles: string[];
@@ -137,6 +139,8 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
   randomSeed,
   onToggleRandomSeed,
   onRandomizeSeed,
+  highPrecisionText = false,
+  onToggleHighPrecisionText,
   selectedStyles,
   onToggleStyle,
   onClearStyles,
@@ -269,6 +273,18 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
                     </div>
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-violet-300 font-mono">Render In-Image Text / High Precision</div>
+                  <div className="text-[9px] text-zinc-500 mt-1">Off: Juggernaut-XL v9 speed mode · On: FLUX.1 Lite + UMT5 XXL for precise text rendering.</div>
+                </div>
+                <button type="button" role="switch" aria-checked={highPrecisionText} onClick={onToggleHighPrecisionText} className={`relative w-11 h-6 rounded-full transition ${highPrecisionText ? 'bg-violet-600' : 'bg-zinc-700'}`}>
+                  <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition ${highPrecisionText ? 'left-6' : 'left-1'}`} />
+                </button>
               </div>
             </div>
 
@@ -534,7 +550,7 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
                   type="button"
                   onClick={() => {
                     if (onSelectWorkflow) onSelectWorkflow('flux_image');
-                    onChangeBaseModel('flux1-schnell-Q4_K_S.gguf');
+                    onChangeBaseModel('Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors');
                   }}
                   className={`p-3 rounded-lg border text-left transition-all ${
                     selectedWorkflow === 'flux_image'
@@ -553,7 +569,7 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
                     </span>
                   </div>
                   <div className="text-[10px] text-zinc-400 font-mono">Q4_K_S UNet · 4-step generation</div>
-                  <div className="text-[9px] text-amber-400 font-mono mt-1">Gemma 3 Vision only · fallback / high-VRAM lane</div>
+                  <div className="text-[9px] text-amber-400 font-mono mt-1">FLUX.1 Lite high-precision text lane</div>
                   <div className="text-[9px] text-emerald-400 font-mono mt-1">~6.2 GB VRAM · T5-XXL FP8</div>
                 </button>
 

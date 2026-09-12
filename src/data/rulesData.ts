@@ -173,7 +173,7 @@ export const ALL_RULES_MATRIX: RuleSafeguard[] = [
       "Page_File_Thrash_Monitoring: Alert if Windows pagefile paging exceeds 2GB/sec rate",
       "Post_Output_File_Handle_Release: Force immediate closure of image stream references",
       "FLUX_FP8_Quantization_Lock: Use e4m3fn FP8 quantization for FLUX text encoder & UNet",
-      "LTX_INT8_Video_Weight_Quant: Apply INT8 weight quantization for LTX-Video transformer layers",
+      "WAN21_Video_Weight_Quant: Apply memory-safe precision controls for the active Wan 2.1 video transformer",
       "Offload_Text_Encoder_To_CPU: Unload T5 text encoder from GPU VRAM immediately after CLIP encoding",
       "Sequential_Model_Loading_Gate: Load video generator model only after image generator model unloads",
       "VRAM_Defragmentation_Pass: Trigger CUDA memory defragmentation prior to long video renders"

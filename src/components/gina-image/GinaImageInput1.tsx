@@ -688,7 +688,7 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
           <button
             type="button"
             disabled={isOptimizing}
-            onClick={() => handleAutomatedPipelineRun(hasInputImageWorkflow ? 'sdxl_juggernaut.json' : 'flux_image.json')}
+            onClick={() => handleAutomatedPipelineRun(hasInputImageWorkflow ? 'sdxl_juggernaut_reference.json' : 'sdxl_juggernaut.json')}
             className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-500 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-2 transition-all shadow-md group"
           >
             {isOptimizing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />}

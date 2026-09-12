@@ -34,7 +34,7 @@ export const RestoreManifestModal: React.FC<RestoreManifestModalProps> = ({
     ],
     targetNetworks: {
       imageNetwork: "FLUX.1-Schnell (Quantized FP8) [Verified Operational]",
-      videoNetwork: "LTX-Video 2B FP8 (ltxv-2b-0.9.8-distilled-fp8.safetensors) [H.264 MP4 Export Verified Operational]",
+      videoNetwork: "Wan 2.1 1.3B BF16 (wan2.1_t2v_1.3B_bf16.safetensors) [H.264 MP4 Export Verified Operational]",
       upscaleEngine: "Ultimate SD Upscale (4x-UltraSharp Model)"
     },
     vramSafetyGuard: {

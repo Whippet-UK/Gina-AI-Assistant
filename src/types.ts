@@ -52,7 +52,7 @@ export interface PromptStudioConfig {
   stylePreset: string;
 }
 
-export type LocalLlmEngine = 'qwen'|'gemma';
+export type LocalLlmEngine = 'qwen'|'qwen-coder';
 
 export interface AiStudioConfig {
   activeTab: 'creator'|'video'|'jobs'|'shorts'|'assets';

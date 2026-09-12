@@ -175,7 +175,7 @@ export const LocalRagKnowledgePanel: React.FC<Props> = ({ onAddLog, defaultExpan
               <div className="text-base font-bold text-emerald-400 mt-0.5 flex items-center gap-1.5">
                 <Zap className="w-3.5 h-3.5 text-emerald-400" /> 0.0 MB (Safe)
               </div>
-              <div className="text-[10px] text-slate-400">Zero competition with Gemma/Flux</div>
+              <div className="text-[10px] text-slate-400">Zero-VRAM local RAG alongside Qwen/ComfyUI</div>
             </div>
 
             <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg p-2.5">
@@ -212,7 +212,7 @@ export const LocalRagKnowledgePanel: React.FC<Props> = ({ onAddLog, defaultExpan
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSearch(searchQuery, selectedCategory)}
-                placeholder="Search local knowledge (e.g. 'VRAM cage', 'Gemma 28 layers', 'AIDA64 68 sensors')..."
+                placeholder="Search local knowledge (e.g. 'VRAM cage', 'Qwen 28 layers', 'AIDA64 68 sensors')..."
                 className="w-full bg-slate-950/80 border border-slate-700/80 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-emerald-500 transition-colors"
               />
             </div>

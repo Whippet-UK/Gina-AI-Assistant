@@ -1,5 +1,5 @@
-import { Router, Request, Response } from 'express';
-import { LocalLlmManager, ImageGenerationOptions } from '../llm/LocalLlmManager';
+import { Router } from 'express';
+import { LocalLlmManager } from '../llm/LocalLlmManager';
 
 const router = Router();
 // Instantiate your updated manager class
@@ -10,7 +10,7 @@ const llmManager = new LocalLlmManager();
  * Intercepts frontend scene variables and returns customized 
  * prompt arrays or strings tailored specifically to the active backend model.
  */
-router.post('/optimize-prompt', async (req: Request, res: Response): Promise<void> => {
+router.post('/optimize-prompt', async (req, res) => {
   try {
     const { 
       activeWorkflow, 
@@ -44,7 +44,7 @@ router.post('/optimize-prompt', async (req: Request, res: Response): Promise<voi
       prompt: optimizedPrompt
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('[API Router Error] Failed to compile specialized image prompts:', error);
     res.status(500).json({ 
       success: false, 

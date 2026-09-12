@@ -25,10 +25,10 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
   const { job, output, outputLoading, submitting, startJob, cancelJob } = useGenerationJob();
   const [assets, setAssets] = useState<StudioAsset[]>([]);
   const [assetId, setAssetId] = useState('');
-  const [sourceMode, setSourceMode] = useState<'asset'|'ltx'>('asset');
+  const [sourceMode, setSourceMode] = useState<'asset'|'wan'>('asset');
   const [prompt, setPrompt] = useState('A small cinematic mechanical dial rotating smoothly, clean studio lighting, subtle reflections');
   const [negativePrompt, setNegativePrompt] = useState('blurry, flicker, duplicate frames, warped geometry');
-  const [ltxSteps, setLtxSteps] = useState(18);
+  const [wanSteps, setWanSteps] = useState(18);
   const [startFrame, setStartFrame] = useState(0);
   const [endFrame, setEndFrame] = useState(24);
   const [fps, setFps] = useState(25);
@@ -53,7 +53,7 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
   const [storyUseFinalFrame, setStoryUseFinalFrame] = useState(true);
   const [storyReferenceStrength, setStoryReferenceStrength] = useState(0.80);
   const [storyReferenceNoise, setStoryReferenceNoise] = useState(0.10);
-  const [storyModel, setStoryModel] = useState('ltxv-2b-0.9.8-distilled-fp8.safetensors');
+  const [storyModel, setStoryModel] = useState('wan2.1_t2v_1.3B_bf16.safetensors');
   const [storySteps, setStorySteps] = useState(20);
   const [storySampler, setStorySampler] = useState('euler_ancestral');
   const [storyScheduler, setStoryScheduler] = useState('normal');
@@ -104,7 +104,7 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
 
   const activeAsset = useMemo(() => assets.find(a => a.id === assetId) || null, [assets, assetId]);
   const isGifJob = job?.workflowId === 'gif_studio' || job?.workflowId === 'gif_story';
-  // Directly preview ComfyUI/LTX output; ADOPT is optional and is not required just to see it.
+  // Directly preview ComfyUI/Wan output; ADOPT is optional and is not required just to see it.
   const mediaOutputs = (output?.outputs || []).filter((o:any) => {
     const filename = String(o?.file?.filename || '');
     const mime = String(o?.file?.mime || o?.mime || '').toLowerCase();
@@ -157,9 +157,9 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
     return () => window.clearInterval(timer);
   }, [job?.id, job?.workflowId, job?.currentNodeId]);
 
-  // When an LTX job completes, switch the player to its actual output in GIF Studio.
+  // When an Wan job completes, switch the player to its actual output in GIF Studio.
   useEffect(() => {
-    if (job?.workflowId !== 'ltx_video' || job.status !== 'COMPLETED' || !activeOutputUrl) return;
+    if (job?.workflowId !== 'wan_video' || job.status !== 'COMPLETED' || !activeOutputUrl) return;
     const name = String(activeOutput?.file?.filename || '');
     setPreviewFormat(/\.(mp4|webm|mov|mkv|avi)(\?|$)/i.test(name) || String(activeOutput?.file?.mime || '').toLowerCase().startsWith('video/') ? 'mp4' : 'gif');
   }, [job?.workflowId, job?.status, activeOutputUrl]);
@@ -227,7 +227,7 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
       sourcePath: activeAsset?.path || '',
       sourceKind: activeAsset?.kind || 'video',
       prompt, negative_prompt: negativePrompt,
-      steps: generationMode==='story' ? storySteps : ltxSteps,
+      steps: generationMode==='story' ? storySteps : wanSteps,
       cfg: storyCfg,
       sampler: storySampler,
       scheduler: storyScheduler,
@@ -243,10 +243,10 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
       compression, filename_prefix: 'GinaAI_GIF_Studio'
     };
     try {
-      if (sourceMode === 'ltx') {
-        // GIF Studio owns the complete LTX production now. Even "Single Clip"
+      if (sourceMode === 'wan') {
+        // GIF Studio owns the complete Wan production now. Even "Single Clip"
         // uses the same streamed story engine when a duration exceeds one safe
-        // LTX chunk, so the 30s control cannot silently become a 1–2s source.
+        // Wan chunk, so the 30s control cannot silently become a 1–2s source.
         const scenes = generationMode === 'story'
           ? storyScenes
           : [{ id:'single_clip', title:'Single Clip', prompt, duration:Math.max(0.1, durationSeconds || 1), transition:'cut', continuity:true, reference:true, seedMode:'random', seed:Math.floor(Math.random()*1e9) }];
@@ -287,7 +287,7 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
         await startJob('gif_story', storyParams);
         onAddLog('INFO', generationMode==='story'
           ? `GIF Studio: sequential story queued — ${scenes.length} blocks / ${storyTotalDuration.toFixed(1)}s [${storyWidth}x${storyHeight}, ${storySteps} steps, ${storyBaseFps}fps, RIFE ${storyRife.toUpperCase()}].`
-          : `GIF Studio: continuous LTX clip queued — ${scenes[0].duration}s streamed in safe generation blocks.`);
+          : `GIF Studio: continuous Wan clip queued — ${scenes[0].duration}s streamed in safe generation blocks.`);
       } else {
         await startJob('gif_studio', params);
         onAddLog('INFO', `GIF Studio queued: frames ${startFrame}–${endFrame}, ${fps}fps${smooth ? `, RIFE ${rifeMultiplier}×` : ''}.`);
@@ -332,13 +332,13 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
     } finally { setExporting(false); }
   };
 
-  const adoptLtx = async () => {
-    if (!job?.id || job.workflowId !== 'ltx_video' || job.status !== 'COMPLETED') return;
+  const adoptWan = async () => {
+    if (!job?.id || job.workflowId !== 'wan_video' || job.status !== 'COMPLETED') return;
     try {
       const r = await fetch('/api/gif-studio/adopt-job', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({jobId:job.id})});
-      const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Could not adopt LTX output');
-      await loadAssets(); setAssetId(d.asset.id); setSourceMode('asset'); onAddLog('INFO', `Adopted LTX output as GIF Studio source: ${d.asset.name}`);
-    } catch (e:any) { setError(e?.message || 'Could not adopt LTX output'); }
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Could not adopt Wan output');
+      await loadAssets(); setAssetId(d.asset.id); setSourceMode('asset'); onAddLog('INFO', `Adopted Wan output as GIF Studio source: ${d.asset.name}`);
+    } catch (e:any) { setError(e?.message || 'Could not adopt Wan output'); }
   };
 
   const progress = isGifJob ? job?.progress || 0 : 0;
@@ -364,12 +364,12 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
               <div className="rounded border border-slate-800 p-2"><span className="text-slate-600">FPS / RIFE</span><div className="font-mono text-cyan-300 mt-1">{storyBaseFps * (storyRife==='4x'?4:storyRife==='2x'?2:1)}</div></div>
             </div>
 
-            {/* LTX-Video Hardware & Parameter Controls */}
+            {/* Wan-Video Hardware & Parameter Controls */}
             <div className="rounded-lg border border-fuchsia-500/30 bg-slate-950 p-2.5 space-y-2.5">
               <div className="flex items-center justify-between">
                 <div className="text-[8px] font-bold tracking-wider text-fuchsia-300 flex items-center gap-1.5">
                   <Zap className="w-3 h-3 text-amber-400"/>
-                  LTX-VIDEO HARDWARE ENGINE (8GB VRAM OPTIMIZED)
+                  WAN 2.1 VIDEO ENGINE (8GB VRAM OPTIMIZED)
                 </div>
                 <button onClick={()=>setShowStoryAdvanced(v=>!v)} className="text-[8px] text-slate-400 hover:text-slate-200">{showStoryAdvanced ? 'HIDE' : 'CONFIG'}</button>
               </div>
@@ -382,8 +382,7 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
                     <span className="text-[7px] text-emerald-400 font-mono">FP8_e4m3fn · Mandatory for 8GB</span>
                   </div>
                   <select value={storyModel} onChange={e=>setStoryModel(e.target.value)} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200">
-                    <option value="ltxv-2b-0.9.8-distilled-fp8.safetensors">LTX-Video 2B 0.9.8 Distilled FP8 (Quantized · ~50% VRAM Cut)</option>
-                    <option value="ltx-video-2.0.safetensors">LTX-Video 2.0 (Full Precision FP16)</option>
+                    <option value="wan2.1_t2v_1.3B_bf16.safetensors">Wan 2.1 1.3B BF16 (Native · 8GB-oriented)</option>
                   </select>
                 </div>
 
@@ -489,11 +488,11 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
             <label className="flex items-center gap-2 text-[8px] text-slate-500"><input type="checkbox" checked={storyAutoGenerate} onChange={e=>setStoryAutoGenerate(e.target.checked)}/> AUTO-GENERATE SCENES IN ORDER</label>
           </div>}
         </div>
-        <div className="grid grid-cols-2 gap-1 rounded-lg border border-slate-800 p-1 bg-slate-900"><button onClick={()=>setSourceMode('asset')} className={`py-2 text-[10px] font-bold rounded ${sourceMode==='asset'?'bg-emerald-500 text-slate-950':'text-slate-400'}`}>LOCAL ASSET</button><button onClick={()=>setSourceMode('ltx')} className={`py-2 text-[10px] font-bold rounded ${sourceMode==='ltx'?'bg-emerald-500 text-slate-950':'text-slate-400'}`}>LTX GENERATE</button></div>
+        <div className="grid grid-cols-2 gap-1 rounded-lg border border-slate-800 p-1 bg-slate-900"><button onClick={()=>setSourceMode('asset')} className={`py-2 text-[10px] font-bold rounded ${sourceMode==='asset'?'bg-emerald-500 text-slate-950':'text-slate-400'}`}>LOCAL ASSET</button><button onClick={()=>setSourceMode('wan')} className={`py-2 text-[10px] font-bold rounded ${sourceMode==='wan'?'bg-emerald-500 text-slate-950':'text-slate-400'}`}>WAN 2.1 GENERATE</button></div>
         <label className="block border border-dashed border-slate-700 hover:border-emerald-500/60 rounded-lg p-4 text-center cursor-pointer bg-slate-900/60"><Upload className="w-5 h-5 mx-auto text-emerald-400"/><div className="text-[10px] text-slate-300 font-bold mt-2">IMPORT MP4 / MOV / PNG ARRAY</div><div className="text-[9px] text-slate-600 mt-1">Stored locally in C:\Gina_AI\media\gif_studio</div><input type="file" multiple accept="video/mp4,video/quicktime,video/webm,image/png,image/jpeg,image/webp" className="hidden" onChange={e=>void handleUpload(e.target.files)} /></label>
         {assets.length > 0 && <select value={assetId} onChange={e=>setAssetId(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-2 text-xs text-slate-200"><option value="">Select local source…</option>{assets.map(a=><option key={a.id} value={a.id}>{a.kind==='video'?'🎥':'🖼️'} {a.name}</option>)}</select>}
         {activeAsset && <div className="rounded border border-slate-800 bg-slate-900/70 p-2 text-[9px] font-mono text-slate-500 break-all"><span className="text-slate-300">SOURCE</span><br/>{activeAsset.path}</div>}
-        {sourceMode==='ltx' && <div className="space-y-2"><label className="text-[9px] uppercase tracking-wider text-slate-500">LTX prompt</label><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={4} className="w-full bg-slate-900 border border-slate-800 rounded p-2 text-xs text-slate-200 resize-none"/><label className="text-[9px] uppercase tracking-wider text-slate-500">Negative</label><textarea value={negativePrompt} onChange={e=>setNegativePrompt(e.target.value)} rows={2} className="w-full bg-slate-900 border border-slate-800 rounded p-2 text-xs text-slate-200 resize-none"/></div>}
+        {sourceMode==='wan' && <div className="space-y-2"><label className="text-[9px] uppercase tracking-wider text-slate-500">WAN 2.1 prompt</label><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={4} className="w-full bg-slate-900 border border-slate-800 rounded p-2 text-xs text-slate-200 resize-none"/><label className="text-[9px] uppercase tracking-wider text-slate-500">Negative</label><textarea value={negativePrompt} onChange={e=>setNegativePrompt(e.target.value)} rows={2} className="w-full bg-slate-900 border border-slate-800 rounded p-2 text-xs text-slate-200 resize-none"/></div>}
         <div className="space-y-3 border-t border-slate-800 pt-3"><div className="flex justify-between text-[10px]"><span className="text-slate-400">START FRAME</span><span className="font-mono text-emerald-400">{startFrame}</span></div><input type="range" min="0" max="500" value={startFrame} onChange={e=>setStartFrame(Number(e.target.value))} className="w-full"/><div className="flex justify-between text-[10px]"><span className="text-slate-400">END FRAME</span><span className="font-mono text-emerald-400">{endFrame}</span></div><input type="range" min={startFrame} max="500" value={endFrame} onChange={e=>setEndFrame(Number(e.target.value))} className="w-full"/></div>
         <div className="grid grid-cols-2 gap-2"><label className="text-[9px] text-slate-500">FPS<input type="number" min="1" max="60" value={fps} onChange={e=>setFps(clamp(Number(e.target.value),1,60))} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs"/></label><label className="text-[9px] text-slate-500">FRAME DELAY MS<input type="number" min="16" max="1000" value={Math.round(1000/fps)} onChange={e=>setFps(clamp(Math.round(1000/Math.max(16,Number(e.target.value))),1,60))} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs"/></label></div>
         <div className="grid grid-cols-2 gap-2"><button onClick={()=>setSmooth(v=>!v)} disabled={rifeAvailable===false} className={`rounded border px-2 py-2 text-[9px] font-bold ${smooth?'border-emerald-500/50 bg-emerald-500/10 text-emerald-300':'border-slate-800 text-slate-500'} disabled:opacity-40`}>RIFE SMOOTH {rifeAvailable===false?'UNAVAILABLE':smooth?'ON':'OFF'}</button><select value={rifeMultiplier} onChange={e=>setRifeMultiplier(Number(e.target.value))} disabled={!smooth} className="bg-slate-900 border border-slate-800 rounded px-2 text-xs"><option value={2}>2× RIFE</option><option value={4}>4× RIFE</option></select></div>
@@ -513,7 +512,7 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
         </div>
         <button onClick={()=>void submit()} disabled={submitting || (isGifJob && (job?.status==='RUNNING'||job?.status==='QUEUED'))} className="w-full rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs py-3 flex items-center justify-center gap-2 disabled:opacity-50"><Play className="w-4 h-4"/>{submitting?'QUEUEING…':'PROCESS GIF LOCALLY'}</button>
         {job?.status==='RUNNING' && <button onClick={()=>void cancelJob()} className="w-full rounded border border-red-500/30 text-red-300 text-[10px] py-2">CANCEL / PURGE VRAM</button>}
-        {job?.workflowId==='ltx_video' && job.status==='COMPLETED' && <button onClick={()=>void adoptLtx()} className="w-full rounded border border-cyan-500/40 text-cyan-300 text-[10px] py-2">ADOPT LTX OUTPUT AS GIF SOURCE</button>}
+        {job?.workflowId==='wan_video' && job.status==='COMPLETED' && <button onClick={()=>void adoptWan()} className="w-full rounded border border-cyan-500/40 text-cyan-300 text-[10px] py-2">ADOPT WAN 2.1 OUTPUT AS GIF SOURCE</button>}
       </section>
 
       <section className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 xl:sticky xl:top-4 flex flex-col space-y-3">

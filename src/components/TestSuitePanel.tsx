@@ -50,7 +50,7 @@ export const TestSuitePanel: React.FC = () => {
           <input type="checkbox" checked={live} onChange={e => setLive(e.target.checked)} className="accent-emerald-500" /> LIVE SMOKE TESTS
         </label>
         {live && <label className="flex items-center gap-2 text-[9px] uppercase tracking-wider text-slate-400 bg-slate-900 border border-slate-800 rounded px-2.5 py-2 cursor-pointer" title="If the local LLM is stopped, start it before live smoke tests.">
-          <input type="checkbox" checked={autoStart} onChange={e => setAutoStart(e.target.checked)} className="accent-emerald-500" /> AUTO-START LOCAL LLM (QWEN/GEMMA)
+          <input type="checkbox" checked={autoStart} onChange={e => setAutoStart(e.target.checked)} className="accent-emerald-500" /> AUTO-START LOCAL LLM (QWEN)
         </label>}
         <button onClick={run} disabled={running} className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald-500 text-slate-950 text-[10px] font-black tracking-widest disabled:opacity-50">
           {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />} {running ? 'RUNNING…' : 'RUN ALL TESTS'}

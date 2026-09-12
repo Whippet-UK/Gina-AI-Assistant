@@ -16,7 +16,7 @@ import { RestoreManifestModal } from './components/RestoreManifestModal';
 import { VRAMWarningToast } from './components/VRAMWarningToast';
 import { LocalLlmStudio } from './components/LocalLlmStudio';
 import { WorkspaceErrorBoundary } from './components/WorkspaceErrorBoundary';
-import { ComfyUIStatusIndicator } from './components/LTXDiagnostic';
+import { ComfyUIStatusIndicator } from './components/WanDiagnostic';
 import { LogEntry, SystemTelemetry } from './types';
 import { Aida64Hud } from './components/Aida64Hud';
 import { APP_VERSION, ACTIVE_SAVE_POINT_ID } from './version';
@@ -235,7 +235,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
               </button>
             ))}
             {isJobActive && <div className="ml-2 hidden lg:flex items-center gap-2 px-2.5 py-1 rounded bg-slate-900 border border-emerald-500/30 text-[9px] font-mono text-emerald-300"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" /><span className="font-bold uppercase tracking-wider">{job?.workflowId === 'ltx_video' ? 'Video Gen' : 'Image Gen'}: {job?.progress || 0}%</span>{job?.currentStep && <span className="text-slate-500">({job.currentStep}/{job.totalSteps || '?'})</span>}</div>}
-            <div className="ml-auto hidden md:flex items-center gap-2 text-[9px] font-mono text-slate-600"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> LOCAL CREATOR ENGINE</div>
+            <div className="ml-auto hidden md:flex items-center gap-2 text-[9px] font-mono text-slate-600"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> LOCAL-FIRST CREATOR ENGINE</div>
           </nav>
         </div>
 
@@ -245,7 +245,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
         </main>
 
         <main className={`space-y-5 ${activeView === 'video' ? 'block' : 'hidden'}`}>
-          <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Video workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Video Studio</h1><p className="text-xs text-slate-500 mt-1">Interface with LTX-2.3 22B Distilled FP8 workflow parameters for local text-to-video.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">VIDEO · LTX-2.3 · 8GB VRAM</div></div>
+          <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Video workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Video Studio</h1><p className="text-xs text-slate-500 mt-1">Native Wan 2.1 1.3B workflow controls for local text-to-video.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">VIDEO · WAN 2.1 · 8GB VRAM</div></div>
           <WorkspaceErrorBoundary name="Video Studio"><VideoStudio onAddLog={logWithOomCheck} logs={logs} telemetry={telemetry} onClearCache={() => handleClearCache(false, true)} /></WorkspaceErrorBoundary>
         </main>
 
@@ -283,13 +283,13 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
         <main className={`space-y-5 ${activeView === 'assets' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Local library</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Assets</h1><p className="text-xs text-slate-500 mt-1">Generated files and their local generation records.</p></div><WorkspaceErrorBoundary name="Assets"><AiStudioSuite onAddLog={logWithOomCheck} view="assets" /></WorkspaceErrorBoundary></main>
         <main className={`space-y-5 ${activeView === 'jobs' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Execution monitor</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Jobs</h1><p className="text-xs text-slate-500 mt-1">Track local ComfyUI work without opening ComfyUI itself.</p></div><WorkspaceErrorBoundary name="Jobs"><AiStudioSuite onAddLog={logWithOomCheck} view="jobs" /></WorkspaceErrorBoundary></main>
 
-        <main className={`space-y-5 ${activeView === 'llm' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Quantized local AI engine</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Local AI</h1><p className="text-xs text-slate-500 mt-1">Gemma 3 12B Q4_K_M served locally by llama.cpp CUDA.</p></div><WorkspaceErrorBoundary name="Local AI"><LocalLlmStudio onAddLog={logWithOomCheck} /></WorkspaceErrorBoundary></main>
+        <main className={`space-y-5 ${activeView === 'llm' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Quantized local AI engine</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Local AI</h1><p className="text-xs text-slate-500 mt-1">Qwen 2.5-VL Vision / Qwen 2.5 Coder served locally by llama.cpp CUDA.</p></div><WorkspaceErrorBoundary name="Local AI"><LocalLlmStudio onAddLog={logWithOomCheck} /></WorkspaceErrorBoundary></main>
 
         <main className={`space-y-5 ${activeView === 'system' ? 'block' : 'hidden'}`}>
           <WorkspaceErrorBoundary name="System"><SystemHub telemetry={telemetry} logs={logs} activeSavePoint={activeSavePoint} logWithOomCheck={logWithOomCheck} handleClearCache={handleClearCache} onClearLogs={() => setLogs([])} /></WorkspaceErrorBoundary>
         </main>
 
-        <footer className="border-t border-slate-800 mt-8 pt-4 pb-6 text-center text-[10px] text-slate-600">Gina AI Factory v{APP_VERSION} · Strictly Local · ComfyUI + llama.cpp execution backends · C:\Gina_AI\</footer>
+        <footer className="border-t border-slate-800 mt-8 pt-4 pb-6 text-center text-[10px] text-slate-600">Gina AI Factory v{APP_VERSION} · Local-first · ComfyUI + llama.cpp execution backends · C:\Gina_AI\</footer>
       </div>
       <RestoreManifestModal isOpen={isManifestOpen} onClose={() => setIsManifestOpen(false)} activeSavePoint={activeSavePoint} />
     </div>

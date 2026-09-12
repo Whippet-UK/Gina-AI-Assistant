@@ -19,7 +19,7 @@ router.post('/optimize-prompt', async (req: Request, res: Response): Promise<voi
     } = req.body;
 
     const options = {
-      activeWorkflow: activeWorkflow || 'flux_image.json',
+      activeWorkflow: activeWorkflow || 'sdxl_juggernaut.json',
       dogBreed: dogBreed || "Whippet",
       dogColor: dogColor || "pure white",
       youtubeChannelName: youtubeChannelName || "THE WHIPPET",

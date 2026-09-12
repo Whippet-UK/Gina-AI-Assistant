@@ -44,7 +44,7 @@ export const AppFeaturesGuide: React.FC = () => {
       category: 'Image Inference',
       shortDesc: 'Vision-aware prompt engineering paired with Juggernaut-XL v9 SDXL generation, reference editing, dynamic workflow binding, and local output management.',
       details: [
-        'Qwen 2.5-VL is the default local vision/text assistant; image generation/editing routes to Juggernaut-XL v9 SDXL workflows (base and reference). FLUX is reserved for the Gemma 3 Vision fallback/alternate lane and is never silently selected.',
+        'Qwen 2.5-VL is the default local vision/text assistant; Qwen Coder 7B is the optional text-only coding mode. Image generation/editing routes to Juggernaut-XL v9 by default, with optional FLUX.1 Lite high-precision rendering.',
         'Dynamic Workflow Binding: Introspects the selected ComfyUI workflow and binds prompt, seed, steps, CFG, dimensions, and reference-image inputs without silently switching models.',
         'Token Budget & Parameter Control: Enforces safe token counts, seeds, CFG scales (1-10), and aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4).',
         'Direct ComfyUI Queueing: Compiles and dispatches JSON workflows directly to the local ComfyUI instance at 127.0.0.1:8188.',
@@ -53,16 +53,16 @@ export const AppFeaturesGuide: React.FC = () => {
     },
     {
       id: 'video_studio',
-      title: 'LTX-Video 2.5 & RIFE Motion Studio',
+      title: 'Wan 2.1 & RIFE Motion Studio',
       icon: Video,
       color: 'text-sky-400',
       bgColor: 'bg-sky-500/10',
       borderColor: 'border-sky-500/30',
-      badge: 'LTX-Video + RIFE',
+      badge: 'Wan 2.1 + RIFE',
       category: 'Video Pipeline',
-      shortDesc: 'Dedicated text-to-video studio using the locally installed LTX-Video pipeline, H.264 MP4 export, and optional RIFE interpolation.',
+      shortDesc: 'Dedicated text-to-video studio using the locally installed Wan 2.1 pipeline, H.264 MP4 export, and optional RIFE interpolation.',
       details: [
-        'LTX-Video 2.5: Model identity is discovered from the installed ComfyUI workflow/model files so the System tab does not advertise an obsolete checkpoint filename.',
+        'Wan 2.1 1.3B BF16: Uses the lightweight native ComfyUI video workflow selected for the 8GB VRAM target.',
         'AI Frame Interpolation (RIFE VFI): Pairwise frame synthesis (2× 50fps and 4× 60fps slomo) yielding smooth video with low VRAM footprint.',
         '8GB VRAM Safe Zone Matrix: Configured with 512x512 25-frame baselines to ensure crash-free execution within 8GB GPU memory constraints.',
         'H.264 MP4 Direct Pipeline: Uses VHS_VideoCombine node for universal browser and device playback.',
@@ -124,19 +124,19 @@ export const AppFeaturesGuide: React.FC = () => {
     },
     {
       id: 'local_llm',
-      title: 'Qwen 2.5-VL 7B / Gemma 3 12B Local CUDA Studio',
+      title: 'Qwen 2.5-VL 7B / Qwen Coder 7B Local CUDA Studio',
       icon: Cpu,
       color: 'text-amber-400',
       bgColor: 'bg-amber-500/10',
       borderColor: 'border-amber-500/30',
-      badge: 'Gemma 3 12B · 28 Layers',
+      badge: 'Qwen 2.5-VL / Qwen Coder · 28 Layers',
       category: 'Local LLM Inference',
-      shortDesc: 'Quantized Gemma 3 12B IT served via llama.cpp CUDA backend at pinned 28 GPU layers on port 8080.',
+      shortDesc: 'Quantized Qwen local GGUF models are served via llama.cpp CUDA with the vision projector mounted only in Vision Mode.',
       details: [
-        'Quantized Model: Gemma 3 12B IT (Q4_K_M GGUF) running locally without external cloud dependencies.',
+        'Primary Model: Qwen 2.5-VL 7B Q4_K_M + mmproj-F16; optional Qwen Coder 7B Q5_K_M for code work. Both run locally without external cloud dependencies.',
         'llama-server.exe CUDA Backend: Bound to http://127.0.0.1:8080/v1 with 4096 context window and 6 CPU threads.',
         'Pinned 28 GPU Layers: Verified at ~9.2-10.7 tokens/sec; safely avoids the 36-layer VRAM paging performance cliff.',
-        'VRAM Mutual Exclusion: Automatically purges ComfyUI cache prior to starting Gemma to ensure stability on 8GB VRAM.',
+        'VRAM Mutual Exclusion: Automatically purges ComfyUI cache prior to starting the local Qwen engine to ensure stability on 8GB VRAM.',
         'Interactive Voice Mode: High-fidelity natural voice default set to "Google US English" with multi-engine fallback to Windows SAPI and browser SpeechSynthesis.'
       ]
     },
@@ -189,7 +189,7 @@ export const AppFeaturesGuide: React.FC = () => {
       details: [
         'Zero-VRAM Architecture: Uses CPU in-memory inverted index and TF-IDF vector math (< 1MB RAM, 0 MB GPU VRAM).',
         'Pre-Seeded Knowledge: Immediate ground truth for RTX 3070 Ti 7372 MB VRAM cap, 80°C thermal brake, 28 GPU layer pin, and AIDA64 sensors.',
-        'Automatic Chat Grounding: Dynamically injects local hardware specs and workflow rules into Gemma 3 12B chat prompts.',
+        'Automatic Chat Grounding: Dynamically injects local hardware specs and workflow rules into the active Qwen local chat prompts.',
         'Instant Multi-Category Filtering: Filter and query across HARDWARE, LLM, AIDA64, AGENT, WORKFLOWS, and ARCHITECTURE.'
       ]
     },
@@ -288,7 +288,7 @@ export const AppFeaturesGuide: React.FC = () => {
     { phase: 3, name: 'ComfyUI Local Execution & WebSocket Bridge', status: 'COMPLETED' },
     { phase: 4, name: 'Qwen 2.5-VL + Juggernaut-XL v9 Image Creation Studio', status: 'COMPLETED' },
     { phase: 5, name: 'Python API Automation Engine Build', status: 'COMPLETED' },
-    { phase: 6, name: 'Video & Image Pipeline Link (LTX-Video 2.5 + RIFE)', status: 'COMPLETED' },
+    { phase: 6, name: 'Video & Image Pipeline Link (Wan 2.1 + RIFE)', status: 'COMPLETED' },
     { phase: 7, name: 'AIDA64 Sensor Panel Template Studio', status: 'COMPLETED' },
     { phase: 8, name: 'Quantized Local AI Engine (Gemma 3 12B IT CUDA)', status: 'COMPLETED' },
     { phase: 9, name: 'Autonomous Local Agent & 19-Tool Broker', status: 'COMPLETED' },
@@ -468,7 +468,7 @@ export const AppFeaturesGuide: React.FC = () => {
                   </div>
                   <div className="text-slate-300 text-[11px] font-semibold">ComfyUI & llama.cpp</div>
                   <p className="text-[10px] text-slate-400 leading-relaxed">
-                    ComfyUI on port 8188 for Juggernaut-XL/FLUX/LTX/GIF/RIFE workflows; llama-server on port 8080 for Qwen 2.5-VL/Gemma local inference. Mutual cache purges protect the 8GB VRAM budget.
+                    ComfyUI on port 8188 for Juggernaut-XL/FLUX Lite/Wan 2.1/GIF/RIFE workflows; llama-server on port 8080 for Qwen 2.5-VL/Qwen Coder local inference. Mutual cache purges protect the 8GB VRAM budget.
                   </p>
                 </div>
 

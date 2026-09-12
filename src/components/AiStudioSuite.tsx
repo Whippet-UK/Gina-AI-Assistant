@@ -8,8 +8,8 @@ interface Props { onAddLog: (level:'INFO'|'WARN'|'SEC'|'RULE', message:string, r
 interface LlmStatus { engine: LocalLlmEngine; ready: boolean; running: boolean; modelName?: string; multimodal?: boolean; mmprojPath?: string|null; lastError?: string|null; port?: number; }
 
 const ENGINE_META: Record<LocalLlmEngine, { label:string; model:string; detail:string; vision:boolean }> = {
-  qwen: { label:'Qwen 2.5-VL 7B', model:'Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf', detail:'Default · Vision + text · fast local inference', vision:true },
-  gemma: { label:'Gemma 3 12B', model:'gemma-3-12b-it-Q4_K_M.gguf', detail:'Secondary · Vision + text · FLUX fallback lane', vision:true }
+  qwen: { label:'Qwen 2.5-VL 7B', model:'Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf + mmproj-F16', detail:'Default · Vision + text · primary local assistant', vision:true },
+  'qwen-coder': { label:'Qwen Coder 7B', model:'qwen2.5-coder-7b-instruct-q5_k_m.gguf', detail:'Code mode · text-only · projector unloaded', vision:false }
 };
 
 export const AiStudioSuite: React.FC<Props> = ({ onAddLog, view }) => {
@@ -54,7 +54,7 @@ export const AiStudioSuite: React.FC<Props> = ({ onAddLog, view }) => {
   return <section className="bg-slate-900/50 border border-slate-800 rounded-lg p-4 mb-5 shadow-sm">
     <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-3"><div className="flex items-center gap-2"><Clapperboard className="w-4 h-4 text-sky-400"/><h2 className="text-xs font-bold text-slate-100 uppercase tracking-widest">{tab==='shorts'?'GINA SHORTS FACTORY':tab==='jobs'?'GINA JOB QUEUE':tab==='assets'?'GINA ASSET LIBRARY':'GINA CREATOR CONSOLE'}</h2></div><span className="text-[10px] text-slate-500 font-mono">LOCAL PRODUCTION LAYER</span></div>
     {tab==='creator' && <div className="mb-3 rounded-lg border border-slate-800 bg-slate-950/80 p-3">
-      <div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><Cpu className="w-3.5 h-3.5 text-emerald-400"/><div><div className="text-[10px] font-bold tracking-widest text-slate-200 uppercase">LOCAL AI ENGINE</div><div className="text-[9px] text-slate-500 font-mono">http://127.0.0.1:{llm.port || 8080} · Qwen + Juggernaut default</div></div></div><div className={`text-[9px] font-bold px-2 py-1 rounded border ${llm.ready?'text-emerald-400 border-emerald-500/30 bg-emerald-500/5':'text-amber-400 border-amber-500/30 bg-amber-500/5'}`}>{llm.ready?'READY':'STOPPED'}</div></div>
+      <div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><Cpu className="w-3.5 h-3.5 text-emerald-400"/><div><div className="text-[10px] font-bold tracking-widest text-slate-200 uppercase">LOCAL AI ENGINE</div><div className="text-[9px] text-slate-500 font-mono">http://127.0.0.1:{llm.port || 8080} · {activeEngine === 'qwen' ? 'Vision Mode' : 'Coder Mode'}</div></div></div><div className={`text-[9px] font-bold px-2 py-1 rounded border ${llm.ready?'text-emerald-400 border-emerald-500/30 bg-emerald-500/5':'text-amber-400 border-amber-500/30 bg-amber-500/5'}`}>{llm.ready?'READY':'STOPPED'}</div></div>
       <div className="grid grid-cols-2 gap-2">
         {(Object.keys(ENGINE_META) as LocalLlmEngine[]).map(engine => { const meta=ENGINE_META[engine]; const selected=activeEngine===engine; return <button key={engine} type="button" disabled={switching} onClick={()=>void selectEngine(engine)} className={`text-left rounded-md border p-2.5 transition ${selected?'border-emerald-400/70 bg-emerald-500/10':'border-slate-800 bg-slate-900/70 hover:border-slate-700'} ${switching?'opacity-60':''}`}>
           <div className="flex items-center justify-between"><span className={`text-[10px] font-bold ${selected?'text-emerald-300':'text-slate-300'}`}>{meta.label}</span>{selected && <span className="text-[8px] font-bold text-emerald-400">ACTIVE</span>}</div>

@@ -394,10 +394,10 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
     setLyrics((prev) => `${prev}${prev ? '\n' : ''}${formattedTag}`);
   };
 
-  // AI Lyrics Writer (Local Gemma 3 12B / Built-in songwriter)
+  // AI Lyrics Writer (Local Qwen / Built-in songwriter)
   const handleGenerateAiLyrics = async () => {
     setIsWritingLyrics(true);
-    onAddLog?.('INFO', `Dispatching songwriting prompt to local Gemma 3 12B LLM...`);
+    onAddLog?.('INFO', `Dispatching songwriting prompt to the active local Qwen LLM...`);
     try {
       const res = await fetch('/api/music/write-lyrics', {
         method: 'POST',
@@ -1308,7 +1308,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
         </div>
       </div>
 
-      {/* AI Lyrics Writer Modal (Powered by local Gemma 3 12B) */}
+      {/* AI Lyrics Writer Modal (Powered by the active local Qwen LLM) */}
       {isLyricsModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg p-6 rounded-3xl bg-slate-900 border border-slate-700 shadow-2xl flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150">
@@ -1317,7 +1317,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                 <span className="p-1 rounded-lg bg-rose-500/20 text-rose-300 font-bold">
                   <Sparkles className="w-4 h-4" />
                 </span>
-                <h3 className="text-sm font-bold text-white">AI Songwriter & Lyricist (Gemma 3 12B)</h3>
+                <h3 className="text-sm font-bold text-white">AI Songwriter & Lyricist (Local Qwen)</h3>
               </div>
               <button
                 type="button"

@@ -16,11 +16,11 @@ export const LocalCapabilityPanel:React.FC<Props>=({onAddLog})=>{
     data.runtime?.juggernautReady,
     data.runtime?.qwenVisionReady,
     data.runtime?.ggufReady,
-    data.runtime?.ltxReady,
+    data.runtime?.wanReady,
     data.runtime?.rifeReady,
     data.runtime?.gifStudioReady,
     data.runtime?.nodeGraphSyncReady,
-    data.runtime?.gemmaVisionReady
+    data.runtime?.qwenCoderReady
   ].filter(Boolean).length;
   return <section className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-lg">
     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-3 mb-4">
@@ -35,11 +35,11 @@ export const LocalCapabilityPanel:React.FC<Props>=({onAddLog})=>{
         ['SDXL Jugg',data.runtime?.juggernautReady,Sparkles],
         ['Qwen VL',data.runtime?.qwenVisionReady,Brain],
         ['GGUF Flux',data.runtime?.ggufReady,Database],
-        ['LTX Video',data.runtime?.ltxReady,Video],
+        ['Wan 2.1 Video',data.runtime?.wanReady,Video],
         ['RIFE Flow',data.runtime?.rifeReady,Activity],
         ['GIF Studio',data.runtime?.gifStudioReady,Film],
         ['Graph Sync',data.runtime?.nodeGraphSyncReady,Network],
-        ['Gemma LLM',data.runtime?.gemmaVisionReady,Brain]
+        ['Qwen Coder',data.runtime?.qwenCoderReady,Brain]
       ].map(([label,value,Icon]:any)=><div key={label} className="bg-slate-950 border border-slate-800 rounded-lg p-2"><div className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 truncate"><Icon className="w-3 h-3 text-slate-400 shrink-0"/>{label}</div><div className={`text-[10px] font-mono mt-1 ${value?'text-emerald-400':'text-amber-400'}`}>{value?'READY':'CHECK'}</div></div>)}
     </div>
 
@@ -126,7 +126,7 @@ export const LocalCapabilityPanel:React.FC<Props>=({onAddLog})=>{
         </div>
       </div>
       <div className="bg-slate-950 border border-slate-800 rounded-lg p-3"><div className="text-[10px] font-bold text-slate-300 uppercase mb-2">Discovered Models</div><div className="max-h-72 overflow-auto space-y-1 pr-1">{data.models?.map((m:any)=><div key={m.path} className="flex items-start justify-between gap-3 text-[9px] font-mono border-b border-slate-900 pb-1"><div className="min-w-0"><div className="text-slate-300 truncate">{m.fileName}</div><div className="text-slate-600 truncate">{m.category} · {m.purpose}{m.discovered?' · discovered':''}</div></div><div className={m.exists?'text-emerald-400':'text-rose-400'}>{m.exists?(m.sizeGB?`${m.sizeGB}GB`:'READY'):'MISSING'}</div></div>)}</div></div>
-      <div className="bg-slate-950 border border-slate-800 rounded-lg p-3"><div className="text-[10px] font-bold text-slate-300 uppercase mb-2">ComfyUI Wiring</div><div className="space-y-2 text-[9px] font-mono"><div><span className="text-slate-500">Workflows</span><div className="mt-1 flex flex-wrap gap-1">{data.workflows?.map((w:any)=><span key={w.id} className="px-1.5 py-0.5 rounded border border-slate-800 text-slate-300">{w.id} · {w.nodeCount}</span>)}</div></div><div><span className="text-slate-500">Custom nodes</span><div className="mt-1 flex flex-wrap gap-1">{data.customNodes?.map((n:any)=><span key={n.id} className="px-1.5 py-0.5 rounded border border-sky-500/20 text-sky-300">{n.directory}</span>)}</div></div><div><span className="text-slate-500">Key classes</span><div className="mt-1 flex flex-wrap gap-1">{data.nodeClasses?.filter((n:string)=>/GGUF|RIFE|LTX|VHS|Video|LoadImage|CLIP/i.test(n)).slice(0,80).map((n:string)=><span key={n} className="px-1.5 py-0.5 rounded border border-emerald-500/20 text-emerald-300">{n}</span>)}</div></div></div></div>
+      <div className="bg-slate-950 border border-slate-800 rounded-lg p-3"><div className="text-[10px] font-bold text-slate-300 uppercase mb-2">ComfyUI Wiring</div><div className="space-y-2 text-[9px] font-mono"><div><span className="text-slate-500">Workflows</span><div className="mt-1 flex flex-wrap gap-1">{data.workflows?.map((w:any)=><span key={w.id} className="px-1.5 py-0.5 rounded border border-slate-800 text-slate-300">{w.id} · {w.nodeCount}</span>)}</div></div><div><span className="text-slate-500">Custom nodes</span><div className="mt-1 flex flex-wrap gap-1">{data.customNodes?.map((n:any)=><span key={n.id} className="px-1.5 py-0.5 rounded border border-sky-500/20 text-sky-300">{n.directory}</span>)}</div></div><div><span className="text-slate-500">Key classes</span><div className="mt-1 flex flex-wrap gap-1">{data.nodeClasses?.filter((n:string)=>/GGUF|RIFE|VHS|Video|LoadImage|CLIP/i.test(n)).slice(0,80).map((n:string)=><span key={n} className="px-1.5 py-0.5 rounded border border-emerald-500/20 text-emerald-300">{n}</span>)}</div></div></div></div>
     </div>}
   </section>;
 };
