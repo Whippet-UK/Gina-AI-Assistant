@@ -4,10 +4,10 @@ import { FullProjectState, ComfyUiWorkflowConfig, PromptStudioConfig, AiStudioCo
 export const LOCAL_STORAGE_KEY = 'gina_factory_project_state';
 
 export const DEFAULT_PROJECT_STATE: FullProjectState = {
-  version: '1.2.0', lastSavedTimestamp: new Date().toISOString(), activeSavePoint: 'V1.2_REAL_COMFY_FLUX_BRIDGE',
-  comfyUiWorkflow: { workflowId:'flux_image', checkpointModel:'flux1-schnell-Q4_K_S.gguf (GGUF)', positivePrompt:'A high-tech cyberpunk workstation with glowing holographic UI widgets, neon blue circuitry, 8k photorealistic lighting', negativePrompt:'blurry, distorted, low quality, noise, artifacts, bad anatomy, overexposed', samplerSteps:4, cfgScale:1.0, samplerName:'euler', scheduler:'simple', vaeModel:'ae.safetensors (required)', outputResolution:'1024x600 (AIDA64)', outputFormat:'PNG (300 DPI)' },
-  promptStudio: { promptInput:'A high-tech cyberpunk workstation with glowing holographic UI widgets, neon blue circuitry, 8k photorealistic lighting, cinematic depth of field', targetNetwork:'FLUX.1-Schnell (GGUF Q4_K_S)', aspectRatio:'aida64', stylePreset:'Cinematic Photorealistic' },
-  aiStudio: { activeTab:'creator', workflowId:'flux_image', videoWorkflowId:'', defaultAspectRatio:'aida64', localLlmEngine:'qwen' },
+  version: '1.2.0', lastSavedTimestamp: new Date().toISOString(), activeSavePoint: 'V1.2_QWEN_JUGGERNAUT_IMAGE_LANE',
+  comfyUiWorkflow: { workflowId:'sdxl_juggernaut', checkpointModel:'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (SDXL)', positivePrompt:'A high-tech cyberpunk workstation with glowing holographic UI widgets, neon blue circuitry, 8k photorealistic lighting', negativePrompt:'blurry, distorted, low quality, noise, artifacts, bad anatomy, overexposed', samplerSteps:20, cfgScale:6.0, samplerName:'dpmpp_2m', scheduler:'karras', vaeModel:'ae.safetensors (required)', outputResolution:'1024x600 (AIDA64)', outputFormat:'PNG (300 DPI)' },
+  promptStudio: { promptInput:'A high-tech cyberpunk workstation with glowing holographic UI widgets, neon blue circuitry, 8k photorealistic lighting, cinematic depth of field', targetNetwork:'Qwen 2.5-VL + Juggernaut-XL v9 (SDXL)', aspectRatio:'aida64', stylePreset:'Cinematic Photorealistic' },
+  aiStudio: { activeTab:'creator', workflowId:'sdxl_juggernaut', videoWorkflowId:'', defaultAspectRatio:'aida64', localLlmEngine:'qwen' },
   savedAssets: []
 };
 

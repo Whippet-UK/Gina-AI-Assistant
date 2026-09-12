@@ -120,6 +120,20 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
     setSimulating(true);
     try {
       const modelMap: Record<string, { name: string; workflow: string; vram: number; node: string; err: string }> = {
+        juggernaut_xl_v9: {
+          name: 'Juggernaut-XL v9 Photorealism',
+          workflow: 'sdxl_juggernaut',
+          vram: 6800,
+          node: 'CheckpointLoader (Node #1)',
+          err: 'VRAM pressure spike during Juggernaut-XL v9 checkpoint allocation'
+        },
+        qwen_25_vl_7b: {
+          name: 'Qwen 2.5-VL 7B + mmproj-F16',
+          workflow: 'local_llm_qwen',
+          vram: 4700,
+          node: 'llama.cpp CUDA offload',
+          err: 'VRAM pressure spike while Qwen 2.5-VL vision projector is resident'
+        },
         hunyuan_video: {
           name: 'Hunyuan Video',
           workflow: 'hunyuan_video',
@@ -872,6 +886,22 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
           </p>
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              disabled={simulating}
+              onClick={() => handleSimulateOOM('juggernaut_xl_v9')}
+              className="px-2.5 py-1.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20 text-[10px] font-mono"
+            >
+              + Log Juggernaut OOM Spike
+            </button>
+            <button
+              type="button"
+              disabled={simulating}
+              onClick={() => handleSimulateOOM('qwen_25_vl_7b')}
+              className="px-2.5 py-1.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 text-[10px] font-mono"
+            >
+              + Log Qwen VRAM Spike
+            </button>
             <button
               type="button"
               disabled={simulating}

@@ -35,17 +35,17 @@ export const AppFeaturesGuide: React.FC = () => {
   const features = [
     {
       id: 'prompt_studio',
-      title: 'Prompt Automation Studio (FLUX.1 Schnell GGUF Q4_K_S)',
+      title: 'Image Creation Studio (Qwen 2.5-VL + Juggernaut-XL v9)',
       icon: Brain,
       color: 'text-cyan-400',
       bgColor: 'bg-cyan-500/10',
       borderColor: 'border-cyan-500/30',
-      badge: 'FLUX.1 Schnell',
+      badge: 'Qwen 2.5-VL + SDXL',
       category: 'Image Inference',
-      shortDesc: 'Workflow-driven prompt engineering, dynamic parameter binding, token budget enforcement, and fast 4-step generation.',
+      shortDesc: 'Vision-aware prompt engineering paired with Juggernaut-XL v9 SDXL generation, reference editing, dynamic workflow binding, and local output management.',
       details: [
-        'FLUX.1 Schnell GGUF Q4_K_S Pipeline: 4-step local diffusion using the installed UnetLoaderGGUF model.',
-        'Dynamic Workflow Binding: Introspects workflows/flux_image.json and binds controls to prompt, seed, steps, CFG, aspect ratios, and dimensions.',
+        'Qwen 2.5-VL is the default local vision/text assistant; image generation/editing routes to Juggernaut-XL v9 SDXL workflows (base and reference). FLUX is reserved for the Gemma 3 Vision fallback/alternate lane and is never silently selected.',
+        'Dynamic Workflow Binding: Introspects the selected ComfyUI workflow and binds prompt, seed, steps, CFG, dimensions, and reference-image inputs without silently switching models.',
         'Token Budget & Parameter Control: Enforces safe token counts, seeds, CFG scales (1-10), and aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4).',
         'Direct ComfyUI Queueing: Compiles and dispatches JSON workflows directly to the local ComfyUI instance at 127.0.0.1:8188.',
         'Local Output Management: Instant image preview, single-click variations, local asset saving, and direct download.',
@@ -106,8 +106,25 @@ export const AppFeaturesGuide: React.FC = () => {
       ]
     },
     {
+      id: 'qwen_vl',
+      title: 'Qwen 2.5-VL 7B Vision + Juggernaut-XL v9 Image Lane',
+      icon: Brain,
+      color: 'text-cyan-400',
+      bgColor: 'bg-cyan-500/10',
+      borderColor: 'border-cyan-500/30',
+      badge: 'Qwen 2.5-VL · mmproj-F16',
+      category: 'Vision + Image Inference',
+      shortDesc: 'Default vision-capable local assistant paired with Juggernaut-XL v9 for image creation and reference editing.',
+      details: [
+        'Qwen 2.5-VL 7B Q4_K_M with the configured mmproj-F16 projector handles image-aware prompt understanding locally.',
+        'Create Studio routes Qwen image intent to Juggernaut-XL v9 SDXL for generation and sdxl_juggernaut_reference for edits.',
+        'FLUX.1-Schnell remains an explicit alternate workflow and is never silently selected after Keep Image.',
+        'VRAM guardrails treat Qwen and ComfyUI generation as separate resource targets on the 8GB RTX 3070 Ti.'
+      ]
+    },
+    {
       id: 'local_llm',
-      title: 'Gemma 3 12B IT Local CUDA Studio',
+      title: 'Qwen 2.5-VL 7B / Gemma 3 12B Local CUDA Studio',
       icon: Cpu,
       color: 'text-amber-400',
       bgColor: 'bg-amber-500/10',
@@ -142,19 +159,21 @@ export const AppFeaturesGuide: React.FC = () => {
     },
     {
       id: 'autonomous_agent',
-      title: 'Gina Autonomous Local Agent & 19-Tool Broker',
+      title: 'Gina Autonomous Local Agent & Persistent Workbench',
       icon: Terminal,
       color: 'text-indigo-400',
       bgColor: 'bg-indigo-500/10',
       borderColor: 'border-indigo-500/30',
-      badge: '19 Local Tools',
+      badge: '33 Local Tools · LIVE',
       category: 'Autonomous Agent',
-      shortDesc: 'Local autonomous agent with startup project context bootstrap, persistent memory, and sandboxed tools.',
+      shortDesc: 'Persistent local coding agent with startup context, durable workbench runs, live execution streaming, memory, workspaces, GitHub and sandboxed tools.',
       details: [
         '19 Local Tools: inspect_system, inspect_capabilities, knowledge_search, search_files, read_file, write_file, execute_command, git_status, git_diff, git_log, remember, recall_memory, comfy_clear_cache, llm_start, llm_stop, llm_restart, build_aida64_template, write_pdf, and inspect_project_context.',
         'Persistent Memory: Stored locally at C:\\Gina_AI\\.gina\\agent-memory.json (local-only, not checked into source control).',
         'Startup Context Bootstrap: Loads AGENTS.md, CHANGELOG.md, README.md, MilestoneChecklist, package.json, and hardware state on boot.',
-        'Audit Trail & Scope Guard: All file modifications and shell commands are logged to audit records and locked within C:\\Gina_AI.'
+        'Audit Trail & Scope Guard: All file modifications and shell commands are logged to audit records and locked within C:\\Gina_AI.',
+        'Phase 40 Coding Loop: Inspect → read → edit → validate → diff → report with controlled ten-step execution and retry guidance.',
+        'Phase 41 Persistent Workbench: Agent runs are saved under C:\\Gina_AI\\.gina\\agent-runs and streamed live through Server-Sent Events with reconnect and cancellation support.'
       ]
     },
     {
@@ -188,7 +207,7 @@ export const AppFeaturesGuide: React.FC = () => {
         'Google US English Natural Default: Prioritizes crystal-clear natural Google US English synthesis for immediate spoken feedback.',
         'Permanent Default Voice Persistence: Save any browser or Windows SAPI voice as your permanent default via one-click "★ Set Default".',
         'Multi-Engine Hybrid Speech Broker: Seamlessly routes between high-fidelity browser SpeechSynthesis and Windows SAPI backend bridge.',
-        'Zero-GPU Audio Execution: Audio playback is processed completely outside GPU VRAM, keeping 100% of the 8GB RTX 3070 Ti free for FLUX/LTX/Gemma.',
+        'Zero-GPU Audio Execution: Audio playback is processed completely outside GPU VRAM, keeping the 8GB RTX 3070 Ti available for the active local AI/media lane.',
         'Dynamic Speech Rate & Test Controls: Fine-tune speech pacing (-5 to +5 rate slider) with real-time waveform testing.'
       ]
     },
@@ -267,7 +286,7 @@ export const AppFeaturesGuide: React.FC = () => {
     { phase: 1, name: 'Project Initialization & Base Environment', status: 'COMPLETED' },
     { phase: 2, name: 'Hardware Capability & VRAM Guardrails', status: 'COMPLETED' },
     { phase: 3, name: 'ComfyUI Local Execution & WebSocket Bridge', status: 'COMPLETED' },
-    { phase: 4, name: 'FLUX.1 Schnell GGUF Image Studio', status: 'COMPLETED' },
+    { phase: 4, name: 'Qwen 2.5-VL + Juggernaut-XL v9 Image Creation Studio', status: 'COMPLETED' },
     { phase: 5, name: 'Python API Automation Engine Build', status: 'COMPLETED' },
     { phase: 6, name: 'Video & Image Pipeline Link (LTX-Video 2.5 + RIFE)', status: 'COMPLETED' },
     { phase: 7, name: 'AIDA64 Sensor Panel Template Studio', status: 'COMPLETED' },
@@ -449,7 +468,7 @@ export const AppFeaturesGuide: React.FC = () => {
                   </div>
                   <div className="text-slate-300 text-[11px] font-semibold">ComfyUI & llama.cpp</div>
                   <p className="text-[10px] text-slate-400 leading-relaxed">
-                    ComfyUI on port 8188 for FLUX/LTX/GIF/RIFE workflows; llama-server on port 8080 for Gemma local inference. Mutual cache purges protect the 8GB VRAM budget.
+                    ComfyUI on port 8188 for Juggernaut-XL/FLUX/LTX/GIF/RIFE workflows; llama-server on port 8080 for Qwen 2.5-VL/Gemma local inference. Mutual cache purges protect the 8GB VRAM budget.
                   </p>
                 </div>
 

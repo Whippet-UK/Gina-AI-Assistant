@@ -15,7 +15,6 @@ import { SystemHub } from './components/SystemHub';
 import { RestoreManifestModal } from './components/RestoreManifestModal';
 import { VRAMWarningToast } from './components/VRAMWarningToast';
 import { LocalLlmStudio } from './components/LocalLlmStudio';
-import { GinaAgentPanel } from './components/GinaAgentPanel';
 import { WorkspaceErrorBoundary } from './components/WorkspaceErrorBoundary';
 import { ComfyUIStatusIndicator } from './components/LTXDiagnostic';
 import { LogEntry, SystemTelemetry } from './types';
@@ -193,7 +192,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
   const isImageJob = !job?.workflowId || job?.workflowId === 'flux_image' || job?.workflowId.includes('flux') || job?.workflowId.includes('image');
 
   const navItems = [
-    { id: 'create' as const, label: 'CREATE', icon: Image, isGenerating: isJobActive && isImageJob },
+    { id: 'create' as const, label: 'IMAGE CREATION STUDIO', icon: Image, isGenerating: isJobActive && isImageJob },
     { id: 'video' as const, label: 'VIDEO', icon: Video, isGenerating: isJobActive && isVideoJob },
     { id: 'gif' as const, label: 'GIF STUDIO', icon: Film, isGenerating: isJobActive && job?.workflowId === 'gif_studio' },
     { id: 'streaminject' as const, label: 'STREAMINJECT', icon: Film, isGenerating: isJobActive && (job?.workflowId === 'streaminject_studio' || job?.workflowId === 'streaminject_render') },
@@ -241,7 +240,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
         </div>
 
         <main className={`space-y-5 ${activeView === 'create' ? 'block' : 'hidden'}`}>
-          <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Creator workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Create</h1><p className="text-xs text-slate-500 mt-1">Generate locally through your validated ComfyUI workflows.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">IMAGE · LOCAL · FLUX</div></div>
+          <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Creator workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Image Creation Studio</h1><p className="text-xs text-slate-500 mt-1">Generate locally through your validated ComfyUI workflows.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">IMAGE · LOCAL · QWEN + JUGGERNAUT-XL V9</div></div>
           <WorkspaceErrorBoundary name="Create Studio"><PromptStudio onAddLog={logWithOomCheck} onClearCache={() => handleClearCache(false, true)} telemetry={telemetry} stagedReferenceImage={stagedAida64Reference} /></WorkspaceErrorBoundary>
         </main>
 
@@ -284,7 +283,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
         <main className={`space-y-5 ${activeView === 'assets' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Local library</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Assets</h1><p className="text-xs text-slate-500 mt-1">Generated files and their local generation records.</p></div><WorkspaceErrorBoundary name="Assets"><AiStudioSuite onAddLog={logWithOomCheck} view="assets" /></WorkspaceErrorBoundary></main>
         <main className={`space-y-5 ${activeView === 'jobs' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Execution monitor</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Jobs</h1><p className="text-xs text-slate-500 mt-1">Track local ComfyUI work without opening ComfyUI itself.</p></div><WorkspaceErrorBoundary name="Jobs"><AiStudioSuite onAddLog={logWithOomCheck} view="jobs" /></WorkspaceErrorBoundary></main>
 
-        <main className={`space-y-5 ${activeView === 'llm' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Quantized local AI engine</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Local AI</h1><p className="text-xs text-slate-500 mt-1">Gemma 3 12B Q4_K_M served locally by llama.cpp CUDA.</p></div><WorkspaceErrorBoundary name="Local AI"><LocalLlmStudio onAddLog={logWithOomCheck} /><GinaAgentPanel /></WorkspaceErrorBoundary></main>
+        <main className={`space-y-5 ${activeView === 'llm' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Quantized local AI engine</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Local AI</h1><p className="text-xs text-slate-500 mt-1">Gemma 3 12B Q4_K_M served locally by llama.cpp CUDA.</p></div><WorkspaceErrorBoundary name="Local AI"><LocalLlmStudio onAddLog={logWithOomCheck} /></WorkspaceErrorBoundary></main>
 
         <main className={`space-y-5 ${activeView === 'system' ? 'block' : 'hidden'}`}>
           <WorkspaceErrorBoundary name="System"><SystemHub telemetry={telemetry} logs={logs} activeSavePoint={activeSavePoint} logWithOomCheck={logWithOomCheck} handleClearCache={handleClearCache} onClearLogs={() => setLogs([])} /></WorkspaceErrorBoundary>

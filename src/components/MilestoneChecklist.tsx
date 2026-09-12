@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CheckCircle2, Clock, AlertTriangle, ShieldCheck, FileCode, CheckSquare, Square } from 'lucide-react';
-import { LifecyclePhase, RestorePoint, VerificationCheck } from '../types';
+import { LifecyclePhase } from '../types';
 
 interface MilestoneChecklistProps {
   activeRestorePoint: string;
@@ -8,47 +8,53 @@ interface MilestoneChecklistProps {
 
 export const MilestoneChecklist: React.FC<MilestoneChecklistProps> = ({ activeRestorePoint }) => {
   const [phases] = useState<LifecyclePhase[]>([
-    { phase: 1, name: 'Hardware Specs Mapped & VRAM Capped', status: 'COMPLETED', details: 'RTX 3070 Ti 8GB (Cap 7.2GB), AMD Ryzen 5600X 4-Thread Gate' },
-    { phase: 2, name: 'Bare-Metal Environment Audit', status: 'COMPLETED', details: '947 Framework shields locked, CUDA 12.2 translation verify' },
-    { phase: 3, name: 'ComfyUI Standalone Workspace', status: 'COMPLETED', details: 'Headless Node Server with --lowvram --fp8_e4m3fn args' },
-    { phase: 4, name: 'Model Downloads & FP8 Configuration', status: 'COMPLETED', details: 'FLUX.1-Schnell (FP8) & LTX-Video 2B (FP8 Quantized)' },
-    { phase: 5, name: 'Python API Automation Engine Build', status: 'COMPLETED', details: 'Batch processing pipeline with auto-recovery state.json' },
-    { phase: 6, name: 'AUTOMATED VIDEO & IMAGE PIPELINE LINK', status: 'COMPLETED', details: 'Flux.1 Schnell image + LTX-Video 2B MP4 & RIFE frame interpolation' },
-    { phase: 7, name: 'AIDA64 SENSOR PANEL TEMPLATE STUDIO', status: 'COMPLETED', details: 'Custom 1024x600/1920x480/AIO HUD layouts, modular dials, 100-state arc ZIP generator & coordinate mapper' },
-    { phase: 8, name: 'QUANTIZED LOCAL AI ENGINE (GEMMA 3 12B)', status: 'COMPLETED', details: 'Gemma 3 12B Q4_K_M via llama.cpp CUDA at pinned 28 GPU layers' },
-    { phase: 9, name: 'AUTONOMOUS LOCAL AGENT & TOOL BROKER', status: 'COMPLETED', details: '19 local tools, startup context, persistent memory, self-test, audit and capability awareness' },
-    { phase: 10, name: 'AIDA64 68-FEATURE REAL-TIME SENSOR PANEL', status: 'COMPLETED', details: '1000ms Win32 shared memory reader, 100-state gauge graphic generator, multi-sensor binding' },
-    { phase: 11, name: 'LOCAL RAG KNOWLEDGE BASE & VECTOR ENGINE', status: 'COMPLETED', details: 'Zero-VRAM hybrid BM25 + Vector in-memory retrieval, instant semantic grounding for LLM & agent' },
-    { phase: 12, name: 'REAL-TIME COMFYUI NODE GRAPH SYNC', status: 'COMPLETED', details: 'Live workflow graph inspector, node parameter synchronization, and visual connection mapper' },
-    { phase: 13, name: 'ADVANCED LOCAL VOICE PIPELINE & PERSISTENCE', status: 'COMPLETED', details: 'Google US English default priority, permanent voice preference persistence, SAPI bridge fallback & speech controls' },
-    { phase: 14, name: 'ONE-CLICK WORKFLOW JSON/PNG INGESTION', status: 'COMPLETED', details: 'Drag-and-drop ComfyUI workflow JSON & metadata PNG parser with missing node resolution and parameter binding' },
-    { phase: 15, name: 'HIGH-DPI AIDA64 TRANSPARENT DESKTOP HUD', status: 'COMPLETED', details: 'Frameless desktop floating telemetry overlay with alpha transparency for secondary LCD/OLED sensor displays' },
-    { phase: 16, name: 'MULTI-GGUF BENCHMARK & DYNAMIC VRAM TUNER', status: 'COMPLETED', details: 'Automated layer offload benchmarker, memory stress profiling, and zero-crash thermal sentry for Gemma 3 12B/27B' },
-    { phase: 17, name: 'KNOWLEDGE INGESTION & AUTO-INDEXING AGENT', status: 'COMPLETED', details: 'Real-time filesystem watcher auto-indexing documentation, Python scripts, and ComfyUI nodes into vector RAG memory' },
-    { phase: 18, name: 'LOCAL CREATOR UPLOAD PIPELINE', status: 'COMPLETED', details: 'Dashboard-only ComfyUI reference-image upload for LoadImage workflows plus supported local text/code/config attachments for Local AI' },
-    { phase: 19, name: 'LOCAL AI UNIVERSAL ATTACHMENTS', status: 'COMPLETED', details: 'Dashboard-only Local AI attachments for text/code/config, images and ZIP archives with local extraction, limits and attachment manifests' },
-
-    { phase: 20, name: 'UNIFIED JOB MANAGER', status: 'COMPLETED', details: 'Shared local job visibility, progress, cancellation and hard VRAM flush path' },
-    { phase: 21, name: 'INTELLIGENT TOOL ROUTER', status: 'COMPLETED', details: 'Local intent classification for chat, Gemma vision, FLUX generation and reference modification' },
-    { phase: 22, name: 'WORKFLOW INTELLIGENCE', status: 'COMPLETED', details: 'Workflow capability/binding inspection and ComfyUI missing-node diagnostics' },
-    { phase: 23, name: 'GENERATION PRESETS', status: 'COMPLETED', details: 'Named generation profiles established as shared orchestration vocabulary' },
-    { phase: 24, name: 'ASSET LIBRARY', status: 'COMPLETED', details: 'Persistent local asset record store for generated outputs and metadata' },
-    { phase: 25, name: 'CONVERSATION CONTEXT', status: 'COMPLETED', details: 'Existing local memory/RAG surfaced as orchestration context' },
-    { phase: 26, name: 'AUTOMATIC RECOVERY', status: 'COMPLETED', details: 'Health-aware recovery controls and explicit failure diagnostics' },
-    { phase: 27, name: 'RESOURCE SCHEDULER', status: 'COMPLETED', details: 'Shared-GPU scheduling signals and cancellation flush integration' },
-    { phase: 28, name: 'HEALTH & DIAGNOSTICS CENTER', status: 'COMPLETED', details: 'Measured system health and one-click diagnostic report' },
-    { phase: 29, name: 'ONE-CLICK DIAGNOSTICS', status: 'COMPLETED', details: 'Full local report covering runtime, GPU, VRAM, ComfyUI, Gemma, vision, workflows and knowledge watcher' },
-    { phase: 30, name: 'STREAMINJECT v2.5 PURE RENDER SUITE', status: 'COMPLETED', details: 'Headless OpenCV/FFmpeg Python render engine, visual canvas layout builder, 6-track timeline & master pipeline' },
-    { phase: 31, name: 'STREAMINJECT v2.5 TIMELINE & OVERLAY SUITE', status: 'COMPLETED', details: 'Audio track mixing, start/finish timeline, volume/fades, green/blue screen chromakey tuning, watermark timeline, and burned subtitle overlays' },
-    { phase: 32, name: 'AI MUSIC GENERATOR SUITE & AUDIOCRAFT', status: 'COMPLETED', details: 'Full 7-mode generation suite: Text-To-Song, Lyrics-To-Song, AI Song Cover, Extension, Editor, AI Lyrics Generator & Voice Remover stem splitter' },
-    { phase: 33, name: 'QWEN 2.5-VL & JUGGERNAUT-XL ULTRA-ACCELERATION', status: 'COMPLETED', details: 'Full CUDA offload for Qwen 2.5-VL 7B (35+ t/s) + mmproj-F16 multimodal projector, plus Juggernaut XL v9 SDXL checkpoint workflow (8-12s photorealism)' },
-    { phase: 34, name: 'QUANTIZED LOCAL AI ENGINE (Qwen 2.5-VL 7B)', status: 'COMPLETED', details: 'problem: when uploading an image to Gina via local AI and ask her to make edits she tries to load flux.1 instead of Juggernaut-XL v9 Photorealism (SDXL Checkpoint) when the Qwen model is loaded she also gets stuck when doing this. if prompting to make an image she will answer back saying she will do that and tells me when it is ready but she does not actually start generating anything (i do not think she selects the vison or does not understand it is a vision prompt. Changes and edits needed: add a model selector Qwen 2.5-VL 7B (35+ t/s) + mmproj-F16 multimodal projector or Gemma 3 12B Q4_K_M + mmproj-q8_0.gguf. edit the code to make sure gina is selecting the correct models on prompt Qwen 2.5-VL 7B + mmproj-F16 multimodal projector + Juggernaut-XL v9 Photorealism (SDXL Checkpoint) or Gemma 3 12B Q4_K_M + mmproj-q8_0.gguf + FLUX.1 Schnell GGUF Q4_K_S. '  },
-    { phase: 35, name: 'WEB BROWSER INTEGRATION', status: 'PENDING', details: 'Web Browser capability, Use Chromium, open sites etc.' },
-    { phase: 36, name: 'HERE IS WHERE FUTURE EDITS ARE PUT', status: 'IN_PROGRESS', details: 'Edits: 1. fix image generation. problem: wehn uploading an image via the image generation suite or marking it to be kept then using the prompt again it will often come back with just a beige image (i have to refresh browswer tab to fix however i then lose the work i was doing, i need to be able to edit an image a few times but are unable due to it generating beige images and having to refresh. GINA IMAGE STUDIO is displaying: FLUX.1-Schnell GGUF. instead of the correct model. 2. Fix display. 3. Fix Studios to output exactly which models are being used during generation and while generating. 4. Fix README.md. Problem: all studios are not showing which models are being used when generating an image/video. problem: there is a README.md in the root which github reads and displays on Github however it is not actually updated with any of the changes. i need it to update the root README.md with the title and description of the changes and future changes. will need a 1 time injection from CHANGELOG.md to update previous updates after that each new change will be logged on both (full on CHANGELOG.md partail on README.md (title: Desrciption:). 5. Create an edit file. problem: i need to have an edit file where i can write in an edits and problems the project is having for the AI to read then execute and fix those problems. '  },
+    { phase: 1, name: 'Hardware Specs Mapped & VRAM Capped', status: 'COMPLETED', details: 'RTX 3070 Ti 8GB (Strict 7.2GB Cap), AMD Ryzen 5600X 4-Thread Gate' },
+    { phase: 2, name: 'Bare-Metal Environment Audit', status: 'COMPLETED', details: '947 Framework shields locked, CUDA 12.2 translation verification pass' },
+    { phase: 3, name: 'ComfyUI Standalone Workspace', status: 'COMPLETED', details: 'Headless Node Server initialized with --lowvram --fp8_e4m3fn arguments' },
+    { phase: 4, name: 'Model Downloads & FP8 Configuration', status: 'COMPLETED', details: 'Baseline parameters established for low-VRAM model distribution partitions' },
+    { phase: 5, name: 'Python API Automation Engine Build', status: 'COMPLETED', details: 'Batch processing pipeline with auto-recovery state.json infrastructure' },
+    { phase: 6, name: 'Automated Video & Image Pipeline Link', status: 'COMPLETED', details: 'Composition streams parsing localized imagery to sequential video generation loops' },
+    { phase: 7, name: 'AIDA64 Sensor Panel Template Studio', status: 'COMPLETED', details: 'Custom 1024x600/1920x480/AIO HUD layouts, modular dials, and 100-state arc ZIP generator' },
+    { phase: 8, name: 'Quantized Local AI Engine Integration', status: 'COMPLETED', details: 'High-speed local text parsing framework with full 100% GPU layer offloading' },
+    { phase: 9, name: 'Autonomous Local Agent & Tool Broker', status: 'COMPLETED', details: '19 local tools, startup context loops, persistent memory, and file tracking sandboxes' },
+    { phase: 10, name: 'AIDA64 68-Feature Real-Time Sensor Panel', status: 'COMPLETED', details: '1000ms Win32 shared memory reader, 100-state gauge graphic engine, and sensor binding' },
+    { phase: 11, name: 'Local RAG Knowledge Base & Vector Engine', status: 'COMPLETED', details: 'Zero-VRAM hybrid BM25 + Vector in-memory retrieval for instant semantic grounding' },
+    { phase: 12, name: 'Real-Time ComfyUI Node Graph Sync', status: 'COMPLETED', details: 'Live workflow graph inspector, node parameter synchronization, and connection mapper' },
+    { phase: 13, name: 'Advanced Local Voice Pipeline & Persistence', status: 'COMPLETED', details: 'Google US English default priority, permanent preference persistence, and SAPI bridge fallback' },
+    { phase: 14, name: 'One-Click Workflow JSON/PNG Ingestion', status: 'COMPLETED', details: 'Drag-and-drop ComfyUI workflow metadata parser with missing node resolution' },
+    { phase: 15, name: 'High-DPI AIDA64 Transparent Desktop HUD', status: 'COMPLETED', details: 'Frameless desktop floating telemetry overlay with alpha transparency for secondary displays' },
+    { phase: 16, name: 'Multi-GGUF Benchmark & Dynamic VRAM Tuner', status: 'COMPLETED', details: 'Automated layer offload benchmarker, memory stress profiling, and zero-crash thermal sentry' },
+    { phase: 17, name: 'Knowledge Ingestion & Auto-Indexing Agent', status: 'COMPLETED', details: 'Filesystem watcher auto-indexing scripts, docs, and custom nodes into vector memory' },
+    { phase: 18, name: 'Local Creator Upload Pipeline', status: 'COMPLETED', details: 'Dashboard image upload for LoadImage workflows and text/code attachments for Local AI' },
+    { phase: 19, name: 'Local AI Universal Attachments', status: 'COMPLETED', details: 'Attachment manifests for code, text, images, and ZIP archives with localized extraction' },
+    { phase: 20, name: 'Unified Job Manager', status: 'COMPLETED', details: 'Shared local job visibility, progress tracking, remote cancellation, and hard VRAM flush paths' },
+    { phase: 21, name: 'Intelligent Tool Router', status: 'COMPLETED', details: 'Intent classification for chat, vision, and text triggers with model-policy enforcement' },
+    { phase: 22, name: 'Workflow Intelligence', status: 'COMPLETED', details: 'Workflow capability/binding inspection layer and automated ComfyUI missing-node diagnostics' },
+    { phase: 23, name: 'Generation Presets', status: 'COMPLETED', details: 'Named generation profiles established as shared orchestration vocabulary parameters' },
+    { phase: 24, name: 'Asset Library', status: 'COMPLETED', details: 'Persistent local asset record store for generated outputs and structural JSON metadata logs' },
+    { phase: 25, name: 'Conversation Context', status: 'COMPLETED', details: 'Existing local conversation history and vector RAG data surfaced as active pipeline context' },
+    { phase: 26, name: 'Automatic Recovery', status: 'COMPLETED', details: 'Health-aware fallback recovery controls and explicit process loop failure diagnostics' },
+    { phase: 27, name: 'Resource Scheduler', status: 'COMPLETED', details: 'Shared-GPU scheduling signals and automatic pipeline cancellation token integration' },
+    { phase: 28, name: 'Health & Diagnostics Center', status: 'COMPLETED', details: 'Measured real-time system metrics, hardware temperatures, and one-click diagnostic reports' },
+    { phase: 29, name: 'One-Click Diagnostics', status: 'COMPLETED', details: 'Comprehensive system health scanner profiling GPU, VRAM logs, node bindings, and asset files' },
+    { phase: 30, name: 'StreamInject v2.5 Pure Render Suite', status: 'COMPLETED', details: 'Headless OpenCV/FFmpeg Python render engine, visual canvas layout builder, and 6-track timeline' },
+    { phase: 31, name: 'StreamInject v2.5 Timeline & Overlay Suite', status: 'COMPLETED', details: 'Audio mixing, chroma key color adjustments, watermark timelines, and burned subtitle overlays' },
+    { phase: 32, name: 'AI Music Generator Suite & AudioCraft', status: 'COMPLETED', details: '7-mode generator supporting Text-To-Song, extension paths, cover loops, and stem splitting' },
+    { phase: 33, name: 'Qwen 2.5-VL & Juggernaut-XL Acceleration', status: 'COMPLETED', details: 'CUDA offload for Qwen 2.5-VL 7B (35+ t/s) + Juggernaut XL v9 SDXL workflow (8-12s photorealism)' },
+    { phase: 34, name: 'Phase 38 Dedicated Local AI Model Selector', status: 'COMPLETED', details: 'Implemented global default fallback for Qwen 2.5-VL 7B with manual hot-swap routing to Qwen 2.5 Coder 7B' },
+    { phase: 35, name: 'Creative Studio "Text-in-Image" Engine Toggle', status: 'COMPLETED', details: 'Added toggle to dynamically route high-precision text requests to the optimized FLUX.1 Lite GGUF model' },
+    { phase: 36, name: 'Native Wan 2.1 Video Pipeline Migration', status: 'COMPLETED', details: 'Integrated lightweight Wan 2.1 architecture to completely replace heavy LTX-Video VRAM footprints' },
+    { phase: 37, name: 'Image Canvas Refresh & Stability Fix', status: 'COMPLETED', details: 'Patched state tracking logic inside Image Studio to fix prompt desync and clear beige image generation glitches' },
+    { phase: 38, name: 'Phase 42 System Framework Alignment', status: 'COMPLETED', details: 'Merged legacy standalone panels, refactored global variables, and unified core orchestration hooks' },
+    { phase: 39, name: 'Workspace Archive Auto-Ingestion', status: 'COMPLETED', details: 'Direct project ZIP archive unpacking, source layout parsing, sandboxing, and runtime script tracking' },
+    { phase: 40, name: 'Live Coding Stream Terminal UI', status: 'COMPLETED', details: 'Surfaced real-time background coding agent terminal activity directly onto the primary Gina conversation log' },
+    { phase: 41, name: 'Bidirectional Git/GitHub Broker', status: 'COMPLETED', details: 'Automated local repository syncing with fully integrated branch, commit, and push UI panel controls' },
+    { phase: 42, name: 'Automated Top-Level Changelog Generation', status: 'COMPLETED', details: 'Linked runtime execution tracking models to dynamically append system structural edits directly to files' },
+    { phase: 43, name: 'Target Update: Local AI Stack Optimization & UI Toggle Swap (RTX 3070 Ti 8GB)', status: 'IN PROGRESS', details: 'Optimizing local hardware stacks for an 8GB VRAM constraint. Migrating video creation suites natively to Wan 2.1 engines (1.3B) and implementing FLUX.1 Lite GGUF support for high-precision text tasks. Swapping legacy Gemma 3 layout options inside the Phase 38 Model Routing side panels directly to pure-text Qwen 2.5 Coder 7B nodes with built-in canvas attachment safety constraints.'},
+    { phase: 44, name: 'Web Browser Integration', status: 'PENDING', details: 'Deploying custom headless Chromium instances to grant tools live web-browsing capabilities.' }
 	
-
   ]);
-
+  
   const [restorePoints] = useState<RestorePoint[]>([
     { id: 'RESTORE_01_INIT', label: 'Bare Metal Setup', description: 'Bare metal parameters mapped & pinned', timestamp: '2026-08-10 01:00', status: 'LOCKED' },
     { id: 'RESTORE_02_COMPLIANCE', label: 'Framework Shields', description: '947 compliance rules active & verified', timestamp: '2026-08-10 01:25', status: 'LOCKED' },
@@ -87,7 +93,10 @@ export const MilestoneChecklist: React.FC<MilestoneChecklistProps> = ({ activeRe
     { id: 'RESTORE_V1.18.2_CREATE_STUDIO_FINALISATION', label: 'Create Studio Completion Finalisation', description: 'Authoritative ComfyUI history reconciliation, resilient final output retrieval, and 100% finalisation state handling', timestamp: '2026-09-06 23:15', status: 'LOCKED' },
     { id: 'RESTORE_V1.18.3_IMAGE_GEN_PREVIEW_FIXES', label: 'Image Gen Speed, Preview Retention & Edit Options', description: 'High-speed dpmpp_2m sampler (8-12s edit vs 559s), persistent canvas preview retention, Juggernaut-XL default routing, img2img reference auto-switch, and empty latent denoise guard', timestamp: '2026-09-07 05:00', status: 'LOCKED' },
     { id: 'RESTORE_V1.18.4_LOCAL_AI_CREATE_BRIDGE', label: 'Local AI to Create Studio Preview Bridge', description: 'Direct adoption of completed AI tool generations into Create Studio context, history reconciliation, and output finalisation state handling', timestamp: '2026-09-07 05:45', status: 'LOCKED' },
-    { id: 'RESTORE_V1.18.5_NETWORK_BINDING_MUSIC_STATUS_FIX', label: 'Network Binding & Music Status Robustness', description: 'Restored port 3000 cloud container binding, eliminated EADDRINUSE conflict, and validated Content-Type in Music Studio and system diagnostics', timestamp: '2026-09-07 07:30', status: 'ACTIVE' },
+    { id: 'RESTORE_V1.18.5_NETWORK_BINDING_MUSIC_STATUS_FIX', label: 'Network Binding & Music Status Robustness', description: 'Restored port 3000 cloud container binding, eliminated EADDRINUSE conflict, and validated Content-Type in Music Studio and system diagnostics', timestamp: '2026-09-07 07:30', status: 'LOCKED' },
+    { id: 'RESTORE_V1.18.7_GINA_INTENT_ROUTER_MODEL_POLICY', label: 'Gina Intent Router & Model Policy', description: 'One authoritative intent router; Qwen/Juggernaut primary image lane; Gemma Vision/FLUX fallback lock; natural visual/location request recognition; multimodal projector enforcement', timestamp: '2026-09-07 18:20', status: 'COMPLETED' },
+    { id: 'RESTORE_V1.18.8_GINA_AGENT_WORKSPACES_GITHUB', label: 'Gina Agent Coding Workspaces, Planner & GitHub', description: 'Dedicated project workspaces, ZIP uploads, GitHub clone/sync/push/commit/PR operations, code validation loop, token redaction, and location lookup planning', timestamp: '2026-09-07 18:45', status: 'LOCKED' },
+    { id: 'RESTORE_V1.19.2_PERSISTENT_AGENT_WORKBENCH_STREAMING', label: 'Persistent Agent Workbench & Streaming Execution', description: 'Persistent agent run records, live SSE step/status streaming, reconnect-safe execution history, phase-aware workbench timeline, and cancellation endpoint', timestamp: '2026-09-07 18:55', status: 'ACTIVE' },
   ]);
 
   const [checks, setChecks] = useState<VerificationCheck[]>([

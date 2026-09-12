@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Cpu, FileDown, MessageSquare, Mic, MicOff, Play, RotateCw, Square, Trash2, Volume2, VolumeX, Zap, Sliders, ChevronDown, Paperclip, X, FileText, Image as ImageIcon, Archive, File as FileIcon } from 'lucide-react';
+import { Bot, Cpu, FileDown, MessageSquare, Mic, MicOff, Play, RotateCw, Square, Trash2, Volume2, VolumeX, Zap, Sliders, ChevronDown, Paperclip, X, FileText, Image as ImageIcon, Archive, File as FileIcon, Github } from 'lucide-react';
 import { LocalRagKnowledgePanel } from './LocalRagKnowledgePanel';
 import { useGenerationJob } from '../context/GenerationJobContext';
 
@@ -467,21 +467,17 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     chatAbortRef.current = null;
     setLoading(false);
     setError('Local AI generation cancelled.');
-    onAddLog('INFO', 'Local Gemma generation cancelled by user.');
+    onAddLog('INFO', 'Local Gina generation cancelled by user.');
   };
 
-  const isImageGenerationRequest = (text: string) => {
-    const normalized = text.trim();
-    if (!normalized) return false;
-    const imageNoun = /\b(image|picture|photo|artwork|illustration|render|portrait|wallpaper|logo|icon|bezel|watch face|scene|product shot|product photography)\b/i.test(normalized);
-    const createImage = /\b(create|generate|make|draw|render|produce|design|visuali[sz]e|paint|illustrate)\b/i.test(normalized) && imageNoun;
-    const modifyAttached = attachedFiles.some(file => file.kind === 'image') && /\b(edit|modify|change|alter|transform|retouch|remove|add|replace|restyle|improve|work off)\b/i.test(normalized) && /\b(this image|attached image|attached photo|reference image|use (this|the) image|from this image|based on this image)\b/i.test(normalized);
-    // AI Tools accepts a raw descriptive image prompt without requiring a leading
-    // imperative such as "create". Avoid sending these to Gemma, where the model
-    // may emit a fake tool_code block instead of invoking the local executor.
-    const analysisOrQuestion = /^(?:describe|analyse|analyze|what|why|how|can you|tell me|explain|identify|read|summari[sz]e)\b/i.test(normalized);
-    const bareImagePrompt = imageNoun && !analysisOrQuestion && !attachedFiles.some(file => file.kind === 'image') && normalized.length >= 12;
-    return createImage || modifyAttached || bareImagePrompt;
+  const classifyImageIntent = async (text: string) => {
+    const response = await fetch('/api/ai-tools/route', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, hasImage: attachedFiles.some(file => file.kind === 'image') })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.ok) throw new Error(data?.error || `Gina intent router failed (HTTP ${response.status}).`);
+    return data;
   };
 
   const pollGeneratedImage = async (jobId: string, promptText: string, usedReference: boolean) => {
@@ -493,10 +489,10 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       if (data.status === 'FAILED') throw new Error(data.error || 'Local image generation failed.');
       if (data.status === 'CANCELLED') throw new Error('Local image generation was cancelled.');
       if (data.ready && data.imageUrl) {
-        adoptCompletedOutput(data.jobId || jobId, data.imageUrl, data.filename);
+        adoptCompletedOutput(data.jobId || jobId, data.imageUrl, data.filename, data.workflowId, { __generationAudit: { engine: data.engine, llmModel: data.llmModel, generationModel: data.generationModel, workflowId: data.workflowId } });
         setMessages(prev => [...prev, { role: 'assistant', content: usedReference ? `Done — I generated the image from your supplied reference.` : `Done — I generated the image locally from your prompt.`, imageUrl: data.imageUrl }]);
         try {
-          await fetch('/api/assets', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ title:`AI Tools · ${new Date().toLocaleString()}`, type:'image', url:data.imageUrl, fileFormat:'PNG', timestamp:new Date().toISOString(), promptUsed:promptText, jobId:data.jobId || jobId, workflowId:'flux_image' }) });
+          await fetch('/api/assets', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ title:`AI Tools · ${new Date().toLocaleString()}`, type:'image', url:data.imageUrl, fileFormat:'PNG', timestamp:new Date().toISOString(), promptUsed:promptText, jobId:data.jobId || jobId, workflowId:data.workflowId || 'sdxl_juggernaut' }) });
         } catch {}
         if (autoSpeak) void speakText(usedReference ? 'Done. I generated the image from your supplied reference.' : 'Done. I generated the image locally from your prompt.');
         return;
@@ -517,10 +513,103 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     onAddLog('INFO', `AI Tool routed image request to ComfyUI/${data.workflowId}${data.usedReference ? ' using the supplied reference image' : ''}.`);
     setAiImageJobId(data.jobId);
     await adoptJob(data.jobId);
-    setMessages(prev => [...prev, { role: 'assistant', content: data.usedReference ? 'I’m working from the supplied image now…' : 'I’m generating that image locally with FLUX…' }]);
+    setMessages(prev => [...prev, { role: 'assistant', content: data.usedReference ? `I’m working from the supplied image using ${data.generationModel || 'the selected local image model'}…` : `I’m generating that image locally using ${data.generationModel || 'the selected local image model'}…` }]);
     await pollGeneratedImage(data.jobId, text, !!data.usedReference);
     setAttachedFiles([]);
     setFileAttachError(null);
+  };
+
+
+  const [agentWorkspace, setAgentWorkspace] = useState<string | null>(() => {
+    try { return localStorage.getItem('gina_active_workspace'); } catch { return null; }
+  });
+  const [agentStatus, setAgentStatus] = useState<string>('READY');
+  const [agentActivity, setAgentActivity] = useState<string[]>([]);
+  const projectInputRef = useRef<HTMLInputElement | null>(null);
+  const [githubUrl, setGithubUrl] = useState('');
+
+  const runProjectAgent = async (task: string) => {
+    if (!agentWorkspace) return false;
+    const prompt = `ACTIVE WORKSPACE: ${agentWorkspace}\n\nUSER REQUEST:\n${task}\n\nWork directly on this workspace. Inspect before editing, make the requested changes, validate them, repair failures when practical, review the final diff, and report what changed. Do not push to GitHub unless the user explicitly asks.`;
+    const response = await fetch('/api/agent/run-stream', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({prompt})
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error || `Gina Agent could not start (HTTP ${response.status}).`);
+    const id = data.runId;
+    setAgentStatus('WORKING');
+    setAgentActivity([]);
+    await new Promise<void>((resolve, reject) => {
+      const es = new EventSource(`/api/agent/runs/${encodeURIComponent(id)}/stream`);
+      const finish = () => { es.close(); resolve(); };
+      es.addEventListener('status', (ev:any) => {
+        try { const d=JSON.parse(ev.data||'{}'); setAgentStatus(d.phase || 'WORKING'); if(d.message) setAgentActivity(prev=>[...prev,d.message].slice(-12)); } catch {}
+      });
+      es.addEventListener('step_started', (ev:any) => {
+        try { const d=JSON.parse(ev.data||'{}'); setAgentActivity(prev=>[...prev, d.message || `Working on step ${d.step}`].slice(-12)); } catch {}
+      });
+      es.addEventListener('step_completed', (ev:any) => {
+        try { const d=JSON.parse(ev.data||'{}'); if(d.summary) setAgentActivity(prev=>[...prev,d.summary].slice(-12)); } catch {}
+      });
+      es.addEventListener('state', async (ev:any) => {
+        try {
+          const d=JSON.parse(ev.data||'{}');
+          if (['COMPLETED','FAILED','CANCELLED'].includes(d.state)) {
+            if (d.state === 'FAILED') reject(new Error(d.error || 'Gina coding task failed.'));
+            else {
+              const run = await fetch(`/api/agent/runs/${encodeURIComponent(id)}`).then(r=>r.json());
+              const summary = run?.result?.summary || run?.summary || (d.state === 'CANCELLED' ? 'Coding task cancelled.' : 'Coding task completed.');
+              setMessages(prev => [...prev, { role:'assistant', content:summary }]);
+              if (autoSpeak) void speakText(summary);
+              finish();
+            }
+            setAgentStatus(d.state);
+          }
+        } catch (e) { reject(e); }
+      });
+      es.onerror = () => setAgentStatus(prev => prev === 'READY' ? 'RECONNECTING' : prev);
+    });
+    return true;
+  };
+
+  const uploadAndActivateProject = async (file?: File) => {
+    if (!file) return;
+    setLoading(true); setError(null);
+    try {
+      const up = await fetch('/api/agent/upload-project', { method:'POST', headers:{'Content-Type':file.type || 'application/zip','X-Filename':encodeURIComponent(file.name)}, body:file });
+      const ud = await up.json().catch(()=>({}));
+      if (!up.ok) throw new Error(ud?.error || 'Project upload failed.');
+      let workspace = '';
+      if (ud.readyForImport) {
+        const imp = await fetch('/api/agent/import-project', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({archivePath:ud.path, workspace:pathSafeWorkspaceName(file.name)})});
+        const id = await imp.json().catch(()=>({}));
+        if (!imp.ok) throw new Error(id?.error || 'Project import failed.');
+        workspace = id.workspace || id.name;
+      }
+      if (!workspace) throw new Error('Only ZIP project uploads can be activated as a coding workspace.');
+      setAgentWorkspace(workspace); localStorage.setItem('gina_active_workspace',workspace);
+      setMessages(prev => [...prev,{role:'assistant',content:`Project "${workspace}" is loaded. I've got the project context. Tell me what you want me to add, fix, change or build.`}]);
+      setAgentStatus('READY');
+    } catch(e:any) { setError(e?.message || 'Project upload failed.'); }
+    finally { setLoading(false); }
+  };
+  const pathSafeWorkspaceName = (name:string) => name.replace(/\.zip$/i,'').replace(/[^a-zA-Z0-9._-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80) || 'project';
+  const exportActiveWorkspace = () => {
+    if (!agentWorkspace) return;
+    const link = document.createElement('a');
+    link.href = `/api/agent/workspaces/${encodeURIComponent(agentWorkspace)}/export.zip`;
+    link.download = `${agentWorkspace}-updated.zip`;
+    document.body.appendChild(link); link.click(); link.remove();
+  };
+  const loadGithubProject = async () => {
+    const url=githubUrl.trim(); if(!url) return;
+    setLoading(true); setError(null);
+    try {
+      const r=await fetch('/api/agent/github-clone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+      const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d?.error || 'GitHub clone failed.');
+      setAgentWorkspace(d.name); localStorage.setItem('gina_active_workspace',d.name);
+      setMessages(prev=>[...prev,{role:'assistant',content:`GitHub repository "${d.name}" is loaded. I've inspected the workspace connection. Tell me what you want me to change.`}]);
+    } catch(e:any){setError(e?.message || 'GitHub connection failed.');} finally{setLoading(false);}
   };
 
   const sendMessage = async (overrideText?: string) => {
@@ -534,20 +623,28 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     const text = `${typedText}${attachmentsText}`.trim();
     if (!text || !status?.ready || loading) return;
 
-    if (isImageGenerationRequest(typedText)) {
-      const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: text }];
-      setMessages(nextMessages);
-      setInput('');
-      setLoading(true);
-      setError(null);
-      try {
-        await sendImageGeneration(typedText);
-      } catch (err: any) {
-        setError(err?.message || 'Local image generation failed');
-        onAddLog('WARN', `AI Tool image generation failed: ${err?.message || 'unknown error'}`);
-      } finally {
-        setLoading(false);
+    try {
+      const route = await classifyImageIntent(typedText);
+      if (route.intent === 'image-generation' || route.intent === 'image-modification') {
+        if (route.policyLocked) throw new Error('FLUX image routing is locked unless Gemma 3 Vision has its multimodal projector loaded. Switch to Qwen 2.5-VL + mmproj-F16, or start Gemma with mmproj-q8_0.gguf.');
+        const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: text }];
+        setMessages(nextMessages);
+        setInput('');
+        setLoading(true);
+        setError(null);
+        try {
+          await sendImageGeneration(typedText);
+        } catch (err: any) {
+          setError(err?.message || 'Local image generation failed');
+          onAddLog('WARN', `AI Tool image generation failed: ${err?.message || 'unknown error'}`);
+        } finally {
+          setLoading(false);
+        }
+        return;
       }
+    } catch (routeError: any) {
+      setError(routeError?.message || 'Gina intent routing failed');
+      onAddLog('WARN', `Gina intent router failed: ${routeError?.message || 'unknown error'}`);
       return;
     }
 
@@ -596,7 +693,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       setMessages(prev => prev.filter((_, index) => index !== prev.length - 1));
       setInput(text);
       setError(err?.message || 'Local model request failed');
-      onAddLog('WARN', `Local Gemma chat failed: ${err?.message || 'unknown error'}`);
+      onAddLog('WARN', `Local Gina chat failed: ${err?.message || 'unknown error'}`);
     } finally {
       if (chatAbortRef.current) chatAbortRef.current = null;
       setLoading(false);
@@ -644,7 +741,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
           </div>
 
           <div className="mt-4 p-3 rounded border border-sky-500/20 bg-sky-500/5">
-            <div className="text-[9px] font-bold uppercase tracking-widest text-sky-300 mb-2">Phase 34 Engine Selector</div>
+            <div className="text-[9px] font-bold uppercase tracking-widest text-sky-300 mb-2">Phase 38 Model Routing</div>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => void runAction('restart','qwen')} disabled={loading || status?.engine === 'qwen'} className={`p-2 rounded border text-left ${status?.engine === 'qwen' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-700 bg-slate-900'}`}>
                 <div className="text-[10px] font-bold text-slate-100">Qwen 2.5-VL 7B</div>
@@ -654,7 +751,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
               <button onClick={() => void runAction('restart','gemma')} disabled={loading || status?.engine === 'gemma'} className={`p-2 rounded border text-left ${status?.engine === 'gemma' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-700 bg-slate-900'}`}>
                 <div className="text-[10px] font-bold text-slate-100">Gemma 3 12B</div>
                 <div className="text-[8px] text-slate-500 mt-1">Q4_K_M · instruction</div>
-                <div className="text-[8px] text-emerald-400 mt-1">→ FLUX.1-Schnell</div>
+                <div className="text-[8px] text-emerald-400 mt-1">→ FLUX.1-Schnell · Vision fallback</div>
               </button>
             </div>
           </div>
@@ -676,7 +773,12 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
         <div className="bg-slate-950 border border-slate-800 rounded-lg p-5 shadow-sm h-[620px] min-h-0 flex flex-col">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
             <div className="flex items-center gap-2"><MessageSquare className="w-4 h-4 text-emerald-400" /><span className="text-xs font-bold uppercase tracking-widest text-slate-200">Local Gina Chat</span></div>
-            <div className="flex items-center gap-2"><button onClick={() => { setMessages([]); setError(null); setPdfNotice(null); }} disabled={!messages.length || loading} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Clear</button><button onClick={() => void saveLastResponseAsPdf()} disabled={!messages.some(m => m.role === 'assistant') || pdfSaving} className="px-2 py-1 rounded border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1"><FileDown className="w-3 h-3" /> {pdfSaving ? 'Saving…' : 'Save PDF'}</button>
+            <div className="flex items-center gap-2">
+                <label title="Upload a project ZIP for Gina to inspect and edit" className="px-2 py-1 rounded border border-amber-500/30 bg-amber-500/5 text-amber-300 text-[9px] font-bold uppercase tracking-wider cursor-pointer flex items-center gap-1"><Archive className="w-3 h-3"/> Project ZIP<input ref={projectInputRef} type="file" accept=".zip" className="hidden" onChange={e=>void uploadAndActivateProject(e.target.files?.[0])}/></label>
+                <button onClick={()=>{const u=window.prompt('GitHub repository URL'); if(u){setGithubUrl(u); setTimeout(()=>void loadGithubProject(),0);}}} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1"><Github className="w-3 h-3"/> GitHub</button>
+                {agentWorkspace && <span className="max-w-[170px] truncate text-[8px] font-mono text-amber-300/70" title={agentWorkspace}>● {agentWorkspace}</span>}<button onClick={exportActiveWorkspace} title="Download the current project as a clean ZIP" className="px-2 py-1 rounded border border-emerald-500/30 bg-emerald-500/5 text-emerald-300 text-[9px] font-bold uppercase tracking-wider">Export ZIP</button>
+              </div>
+              <div className="flex items-center gap-2"><button onClick={() => { setMessages([]); setError(null); setPdfNotice(null); }} disabled={!messages.length || loading} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Clear</button><button onClick={() => void saveLastResponseAsPdf()} disabled={!messages.some(m => m.role === 'assistant') || pdfSaving} className="px-2 py-1 rounded border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1"><FileDown className="w-3 h-3" /> {pdfSaving ? 'Saving…' : 'Save PDF'}</button>
               <button onClick={() => { const next = !voiceEnabled; setVoiceEnabled(next); if (next) testVoice(); }} disabled={!voiceAvailable && !browserVoiceAvailable} title={(voiceAvailable || browserVoiceAvailable) ? 'Toggle Gina voice' : 'No local voice engine detected'} className={`px-2 py-1 rounded border text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1 ${voiceEnabled ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-slate-700 bg-slate-900 text-slate-500'}`}>{voiceEnabled ? <Volume2 className="w-3 h-3"/> : <VolumeX className="w-3 h-3"/>} Voice</button>
               <button onClick={toggleMicrophone} disabled={listening || !microphoneAvailable} title="Speak to Gina" className={`px-2 py-1 rounded border text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1 ${listening ? 'border-rose-500/40 bg-rose-500/10 text-rose-300' : 'border-violet-500/30 bg-violet-500/5 text-violet-300'}`}>{listening ? <MicOff className="w-3 h-3"/> : <Mic className="w-3 h-3"/>} {listening ? 'Listening…' : 'Talk'}</button>
               <label className="flex items-center gap-1 px-2 text-[9px] font-mono text-slate-500"><input type="checkbox" checked={autoSpeak} onChange={e=>setAutoSpeak(e.target.checked)} /> Auto</label>
@@ -761,7 +863,11 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
 
           <div className="flex-1 min-h-0 max-h-[520px] overflow-y-scroll custom-scrollbar space-y-3 pr-1">
             {!messages.length && <div className="h-full min-h-[300px] flex items-center justify-center text-center text-slate-600 text-xs"><div><Zap className="w-6 h-6 mx-auto mb-2 text-slate-700" /><p>Start Gemma to chat locally.</p><p className="text-[10px] mt-1">No cloud provider is used.</p></div></div>}
-            {messages.map((message, index) => (
+            {agentWorkspace && <div className="mb-2 rounded border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[9px] font-mono">
+            <div className="flex justify-between"><span className="text-amber-300">GINA CODING WORKSPACE</span><span className="text-slate-500">{agentStatus}</span></div>
+            {agentActivity.length > 0 && <div className="mt-1 text-slate-400 truncate">{agentActivity[agentActivity.length-1]}</div>}
+          </div>}
+          {messages.map((message, index) => (
               <div key={`${message.role}-${index}`} className={`rounded-lg border p-3 text-xs leading-relaxed ${message.role === 'user' ? 'ml-10 bg-emerald-500/5 border-emerald-500/20 text-slate-200' : 'mr-10 bg-slate-900 border-slate-800 text-slate-300'}`}>
                 <div className="text-[9px] font-mono uppercase tracking-wider text-slate-600 mb-1">{message.role}</div>
                 <div className="whitespace-pre-wrap break-words">{message.content}</div>{message.imageUrl && <img src={message.imageUrl} alt="Gina generated image" className="mt-3 max-w-full rounded-lg border border-slate-700" />}
@@ -779,8 +885,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
               accept=".txt,.md,.markdown,.json,.csv,.tsv,.log,.ini,.cfg,.conf,.yaml,.yml,.xml,.html,.htm,.css,.js,.jsx,.ts,.tsx,.py,.ps1,.bat,.cmd,.sh,.sql,.c,.h,.cpp,.hpp,.cc,.java,.cs,.go,.rs,.toml,.env,.png,.jpg,.jpeg,.webp,.bmp,.gif,.zip,text/plain,application/json,text/csv,text/markdown,text/xml,image/png,image/jpeg,image/webp,application/zip"
               className="hidden"
               onChange={e => {
-                const files = Array.from(e.target.files || []);
-                void files.reduce((promise, file) => promise.then(() => handleAttachFile(file)), Promise.resolve());
+                const files = Array.from(e.target.files || []) as File[];
+                void (async () => { for (const file of files) await handleAttachFile(file); })();
               }}
             />
 

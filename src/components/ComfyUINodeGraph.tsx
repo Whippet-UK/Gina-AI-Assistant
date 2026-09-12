@@ -104,8 +104,8 @@ export const ComfyUINodeGraph: React.FC<Props> = ({ onAddLog }) => {
         const data = await r.json();
         if (!cancelled) {
           setRuntime(data);
-          const activeId = data?.activeJob?.workflowId;
-          if (activeId && workflows.some(w => w.id === activeId)) setSelected(activeId);
+          // Runtime activity is telemetry only; it must not overwrite the user's
+          // workflow selection while they inspect another registered workflow.
         }
       } catch {}
     };

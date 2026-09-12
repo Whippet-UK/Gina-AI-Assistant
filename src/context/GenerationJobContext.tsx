@@ -43,7 +43,7 @@ interface GenerationJobContextValue {
   startJob: (workflowId: string, parameters: Record<string, any>) => Promise<GinaJob | null>;
   cancelJob: () => Promise<void>;
   adoptJob: (jobId: string) => Promise<GinaJob | null>;
-  adoptCompletedOutput: (jobId: string, imageUrl: string, filename?: string) => void;
+  adoptCompletedOutput: (jobId: string, imageUrl: string, filename?: string, workflowId?: string, parameters?: Record<string, any>) => void;
   refreshJob: () => Promise<void>;
   clearCurrentOutput: () => void;
 }
@@ -394,7 +394,7 @@ export const GenerationJobProvider: React.FC<{
     }
   }, [loadOutput]);
 
-  const adoptCompletedOutput = useCallback((jobId: string, imageUrl: string, filename?: string) => {
+  const adoptCompletedOutput = useCallback((jobId: string, imageUrl: string, filename?: string, workflowId?: string, parameters?: Record<string, any>) => {
     activeJobIdRef.current = jobId;
     outputResolvedJobRef.current = jobId;
     outputLoadingJobRef.current = null;
@@ -409,8 +409,10 @@ export const GenerationJobProvider: React.FC<{
     };
 
     setJob(prev => ({
-      ...(prev || { id: jobId, workflowId: 'flux_image', createdAt: new Date().toISOString(), parameters: {} }),
+      ...(prev || { id: jobId, workflowId: workflowId || 'sdxl_juggernaut', createdAt: new Date().toISOString(), parameters: parameters || {} }),
       id: jobId,
+      workflowId: workflowId || prev?.workflowId || 'sdxl_juggernaut',
+      parameters: parameters || prev?.parameters || {},
       status: 'COMPLETED',
       progress: 100,
       completedAt: new Date().toISOString(),
@@ -423,7 +425,7 @@ export const GenerationJobProvider: React.FC<{
         id: jobId,
         status: 'COMPLETED',
         progress: 100,
-        workflowId: 'flux_image',
+        workflowId: workflowId || 'sdxl_juggernaut',
         createdAt: new Date().toISOString(),
         completedAt: new Date().toISOString(),
         outputs: [syntheticOutput],

@@ -163,24 +163,11 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
         setInpaintAdditionalPrompt(`[Monitor UI Step]: ${promptData[1]} | [Background Wall Step]: ${promptData[2]}`);
       }
 
-      // FORCED WORKSPACE TEXTAREA INTERCEPTOR MATCH
-      setTimeout(() => {
-        const promptTextArea = document.querySelector('textarea[placeholder^="Type prompt here"]') as HTMLTextAreaElement;
-        if (promptTextArea) {
-          promptTextArea.value = targetTextPrompt;
-          promptTextArea.dispatchEvent(new Event('input', { bubbles: true }));
-        } else {
-          // Fallback array finder map targeting your input box
-          const textAreas = document.querySelectorAll('textarea');
-          if (textAreas.length > 0) {
-            const mainPromptBox = textAreas[textAreas.length - 1];
-            mainPromptBox.value = targetTextPrompt;
-            mainPromptBox.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-        }
-      }, 50);
-
-      setPipelineStatus('Prompts successfully synchronized to workspace inputs.');
+      setPipelineStatus(
+        Array.isArray(promptData)
+          ? 'Optimized subject, monitor, and background layers synchronized to the main prompt.'
+          : 'Optimized scene prompt synchronized to the main prompt.'
+      );
     } catch (err) {
       console.error('Pipeline loop processing error:', err);
       setPipelineStatus('Error routing metrics to engine runtime.');
@@ -739,7 +726,7 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
           <button
             type="button"
             disabled={isOptimizing}
-            onClick={() => handleAutomatedPipelineRun(hasInputImageWorkflow ? 'sdxl_juggernaut.json' : 'flux_image.json')}
+            onClick={() => handleAutomatedPipelineRun(hasInputImageWorkflow ? 'sdxl_juggernaut_reference.json' : 'sdxl_juggernaut.json')}
             className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-500 rounded-lg text-xs font-bold text-white flex items-center justify-center gap-2 transition-all shadow-md group"
           >
             {isOptimizing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />}

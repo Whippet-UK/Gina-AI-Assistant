@@ -37,20 +37,20 @@ export const GINA_PERFORMANCE_PRESETS = [
   {
     id: 'speed',
     label: 'Speed (Default)',
-    steps: 4,
-    desc: '4 Steps · Recommended for FLUX.1-Schnell (Fastest generation, ~2-4s)'
+    steps: 12,
+    desc: '12 Steps · Juggernaut-XL v9 balanced local generation'
   },
   {
     id: 'quality',
     label: 'Quality',
-    steps: 8,
-    desc: '8 Steps · Maximum photorealistic details, fine textures'
+    steps: 20,
+    desc: '20 Steps · Juggernaut-XL v9 photorealistic detail'
   },
   {
     id: 'extreme_speed',
     label: 'Extreme Speed',
-    steps: 2,
-    desc: '2 Steps · Draft mode for rapid prompt ideation'
+    steps: 8,
+    desc: '8 Steps · Fast Juggernaut-XL v9 draft generation'
   }
 ];
 
@@ -143,7 +143,7 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
   onSelectGinaV2Default,
   baseModel,
   onChangeBaseModel,
-  selectedWorkflow = 'flux_image',
+  selectedWorkflow = 'sdxl_juggernaut',
   onSelectWorkflow,
   loras,
   onChangeLora,
@@ -553,6 +553,7 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
                     </span>
                   </div>
                   <div className="text-[10px] text-zinc-400 font-mono">Q4_K_S UNet · 4-step generation</div>
+                  <div className="text-[9px] text-amber-400 font-mono mt-1">Gemma 3 Vision only · fallback / high-VRAM lane</div>
                   <div className="text-[9px] text-emerald-400 font-mono mt-1">~6.2 GB VRAM · T5-XXL FP8</div>
                 </button>
 

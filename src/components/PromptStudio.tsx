@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   Sparkles, Play, Square, Dices, X, RefreshCw, Layers, SlidersHorizontal,
-  ChevronDown, ChevronUp, Image as ImageIcon, ShieldCheck, Activity, Trash2
+  ChevronDown, ChevronUp, Image as ImageIcon, ShieldCheck, Activity, Trash2, Upload
 } from 'lucide-react';
 import { useProjectState } from '../context/ProjectStateContext';
 import { useGenerationJob } from '../context/GenerationJobContext';
@@ -134,7 +134,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
   const [selectedStyles, setSelectedStyles] = useState<string[]>(['gina_v2']);
 
   // Model Tab
-  const [baseModel, setBaseModel] = useState('flux1-schnell-Q4_K_S.gguf');
+  const [baseModel, setBaseModel] = useState('Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors');
   const [loras, setLoras] = useState([
     { enabled: false, model: '', weight: 1.0 },
     { enabled: false, model: '', weight: 1.0 },
@@ -143,9 +143,9 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
 
   // Advanced Sampling
   const [guidanceScale, setGuidanceScale] = useState(3.5);
-  const [steps, setSteps] = useState(4); // FLUX.1-Schnell default
-  const [sampler, setSampler] = useState('euler');
-  const [scheduler, setScheduler] = useState('simple');
+  const [steps, setSteps] = useState(20); // Juggernaut-XL v9 default
+  const [sampler, setSampler] = useState('dpmpp_2m');
+  const [scheduler, setScheduler] = useState('karras');
   const [denoise, setDenoise] = useState(1.0);
 
   // Input Image
@@ -178,6 +178,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
 
   // Textarea Ref for shortcut
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const topUploadRef = useRef<HTMLInputElement | null>(null);
 
   // When AIDA64 sends a staged reference
   useEffect(() => {
@@ -316,7 +317,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     job?.workflowId.includes('image') ||
     job?.workflowId.includes('juggernaut') ||
     job?.workflowId.includes('flux') ||
-    job?.workflowId !== 'ltx_video';
+    job?.workflowId.includes('sdxl');
   const isMediaImage =
     rawOutput &&
     (isImageJob ||
@@ -526,7 +527,16 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
 
     // Workflow resolution: if reference image is present, route to reference workflow
     let targetWorkflow = selectedWorkflow;
-    if (referenceImage) {
+    // Create Studio's primary image lane is Qwen 2.5-VL + Juggernaut-XL v9.
+    // Once an image has been kept/promoted, never silently fall back to FLUX.
+    const hasKeptReference = Boolean(referenceImage || keptImageUrl);
+    if (hasKeptReference && (targetWorkflow === 'flux_image' || targetWorkflow === 'flux_image_reference')) {
+      const refWf = workflows.find((w) => w.id === 'sdxl_juggernaut_reference');
+      if (refWf) {
+        targetWorkflow = refWf.id;
+        setSelectedWorkflow(refWf.id);
+      }
+    } else if (referenceImage) {
       if (targetWorkflow === 'sdxl_juggernaut' || targetWorkflow.startsWith('sdxl')) {
         const refWf = workflows.find((w) => w.id === 'sdxl_juggernaut_reference' || w.id.includes('reference'));
         if (refWf) targetWorkflow = refWf.id;
@@ -791,7 +801,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
                 GINA IMAGE STUDIO
               </h2>
               <span className="px-2 py-0.2 rounded bg-blue-500/15 border border-blue-500/30 text-[9px] text-blue-300 font-mono">
-                FLUX.1-Schnell GGUF
+                Qwen 2.5-VL + Juggernaut-XL v9
               </span>
             </div>
             <p className="text-[10px] text-zinc-400 font-mono">
@@ -811,6 +821,31 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
             <span className={`w-2 h-2 rounded-full ${online ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
             {online ? 'COMFYUI READY' : 'OFFLINE'}
           </span>
+
+          <input
+            ref={topUploadRef}
+            type="file"
+            accept=".png,.jpg,.jpeg,.webp,.bmp,.gif,image/png,image/jpeg,image/webp,image/bmp,image/gif"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleUploadImage(file);
+              e.currentTarget.value = '';
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setInputImageOpen(true);
+              topUploadRef.current?.click();
+            }}
+            disabled={uploadingReference}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-blue-500/40 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 disabled:opacity-50 transition-colors"
+            title="Upload an image to edit/work from"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            {uploadingReference ? 'UPLOADING…' : 'UPLOAD IMAGE'}
+          </button>
 
           <button
             type="button"

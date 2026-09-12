@@ -3,7 +3,7 @@ import {
   Music, Sparkles, Mic, Volume2, VolumeX, Play, Pause, Download, Trash2,
   Sliders, ChevronDown, ChevronUp, Info, HelpCircle, Layers, RefreshCw,
   FastForward, Scissors, FileText, Split, Radio, Check, CheckCircle2,
-  ExternalLink, Disc, Disc3, ShieldAlert, Cpu, Video
+  ExternalLink, Disc, Disc3, ShieldAlert, Cpu, Video, Upload, X
 } from 'lucide-react';
 import { useGenerationJob } from '../context/GenerationJobContext';
 import { MediaStitcherModal } from './MediaStitcherModal';
@@ -51,6 +51,13 @@ const TEMPO_LIST = [
   'Fast (135 BPM - Driving)', 'Ultra-Fast (160 BPM - DnB / Phonk)', 'Half-Time Beat', 'Double-Time Beat', '3/4 Waltz'
 ];
 
+const formatDuration = (seconds: number) => {
+  const total = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${minutes}:${String(secs).padStart(2, '0')}`;
+};
+
 export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamInject }: MusicStudioProps) {
   // Main Studio Mode Switcher
   const [suiteMode, setSuiteMode] = useState<
@@ -97,6 +104,9 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
   const [editStartSec, setEditStartSec] = useState<number>(5);
   const [editEndSec, setEditEndSec] = useState<number>(12);
   const [stemAudioFile, setStemAudioFile] = useState<File | null>(null);
+  const [audioRefPath, setAudioRefPath] = useState<string>('');
+  const [audioUploadBusy, setAudioUploadBusy] = useState(false);
+  const [audioUploadError, setAudioUploadError] = useState<string | null>(null);
   const [separatedStems, setSeparatedStems] = useState<{ vocals?: string; instrumental?: string } | null>(null);
 
   // Track Library & Audio Playback
@@ -197,6 +207,72 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
     }
   };
 
+  const uploadAudioReference = async (file: File): Promise<string | null> => {
+    const allowed = new Set(['audio/wav', 'audio/x-wav', 'audio/mpeg', 'audio/flac', 'audio/ogg', 'audio/mp4', 'audio/x-m4a']);
+    const ext = `.${file.name.split('.').pop()?.toLowerCase() || ''}`;
+    if (!allowed.has(file.type) && !['.wav', '.mp3', '.flac', '.ogg', '.m4a'].includes(ext)) {
+      setAudioUploadError('Supported audio types: WAV, MP3, FLAC, OGG, M4A.');
+      return null;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      setAudioUploadError('Maximum audio reference size is 50 MB.');
+      return null;
+    }
+    setAudioUploadBusy(true);
+    setAudioUploadError(null);
+    try {
+      const res = await fetch('/api/music/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          'X-Gina-Filename': encodeURIComponent(file.name),
+          'X-Gina-Mime': file.type || 'application/octet-stream'
+        },
+        body: await file.arrayBuffer()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok || !data.path) throw new Error(data.error || `Upload failed (HTTP ${res.status}).`);
+      setAudioRefPath(data.path);
+      return data.path;
+    } catch (err: any) {
+      setAudioUploadError(err?.message || 'Audio upload failed.');
+      onAddLog?.('WARN', `Audio reference upload failed: ${err?.message || err}`);
+      return null;
+    } finally {
+      setAudioUploadBusy(false);
+    }
+  };
+
+  const handleAudioReferenceChange = async (file: File | null, kind: 'cover' | 'stem') => {
+    if (!file) return;
+    const uploaded = await uploadAudioReference(file);
+    if (!uploaded) return;
+    if (kind === 'cover') setCoverAudioFile(file);
+    else setStemAudioFile(file);
+    onAddLog?.('INFO', `Loaded audio reference '${file.name}' into the local Music Studio.`);
+  };
+
+  const handleStemRemoval = async () => {
+    if (!audioRefPath) {
+      setAudioUploadError('Upload an audio file first.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/music/separate-stems', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputPath: audioRefPath })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.jobId) throw new Error(data.error || `Stem separation failed (HTTP ${res.status}).`);
+      await adoptJob(data.jobId);
+      onAddLog?.('INFO', `Voice removal queued for ${stemAudioFile?.name || 'audio reference'}.`);
+    } catch (err: any) {
+      setAudioUploadError(err?.message || 'Stem removal failed.');
+      onAddLog?.('WARN', `Voice removal failed: ${err?.message || err}`);
+    }
+  };
+
   const fetchTracks = useCallback(async () => {
     try {
       const res = await fetch('/api/music/tracks');
@@ -250,6 +326,15 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
       audio.removeEventListener('ended', handleEnded);
     };
   }, [activeTrack]);
+
+  useEffect(() => {
+    if (!job || job.workflowId !== 'stem_separation' || job.status !== 'COMPLETED') return;
+    const outputs: any = Array.isArray(job.outputs) ? job.outputs[0] : null;
+    if (outputs?.vocalsUrl || outputs?.instrumentalUrl) {
+      setSeparatedStems({ vocals: outputs.vocalsUrl, instrumental: outputs.instrumentalUrl });
+      onAddLog?.('INFO', 'Voice removal completed; vocals and instrumental stems are ready.');
+    }
+  }, [job?.id, job?.status, job?.workflowId]);
 
   useEffect(() => {
     if (!job || job.workflowId !== 'music_studio' || job.status !== 'COMPLETED') return;
@@ -341,6 +426,10 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
 
   // Main Music Generation Trigger
   const handleGenerateSong = async () => {
+    if (['song_cover', 'extend', 'edit'].includes(suiteMode) && !audioRefPath) {
+      setAudioUploadError('Upload a source audio file before using this mode.');
+      return;
+    }
     const singingRequested = !!lyrics.trim() && !noVocals && selectedModel !== 'facebook/audiogen-medium';
     onAddLog?.('RULE', singingRequested ? `Rule 011: VRAM-safe one-click singing lane → ACE-Step 1.5 (0.6B LM + CPU offload).` : `Rule 011: VRAM cage safety check for local audio generation.`);
     try {
@@ -355,11 +444,13 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
           noVocals: noVocals,
           negativeStyle: negativeStyle,
           vocalType: vocalType,
-          duration: duration,
+          duration: suiteMode === 'edit' ? Math.max(1, editEndSec - editStartSec) : duration,
           model: selectedModel,
           guidanceScale: guidanceScale,
           temperature: temperature,
           splitStart: suiteMode === 'extend' ? extendTimestamp : editStartSec,
+          editEnd: editEndSec,
+          audioRef: audioRefPath || undefined,
           vocalLanguage,
           engine: singingRequested ? 'ace-step-1.5' : selectedModel
         })
@@ -391,11 +482,11 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-xl backdrop-blur-md">
         <div>
           <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-lg bg-gradient-to-tr from-amber-500 to-pink-500 text-slate-950 font-bold">
+            <span className="p-1.5 rounded-lg bg-gradient-to-tr from-amber-500 to-rose-500 text-slate-950 font-bold">
               <Music className="w-5 h-5" />
             </span>
             <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-              AI Music Generator Suite <span className="text-xs px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 font-mono">AudioCraft · MusicGen · AudioGen</span>
+              AI Music Generator Suite <span className="text-xs px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono">AudioCraft · MusicGen · AudioGen</span>
             </h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
@@ -409,7 +500,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
             onClick={() => setSuiteMode('text_to_song')}
             className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
               suiteMode === 'text_to_song'
-                ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-md'
+                ? 'bg-[#00FFFF] text-slate-950 text-white shadow-md'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -419,7 +510,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
             onClick={() => setSuiteMode('song_cover')}
             className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
               suiteMode === 'song_cover'
-                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-bold shadow-md'
+                ? 'bg-[#FF0055] text-white text-slate-950 font-bold shadow-md'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -429,7 +520,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
             onClick={() => setSuiteMode('extend')}
             className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
               suiteMode === 'extend'
-                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-bold shadow-md'
+                ? 'bg-[#00FFCC] text-slate-950 text-slate-950 font-bold shadow-md'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -439,7 +530,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
             onClick={() => setSuiteMode('edit')}
             className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
               suiteMode === 'edit'
-                ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-slate-950 font-bold shadow-md'
+                ? 'bg-[#00FFFF] text-slate-950 text-slate-950 font-bold shadow-md'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -449,7 +540,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
             onClick={() => setSuiteMode('stem_remover')}
             className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
               suiteMode === 'stem_remover'
-                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-bold shadow-md'
+                ? 'bg-[#FF0055] text-white text-white font-bold shadow-md'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -467,6 +558,86 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
           </button>
         </div>
       </div>
+
+      {/* Functional Mode Workspace */}
+      {suiteMode !== 'text_to_song' && suiteMode !== 'library' && (
+        <div className="p-4 rounded-2xl bg-slate-950/80 border border-[#00FFFF]/20 shadow-lg">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-widest text-[#00FFFF]">
+                {suiteMode === 'song_cover' ? 'AI SONG COVER' : suiteMode === 'extend' ? 'MUSIC EXTENSION' : suiteMode === 'edit' ? 'AI MUSIC EDITOR' : 'VOICE REMOVER'}
+              </div>
+              <div className="text-[10px] text-slate-500 font-mono mt-1">
+                {suiteMode === 'song_cover' && 'Upload a source track, choose a style, then generate a local AI re-imagining.'}
+                {suiteMode === 'extend' && 'Upload a source track and choose the point where the new generated section begins.'}
+                {suiteMode === 'edit' && 'Replace a selected segment with a newly generated section while preserving the rest of the source.'}
+                {suiteMode === 'stem_remover' && 'Extract vocal and instrumental files from a local source track.'}
+              </div>
+            </div>
+            {audioRefPath && (
+              <button type="button" onClick={() => { setAudioRefPath(''); setCoverAudioFile(null); setStemAudioFile(null); setAudioUploadError(null); }} className="text-slate-500 hover:text-rose-300">
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {suiteMode === 'stem_remover' ? (
+            <div className="flex flex-col gap-3">
+              <label className="flex items-center justify-center gap-2 p-4 rounded-xl border border-dashed border-[#FF0055]/50 bg-[#FF0055]/5 text-xs font-bold text-slate-200 cursor-pointer hover:bg-[#FF0055]/10">
+                <Upload className="w-4 h-4 text-[#FF0055]" />
+                <span>{stemAudioFile ? stemAudioFile.name : 'Upload Audio for Voice Removal'}</span>
+                <input type="file" className="hidden" accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*"
+                  onChange={(e) => void handleAudioReferenceChange(e.target.files?.[0] || null, 'stem')} />
+              </label>
+              <button type="button" disabled={!audioRefPath || isStemSplitting} onClick={() => void handleStemRemoval()}
+                className="py-2.5 rounded-xl bg-[#FF0055] hover:brightness-110 disabled:opacity-40 text-white font-bold text-xs">
+                {isStemSplitting ? 'SEPARATING STEMS…' : 'REMOVE VOICE / SEPARATE STEMS'}
+              </button>
+              {separatedStems && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {separatedStems.vocals && <a className="p-2 rounded-lg border border-slate-800 text-xs text-[#00FFFF]" href={separatedStems.vocals}>Download Vocals</a>}
+                  {separatedStems.instrumental && <a className="p-2 rounded-lg border border-slate-800 text-xs text-[#00FFCC]" href={separatedStems.instrumental}>Download Instrumental</a>}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <label className="md:col-span-2 flex items-center gap-2 p-3 rounded-xl border border-dashed border-[#00FFFF]/40 bg-[#00FFFF]/5 text-xs text-slate-200 cursor-pointer">
+                <Upload className="w-4 h-4 text-[#00FFFF]" />
+                <span className="truncate">{coverAudioFile ? coverAudioFile.name : 'Upload source audio'}</span>
+                <input type="file" className="hidden" accept=".wav,.mp3,.flac,.ogg,.m4a,audio/*"
+                  onChange={(e) => void handleAudioReferenceChange(e.target.files?.[0] || null, 'cover')} />
+              </label>
+              {suiteMode === 'extend' && (
+                <label className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300">
+                  Extend from <b className="text-[#00FFCC]">{formatDuration(extendTimestamp)}</b>
+                  <input type="range" min={0} max={duration} value={Math.min(extendTimestamp, duration)} onChange={(e) => setExtendTimestamp(Number(e.target.value))} className="w-full accent-cyan-400 mt-2" />
+                </label>
+              )}
+              {suiteMode === 'edit' && (
+                <>
+                  <label className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300">
+                    Start <b className="text-[#00FFFF]">{formatDuration(editStartSec)}</b>
+                    <input type="range" min={0} max={Math.max(editEndSec, 1)} value={editStartSec} onChange={(e) => setEditStartSec(Number(e.target.value))} className="w-full accent-cyan-400 mt-2" />
+                  </label>
+                  <label className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300">
+                    End <b className="text-[#FF0055]">{formatDuration(editEndSec)}</b>
+                    <input type="range" min={editStartSec + 1} max={Math.max(editStartSec + 1, duration)} value={Math.min(editEndSec, duration)} onChange={(e) => setEditEndSec(Number(e.target.value))} className="w-full accent-pink-500 mt-2" />
+                  </label>
+                </>
+              )}
+            </div>
+          )}
+          {audioUploadBusy && <div className="mt-2 text-[10px] text-[#00FFFF] font-mono">Uploading local audio reference…</div>}
+          {audioUploadError && <div className="mt-2 text-[10px] text-rose-300 font-mono">{audioUploadError}</div>}
+        </div>
+      )}
+
+      {suiteMode === 'library' && (
+        <div className="p-4 rounded-2xl bg-slate-950/80 border border-[#00FFCC]/20 text-xs text-slate-300">
+          <b className="text-[#00FFCC]">TRACK LIBRARY</b> — select any track below to play, download, send to StreamInject, or use it as the source for another Music Studio mode.
+        </div>
+      )}
 
       {/* Main Two-Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -509,7 +680,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                   setSelectedModel(e.target.value);
                   localStorage.setItem('gina_music_model', e.target.value);
                 }}
-                className="appearance-none bg-slate-900 hover:bg-slate-850 border border-slate-700/80 text-purple-300 font-mono text-xs font-semibold px-3 py-1.5 pr-7 rounded-full focus:outline-none focus:border-purple-400 cursor-pointer"
+                className="appearance-none bg-slate-900 hover:bg-slate-850 border border-slate-700/80 text-cyan-300 font-mono text-xs font-semibold px-3 py-1.5 pr-7 rounded-full focus:outline-none focus:border-cyan-400 cursor-pointer"
               >
                 <option value="auto">Auto — Lyrics → ACE-Step Singing / No Lyrics → MusicGen</option>
                 <option value="facebook/musicgen-medium">MusicGen Medium 1.5B · Instrumental</option>
@@ -517,7 +688,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                 <option value="ace-step-1.5">ACE-Step 1.5 · Singing (0.6B / 8GB Safe)</option>
                 <option value="facebook/audiogen-medium">AudioGen Medium 1.5B · SFX / Atmosphere</option>
               </select>
-              <ChevronDown className="w-3.5 h-3.5 text-purple-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-3.5 h-3.5 text-cyan-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           </div>
 
@@ -530,7 +701,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
               {singingMode && (
                 <div className={`p-3 rounded-xl border ${aceStepReady ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-amber-950/20 border-amber-500/30'}`}>
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 font-semibold text-slate-200"><Mic className="w-3.5 h-3.5 text-pink-400" /> ACE-Step singing lane</div>
+                    <div className="flex items-center gap-2 font-semibold text-slate-200"><Mic className="w-3.5 h-3.5 text-rose-400" /> ACE-Step singing lane</div>
                     <span className={`text-[10px] font-mono ${aceStepReady ? 'text-emerald-300' : 'text-amber-300'}`}>{aceStepReady ? 'API READY' : 'API NOT READY'}</span>
                   </div>
                   <div className="text-[10px] text-slate-400 mt-1">Lyrics are sent to a real singing model. MusicGen is not used to fake vocals.</div>
@@ -540,7 +711,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
               <div className="flex flex-col gap-2 p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
                     <span className="text-slate-300 font-medium">
                       {selectedModel === 'ace-step-1.5' || singingMode ? 'ACE-Step 1.5 · Real Singing' : selectedModel === 'facebook/audiogen-medium' ? 'AudioGen Medium 1.5B · SFX / Atmosphere' : selectedModel === 'facebook/musicgen-medium' ? 'MusicGen Medium 1.5B · Instrumental' : 'MusicGen Small 300M'}
                     </span>
@@ -553,7 +724,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                         <CheckCircle2 className="w-3 h-3" /> Cached Locally ({currentStatus.sizeLabel})
                       </span>
                     ) : isModelDownloading ? (
-                      <span className="flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono border border-purple-500/30 animate-pulse">
+                      <span className="flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono border border-cyan-500/30 animate-pulse">
                         <RefreshCw className="w-3 h-3 animate-spin" /> Downloading Weights ({currentStatus.sizeLabel || 'fetching chunk...'})
                       </span>
                     ) : (
@@ -574,7 +745,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                         type="button"
                         disabled={isDownloadingModel}
                         onClick={() => handleDownloadModel(selectedModel)}
-                        className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-[11px] font-bold shadow transition-all disabled:opacity-50"
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-cyan-600 to-rose-600 hover:from-cyan-500 hover:to-rose-500 text-white text-[11px] font-bold shadow transition-all disabled:opacity-50"
                       >
                         <Download className="w-3 h-3" />
                         Download 1.5B Weights Now
@@ -591,14 +762,14 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                 {isModelDownloading && job && (
                   <div className="mt-1 pt-2 border-t border-slate-800/80 flex flex-col gap-1.5">
                     <div className="flex items-center justify-between text-[11px] font-mono">
-                      <span className="text-purple-300 font-semibold truncate max-w-md">
+                      <span className="text-cyan-300 font-semibold truncate max-w-md">
                         {job.step || "Downloading model into Gina managed directory..."}
                       </span>
-                      <span className="text-purple-400 font-bold">{job.progress ?? 20}%</span>
+                      <span className="text-cyan-400 font-bold">{job.progress ?? 20}%</span>
                     </div>
                     <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
                       <div
-                        className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300 rounded-full"
+                        className="h-full bg-gradient-to-r from-cyan-500 to-rose-500 transition-all duration-300 rounded-full"
                         style={{ width: `${job.progress ?? 20}%` }}
                       />
                     </div>
@@ -627,7 +798,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
               value={songName}
               onChange={(e) => setSongName(e.target.value)}
               placeholder="Enter song name"
-              className="w-full bg-[#0D121F] border border-slate-800 focus:border-purple-500/60 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-600 focus:outline-none transition-colors"
+              className="w-full bg-[#0D121F] border border-slate-800 focus:border-cyan-500/60 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-600 focus:outline-none transition-colors"
             />
           </div>
 
@@ -640,7 +811,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
               <span className="text-[11px] font-mono text-slate-500">{musicalStyle.length} / 1000</span>
             </div>
 
-            <div className="flex flex-col bg-[#0D121F] border border-slate-800 rounded-2xl p-3 gap-3 focus-within:border-purple-500/60 transition-colors">
+            <div className="flex flex-col bg-[#0D121F] border border-slate-800 rounded-2xl p-3 gap-3 focus-within:border-cyan-500/60 transition-colors">
               <textarea
                 rows={3}
                 maxLength={1000}
@@ -657,7 +828,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                   onClick={() => setActiveDropdown(activeDropdown === 'genre' ? null : 'genre')}
                   className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
                     activeDropdown === 'genre'
-                      ? 'bg-purple-900/30 border-purple-500 text-purple-200'
+                      ? 'bg-cyan-900/30 border-cyan-500 text-cyan-200'
                       : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-slate-700'
                   }`}
                 >
@@ -670,7 +841,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                   onClick={() => setActiveDropdown(activeDropdown === 'moods' ? null : 'moods')}
                   className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-medium transition-all ${
                     activeDropdown === 'moods'
-                      ? 'bg-pink-900/30 border-pink-500 text-pink-200'
+                      ? 'bg-rose-900/30 border-rose-500 text-rose-200'
                       : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-slate-700'
                   }`}
                 >
@@ -720,7 +891,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                       key={item}
                       type="button"
                       onClick={() => handleAddStyleTag(item)}
-                      className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-purple-900/50 hover:text-purple-200 border border-slate-800 text-[11px] text-slate-300 transition-colors"
+                      className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-cyan-900/50 hover:text-cyan-200 border border-slate-800 text-[11px] text-slate-300 transition-colors"
                     >
                       + {item}
                     </button>
@@ -747,7 +918,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
               </button>
             </div>
 
-            <div className="flex flex-col bg-[#0D121F] border border-slate-800 rounded-2xl p-3 gap-2.5 focus-within:border-purple-500/60 transition-colors">
+            <div className="flex flex-col bg-[#0D121F] border border-slate-800 rounded-2xl p-3 gap-2.5 focus-within:border-cyan-500/60 transition-colors">
               {/* Quick Tag Insertion Toolbar */}
               <div className="flex items-center gap-1.5 flex-wrap pb-1 border-b border-slate-800/40 text-[10px]">
                 <span className="text-slate-500 font-mono">Insert:</span>
@@ -782,7 +953,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                       onChange={(e) => setNoVocals(e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                    <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-600"></div>
                   </div>
                   <span className="text-xs text-slate-300 font-medium flex items-center gap-1">
                     no vocals <HelpCircle className="w-3 h-3 text-slate-500" />
@@ -801,7 +972,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
               onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
               className="flex items-center justify-between p-3.5 text-xs font-bold text-slate-200 hover:bg-slate-900/50 transition-colors cursor-pointer"
             >
-              <span className="flex items-center gap-2 text-purple-300">
+              <span className="flex items-center gap-2 text-cyan-300">
                 <Sliders className="w-4 h-4" /> Advanced Options
               </span>
               {isAdvancedOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
@@ -823,7 +994,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                     value={negativeStyle}
                     onChange={(e) => setNegativeStyle(e.target.value)}
                     placeholder="Avoid styles, e.g. heavy metal, rap, distorted bass"
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-purple-500"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500"
                   />
                 </div>
 
@@ -836,7 +1007,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                     <select
                       value={vocalType}
                       onChange={(e) => setVocalType(e.target.value)}
-                      className="w-full appearance-none bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500 cursor-pointer"
+                      className="w-full appearance-none bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
                     >
                       <option value="Surprise Me">Surprise Me (Auto Harmonic Match)</option>
                       <option value="Male Lead Vocal">Male Lead Vocal</option>
@@ -854,7 +1025,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                 {((selectedModel === 'ace-step-1.5') || (lyrics.trim() && !noVocals && selectedModel !== 'facebook/audiogen-medium')) && (
                   <div className="flex flex-col gap-1.5">
                     <span className="text-slate-300 font-semibold text-[11px]">Vocal Language</span>
-                    <select value={vocalLanguage} onChange={(e) => setVocalLanguage(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500">
+                    <select value={vocalLanguage} onChange={(e) => setVocalLanguage(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
                       <option value="en">English</option>
                       <option value="es">Spanish</option>
                       <option value="fr">French</option>
@@ -880,23 +1051,23 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                         onChange={(e) => setIsHidden(e.target.checked)}
                         className="sr-only peer"
                       />
-                      <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                      <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-600"></div>
                     </div>
                   </label>
 
                   <div className="flex flex-col gap-1 p-2 rounded-xl bg-slate-900/60 border border-slate-800">
                     <div className="flex items-center justify-between text-[11px]">
                       <span className="text-slate-400 font-semibold">Track Duration:</span>
-                      <span className="font-mono text-purple-300 font-bold">{duration}s</span>
+                      <span className="font-mono text-cyan-300 font-bold">{formatDuration(duration)}</span>
                     </div>
                     <input
                       type="range"
                       min={5}
-                      max={30}
+                      max={480}
                       step={1}
                       value={duration}
                       onChange={(e) => setDuration(Number(e.target.value))}
-                      className="w-full accent-purple-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
+                      className="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
                     />
                   </div>
                 </div>
@@ -907,12 +1078,12 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
           {/* 5. Main Generate Button (Exact Style from Screenshot) */}
           <button
             type="button"
-            disabled={isMusicGenerating}
-            onClick={handleGenerateSong}
+            disabled={suiteMode === 'stem_remover' ? (!audioRefPath || isStemSplitting) : isMusicGenerating}
+            onClick={() => suiteMode === 'stem_remover' ? void handleStemRemoval() : void handleGenerateSong()}
             className={`w-full py-4 rounded-2xl font-extrabold text-sm md:text-base flex items-center justify-center gap-2 transition-all shadow-xl cursor-pointer ${
               isMusicGenerating
-                ? 'bg-purple-900/40 text-purple-300 border border-purple-500/30 animate-pulse cursor-wait'
-                : 'bg-gradient-to-r from-[#A78BFA] via-[#C084FC] to-[#F472B6] hover:brightness-110 text-slate-950 shadow-purple-950/50'
+                ? 'bg-cyan-900/40 text-cyan-300 border border-cyan-500/30 animate-pulse cursor-wait'
+                : 'bg-gradient-to-r from-[#00FFFF] via-[#00FFCC] to-[#FF0055] hover:brightness-110 text-slate-950 shadow-cyan-950/50'
             }`}
           >
             {isMusicGenerating ? (
@@ -921,25 +1092,25 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
               </>
             ) : (
               <>
-                <Sparkles className="w-5 h-5" /> {selectedModel === 'facebook/audiogen-medium' ? 'Generate SFX / Atmosphere' : ((selectedModel === 'ace-step-1.5') || (lyrics.trim() && !noVocals && selectedModel !== 'facebook/audiogen-medium')) ? 'Generate Singing Song' : 'Generate'}
+                <Sparkles className="w-5 h-5" /> {suiteMode === 'stem_remover' ? 'Remove Voice / Separate Stems' : selectedModel === 'facebook/audiogen-medium' ? 'Generate SFX / Atmosphere' : ((selectedModel === 'ace-step-1.5') || (lyrics.trim() && !noVocals && selectedModel !== 'facebook/audiogen-medium')) ? 'Generate Singing Song' : 'Generate'}
               </>
             )}
           </button>
 
           {isJobActive && job?.workflowId === 'music_studio' && (
-            <div className="mt-3 p-3 rounded-xl bg-slate-950/90 border border-purple-500/30 text-xs shadow-lg">
+            <div className="mt-3 p-3 rounded-xl bg-slate-950/90 border border-cyan-500/30 text-xs shadow-lg">
               <div className="flex items-center justify-between gap-3 mb-2">
-                <div className="flex items-center gap-2 text-purple-200 font-semibold">
+                <div className="flex items-center gap-2 text-cyan-200 font-semibold">
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Live Audio Job
                 </div>
-                <span className="font-mono text-purple-300">{job.progress || 0}%</span>
+                <span className="font-mono text-cyan-300">{job.progress || 0}%</span>
               </div>
               <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden mb-2">
-                <div className="h-full bg-purple-500 transition-all duration-500" style={{ width: `${Math.max(0, Math.min(100, job.progress || 0))}%` }} />
+                <div className="h-full bg-cyan-500 transition-all duration-500" style={{ width: `${Math.max(0, Math.min(100, job.progress || 0))}%` }} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[10px]">
                 <div><span className="text-slate-500">MODEL:</span> <span className="text-slate-300 font-mono">{selectedModel}</span></div>
-                <div><span className="text-slate-500">DURATION:</span> <span className="text-slate-300 font-mono">{duration}s</span></div>
+                <div><span className="text-slate-500">DURATION:</span> <span className="text-slate-300 font-mono">{formatDuration(duration)}</span></div>
                 <div className="sm:col-span-2"><span className="text-slate-500">STEP:</span> <span className="text-slate-200">{job.step || 'Starting…'}</span></div>
               </div>
               <div className="mt-2 text-[10px] text-emerald-300/90">Exclusive AudioCraft lane · local-only model loading · no hidden second download</div>
@@ -953,7 +1124,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
           {/* Active Audio Waveform & Playback Deck */}
           <div className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-2xl backdrop-blur-md flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
                 <Disc className="w-4 h-4 animate-spin-slow" /> Master Audio Deck
               </span>
               {activeTrack && (
@@ -978,7 +1149,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                           key={i}
                           style={{ height: `${heightPercent}%` }}
                           className={`w-1 rounded-full transition-all duration-75 ${
-                            isActive ? 'bg-gradient-to-t from-pink-500 to-purple-400' : 'bg-slate-800'
+                            isActive ? 'bg-gradient-to-t from-rose-500 to-cyan-400' : 'bg-slate-800'
                           }`}
                         />
                       );
@@ -989,7 +1160,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                   <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
                     <div
                       style={{ width: `${playbackProgress}%` }}
-                      className="h-full bg-purple-500 transition-all duration-100"
+                      className="h-full bg-cyan-500 transition-all duration-100"
                     />
                   </div>
                 </div>
@@ -1000,7 +1171,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                     <button
                       type="button"
                       onClick={() => togglePlayTrack(activeTrack)}
-                      className="p-3 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-slate-950 font-bold hover:brightness-110 shadow-lg transition-all"
+                      className="p-3 rounded-full bg-gradient-to-r from-cyan-500 to-rose-500 text-slate-950 font-bold hover:brightness-110 shadow-lg transition-all"
                     >
                       {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 fill-slate-950" />}
                     </button>
@@ -1079,7 +1250,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                     onClick={() => setActiveTrack(track)}
                     className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between text-xs ${
                       activeTrack?.filename === track.filename
-                        ? 'bg-purple-950/40 border-purple-500/60 shadow-md'
+                        ? 'bg-cyan-950/40 border-cyan-500/60 shadow-md'
                         : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
                     }`}
                   >
@@ -1090,7 +1261,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                           e.stopPropagation();
                           togglePlayTrack(track);
                         }}
-                        className="p-1.5 rounded-full bg-slate-800 hover:bg-purple-600 text-slate-200 transition-colors"
+                        className="p-1.5 rounded-full bg-slate-800 hover:bg-cyan-600 text-slate-200 transition-colors"
                       >
                         {activeTrack?.filename === track.filename && isPlaying ? (
                           <Pause className="w-3 h-3" />
@@ -1143,7 +1314,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
           <div className="w-full max-w-lg p-6 rounded-3xl bg-slate-900 border border-slate-700 shadow-2xl flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <span className="p-1 rounded-lg bg-pink-500/20 text-pink-300 font-bold">
+                <span className="p-1 rounded-lg bg-rose-500/20 text-rose-300 font-bold">
                   <Sparkles className="w-4 h-4" />
                 </span>
                 <h3 className="text-sm font-bold text-white">AI Songwriter & Lyricist (Gemma 3 12B)</h3>
@@ -1165,7 +1336,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                   value={lyricTheme}
                   onChange={(e) => setLyricTheme(e.target.value)}
                   placeholder="e.g. A midnight race through a rainy neon Tokyo cyber highway"
-                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-pink-500"
+                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-rose-500"
                 />
               </div>
 
@@ -1174,7 +1345,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                 <select
                   value={lyricLanguage}
                   onChange={(e) => setLyricLanguage(e.target.value)}
-                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-pink-500"
+                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-rose-500"
                 >
                   <option value="English">English</option>
                   <option value="Japanese">Japanese / Romaji</option>
@@ -1198,7 +1369,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
                 type="button"
                 disabled={isWritingLyrics}
                 onClick={handleGenerateAiLyrics}
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-pink-500 to-purple-500 text-slate-950 font-bold text-xs hover:brightness-110 shadow-lg transition-all flex items-center gap-1.5"
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-cyan-500 text-slate-950 font-bold text-xs hover:brightness-110 shadow-lg transition-all flex items-center gap-1.5"
               >
                 {isWritingLyrics ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
                 {isWritingLyrics ? 'Composing Lyrics...' : 'Write Lyrics Now'}
