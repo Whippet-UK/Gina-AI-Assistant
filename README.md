@@ -1,4 +1,14 @@
-# Gina AI Factory — v1.19.8
+# Gina AI Factory — v1.20.0
+
+## v1.20.0 — Autonomous Research Engine, Repair Loop & GitHub Lifecycle (2026-09-12)
+
+Gina now features a fully autonomous research-and-repair lifecycle with end-to-end GitHub pull request integration:
+- **Autonomous Research Engine:** Hybrid local RAG + web search (DuckDuckGo integration when `GINA_WEB_ACCESS=true`) with in-memory caching for API signatures, official documentation, and library compatibility matrices.
+- **Autonomous Repair Loop:** 10-stage deterministic pipeline (`REQUEST` → `UNDERSTAND` → `PLAN` → `INSPECT` → `RESEARCH` → `EDIT` → `VALIDATE` → `REPAIR` → `SCAN` → `DIFF` → `COMMIT`) with automatic retries (up to 3 passes) fed by compiler diagnostics and Definition of Done gate checks.
+- **GitHub Lifecycle Manager:** Complete automated Git branching, staging, atomic commit generation, diff auditing, and GitHub PR creation via GitHub REST API with safe token resolution.
+- **Definition of Done Gate Integration:** Machine-enforced gate validating version synchronization, checklist compliance, clean root, and compilation before PR creation or completion.
+- **Agent Tools & REST Endpoints:** Exposes `research_docs`, `verify_compatibility`, `run_repair_loop`, and `create_github_pr` tools, plus `/api/agent/repair-loop`, `/api/agent/research`, and `/api/agent/git/*` endpoints.
+- **Versioned restore point:** `RESTORE_V1.20.0_AUTONOMOUS_RESEARCH_REPAIR_GITHUB`.
 
 ## v1.19.8 — Autonomous Project Completion Gate & Persistent Project Map (2026-09-12)
 

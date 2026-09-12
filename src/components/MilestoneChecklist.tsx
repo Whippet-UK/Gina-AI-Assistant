@@ -56,7 +56,8 @@ export const MilestoneChecklist: React.FC<MilestoneChecklistProps> = ({ activeRe
     { phase: 46, name: 'Update Integrity Guard & Wan UI Reconciliation', status: 'COMPLETED', details: 'Mandatory AI update checklist, deterministic integrity gate, and removal of stale retired-engine UI vocabulary from the current stack.' },
     { phase: 47, name: 'Web Research & Local-First Agent', status: 'COMPLETED', details: 'Controlled public-internet research through server-side web tools when GINA_WEB_ACCESS=true with strict local-first safety.' },
     { phase: 48, name: 'Agent Action Recovery & Robust Tool Dispatch', status: 'COMPLETED', details: 'AutonomousAgentEngine repair, LocalLlmManager completion dispatch, and AgentWorkspaceManager path resolution.' },
-    { phase: 49, name: 'Autonomous Project Completion Gate & Persistent Project Map', status: 'COMPLETED', details: 'Machine-enforced Definition of Done gate, autonomous repair loop, and persistent ProjectMapManager indexing architectural surfaces.' }
+    { phase: 49, name: 'Autonomous Project Completion Gate & Persistent Project Map', status: 'COMPLETED', details: 'Machine-enforced Definition of Done gate, autonomous repair loop, and persistent ProjectMapManager indexing architectural surfaces.' },
+    { phase: 50, name: 'Autonomous Research Engine, Repair Loop & GitHub Lifecycle', status: 'COMPLETED', details: 'Multi-stage autonomous repair loop, local RAG + DuckDuckGo research engine, Git branch/commit/diff/PR lifecycle automation, and Definition of Done gate integration.' }
   ]);
   
   const [restorePoints] = useState<RestorePoint[]>([
@@ -104,7 +105,8 @@ export const MilestoneChecklist: React.FC<MilestoneChecklistProps> = ({ activeRe
     { id: 'RESTORE_V1.19.4_PHASE44_LOCAL_AI_PROJECT_ATTACHMENTS', label: 'Local AI Project Attachments & Large ZIP Ingestion', description: 'Qwen Coder file attachments, dedicated project ZIP workspace import, automatic safe inspection, 100MB archive limit, and 10,000-file ZIP capacity', timestamp: '2026-09-12 04:10', status: 'LOCKED' },
     { id: 'RESTORE_V1.19.6_UPDATE_INTEGRITY_WAN_UI', label: 'Update Integrity Guard & Wan UI Reconciliation', description: 'Mandatory startup checklist, deterministic integrity gate, active Wan 2.1 UI reconciliation, and stale active-engine reference sweep', timestamp: '2026-09-12 05:30', status: 'LOCKED' },
     { id: 'RESTORE_V1.19.7_AGENT_ACTION_RECOVERY', label: 'Agent Action Recovery & Robust Tool Dispatch', description: 'Autonomous agent workspace path resolution, local completion generation, and diagnostic suite migration', timestamp: '2026-09-12 06:15', status: 'LOCKED' },
-    { id: 'RESTORE_V1.19.8_PROJECT_COMPLETION_GATE', label: 'Autonomous Project Completion Gate & Persistent Project Map', description: 'Machine-enforced Definition of Done gate blocking premature completion, autonomous repair loop, and persistent project map', timestamp: '2026-09-12 07:00', status: 'ACTIVE' },
+    { id: 'RESTORE_V1.19.8_PROJECT_COMPLETION_GATE', label: 'Autonomous Project Completion Gate & Persistent Project Map', description: 'Machine-enforced Definition of Done gate blocking premature completion, autonomous repair loop, and persistent project map', timestamp: '2026-09-12 07:00', status: 'LOCKED' },
+    { id: 'RESTORE_V1.20.0_AUTONOMOUS_RESEARCH_REPAIR_GITHUB', label: 'Autonomous Research Engine, Repair Loop & GitHub Lifecycle', description: 'Production-ready AutonomousResearchEngine, multi-stage AutonomousRepairLoop pipeline, GitHubLifecycleManager, DefinitionOfDoneGate verification, and complete REST/SSE broker routes', timestamp: '2026-09-12 07:30', status: 'ACTIVE' },
   ]);
 
   const [checks, setChecks] = useState<VerificationCheck[]>([

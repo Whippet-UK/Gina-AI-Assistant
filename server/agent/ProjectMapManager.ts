@@ -128,6 +128,20 @@ export class ProjectMapManager {
         relatedSurfaces: ['Gina Agent Workbench', 'Autonomous Agent Engine']
       },
       {
+        name: 'Autonomous Research & Repair Loop',
+        category: 'Backend',
+        primaryFiles: ['server/agent/AutonomousResearchEngine.ts', 'server/agent/AutonomousRepairLoop.ts'],
+        description: 'Multi-stage autonomous repair loop (REQUEST->UNDERSTAND->PLAN->INSPECT->RESEARCH->EDIT->VALIDATE->REPAIR->SCAN->DIFF->COMMIT) and combined local+web API documentation research engine.',
+        relatedSurfaces: ['Autonomous Agent Engine', 'Definition of Done Gate', 'Web Research Service']
+      },
+      {
+        name: 'GitHub Lifecycle Manager',
+        category: 'Backend',
+        primaryFiles: ['server/agent/GitHubLifecycleManager.ts'],
+        description: 'Git branch management, atomic commits, diff summaries, remote push, and PR metadata generation.',
+        relatedSurfaces: ['Autonomous Agent Engine', 'Agent Workspace Manager']
+      },
+      {
         name: 'Web Research Service',
         category: 'Backend',
         primaryFiles: ['server/agent/WebResearchService.ts'],

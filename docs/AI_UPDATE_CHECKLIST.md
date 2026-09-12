@@ -9,7 +9,7 @@
 - [ ] Inspect the active workspace/project tree and identify the real runtime engine/model for every affected suite.
 - [ ] Search the affected area for retired names, old model filenames, old endpoint names, stale button labels, stale diagnostics, and contradictory documentation.
 
-## 2. Current platform truth (v1.19.6 / Phase 47)
+## 2. Current platform truth (v1.20.0 / Phase 50)
 - [ ] Primary local assistant: Qwen 2.5-VL 7B.
 - [ ] Coding model: Qwen Coder 7B, text-only.
 - [ ] Primary image generation: Juggernaut-XL v9.

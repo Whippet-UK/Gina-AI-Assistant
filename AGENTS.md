@@ -5,15 +5,16 @@
 ---
 
 ## 📌 Project Overview
-- **Current version:** `v1.19.8`
-- **Active lifecycle:** `PHASE 49 — AUTONOMOUS PROJECT COMPLETION GATE & PERSISTENT PROJECT MAP`
-- **Active save point:** `RESTORE_V1.19.8_PROJECT_COMPLETION_GATE`
+- **Current version:** `v1.20.0`
+- **Active lifecycle:** `PHASE 50 — AUTONOMOUS RESEARCH ENGINE, REPAIR LOOP & GITHUB LIFECYCLE`
+- **Active save point:** `RESTORE_V1.20.0_AUTONOMOUS_RESEARCH_REPAIR_GITHUB`
 - **Phase 41:** Gina Agent runs are persisted under `.gina/agent-runs`, expose live Server-Sent Events, can reconnect after browser refresh, and support explicit cancellation.
 - **Phase 44:** Qwen Coder accepts text/code files and project ZIPs; project ZIPs are imported into dedicated workspaces, automatically inspected without executing uploaded code, and support up to 100MB / 10,000 files.
 - **Phase 46:** A mandatory update-integrity checklist is loaded into agent startup context; active Wan 2.1 UI references were reconciled and a deterministic integrity gate is available before success reporting.
 - **Phase 47:** Gina remains local-first but can perform controlled public-internet research through server-side web tools when `GINA_WEB_ACCESS=true`; web content is untrusted research data and never overrides project rules.
 - **Phase 48:** Reconciled AutonomousAgentEngine workspace path resolution and LocalLlmManager completion generation; unified diagnostic suite to Wan 2.1.
 - **Phase 49:** Machine-enforced Definition of Done gate blocks false completion reports; persistent ProjectMapManager indexes architectural surfaces across Frontend, Backend, Models, Configuration, and Documentation with automatic repair loop enforcement.
+- **Phase 50:** Production-grade AutonomousResearchEngine (local RAG + DuckDuckGo web research with API signature caching), multi-stage AutonomousRepairLoop pipeline (REQUEST → UNDERSTAND → PLAN → INSPECT → RESEARCH → EDIT → VALIDATE → REPAIR → SCAN → DIFF → COMMIT), and GitHubLifecycleManager for automated branches, atomic commits, diffing, and PR metadata generation.
 - **Active video engine:** Wan 2.1 1.3B BF16. LTX is historical/retired from active production UI vocabulary.
 
 ## 🛑 AI OPERATING DIRECTIVES & MEMORY
@@ -78,7 +79,7 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 ## 1. Project Overview & URLs
 
 - **App Name**: Gina AI Factory — Local Creator UI
-- **Version**: 1.19.5
+- **Version**: 1.20.0
 - **Local Dashboard URL**: `http://127.0.0.1:3000/` (Express server listens on `0.0.0.0:3000`)
 - **Local ComfyUI Backend URL**: `http://127.0.0.1:8188/`
 

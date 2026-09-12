@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { APP_VERSION } from '../version';
 import {
   Sparkles,
   Cpu,
@@ -164,16 +165,15 @@ export const AppFeaturesGuide: React.FC = () => {
       color: 'text-indigo-400',
       bgColor: 'bg-indigo-500/10',
       borderColor: 'border-indigo-500/30',
-      badge: '33 Local Tools · LIVE',
+      badge: 'Local Tools & Repair Loop · LIVE',
       category: 'Autonomous Agent',
-      shortDesc: 'Persistent local coding agent with startup context, durable workbench runs, live execution streaming, memory, workspaces, GitHub and sandboxed tools.',
+      shortDesc: 'Persistent local coding agent with startup context, durable workbench runs, live execution streaming, memory, workspaces, GitHub, and autonomous repair loop.',
       details: [
-        '19 Local Tools: inspect_system, inspect_capabilities, knowledge_search, search_files, read_file, write_file, execute_command, git_status, git_diff, git_log, remember, recall_memory, comfy_clear_cache, llm_start, llm_stop, llm_restart, build_aida64_template, write_pdf, and inspect_project_context.',
+        'Local Tools Suite: inspect_system, inspect_capabilities, knowledge_search, search_files, read_file, write_file, execute_command, git_status, git_diff, git_log, remember, recall_memory, comfy_clear_cache, llm_start, llm_stop, llm_restart, build_aida64_template, write_pdf, inspect_project_context, inspect_project_map, verify_definition_of_done, research_docs, and run_repair_loop.',
         'Persistent Memory: Stored locally at C:\\Gina_AI\\.gina\\agent-memory.json (local-only, not checked into source control).',
         'Startup Context Bootstrap: Loads AGENTS.md, CHANGELOG.md, README.md, MilestoneChecklist, package.json, and hardware state on boot.',
-        'Audit Trail & Scope Guard: All file modifications and shell commands are logged to audit records and locked within C:\\Gina_AI.',
-        'Phase 40 Coding Loop: Inspect → read → edit → validate → diff → report with controlled ten-step execution and retry guidance.',
-        'Phase 41 Persistent Workbench: Agent runs are saved under C:\\Gina_AI\\.gina\\agent-runs and streamed live through Server-Sent Events with reconnect and cancellation support.'
+        'Phase 49 Completion Gate: Machine-enforced Definition of Done gate ensuring clean typechecks, version synchronization, retired reference audits, and zero broken updates.',
+        'Phase 50 Autonomous Research & Repair: Multi-stage pipeline (REQUEST → UNDERSTAND → PLAN → INSPECT → RESEARCH → EDIT → VALIDATE → REPAIR → SCAN → DIFF → COMMIT) with automated DuckDuckGo documentation research and Git lifecycle automation.'
       ]
     },
     {
@@ -314,7 +314,7 @@ export const AppFeaturesGuide: React.FC = () => {
             <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wide flex items-center gap-2">
               <span>PROJECT SYSTEM ARCHITECTURE & FEATURE GUIDE</span>
               <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[9px] px-2 py-0.5 rounded font-mono">
-                GINA AI FACTORY V1.17.68
+                GINA AI FACTORY V{APP_VERSION}
               </span>
             </h2>
             <p className="text-[11px] text-slate-400 font-mono mt-0.5">

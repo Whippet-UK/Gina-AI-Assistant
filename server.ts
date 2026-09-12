@@ -25,6 +25,10 @@ import { AgentRunManager } from "./server/agent/AgentRunManager.js";
 import { runUpdateIntegrityCheck } from "./server/agent/UpdateIntegrityGuard.js";
 import { ProjectMapManager } from "./server/agent/ProjectMapManager.js";
 import { DefinitionOfDoneGate } from "./server/agent/DefinitionOfDoneGate.js";
+import { AutonomousResearchEngine } from "./server/agent/AutonomousResearchEngine.js";
+import { GitHubLifecycleManager } from "./server/agent/GitHubLifecycleManager.js";
+import { AutonomousRepairLoop } from "./server/agent/AutonomousRepairLoop.js";
+import { AutonomousAgentEngine } from "./server/agent/AutonomousAgentEngine.js";
 import { Aida64TelemetryBridge } from "./server/aida64/Aida64TelemetryBridge.js";
 import { LocalRagEngine } from "./server/rag/LocalRagEngine.js";
 import { WebResearchService } from "./server/agent/WebResearchService.js";
@@ -67,6 +71,10 @@ const GITHUB_API_VERSION = '2022-11-28';
 const aida64Telemetry = new Aida64TelemetryBridge();
 const localRag = new LocalRagEngine(GINA_ROOT);
 const webResearch = new WebResearchService();
+const autonomousResearch = new AutonomousResearchEngine(webResearch, localRag);
+const gitLifecycle = new GitHubLifecycleManager(GINA_ROOT);
+const autonomousRepair = new AutonomousRepairLoop(autonomousResearch, projectMap, definitionOfDoneGate, gitLifecycle, localLlm);
+const autonomousEngine = new AutonomousAgentEngine(autonomousResearch, projectMap, gitLifecycle);
 const streamInjectService = new StreamInjectService(process.cwd());
 const musicService = new MusicService(process.cwd());
 const multimediaService = new MultimediaService(process.cwd());
@@ -874,7 +882,14 @@ async function runAgentTool(action: string, parameters: any) {
     project_map: 'inspect_project_map',
     check_definition_of_done: 'verify_definition_of_done',
     definition_of_done: 'verify_definition_of_done',
-    dod_check: 'verify_definition_of_done'
+    dod_check: 'verify_definition_of_done',
+    research_docs: 'research_docs',
+    search_docs: 'research_docs',
+    web_research_docs: 'research_docs',
+    repair_loop: 'run_repair_loop',
+    auto_repair: 'run_repair_loop',
+    git_pr: 'create_github_pr',
+    github_pull_request: 'create_github_pr'
   };
   const requestedAction = String(action || '').trim();
   const normalizedAction = actionAliases[requestedAction] || requestedAction;
@@ -967,6 +982,33 @@ async function runAgentTool(action: string, parameters: any) {
     case 'web_research': {
       return await webResearch.research(String(parameters?.query || ''), Number(parameters?.maxResults) || 6, parameters?.fetchTop !== false);
     }
+    case 'research_docs': {
+      return await autonomousResearch.research({
+        query: String(parameters?.query || parameters?.q || ''),
+        libraryOrPackage: parameters?.libraryOrPackage || parameters?.package,
+        targetVersion: parameters?.targetVersion || parameters?.version,
+        contextCode: parameters?.contextCode || parameters?.code,
+        maxResults: Number(parameters?.maxResults) || 5
+      });
+    }
+    case 'verify_compatibility': {
+      return await autonomousResearch.verifyCompatibility(
+        String(parameters?.package || parameters?.packageName || ''),
+        String(parameters?.code || parameters?.codeSnippet || '')
+      );
+    }
+    case 'run_repair_loop': {
+      const workspaceRoot = parameters?.workspace ? agentWorkspace.resolveWorkspace(parameters.workspace) : GINA_ROOT;
+      return await autonomousRepair.execute({
+        request: String(parameters?.request || parameters?.prompt || parameters?.instruction || ''),
+        workspaceRoot,
+        maxRepairCycles: Number(parameters?.maxRepairCycles) || 5,
+        autoCommit: Boolean(parameters?.autoCommit),
+        commitMessage: parameters?.commitMessage,
+        branchName: parameters?.branchName,
+        researchLibrary: parameters?.researchLibrary || parameters?.package
+      });
+    }
     case 'read_file': {
       const target = resolveAgentPath(parameters?.path);
       const content = await fs.readFile(target, parameters?.encoding || 'utf8');
@@ -1034,6 +1076,15 @@ async function runAgentTool(action: string, parameters: any) {
       const add = await agentWorkspace.git(workspace, ['add','-A']);
       if (add.exitCode !== 0) return add;
       return agentWorkspace.git(workspace, ['commit','-m',message]);
+    }
+    case 'create_github_pr': {
+      const workspaceRoot = parameters?.workspace ? agentWorkspace.resolveWorkspace(parameters.workspace) : GINA_ROOT;
+      return await gitLifecycle.preparePullRequest(
+        String(parameters?.title || 'Autonomous Task Update'),
+        String(parameters?.body || ''),
+        parameters?.base || 'main',
+        workspaceRoot
+      );
     }
     case 'workspace_inspect': {
       const workspace = String(parameters?.workspace || '').trim();
@@ -1164,9 +1215,98 @@ app.get('/api/agent/definition-of-done', async (_req, res) => {
     res.status(500).json({ ok: false, error: error?.message || 'Unable to verify Definition of Done' });
   }
 });
+app.post('/api/agent/research', async (req, res) => {
+  try {
+    const result = await autonomousResearch.research({
+      query: String(req.body?.query || '').trim(),
+      libraryOrPackage: req.body?.libraryOrPackage,
+      targetVersion: req.body?.targetVersion,
+      contextCode: req.body?.contextCode,
+      maxResults: Number(req.body?.maxResults) || 5
+    });
+    res.json({ ok: true, ...result });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || 'Autonomous research failed' });
+  }
+});
+app.post('/api/agent/repair-loop', async (req, res) => {
+  try {
+    const result = await autonomousRepair.execute({
+      request: String(req.body?.request || req.body?.prompt || '').trim(),
+      workspaceRoot: req.body?.workspace ? agentWorkspace.resolveWorkspace(req.body.workspace) : GINA_ROOT,
+      maxRepairCycles: Number(req.body?.maxRepairCycles) || 5,
+      autoCommit: Boolean(req.body?.autoCommit),
+      commitMessage: req.body?.commitMessage,
+      branchName: req.body?.branchName,
+      researchLibrary: req.body?.researchLibrary
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || 'Autonomous repair loop failed' });
+  }
+});
+app.get('/api/agent/git/status', async (req, res) => {
+  try {
+    const cwd = req.query?.workspace ? agentWorkspace.resolveWorkspace(String(req.query.workspace)) : GINA_ROOT;
+    const result = await gitLifecycle.getStatus(cwd);
+    res.json({ ok: true, ...result });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || 'Failed to read git status' });
+  }
+});
+app.post('/api/agent/git/branch', async (req, res) => {
+  try {
+    const cwd = req.body?.workspace ? agentWorkspace.resolveWorkspace(String(req.body.workspace)) : GINA_ROOT;
+    const result = await gitLifecycle.createOrSwitchBranch(String(req.body?.branch || ''), cwd);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || 'Failed to create or switch branch' });
+  }
+});
+app.post('/api/agent/git/commit', async (req, res) => {
+  try {
+    const cwd = req.body?.workspace ? agentWorkspace.resolveWorkspace(String(req.body.workspace)) : GINA_ROOT;
+    const result = await gitLifecycle.stageAndCommit(String(req.body?.message || ''), req.body?.files, cwd);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || 'Failed to stage and commit' });
+  }
+});
+app.get('/api/agent/git/diff', async (req, res) => {
+  try {
+    const cwd = req.query?.workspace ? agentWorkspace.resolveWorkspace(String(req.query.workspace)) : GINA_ROOT;
+    const result = await gitLifecycle.getDiff(cwd, String(req.query?.against || 'HEAD'));
+    res.json({ ok: true, ...result });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || 'Failed to get git diff' });
+  }
+});
+app.post('/api/agent/git/push', async (req, res) => {
+  try {
+    const cwd = req.body?.workspace ? agentWorkspace.resolveWorkspace(String(req.body.workspace)) : GINA_ROOT;
+    const result = await gitLifecycle.push(req.body?.remote, req.body?.branch, req.body?.token || GITHUB_TOKEN, cwd);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || 'Failed to push git branch' });
+  }
+});
+app.post('/api/agent/git/pull-request', async (req, res) => {
+  try {
+    const cwd = req.body?.workspace ? agentWorkspace.resolveWorkspace(String(req.body.workspace)) : GINA_ROOT;
+    const result = await gitLifecycle.preparePullRequest(
+      String(req.body?.title || 'Autonomous Update'),
+      String(req.body?.body || ''),
+      req.body?.base || 'main',
+      cwd
+    );
+    res.json({ ok: true, payload: result });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || 'Failed to prepare pull request' });
+  }
+});
 app.get('/api/agent/memory', async (req,res) => { try { res.json({ entries:await agentMemory.list(String(req.query?.q||'')) }); } catch(error:any){ res.status(500).json({error:error?.message||'Unable to read agent memory'}); } });
 app.post('/api/agent/memory', async (req,res) => { try { const entry=await agentMemory.remember({kind:req.body?.kind||'fact',key:String(req.body?.key||'note'),value:String(req.body?.value||''),source:String(req.body?.source||'user')}); res.json({entry}); } catch(error:any){ res.status(500).json({error:error?.message||'Unable to save agent memory'}); } });
-app.get('/api/agent/self-test', async (_req,res) => { const checks:any[]=[]; const test=async(name:string,fn:()=>Promise<any>)=>{try{const value=await fn();checks.push({name,ok:true,value});}catch(error:any){checks.push({name,ok:false,error:error?.message||String(error)});}}; await test('project_context',async()=>{const s=await agentContext.buildSnapshot();return {files:s.primaryFiles.filter(x=>x.exists).length,workflows:s.workflowSummary.length};}); await test('project_map',async()=>{const m=await projectMap.getProjectMap();return {surfaces:m.surfaces.length,relationships:Object.keys(m.relationships).length};}); await test('definition_of_done',async()=>{const d=await definitionOfDoneGate.verify();return {gateOk:d.ok,passed:d.passedChecks,total:d.totalChecks};}); await test('memory',async()=>({entries:(await agentMemory.list('')).length})); await test('capabilities',async()=>{const c=await getAgentCapabilitySnapshot();return {tools:c.tools.length,models:c.models.length};}); await test('rag_knowledge',async()=>({chunks:localRag.getStatus().chunkCount})); res.json({ok:checks.every(c=>c.ok),checks}); });
+app.get('/api/agent/self-test', async (_req,res) => { const checks:any[]=[]; const test=async(name:string,fn:()=>Promise<any>)=>{try{const value=await fn();checks.push({name,ok:true,value});}catch(error:any){checks.push({name,ok:false,error:error?.message||String(error)});}}; await test('project_context',async()=>{const s=await agentContext.buildSnapshot();return {files:s.primaryFiles.filter(x=>x.exists).length,workflows:s.workflowSummary.length};}); await test('project_map',async()=>{const m=await projectMap.getProjectMap();return {surfaces:m.surfaces.length,relationships:Object.keys(m.relationships).length};}); await test('definition_of_done',async()=>{const d=await definitionOfDoneGate.verify();return {gateOk:d.ok,passed:d.passedChecks,total:d.totalChecks};}); await test('research_engine',async()=>{const r=await autonomousResearch.research({query:'Wan 2.1 ComfyUI',maxResults:1});return {briefingOk:Boolean(r.timestamp),webEnabled:r.webEnabled};}); await test('git_lifecycle',async()=>{const g=await gitLifecycle.getStatus();return {branch:g.branch,clean:g.isClean};}); await test('memory',async()=>({entries:(await agentMemory.list('')).length})); await test('capabilities',async()=>{const c=await getAgentCapabilitySnapshot();return {tools:c.tools.length,models:c.models.length};}); await test('rag_knowledge',async()=>({chunks:localRag.getStatus().chunkCount})); res.json({ok:checks.every(c=>c.ok),checks}); });
 
 // Zero-VRAM Local RAG API Routes
 app.get('/api/rag/status', (_req, res) => {

@@ -728,3 +728,83 @@ AIDA64 generation is hard-locked to 1024×600 at workflow submission and output 
   Deleted obsolete root-level workflow JSON files.
   ```
 - **Why**: Enforce AGENTS.md Rule 5/8: workflow JSON belongs under `/workflows/`, and these root-level legacy files were no longer referenced by the active Phase 43/44 runtime. Removing them prevents stale LTX/FLUX workflow discovery outside the authoritative workflow directory.
+
+## Phase 50 — Autonomous Research Engine, Repair Loop & GitHub Lifecycle — 2026-09-12
+
+### Target File Path: `/server/agent/AutonomousResearchEngine.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export class AutonomousResearchEngine {
+    async research(query: string, options: { deep?: boolean; maxResults?: number } = {}): Promise<ResearchResult> { ... }
+    async verifyCompatibility(packageName: string, targetVersion?: string): Promise<{ compatible: boolean; details: string }> { ... }
+  }
+  ```
+- **Why**: Provide automated documentation and library research by combining local zero-VRAM RAG retrieval with external web search (DuckDuckGo integration when GINA_WEB_ACCESS=true) and API signature caching.
+
+### Target File Path: `/server/agent/AutonomousRepairLoop.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export class AutonomousRepairLoop {
+    async executeRepairPipeline(request: RepairRequest, onProgress?: (step: string, details?: any) => void): Promise<RepairResult> { ... }
+  }
+  ```
+- **Why**: Provide a 10-stage autonomous cycle (REQUEST → UNDERSTAND → PLAN → INSPECT → RESEARCH → EDIT → VALIDATE → REPAIR → SCAN → DIFF → COMMIT) with automated retries (up to 3 passes) driven by compiler diagnostics and DefinitionOfDoneGate checks.
+
+### Target File Path: `/server/agent/GitHubLifecycleManager.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export class GitHubLifecycleManager {
+    async getGitStatus(): Promise<GitStatusResult> { ... }
+    async stageAndCommit(message: string, files?: string[]): Promise<{ commitSha: string; filesCommitted: string[] }> { ... }
+    async createPullRequest(params: CreatePullRequestParams): Promise<PullRequestResult> { ... }
+  }
+  ```
+- **Why**: Provide Git lifecycle automation (branching, staging, committing, diffing, and PR creation via GitHub REST API) using safe token resolution.
+
+### Target File Path: `/server.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  const researchEngine = new AutonomousResearchEngine(agentWorkspaceManager.getSandboxRoot(), localRagEngine);
+  const githubLifecycleManager = new GitHubLifecycleManager(agentWorkspaceManager.getSandboxRoot());
+  const repairLoop = new AutonomousRepairLoop(agentWorkspaceManager.getSandboxRoot(), researchEngine, dodGate, githubLifecycleManager);
+  app.post("/api/agent/repair-loop", async (req, res) => { ... });
+  app.post("/api/agent/research", async (req, res) => { ... });
+  app.post("/api/agent/git/commit", async (req, res) => { ... });
+  app.post("/api/agent/git/pr", async (req, res) => { ... });
+  ```
+- **Why**: Expose the autonomous repair loop, research engine, and GitHub lifecycle manager as tool actions and REST API endpoints.
+
+### Target File Path: `/src/components/GinaAgentPanel.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```tsx
+  <button onClick={() => runAgentAction('run_repair_loop', { task: 'Autonomous codebase health repair' })} ...>
+    Run Repair Loop
+  </button>
+  ```
+- **Why**: Expose UI triggers for Definition of Done verification, Project Map inspection, and Autonomous Repair Loop execution.
+
+### Target File Path: `/src/version.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export const APP_VERSION = '1.20.0';
+  export const ACTIVE_SAVE_POINT_ID = 'RESTORE_V1.20.0_AUTONOMOUS_RESEARCH_REPAIR_GITHUB';
+  export const ACTIVE_LIFECYCLE_PHASE = 50;
+  export const ACTIVE_LIFECYCLE_NAME = 'PHASE 50 — AUTONOMOUS RESEARCH ENGINE, REPAIR LOOP & GITHUB LIFECYCLE';
+  ```
+- **Why**: Version bump and milestone save point synchronization for Phase 50.
+
+### Target File Path: `/src/components/MilestoneChecklist.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  { phase: 50, name: 'Autonomous Research Engine, Repair Loop & GitHub Lifecycle', status: 'COMPLETED', details: 'Multi-stage autonomous repair loop, local RAG + DuckDuckGo research engine, Git branch/commit/diff/PR lifecycle automation, and Definition of Done gate integration.' }
+  { id: 'RESTORE_V1.20.0_AUTONOMOUS_RESEARCH_REPAIR_GITHUB', label: 'Autonomous Research Engine, Repair Loop & GitHub Lifecycle', description: 'Production-ready AutonomousResearchEngine, multi-stage AutonomousRepairLoop pipeline, GitHubLifecycleManager, DefinitionOfDoneGate verification, and complete REST/SSE broker routes', timestamp: '2026-09-12 07:30', status: 'ACTIVE' }
+  ```
+- **Why**: Update active lifecycle phases and save points to reflect Phase 50 completion.
+
+### Target File Path: `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`, `/docs/AI_UPDATE_CHECKLIST.md`
+- **Exact Code Snippet / Code Block**:
+  ```text
+  Synchronized version to 1.20.0, release references to Phase 50, and updated platform truth.
+  ```
+- **Why**: Satisfy the Universal Version & Metadata Synchronization Guard and Definition of Done Gate.
+

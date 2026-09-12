@@ -1,6 +1,6 @@
 {
-  "name": "Gina AI Factory \u2014 Local Creator UI",
-  "version": "1.19.8",
+  "name": "Gina AI Factory — Local Creator UI",
+  "version": "1.20.0",
   "description": "Strictly local creator dashboard with ComfyUI, Juggernaut XL SDXL high-speed engine, Qwen 2.5-VL Vision & Qwen 2.5 Coder local CUDA inference, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, and voice mode.",
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API",
@@ -80,7 +80,12 @@
     "PERSISTENT_AGENT_WORKBENCH",
     "AGENT_STREAMING_EXECUTION",
     "GINA_WEB_RESEARCH",
-    "LOCAL_FIRST_WITH_OPTIONAL_WEB_RESEARCH"
+    "LOCAL_FIRST_WITH_OPTIONAL_WEB_RESEARCH",
+    "AUTONOMOUS_RESEARCH_ENGINE",
+    "AUTONOMOUS_REPAIR_LOOP",
+    "DEFINITION_OF_DONE_GATE",
+    "PROJECT_MAP_MANAGER",
+    "GITHUB_LIFECYCLE_MANAGER"
   ],
-  "release": "Phase 46 v1.19.6: Update integrity guard, mandatory AI checklist, Wan 2.1 UI reconciliation, and Qwen Coder project workflow hardening"
+  "release": "Phase 50 v1.20.0: Autonomous research engine, multi-stage repair loop, GitHub lifecycle manager, and Definition of Done gate"
 }
