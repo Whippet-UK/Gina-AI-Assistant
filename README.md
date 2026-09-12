@@ -1,4 +1,14 @@
-# Gina AI Factory — v1.19.2
+# Gina AI Factory — v1.19.6
+
+## v1.19.6 — Update Integrity Guard & Wan 2.1 UI Reconciliation (2026-09-12)
+
+Qwen Coder is now a real project-analysis interface: the Attach control is available in Coder Mode for text/code files and project ZIPs. ZIP projects are imported into a dedicated Gina workspace and automatically inspected before any edit or execution. Project archives support up to 100MB and 10,000 files, removing the former 100-file extraction ceiling.
+
+- **Qwen Coder attachments:** text/code/config files can be attached directly; image attachments remain Vision Mode only.
+- **Project ZIPs:** uploading a ZIP from Attach imports the whole archive into a dedicated workspace instead of trying to feed every file into the LLM context.
+- **Automatic inspection:** Gina reports structure, entry points, package scripts/package manager and Git state without executing uploaded code.
+- **Large archives:** the Local AI upload path accepts ZIPs up to 100MB and the ZIP inspection extractor supports up to 10,000 files.
+- **Versioned restore point:** `RESTORE_V1.19.6_UPDATE_INTEGRITY_WAN_UI`.
 
 ## v1.19.2 — Persistent Agent Workbench & Streaming Execution (2026-09-07)
 
@@ -22,8 +32,8 @@ Gina Agent can now import project archives, create isolated coding workspaces, c
 - Added a single server-owned intent router so Local AI and AI Tools no longer use competing image-generation keyword classifiers.
 - Natural visual requests such as “give me a top-down view of …” can now be recognised as image-generation intent without requiring the words “create” or “generate”.
 - Qwen 2.5-VL + mmproj-F16 is the primary reasoning/vision lane and routes image generation/reference edits to Juggernaut-XL v9.
-- FLUX.1-Schnell is restricted to the Gemma 3 + Vision projector lane; it is never silently selected for Qwen or non-vision Gemma.
-- Gemma 3 multimodal projector detection is now enabled so uploaded images can actually reach Gemma Vision when configured.
+- FLUX is an explicit alternate/high-precision image lane and is never silently selected for video.
+- Qwen 2.5-VL is the active multimodal assistant; Qwen Coder is the active text-only coding model.
 - Generation status text reports the actual generation model instead of claiming FLUX for every automatic image job.
 
 ## v1.18.6 — Edit Request Queue Implementation (2026-09-07)
@@ -41,7 +51,7 @@ This release implements the open requests in `docs/EDIT_REQUESTS.md` and fixes s
 ### System / Diagnostics
 - Added Qwen 2.5-VL and Juggernaut-XL v9 to the model safety/pre-warm inventory and OOM correlation data.
 - Fixed the registered-workflow inspector so runtime jobs no longer overwrite the workflow the user is inspecting.
-- Updated System architecture documentation to distinguish Qwen/Gemma local LLMs from ComfyUI image checkpoints.
+- Updated system architecture documentation to distinguish the active Qwen local LLM lanes from ComfyUI image/video engines.
 
 ### Music Studio
 - Track duration now supports **5 seconds through 8 minutes (480 seconds)**.
@@ -63,7 +73,7 @@ This release implements the open requests in `docs/EDIT_REQUESTS.md` and fixes s
 - **Problem**: In cloud container environments, Cloud Run injects `PORT=8080` for container ingress. Reading `process.env.PORT` in `server.ts` caused Express to attempt to bind to `0.0.0.0:8080`, triggering `Error: listen EADDRINUSE: address already in use 0.0.0.0:8080` because the container's nginx reverse proxy was already listening on 8080. The failure to bind to port 3000 caused nginx to return proxy error pages, surfacing `Failed to query music model status: JSON.parse: unexpected character at line 1 column 1`.
 - **Root Cause & Fix**:
   - Enforced strict platform-aware binding in `server.ts`: port `3000` (`0.0.0.0`) on Linux/container environments and port `3200` (`127.0.0.1` with `[3200..3210]` candidate ports) on Windows, strictly adhering to Rule 4 and container ingress specifications.
-  - Added Content-Type validation to client-side API callers (`MusicStudio.tsx` and `LTXDiagnostic.tsx`) before attempting `res.json()`, preventing HTML error payloads from throwing parsing crashes.
+  - Added Content-Type validation to client-side API callers (`MusicStudio.tsx` and `WanDiagnostic.tsx`) before attempting `res.json()`, preventing HTML error payloads from throwing parsing crashes.
 
 ### 2. Local AI to Create Studio Preview Bridge
 - **Problem**: Generating an image via Local AI printed the image into the chat window, but switching to the Create tab displayed an "Output not finalised" error or stuck preview stage, preventing the user from editing, varying, or keeping the image.
@@ -130,3 +140,11 @@ The dashboard error-log endpoint is intentionally failure-proof. Vite HMR is opt
 
 ### AIDA64 1024×600 protection
 AIDA64 generation is hard-locked to 1024×600 at workflow submission and output validation. The 12-gauge background mode masks AI-generated instrumentation inside the live Gauge Factory zones before the real 100-state gauges are overlaid.
+
+## Autonomous update integrity
+
+Every autonomous project edit is governed by `docs/AI_UPDATE_CHECKLIST.md`. Gina loads this checklist with the mandatory startup context, inspects the whole affected surface (UI, server, workflows, diagnostics, docs and metadata), validates the result, reviews the diff, and only then reports completion. The active video lane is Wan 2.1 1.3B BF16; LTX references are historical only.
+
+
+## Internet research
+Gina is local-first and can use controlled public-internet research for current documentation, releases, troubleshooting and other freshness-sensitive tasks. Set `GINA_WEB_ACCESS=false` to disable it. An optional `BRAVE_SEARCH_API_KEY` enables Brave Search API with DuckDuckGo fallback. See `docs/setup/GINA_WEB_RESEARCH.md`.

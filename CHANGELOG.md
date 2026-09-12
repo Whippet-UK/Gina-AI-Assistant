@@ -1,3 +1,55 @@
+# v1.19.7 — Phase 48 — Agent Action Recovery
+
+## Autonomous agent dispatch hardening
+
+- Added broker-boundary normalization for harmless LLM tool-name aliases such as `read_directory` → `list_directory`.
+- Added explicit canonical-action guidance to the agent runtime prompt.
+- Prevents a model naming mismatch from terminating an otherwise valid autonomous inspection run.
+- Added recovery aliases for common directory/project inspection variants while retaining canonical tool names in the model contract.
+
+# v1.19.6 — Phase 47 — Web Research & Local-First Agent
+
+## Web research and agent workflow
+- `server/agent/WebResearchService.ts` — added controlled public-internet search/page retrieval with DuckDuckGo fallback and optional Brave Search API.
+- `server.ts` — exposed `web_search`, `web_research`, and `web_fetch` agent tools plus web-status/search API endpoints and capability reporting.
+- `server.ts` — strengthened the agent system contract so current documentation, releases, troubleshooting and other freshness-sensitive tasks can use web research.
+- `src/components/GinaAgentPanel.tsx` — shows whether web research is enabled and tells users that Gina can use live internet research.
+- `.env.example` — added `GINA_WEB_ACCESS` and optional `BRAVE_SEARCH_API_KEY`.
+- `docs/setup/GINA_WEB_RESEARCH.md` — documented configuration, tool behaviour and network safeguards.
+- `src/version.ts`, `package.json`, `metadata.json` — synchronized to v1.19.6 / Phase 47.
+
+## Integrity
+- Web results are treated as untrusted research data and cannot override Gina's project update rules.
+- Private/local network addresses are blocked by the web research guard and redirects are revalidated.
+- The local Qwen engine remains the reasoning engine; internet access is a server-side retrieval capability.
+
+# v1.19.5 — Phase 46: Update Integrity Guard & Wan 2.1 UI Reconciliation
+
+## 2026-09-12
+
+- **Target Files:** `/src/components/TestSuitePanel.tsx`, `/src/components/MilestoneWorkbench.tsx`, `/server/rag/LocalRagEngine.ts`
+  - **Exact Code Change:** Replaced remaining active Gemma labels with Qwen/current terminology and removed Gemma from current RAG engine classification.
+  - **Why:** Prevent stale model terminology from surviving in system tabs and newly indexed knowledge.
+
+- **Target File:** `/docs/AI_UPDATE_CHECKLIST.md`
+  - **Exact Code Change:** Added the mandatory startup/update/final-gate checklist covering project context ingestion, cross-suite engine consistency, Qwen Coder ZIP workflow, validation, diff review, version synchronization, changelog logging, and retired-engine sweeps.
+  - **Why:** Make project-wide update requirements explicit and reusable instead of relying on AGENTS.md prose alone.
+- **Target File:** `/server/agent/AgentContextManager.ts`
+  - **Exact Code Change:** Added `docs/AI_UPDATE_CHECKLIST.md` to the mandatory startup context file set.
+  - **Why:** Ensure every autonomous coding context receives the checklist before planning edits.
+- **Target File:** `/server/agent/UpdateIntegrityGuard.ts`
+  - **Exact Code Change:** Added deterministic version/metadata/checklist validation and active-source retired-engine scanning.
+  - **Why:** Give the agent a machine-checkable final gate instead of trusting model compliance.
+- **Target File:** `/server.ts`
+  - **Exact Code Change:** Added the `project_integrity_check` broker action and strengthened the runtime prompt to require an integrity check before success; updated active model policy wording.
+  - **Why:** Put the checklist into the actual autonomous execution loop.
+- **Target Files:** `/src/components/VideoStudio.tsx`, `/src/components/GifStudio.tsx`, `/src/components/WanDiagnostic.tsx`, `/src/components/LocalCapabilityPanel.tsx`, `/src/components/MediaStitcherModal.tsx`, `/src/components/VRAMOomFrequencyChart.tsx`, `/src/App.tsx`, `/src/data/rulesData.ts`, `/server/comfy/WorkflowParser.ts`, `/scripts/media_stitcher.py`
+  - **Exact Code Change:** Reconciled active video UI, diagnostics, presets, source labels, telemetry labels, chart labels and helper text to Wan 2.1; removed the retired LTX workflow/diagnostic components and renamed the diagnostic helper to `check_wan21.ts`.
+  - **Why:** Eliminate stale LTX references and broken legacy diagnostic wiring from active production surfaces.
+- **Target Files:** `/src/components/AppFeaturesGuide.tsx`, `/src/components/MilestoneChecklist.tsx`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`, `/metadata.json`, `/index.html`, `/src/version.ts`, `/package.json`, `/package-lock.json`
+  - **Exact Code Change:** Synchronized Phase 46 / v1.19.5 / `RESTORE_V1.19.5_UPDATE_INTEGRITY_WAN_UI`, updated current-engine documentation, and locked Phase 44 in favor of the new active restore point.
+  - **Why:** Keep the project's version, milestone, restore-point and current-stack metadata consistent.
+
 # v1.19.2 — Phase 42: Unified Gina AI Coding Assistant
 
 - Local Gina Chat is now the primary coding interface when a project workspace is active.
@@ -363,3 +415,224 @@ AIDA64 generation is hard-locked to 1024×600 at workflow submission and output 
 - **Why**: Universal version synchronization and active save point protocol.
 
 
+
+
+## v1.19.4 — Phase 44 Local AI Project Attachments & Large ZIP Ingestion (2026-09-12)
+
+### Target File Path: `/src/components/LocalLlmStudio.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  const archive = extension === '.zip';
+  if (archive) {
+    await uploadAndActivateProject(file);
+    return;
+  }
+  if (status?.engine === 'qwen-coder' && image) {
+    setFileAttachError('Qwen Coder accepts project/text/code files, but image attachments require Qwen 2.5-VL Vision Mode.');
+    return;
+  }
+  ```
+  The Attach control is no longer locked in Qwen Coder. ZIPs use the dedicated project-workspace path, while images remain Vision Mode only. The separate Project ZIP control was removed so Attach is the single upload entry point.
+- **Why**: Make Qwen Coder a practical coding interface for direct file analysis and project uploads without sending an entire archive into the LLM prompt.
+
+### Target File Path: `/server.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  const LOCAL_AI_UPLOAD_LIMITS = { image: 12 * 1024 * 1024, text: 2 * 1024 * 1024, archive: 100 * 1024 * 1024 };
+  const LOCAL_AI_ZIP_MAX_FILES = 10000;
+  const LOCAL_AI_ZIP_TEXT_TOTAL = 16 * 1024 * 1024;
+  app.post('/api/llm/upload-attachment', express.raw({ type: '*/*', limit: '100mb' }), async (req, res) => {
+  ```
+- **Why**: Remove the former 100-file ZIP ceiling and allow larger project archives through the Local AI upload endpoint while retaining a bounded safety ceiling.
+
+### Target File Path: `/src/components/MilestoneChecklist.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  { phase: 43, name: 'Target Update: Local AI Stack Optimization & UI Toggle Swap (RTX 3070 Ti 8GB)', status: 'COMPLETED' }
+  { phase: 44, name: 'Local AI Project Attachments & Large ZIP Ingestion', status: 'COMPLETED', ... }
+  { phase: 45, name: 'Web Browser Integration', status: 'PENDING', ... }
+  ```
+- **Why**: Close Phase 43, record Phase 44 completion, preserve Web Browser Integration as the next roadmap phase, and add the active Phase 44 restore point.
+
+### Target File Path: `/src/version.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export const APP_VERSION = '1.19.4';
+  export const ACTIVE_SAVE_POINT_ID = 'RESTORE_V1.19.4_PHASE44_LOCAL_AI_PROJECT_ATTACHMENTS';
+  export const ACTIVE_LIFECYCLE_PHASE = 44;
+  ```
+- **Why**: Synchronize the authoritative application version and active lifecycle with the completed Phase 44 update.
+
+### Target File Path: `/package.json`
+- **Exact Code Snippet / Code Block**:
+  ```json
+  "version": "1.19.4"
+  ```
+- **Why**: Keep package metadata synchronized with `src/version.ts`.
+
+### Target File Path: `/metadata.json`
+- **Exact Code Snippet / Code Block**:
+  ```json
+  "version": "1.19.4",
+  "release": "Phase 44 v1.19.4: Qwen Coder file attachments, dedicated project ZIP workspaces, automatic safe inspection, 100MB archive uploads and 10,000-file ZIP capacity"
+  ```
+- **Why**: Keep release metadata and model capability description aligned with the new Local AI upload architecture.
+
+### Target File Path: `/index.html`
+- **Exact Code Snippet / Code Block**:
+  ```html
+  <title>Gina AI Factory v1.19.4 — Local AI Project Attachments & Large ZIP Ingestion</title>
+  <meta name="description" content="Gina AI Factory v1.19.4 with Qwen Coder file attachments, dedicated project ZIP workspaces, automatic safe inspection, large ZIP ingestion, coding validation, and local creator studios." />
+  ```
+- **Why**: Synchronize the browser title and description with the active release.
+
+### Target File Path: `/AGENTS.md`
+- **Exact Code Snippet / Code Block**:
+  ```text
+  Current version: v1.19.4
+  Active lifecycle: PHASE 44 — LOCAL AI PROJECT ATTACHMENTS & LARGE ZIP INGESTION
+  Active save point: RESTORE_V1.19.4_PHASE44_LOCAL_AI_PROJECT_ATTACHMENTS
+  ```
+- **Why**: Repair the previously stale project-memory header and document the Phase 44 operating rule, while preserving the mandatory Windows 3200/network rule.
+
+### Target File Path: `/README.md`
+- **Exact Code Snippet / Code Block**:
+  ```markdown
+  ## v1.19.4 — Local AI Project Attachments & Large ZIP Ingestion (2026-09-12)
+  ```
+- **Why**: Document the user-facing Qwen Coder attachment workflow, automatic safe inspection, archive capacity, and restore point.
+
+### Target File Path: `/docs/INDEX.md`
+- **Exact Code Snippet / Code Block**:
+  ```text
+  Gina AI Factory — Local Creator UI (v1.19.4)
+  Qwen 2.5-VL Vision / Qwen 2.5 Coder, llama-server CUDA, 28-layer pin config
+  ```
+- **Why**: Remove stale top-level version/model documentation.
+
+### Target File Path: `/docs/architecture/SYSTEM_ARCHITECTURE.md`
+- **Exact Code Snippet / Code Block**:
+  ```text
+  Juggernaut-XL / FLUX.1 Lite & Wan 2.1 execution
+  Qwen 2.5-VL / Qwen 2.5 Coder (28 GPU layers, up to 16K ctx)
+  Before starting or restarting a local Qwen engine, Gina triggers
+  ```
+- **Why**: Align the architecture manifest with the active Qwen/Wan/FLUX Lite stack instead of stale Gemma/LTX runtime claims.
+
+### Target File Path: `/docs/EDIT_REQUESTS.md`
+- **Exact Code Snippet / Code Block**:
+  ```markdown
+  ## 🟩 Open Requests (Process sequentially)
+  - [ ] None
+  ## 🟨 In Progress
+  - *None*
+  ## 🟥 Completed Requests
+  - [x] 2026-09-12 — Phase 44: Local AI Project Attachments & Large ZIP Ingestion
+  ```
+- **Why**: Restore the standardized persistent request queue format and record the Phase 44 completion without deleting unresolved work.
+
+### Target File Path: `/CHANGELOG.md`
+- **Exact Code Snippet / Code Block**:
+  ```markdown
+  ## v1.19.4 — Phase 44 Local AI Project Attachments & Large ZIP Ingestion (2026-09-12)
+  ```
+- **Why**: Record this update using the repository's mandatory per-file target/snippet/reason format so future agents can verify exactly what changed.
+
+### Phase 44 compliance audit follow-up — 2026-09-12
+
+### Target File Path: `/src/components/LocalLlmStudio.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  const archive = extension === '.zip';
+  if (archive) {
+    await uploadAndActivateProject(file);
+    return;
+  }
+  ```
+- **Why**: Ensure ZIP project uploads bypass the normal five-attachment turn limit and always enter the dedicated workspace import/inspection path.
+
+### Target File Path: `/AGENTS.md`
+- **Exact Code Snippet / Code Block**:
+  ```text
+  Current version: v1.19.4
+  Active lifecycle: PHASE 44 — LOCAL AI PROJECT ATTACHMENTS & LARGE ZIP INGESTION
+  Active save point: RESTORE_V1.19.4_PHASE44_LOCAL_AI_PROJECT_ATTACHMENTS
+  Local Dashboard URL: http://127.0.0.1:3200/ on Windows; cloud containers use port 3000
+  ```
+- **Why**: Complete the mandatory project-memory/version/network consistency audit after the Phase 44 implementation.
+
+### Phase 44 UI consistency follow-up — 2026-09-12
+
+### Target File Path: `/src/App.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```tsx
+  <p className="text-xs text-slate-500 mt-1">Qwen 2.5-VL Vision / Qwen 2.5 Coder served locally by llama.cpp CUDA.</p>
+  ```
+- **Why**: Remove the stale Gemma label from the Local AI workspace header so the primary UI matches the active Qwen model stack.
+
+### Target File Path: `/src/components/LocalCapabilityPanel.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  data.runtime?.wanReady
+  data.runtime?.qwenCoderReady
+  ['Wan Video', data.runtime?.wanReady, Video]
+  ['Qwen Coder', data.runtime?.qwenCoderReady, Brain]
+  ```
+- **Why**: Make the live capability inventory report the active Wan 2.1 video and Qwen Coder runtimes instead of retired LTX/Gemma status fields.
+
+### Phase 44 active-stack documentation consistency — 2026-09-12
+
+### Target File Path: `/src/AppFeaturesGuide.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  title: 'Wan 2.1 & RIFE Motion Studio'
+  badge: 'Wan 2.1 + RIFE'
+  ```
+- **Why**: Align the feature guide with the Phase 43 native Wan 2.1 video migration.
+
+### Target File Path: `/src/components/GinaAgentPanel.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```tsx
+  control ComfyUI and manage the active Qwen local AI engines.
+  ```
+- **Why**: Remove stale Gemma wording from the active agent UI.
+
+### Target File Path: `/src/components/gina-image/GinaImageSettings.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```tsx
+  FLUX.1 Lite high-precision text lane
+  ```
+- **Why**: Reflect the Phase 43 FLUX.1 Lite high-precision route instead of the retired Gemma Vision fallback label.
+
+### Target File Path: `/src/components/LocalRagKnowledgePanel.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```tsx
+  Zero-VRAM local RAG alongside Qwen/ComfyUI
+  Search local knowledge (e.g. 'VRAM cage', 'Qwen 28 layers', 'AIDA64 68 sensors')...
+  ```
+- **Why**: Keep the active RAG UI terminology consistent with the Qwen stack.
+
+### Target File Path: `/src/components/MusicStudio.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```tsx
+  AI Lyrics Writer (Local Qwen / Built-in songwriter)
+  AI Songwriter & Lyricist (Local Qwen)
+  ```
+- **Why**: The lyricist uses the active local LLM endpoint, so its UI must no longer identify the retired Gemma engine.
+
+### Target File Path: `/server/rag/LocalRagEngine.ts`
+- **Exact Code Snippet / Code Block**:
+  ```text
+  Gina releases ComfyUI cached models before starting/restarting the active Qwen engine.
+  Video Workflow: Wan 2.1 1.3B BF16 with H.264 MP4 export and RIFE frame interpolation.
+  ```
+- **Why**: Prevent local RAG grounding from reintroducing retired Gemma/LTX runtime descriptions.
+
+### Phase 44 root-cleanliness compliance — 2026-09-12
+
+### Target File Path: `/flux_image.json`, `/flux_image_reference.json`, `/ltx_video.json`
+- **Exact Code Snippet / Code Block**:
+  ```text
+  Deleted obsolete root-level workflow JSON files.
+  ```
+- **Why**: Enforce AGENTS.md Rule 5/8: workflow JSON belongs under `/workflows/`, and these root-level legacy files were no longer referenced by the active Phase 43/44 runtime. Removing them prevents stale LTX/FLUX workflow discovery outside the authoritative workflow directory.

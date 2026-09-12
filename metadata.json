@@ -1,7 +1,7 @@
 {
-  "name": "Gina AI Factory — Local Creator UI",
-  "version": "1.19.2",
-  "description": "Strictly local creator dashboard with ComfyUI, Juggernaut XL SDXL high-speed engine, Qwen 2.5-VL 7B & Gemma 3 local CUDA inference, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, and voice mode.",
+  "name": "Gina AI Factory \u2014 Local Creator UI",
+  "version": "1.19.7",
+  "description": "Strictly local creator dashboard with ComfyUI, Juggernaut XL SDXL high-speed engine, Qwen 2.5-VL Vision & Qwen 2.5 Coder local CUDA inference, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, and voice mode.",
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API",
     "QWEN_25_VL_7B_CUDA_INFERENCE",
@@ -10,14 +10,13 @@
     "AI_MUSIC_GENERATOR_SUITE",
     "AUDIOCRAFT_MUSICGEN_INTEGRATION",
     "STREAMINJECT_V25_TIMELINE_AND_OVERLAYS",
-    "LOCAL_ONLY_COMFYUI_EXECUTION",
+    "LOCAL_FIRST_COMFYUI_EXECUTION",
     "STREAMINJECT_V25_PURE_RENDER_SUITE",
     "HEADLESS_PYTHON_FFMPEG_ENGINE",
     "DYNAMIC_WORKFLOW_PARSING",
     "ASYNC_JOB_TRACKING",
     "RTX_3070_TI_8GB_AWARE",
     "CREATOR_NAVIGATION",
-    "LTX_VIDEO_MP4_PIPELINE",
     "PREFLIGHT_VRAM_AUTO_FLUSH",
     "SHORTS_FACTORY_FOUNDATION",
     "LOCAL_ASSET_AND_JOB_VIEWS",
@@ -79,7 +78,9 @@
     "AGENT_GITHUB_BRANCH_PR_WORKFLOW",
     "AGENT_LOCATION_RESEARCH_PLANNING",
     "PERSISTENT_AGENT_WORKBENCH",
-    "AGENT_STREAMING_EXECUTION"
+    "AGENT_STREAMING_EXECUTION",
+    "GINA_WEB_RESEARCH",
+    "LOCAL_FIRST_WITH_OPTIONAL_WEB_RESEARCH"
   ],
-  "release": "Phase 41 v1.19.2: persistent Agent Workbench, live streaming execution, reconnect-safe run history and cancellation"
+  "release": "Phase 46 v1.19.6: Update integrity guard, mandatory AI checklist, Wan 2.1 UI reconciliation, and Qwen Coder project workflow hardening"
 }
