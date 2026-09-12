@@ -4,6 +4,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { LocalLlmManager } from '../llm/LocalLlmManager';
 import { AgentWorkspaceManager } from './AgentWorkspaceManager';
+import { DefinitionOfDoneGate } from './DefinitionOfDoneGate';
 
 const execAsync = promisify(exec);
 
@@ -212,13 +213,24 @@ export class AutonomousAgentEngine {
         
         // ✅ Action State Handling: Task Completed
         if (parsedAction.action === "TASK_COMPLETE") {
-          processingLog += `[COMPLETE] Task marked resolved by AI coordinator engine.\n`;
+          processingLog += `[GATE CHECK] Enforcing machine-level Definition of Done gate on workspace...\n`;
+          const dodGate = new DefinitionOfDoneGate(workspaceRoot);
+          const gateResult = await dodGate.verify();
+
+          if (!gateResult.ok) {
+            processingLog += `[GATE FAILED] Task completion blocked by Definition of Done gate: ${gateResult.blockingErrors.join('; ')}\n`;
+            // Trigger autonomous repair loop by feeding blocking errors back to the model
+            activeContextPrompt = `MANDATORY DEFINITION OF DONE GATE FAILED: You are NOT allowed to declare task completion. The following machine-enforced checks failed:\n${gateResult.blockingErrors.map(e => "- " + e).join('\n')}\n\nYou must repair these issues now. Choose WRITE_FILE or READ_FILE to diagnose and fix the codebase before attempting completion again.`;
+            continue;
+          }
+
+          processingLog += `[COMPLETE] Definition of Done gate PASSED (${gateResult.passedChecks}/${gateResult.totalChecks} checks clean). Task marked resolved.\n`;
           
           return {
             success: true,
-            summary: parsedAction.summary,
+            summary: `${parsedAction.summary}\n\n[DEFINITION OF DONE: VERIFIED]\n${gateResult.summary}`,
             filesChanged: modifiedFiles,
-            outputLog: processingLog + "[COMPLETE] Task resolved cleanly.\n"
+            outputLog: processingLog + "[COMPLETE] Task resolved cleanly with 100% gate compliance.\n"
           };
         }
 

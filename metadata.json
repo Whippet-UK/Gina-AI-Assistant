@@ -1,6 +1,6 @@
 {
   "name": "Gina AI Factory \u2014 Local Creator UI",
-  "version": "1.19.7",
+  "version": "1.19.8",
   "description": "Strictly local creator dashboard with ComfyUI, Juggernaut XL SDXL high-speed engine, Qwen 2.5-VL Vision & Qwen 2.5 Coder local CUDA inference, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, and voice mode.",
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API",

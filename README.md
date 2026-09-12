@@ -1,4 +1,13 @@
-# Gina AI Factory — v1.19.6
+# Gina AI Factory — v1.19.8
+
+## v1.19.8 — Autonomous Project Completion Gate & Persistent Project Map (2026-09-12)
+
+Gina now features a machine-enforced Definition of Done gate and an indexed architectural Project Map:
+- **Definition of Done Gate:** Blocks premature or false completion claims. Automatically validates version synchronization, checklist adherence, zero retired engine references, TypeScript compilation, and root cleanliness.
+- **Autonomous Repair Loop:** When a completion gate fails, the blocking diagnostics and error details are automatically piped back into the agent loop, triggering focused repair turns rather than stopping.
+- **Persistent Project Map:** An indexed architecture model maintained under `.gina/project-map.json` mapping components across Frontend, Backend, Models, Configuration, Tests, and Documentation with cross-surface relationship tracing.
+- **Agent Tools & REST Endpoints:** Exposes `inspect_project_map` and `verify_definition_of_done` agent tools, plus `/api/agent/project-map` and `/api/agent/definition-of-done` endpoints.
+- **Versioned restore point:** `RESTORE_V1.19.8_PROJECT_COMPLETION_GATE`.
 
 ## v1.19.6 — Update Integrity Guard & Wan 2.1 UI Reconciliation (2026-09-12)
 

@@ -187,6 +187,13 @@ The completion gate says:
 - *None*
 
 ## 🟥 Completed Requests
+- [x] 2026-09-12 — Phase 49: Autonomous Project Completion Gate & Persistent Project Map
+  - Machine-enforced Definition of Done gate (`DefinitionOfDoneGate.ts`) verifies version synchronization across 6 root files, checklist presence, zero retired engine references, TypeScript compilation, and root cleanliness.
+  - Persistent Project Map manager (`ProjectMapManager.ts`) indexes Frontend, Backend, Models, Workflows, Configuration, Tests, and Documentation with surface relationship tracking and query capability.
+  - Enforced in `AutonomousAgentEngine.ts` and `server.ts` execution loops with automatic repair feedback into subsequent agent turns upon failure.
+  - Added `inspect_project_map` and `verify_definition_of_done` tools and `/api/agent/project-map` and `/api/agent/definition-of-done` REST endpoints.
+  - Versioned restore point: `RESTORE_V1.19.8_PROJECT_COMPLETION_GATE`.
+
 - [x] 2026-09-12 — Phase 44: Local AI Project Attachments & Large ZIP Ingestion
   - Qwen Coder Attach control is enabled for text/code/config files and project ZIP archives.
   - Image attachments remain restricted to Qwen 2.5-VL Vision Mode.

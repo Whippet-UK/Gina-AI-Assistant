@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CheckCircle2, Clock, AlertTriangle, ShieldCheck, FileCode, CheckSquare, Square } from 'lucide-react';
-import { LifecyclePhase } from '../types';
+import { LifecyclePhase, RestorePoint, VerificationCheck } from '../types';
 
 interface MilestoneChecklistProps {
   activeRestorePoint: string;
@@ -53,8 +53,10 @@ export const MilestoneChecklist: React.FC<MilestoneChecklistProps> = ({ activeRe
     { phase: 43, name: 'Target Update: Local AI Stack Optimization & UI Toggle Swap (RTX 3070 Ti 8GB)', status: 'COMPLETED', details: 'Optimizing local hardware stacks for an 8GB VRAM constraint. Migrating video creation suites natively to Wan 2.1 engines (1.3B) and implementing FLUX.1 Lite GGUF support for high-precision text tasks. Swapping legacy Gemma 3 layout options inside the Phase 38 Model Routing side panels directly to pure-text Qwen 2.5 Coder 7B nodes with built-in canvas attachment safety constraints.'},
     { phase: 44, name: 'Local AI Project Attachments & Large ZIP Ingestion', status: 'COMPLETED', details: 'Qwen Coder can accept text/code files and project ZIPs; project archives up to 100MB and 10,000 files are imported into dedicated workspaces and automatically inspected.' },
     { phase: 45, name: 'Web Browser Integration', status: 'PENDING', details: 'Deploying custom headless Chromium instances to grant tools live web-browsing capabilities.' },
-    { phase: 46, name: 'Update Integrity Guard & Wan UI Reconciliation', status: 'COMPLETED', details: 'Mandatory AI update checklist, deterministic integrity gate, and removal of stale retired-engine UI vocabulary from the current stack.' }
-	
+    { phase: 46, name: 'Update Integrity Guard & Wan UI Reconciliation', status: 'COMPLETED', details: 'Mandatory AI update checklist, deterministic integrity gate, and removal of stale retired-engine UI vocabulary from the current stack.' },
+    { phase: 47, name: 'Web Research & Local-First Agent', status: 'COMPLETED', details: 'Controlled public-internet research through server-side web tools when GINA_WEB_ACCESS=true with strict local-first safety.' },
+    { phase: 48, name: 'Agent Action Recovery & Robust Tool Dispatch', status: 'COMPLETED', details: 'AutonomousAgentEngine repair, LocalLlmManager completion dispatch, and AgentWorkspaceManager path resolution.' },
+    { phase: 49, name: 'Autonomous Project Completion Gate & Persistent Project Map', status: 'COMPLETED', details: 'Machine-enforced Definition of Done gate, autonomous repair loop, and persistent ProjectMapManager indexing architectural surfaces.' }
   ]);
   
   const [restorePoints] = useState<RestorePoint[]>([
@@ -96,11 +98,13 @@ export const MilestoneChecklist: React.FC<MilestoneChecklistProps> = ({ activeRe
     { id: 'RESTORE_V1.18.3_IMAGE_GEN_PREVIEW_FIXES', label: 'Image Gen Speed, Preview Retention & Edit Options', description: 'High-speed dpmpp_2m sampler (8-12s edit vs 559s), persistent canvas preview retention, Juggernaut-XL default routing, img2img reference auto-switch, and empty latent denoise guard', timestamp: '2026-09-07 05:00', status: 'LOCKED' },
     { id: 'RESTORE_V1.18.4_LOCAL_AI_CREATE_BRIDGE', label: 'Local AI to Create Studio Preview Bridge', description: 'Direct adoption of completed AI tool generations into Create Studio context, history reconciliation, and output finalisation state handling', timestamp: '2026-09-07 05:45', status: 'LOCKED' },
     { id: 'RESTORE_V1.18.5_NETWORK_BINDING_MUSIC_STATUS_FIX', label: 'Network Binding & Music Status Robustness', description: 'Restored port 3000 cloud container binding, eliminated EADDRINUSE conflict, and validated Content-Type in Music Studio and system diagnostics', timestamp: '2026-09-07 07:30', status: 'LOCKED' },
-    { id: 'RESTORE_V1.18.7_GINA_INTENT_ROUTER_MODEL_POLICY', label: 'Gina Intent Router & Model Policy', description: 'One authoritative intent router; Qwen/Juggernaut primary image lane; Gemma Vision/FLUX fallback lock; natural visual/location request recognition; multimodal projector enforcement', timestamp: '2026-09-07 18:20', status: 'COMPLETED' },
+    { id: 'RESTORE_V1.18.7_GINA_INTENT_ROUTER_MODEL_POLICY', label: 'Gina Intent Router & Model Policy', description: 'One authoritative intent router; Qwen/Juggernaut primary image lane; Gemma Vision/FLUX fallback lock; natural visual/location request recognition; multimodal projector enforcement', timestamp: '2026-09-07 18:20', status: 'LOCKED' },
     { id: 'RESTORE_V1.18.8_GINA_AGENT_WORKSPACES_GITHUB', label: 'Gina Agent Coding Workspaces, Planner & GitHub', description: 'Dedicated project workspaces, ZIP uploads, GitHub clone/sync/push/commit/PR operations, code validation loop, token redaction, and location lookup planning', timestamp: '2026-09-07 18:45', status: 'LOCKED' },
     { id: 'RESTORE_V1.19.2_PERSISTENT_AGENT_WORKBENCH_STREAMING', label: 'Persistent Agent Workbench & Streaming Execution', description: 'Persistent agent run records, live SSE step/status streaming, reconnect-safe execution history, phase-aware workbench timeline, and cancellation endpoint', timestamp: '2026-09-07 18:55', status: 'LOCKED' },
     { id: 'RESTORE_V1.19.4_PHASE44_LOCAL_AI_PROJECT_ATTACHMENTS', label: 'Local AI Project Attachments & Large ZIP Ingestion', description: 'Qwen Coder file attachments, dedicated project ZIP workspace import, automatic safe inspection, 100MB archive limit, and 10,000-file ZIP capacity', timestamp: '2026-09-12 04:10', status: 'LOCKED' },
-    { id: 'RESTORE_V1.19.6_UPDATE_INTEGRITY_WAN_UI', label: 'Update Integrity Guard & Wan UI Reconciliation', description: 'Mandatory startup checklist, deterministic integrity gate, active Wan 2.1 UI reconciliation, and stale active-engine reference sweep', timestamp: '2026-09-12 05:30', status: 'ACTIVE' },
+    { id: 'RESTORE_V1.19.6_UPDATE_INTEGRITY_WAN_UI', label: 'Update Integrity Guard & Wan UI Reconciliation', description: 'Mandatory startup checklist, deterministic integrity gate, active Wan 2.1 UI reconciliation, and stale active-engine reference sweep', timestamp: '2026-09-12 05:30', status: 'LOCKED' },
+    { id: 'RESTORE_V1.19.7_AGENT_ACTION_RECOVERY', label: 'Agent Action Recovery & Robust Tool Dispatch', description: 'Autonomous agent workspace path resolution, local completion generation, and diagnostic suite migration', timestamp: '2026-09-12 06:15', status: 'LOCKED' },
+    { id: 'RESTORE_V1.19.8_PROJECT_COMPLETION_GATE', label: 'Autonomous Project Completion Gate & Persistent Project Map', description: 'Machine-enforced Definition of Done gate blocking premature completion, autonomous repair loop, and persistent project map', timestamp: '2026-09-12 07:00', status: 'ACTIVE' },
   ]);
 
   const [checks, setChecks] = useState<VerificationCheck[]>([

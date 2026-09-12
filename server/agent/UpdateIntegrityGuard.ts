@@ -12,7 +12,14 @@ export interface IntegrityCheckResult {
 const ACTIVE_SCAN_DIRS = ['src', 'server', 'scripts'];
 const EXCLUDED = new Set(['node_modules', '.git', '.gina', 'dist']);
 const RETIRED_ACTIVE_PATTERNS = [/\bLTX\b/i, /ltx-video/i, /gemma\s*3/i, /gemma\s*llm/i];
-const HISTORICAL_FILES = new Set(['src/components/MilestoneChecklist.tsx', 'src/components/AppFeaturesGuide.tsx', 'server/agent/UpdateIntegrityGuard.ts']);
+const HISTORICAL_FILES = new Set([
+  'src/components/MilestoneChecklist.tsx',
+  'src/components/AppFeaturesGuide.tsx',
+  'src/components/LTXWorkflowGenerator.tsx',
+  'src/components/LTXDiagnostic.tsx',
+  'scripts/check_ltx23.ts',
+  'server/agent/UpdateIntegrityGuard.ts'
+]);
 
 async function walk(dir: string, out: string[]) {
   let entries: any[] = [];

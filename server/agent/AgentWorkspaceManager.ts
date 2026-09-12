@@ -29,6 +29,10 @@ export class AgentWorkspaceManager {
     return target;
   }
 
+  getActiveWorkspacePath(name = 'default'): string {
+    return this.resolveWorkspace(name);
+  }
+
   async importZip(buffer: Buffer, filename: string, requestedName?: string) {
     if (!buffer.length) throw new Error('Uploaded archive is empty.');
     if (buffer.length > 100 * 1024 * 1024) throw new Error('Project upload exceeds the 100 MB limit.');

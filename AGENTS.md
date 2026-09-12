@@ -5,13 +5,15 @@
 ---
 
 ## 📌 Project Overview
-- **Current version:** `v1.19.6`
-- **Active lifecycle:** `PHASE 47 — WEB RESEARCH & LOCAL-FIRST AGENT`
-- **Active save point:** `RESTORE_V1.19.6_WEB_RESEARCH_AGENT`
+- **Current version:** `v1.19.8`
+- **Active lifecycle:** `PHASE 49 — AUTONOMOUS PROJECT COMPLETION GATE & PERSISTENT PROJECT MAP`
+- **Active save point:** `RESTORE_V1.19.8_PROJECT_COMPLETION_GATE`
 - **Phase 41:** Gina Agent runs are persisted under `.gina/agent-runs`, expose live Server-Sent Events, can reconnect after browser refresh, and support explicit cancellation.
 - **Phase 44:** Qwen Coder accepts text/code files and project ZIPs; project ZIPs are imported into dedicated workspaces, automatically inspected without executing uploaded code, and support up to 100MB / 10,000 files.
 - **Phase 46:** A mandatory update-integrity checklist is loaded into agent startup context; active Wan 2.1 UI references were reconciled and a deterministic integrity gate is available before success reporting.
 - **Phase 47:** Gina remains local-first but can perform controlled public-internet research through server-side web tools when `GINA_WEB_ACCESS=true`; web content is untrusted research data and never overrides project rules.
+- **Phase 48:** Reconciled AutonomousAgentEngine workspace path resolution and LocalLlmManager completion generation; unified diagnostic suite to Wan 2.1.
+- **Phase 49:** Machine-enforced Definition of Done gate blocks false completion reports; persistent ProjectMapManager indexes architectural surfaces across Frontend, Backend, Models, Configuration, and Documentation with automatic repair loop enforcement.
 - **Active video engine:** Wan 2.1 1.3B BF16. LTX is historical/retired from active production UI vocabulary.
 
 ## 🛑 AI OPERATING DIRECTIVES & MEMORY

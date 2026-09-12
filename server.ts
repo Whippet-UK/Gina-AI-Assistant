@@ -23,6 +23,8 @@ import { AgentMemoryManager } from "./server/agent/AgentMemoryManager.js";
 import { AgentWorkspaceManager } from "./server/agent/AgentWorkspaceManager.js";
 import { AgentRunManager } from "./server/agent/AgentRunManager.js";
 import { runUpdateIntegrityCheck } from "./server/agent/UpdateIntegrityGuard.js";
+import { ProjectMapManager } from "./server/agent/ProjectMapManager.js";
+import { DefinitionOfDoneGate } from "./server/agent/DefinitionOfDoneGate.js";
 import { Aida64TelemetryBridge } from "./server/aida64/Aida64TelemetryBridge.js";
 import { LocalRagEngine } from "./server/rag/LocalRagEngine.js";
 import { WebResearchService } from "./server/agent/WebResearchService.js";
@@ -58,6 +60,8 @@ const agentContext = new AgentContextManager(GINA_ROOT, GINA_WORKFLOW_DIR);
 const agentMemory = new AgentMemoryManager(GINA_ROOT);
 const agentWorkspace = new AgentWorkspaceManager(GINA_ROOT);
 const agentRuns = new AgentRunManager(GINA_ROOT);
+const projectMap = new ProjectMapManager(GINA_ROOT);
+const definitionOfDoneGate = new DefinitionOfDoneGate(GINA_ROOT);
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
 const GITHUB_API_VERSION = '2022-11-28';
 const aida64Telemetry = new Aida64TelemetryBridge();
@@ -848,7 +852,7 @@ async function getAgentCapabilitySnapshot() {
     models,
     workflows,
     tools: [
-      'inspect_system','inspect_capabilities','inspect_project_context','list_directory','search_files','knowledge_search','web_search','web_fetch','web_research','read_file','read_project_bundle','write_file','execute_command','workspace_inspect','git_status','git_workspace_diff','git_diff','git_log',
+      'inspect_system','inspect_capabilities','inspect_project_context','inspect_project_map','verify_definition_of_done','list_directory','search_files','knowledge_search','web_search','web_fetch','web_research','read_file','read_project_bundle','write_file','execute_command','workspace_inspect','git_status','git_workspace_diff','git_diff','git_log',
       'remember','recall_memory','refresh_context','project_integrity_check','import_project_archive','github_clone','github_sync','github_push','git_branch','git_commit','validate_project','resolve_location','create_github_pr','comfy_clear_cache','llm_start','llm_stop','llm_restart','build_aida64_template','write_pdf'
     ],
     operatingRules: { workspace: GINA_ROOT, localOnly: !webResearch.enabled, webResearch: webResearch.status(), audit: true, startupContext: true, persistentMemory: true, commandShell: 'cmd.exe', sharedGpu: true }
@@ -866,7 +870,11 @@ async function runAgentTool(action: string, parameters: any) {
     directory_list: 'list_directory',
     list_dir: 'list_directory',
     read_project: 'read_project_bundle',
-    inspect_workspace: 'workspace_inspect'
+    inspect_workspace: 'workspace_inspect',
+    project_map: 'inspect_project_map',
+    check_definition_of_done: 'verify_definition_of_done',
+    definition_of_done: 'verify_definition_of_done',
+    dod_check: 'verify_definition_of_done'
   };
   const requestedAction = String(action || '').trim();
   const normalizedAction = actionAliases[requestedAction] || requestedAction;
@@ -883,6 +891,19 @@ async function runAgentTool(action: string, parameters: any) {
     case 'inspect_project_context': {
       const snapshot = await agentContext.buildSnapshot();
       return { snapshot, compact: agentContext.compact(snapshot) };
+    }
+    case 'inspect_project_map': {
+      const query = String(parameters?.query || parameters?.surface || '').trim();
+      if (query) {
+        const affected = await projectMap.findAffectedSurfaces(query);
+        return { query, affectedSurfaces: affected, count: affected.length };
+      }
+      const map = await projectMap.getProjectMap();
+      const treeSummary = await projectMap.generateTreeSummary();
+      return { ...map, treeSummary };
+    }
+    case 'verify_definition_of_done': {
+      return definitionOfDoneGate.verify();
     }
     case 'project_integrity_check': {
       const integrity = await runUpdateIntegrityCheck(GINA_ROOT);
@@ -1121,9 +1142,31 @@ app.post('/api/agent/access', (req, res) => {
 });
 app.get('/api/agent/audit', (_req, res) => res.json({ entries: agentAudit }));
 app.get('/api/agent/context', async (_req,res) => { try { const snapshot=await agentContext.buildSnapshot(); res.json({ snapshot, compact:agentContext.compact(snapshot) }); } catch(error:any){ res.status(500).json({error:error?.message||'Unable to build project context'}); } });
+app.get('/api/agent/project-map', async (req, res) => {
+  try {
+    const query = String(req.query?.q || '').trim();
+    if (query) {
+      const affected = await projectMap.findAffectedSurfaces(query);
+      return res.json({ ok: true, query, affectedSurfaces: affected });
+    }
+    const map = await projectMap.getProjectMap();
+    const treeSummary = await projectMap.generateTreeSummary();
+    res.json({ ok: true, map, treeSummary });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || 'Unable to build project map' });
+  }
+});
+app.get('/api/agent/definition-of-done', async (_req, res) => {
+  try {
+    const result = await definitionOfDoneGate.verify();
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || 'Unable to verify Definition of Done' });
+  }
+});
 app.get('/api/agent/memory', async (req,res) => { try { res.json({ entries:await agentMemory.list(String(req.query?.q||'')) }); } catch(error:any){ res.status(500).json({error:error?.message||'Unable to read agent memory'}); } });
 app.post('/api/agent/memory', async (req,res) => { try { const entry=await agentMemory.remember({kind:req.body?.kind||'fact',key:String(req.body?.key||'note'),value:String(req.body?.value||''),source:String(req.body?.source||'user')}); res.json({entry}); } catch(error:any){ res.status(500).json({error:error?.message||'Unable to save agent memory'}); } });
-app.get('/api/agent/self-test', async (_req,res) => { const checks:any[]=[]; const test=async(name:string,fn:()=>Promise<any>)=>{try{const value=await fn();checks.push({name,ok:true,value});}catch(error:any){checks.push({name,ok:false,error:error?.message||String(error)});}}; await test('project_context',async()=>{const s=await agentContext.buildSnapshot();return {files:s.primaryFiles.filter(x=>x.exists).length,workflows:s.workflowSummary.length};}); await test('memory',async()=>({entries:(await agentMemory.list('')).length})); await test('capabilities',async()=>{const c=await getAgentCapabilitySnapshot();return {tools:c.tools.length,models:c.models.length};}); await test('rag_knowledge',async()=>({chunks:localRag.getStatus().chunkCount})); res.json({ok:checks.every(c=>c.ok),checks}); });
+app.get('/api/agent/self-test', async (_req,res) => { const checks:any[]=[]; const test=async(name:string,fn:()=>Promise<any>)=>{try{const value=await fn();checks.push({name,ok:true,value});}catch(error:any){checks.push({name,ok:false,error:error?.message||String(error)});}}; await test('project_context',async()=>{const s=await agentContext.buildSnapshot();return {files:s.primaryFiles.filter(x=>x.exists).length,workflows:s.workflowSummary.length};}); await test('project_map',async()=>{const m=await projectMap.getProjectMap();return {surfaces:m.surfaces.length,relationships:Object.keys(m.relationships).length};}); await test('definition_of_done',async()=>{const d=await definitionOfDoneGate.verify();return {gateOk:d.ok,passed:d.passedChecks,total:d.totalChecks};}); await test('memory',async()=>({entries:(await agentMemory.list('')).length})); await test('capabilities',async()=>{const c=await getAgentCapabilitySnapshot();return {tools:c.tools.length,models:c.models.length};}); await test('rag_knowledge',async()=>({chunks:localRag.getStatus().chunkCount})); res.json({ok:checks.every(c=>c.ok),checks}); });
 
 // Zero-VRAM Local RAG API Routes
 app.get('/api/rag/status', (_req, res) => {
@@ -1276,7 +1319,7 @@ async function executeAgentRun(userPrompt: string, runId?: string, emit?: (type:
       const recovery = await localLlm.chat([
         { role:'system', content:'Return ONLY valid JSON. No markdown. No explanation.' },
         { role:'user', content:`Convert this into exactly one Gina action JSON object.
-Allowed actions: none, inspect_system, inspect_capabilities, inspect_project_context, read_project_bundle, list_directory, search_files, knowledge_search, read_file, write_file, execute_command, workspace_inspect, git_status, git_workspace_diff, git_diff, git_log, remember, recall_memory, refresh_context, project_integrity_check, import_project_archive, github_clone, github_sync, github_push, git_branch, git_commit, validate_project, resolve_location, create_github_pr, comfy_clear_cache, llm_start, llm_stop, llm_restart, build_aida64_template, write_pdf.
+Allowed actions: none, inspect_system, inspect_capabilities, inspect_project_context, inspect_project_map, verify_definition_of_done, read_project_bundle, list_directory, search_files, knowledge_search, read_file, write_file, execute_command, workspace_inspect, git_status, git_workspace_diff, git_diff, git_log, remember, recall_memory, refresh_context, project_integrity_check, import_project_archive, github_clone, github_sync, github_push, git_branch, git_commit, validate_project, resolve_location, create_github_pr, comfy_clear_cache, llm_start, llm_stop, llm_restart, build_aida64_template, write_pdf.
 Original response:
 ${String(raw).slice(0, 1800)}` }
       ], { temperature:0, maxTokens:360 }).catch(() => null);
@@ -1291,6 +1334,22 @@ ${String(raw).slice(0, 1800)}` }
     }
 
     if (!plan.action || plan.action === 'none') {
+      const wroteFiles = steps.some(s => s.plan?.action === 'write_file' || s.plan?.action === 'execute_command');
+      if (wroteFiles) {
+        await publish('status', { phase:'VERIFYING DEFINITION OF DONE', message:'Running machine-enforced Definition of Done gate on project...' });
+        const dod = await definitionOfDoneGate.verify();
+        if (!dod.ok) {
+          await publish('status', { phase:'REPAIRING', message:`Definition of Done gate failed (${dod.blockingErrors.length} blocking issues). Entering autonomous repair loop.` });
+          await publish('step_failed', { step:i+1, maxSteps:10, action:'none', phase:'REPAIRING', error:dod.blockingErrors.join('; '), message:'Completion blocked by Definition of Done gate.' });
+          steps.push({
+            plan: { action: 'none', summary: plan.summary || 'Attempted completion' },
+            raw: String(raw).slice(0, 4000),
+            toolResult: { ok: false, gateFailed: true, blockingErrors: dod.blockingErrors, summary: dod.summary }
+          });
+          continue;
+        }
+      }
+
       finalSummary = String(plan.summary || raw).trim();
       steps.push({ plan, raw:String(raw).slice(0,4000) });
       await publish('step_completed', { step:i+1, maxSteps:10, action:'none', phase:'REPORTING', message:finalSummary || 'Agent produced its final report.', summary:finalSummary });

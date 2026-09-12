@@ -1,11 +1,103 @@
-# v1.19.7 — Phase 48 — Agent Action Recovery
+# v1.19.8 — Phase 49 — Autonomous Project Completion Gate & Persistent Project Map
 
-## Autonomous agent dispatch hardening
+## Machine-Enforced Definition of Done Gate & Persistent Architectural Project Map
 
-- Added broker-boundary normalization for harmless LLM tool-name aliases such as `read_directory` → `list_directory`.
-- Added explicit canonical-action guidance to the agent runtime prompt.
-- Prevents a model naming mismatch from terminating an otherwise valid autonomous inspection run.
-- Added recovery aliases for common directory/project inspection variants while retaining canonical tool names in the model contract.
+- **Target File:** `/server/agent/DefinitionOfDoneGate.ts`
+  - **Exact Code Change:**
+    ```typescript
+    export class DefinitionOfDoneGate {
+      async verify(): Promise<DefinitionOfDoneResult> {
+        // Checks version synchronization across 6 root files
+        // Checks mandatory AI update checklist presence
+        // Scans project for zero retired engine references
+        // Runs TypeScript compilation build check
+        // Verifies changelog logging and root directory cleanliness
+      }
+    }
+    ```
+  - **Why:** Provide a machine-enforced gate that prevents false or premature completion reports and enforces project rules.
+
+- **Target File:** `/server/agent/ProjectMapManager.ts`
+  - **Exact Code Change:**
+    ```typescript
+    export class ProjectMapManager {
+      async getProjectMap(forceRebuild = false): Promise<ProjectMap> {
+        // Scans and indexes project surfaces: Frontend, Backend, Models, Workflows, Configuration, Tests, Docs
+        // Tracks cross-surface dependencies, entry points, and affected surfaces for queries
+      }
+    }
+    ```
+  - **Why:** Maintain persistent architectural understanding across project surfaces rather than rediscovering on every turn.
+
+- **Target File:** `/server/agent/AutonomousAgentEngine.ts`
+  - **Exact Code Change:**
+    ```typescript
+    if (parsedAction.action === "TASK_COMPLETE") {
+      const dodGate = new DefinitionOfDoneGate(workspaceRoot);
+      const gateResult = await dodGate.verify();
+      if (!gateResult.ok) {
+        // Trigger autonomous repair loop by feeding blocking errors back to model
+        activeContextPrompt = `MANDATORY DEFINITION OF DONE GATE FAILED: ...`;
+        continue;
+      }
+    }
+    ```
+  - **Why:** Machine-enforce the completion gate so failed gates become new repair tasks instead of stopping.
+
+- **Target File:** `/server.ts`
+  - **Exact Code Change:**
+    ```typescript
+    const projectMap = new ProjectMapManager(GINA_ROOT);
+    const definitionOfDoneGate = new DefinitionOfDoneGate(GINA_ROOT);
+    // Added inspect_project_map and verify_definition_of_done broker tools
+    // Added /api/agent/project-map and /api/agent/definition-of-done REST endpoints
+    // Integrated DefinitionOfDoneGate verification into executeAgentRun completion check
+    ```
+  - **Why:** Expose project mapping and Definition of Done verification to Gina Agent and REST consumers with automatic repair loops.
+
+- **Target Files:** `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`, `/src/components/MilestoneChecklist.tsx`
+  - **Exact Code Change:** Synchronized version to `1.19.8`, lifecycle to Phase 49, and active save point to `RESTORE_V1.19.8_PROJECT_COMPLETION_GATE`.
+  - **Why:** Universal Version & Metadata Synchronization Guard (RULE 7).
+
+# v1.19.7 — Phase 48 — Agent Action Recovery & Robust Tool Dispatch
+
+## Autonomous agent dispatch hardening and compilation integrity
+
+- **Target File:** `/scripts/check_wan21.ts`
+  - **Exact Code Change:** Added the missing Wan 2.1 diagnostic script with system checks for models, VRAM headroom, Python packages, and ComfyUI connectivity.
+  - **Why:** Resolve server build breakage caused by missing `check_wan21.js` reference in `server.ts` while honoring Wan 2.1 engine migration.
+
+- **Target File:** `/server/agent/AgentWorkspaceManager.ts`
+  - **Exact Code Change:**
+    ```typescript
+    getActiveWorkspacePath(name = 'default'): string {
+      return this.resolveWorkspace(name);
+    }
+    ```
+  - **Why:** Provide the workspace path resolution method expected by `AutonomousAgentEngine.ts`.
+
+- **Target File:** `/server/llm/LocalLlmManager.ts`
+  - **Exact Code Change:**
+    ```typescript
+    async generateCompletion(options: { systemPrompt?: string; prompt: string; temperature?: number; maxTokens?: number }): Promise<string> {
+      const messages: ChatMessage[] = [];
+      if (options.systemPrompt) {
+        messages.push({ role: 'system', content: options.systemPrompt });
+      }
+      messages.push({ role: 'user', content: options.prompt });
+      const res = await this.chat(messages, { temperature: options.temperature ?? 0.7, maxTokens: options.maxTokens ?? 1024 });
+      return res?.choices?.[0]?.message?.content || "";
+    }
+    ```
+  - **Why:** Provide completion generation on `LocalLlmManager` for autonomous agent cycles.
+
+- **Target File:** `/src/components/MilestoneChecklist.tsx`
+  - **Exact Code Change:** Imported missing `RestorePoint` and `VerificationCheck` types from `../types`, updated Phase 47/48 items, and registered `RESTORE_V1.19.7_AGENT_ACTION_RECOVERY`.
+  - **Why:** Fix TypeScript compilation error TS2304 and align active restore points.
+
+- **Target Files:** `/index.html`, `/AGENTS.md`
+  - **Exact Code Change:** Synchronized version references to `1.19.7` and active lifecycle to Phase 48.
+  - **Why:** Strict adherence to Universal Version & Metadata Synchronization Guard (RULE 7).
 
 # v1.19.6 — Phase 47 — Web Research & Local-First Agent
 

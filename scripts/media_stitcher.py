@@ -3,7 +3,7 @@
 Gina AI Factory — MoviePy Multimedia Video/Audio Stitching & Mastering Engine
 Location: scripts/media_stitcher.py
 
-Stitches and renders video clips (LTX-Video / GIF Studio MP4s / images) with 
+Stitches and renders video clips (Wan 2.1 Video / GIF Studio MP4s / images) with 
 synchronized AI music, background audio tracks, volume leveling, audio fades, 
 and video looping/trimming using MoviePy and FFmpeg.
 """
