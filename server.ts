@@ -521,13 +521,15 @@ async function probeComfyWatchdog() {
   } else {
     comfyWatchdog.consecutiveFailures += 1;
     comfyWatchdog.lastError = health.error || 'ComfyUI unavailable';
-    // Require at least 2 consecutive failures before declaring OFFLINE to prevent transient GPU load timeouts from tripping the watchdog
-    if (comfyWatchdog.consecutiveFailures >= 2 && previous !== false) {
+    // Require at least 2 consecutive failures after having been online before declaring state transition to OFFLINE
+    if (comfyWatchdog.consecutiveFailures >= 2 && previous === true) {
       comfyWatchdog.lastChangeAt = comfyWatchdog.lastProbeAt;
       comfyWatchdog.online = false;
       const message = `ComfyUI watchdog: backend OFFLINE — ${health.error || 'unknown error'}`;
-      recordDashboardError(message, { source: 'comfy-watchdog', status: 503 });
+      console.warn(`[Comfy Watchdog] ${message}`);
       recordComfyErrorLog(message, { watchdog: true });
+    } else if (previous === null) {
+      comfyWatchdog.online = false;
     }
   }
   if (health.online) {
@@ -567,7 +569,7 @@ app.get("/api/health", async (_req, res) => {
 
 app.get("/api/comfy/health", async (_req, res) => {
   const comfy = await getComfyHealth();
-  res.json({ ok: comfy.online, ...comfy });
+  res.json({ ok: comfy.online, ...comfy, watchdog: { ...comfyWatchdog } });
 });
 
 app.get('/api/aida64/telemetry', async (_req, res) => {
@@ -2320,11 +2322,6 @@ app.post("/api/llm/chat", async (req, res) => {
       }
     });
   }
-});
-
-app.get("/api/comfy/health", async (_req, res) => {
-  const health = await getComfyHealth();
-  res.status(health.online ? 200 : 503).json({ ...health, watchdog: { ...comfyWatchdog } });
 });
 
 app.get('/api/comfy/diagnostics', async (_req, res) => {

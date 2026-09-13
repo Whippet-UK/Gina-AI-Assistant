@@ -82,7 +82,7 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 ## 1. Project Overview & URLs
 
 - **App Name**: Gina AI Factory — Local Creator UI
-- **Version**: 1.20.3
+- **Version**: 1.20.4
 - **Local Dashboard URL**: `http://127.0.0.1:3000/` (Express server listens on `0.0.0.0:3000`)
 - **GIF Studio safety rule**: Existing uploaded media conversion must use the isolated FFmpeg asset path; do not route ordinary asset-to-GIF conversion through ComfyUI/VHS. ComfyUI is reserved for generative Wan/story work and optional explicitly requested RIFE stages.
 - **Local ComfyUI Backend URL**: `http://127.0.0.1:8188/`

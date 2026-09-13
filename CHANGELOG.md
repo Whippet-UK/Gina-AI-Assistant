@@ -1,3 +1,30 @@
+# v1.20.4 — GitHub Import Migration & Build Sanitization
+
+- **Target File Path:** `/server.ts`
+- **Exact Code Change:**
+  ```typescript
+  // Require at least 2 consecutive failures after having been online before declaring state transition to OFFLINE
+  if (comfyWatchdog.consecutiveFailures >= 2 && previous === true) {
+    comfyWatchdog.lastChangeAt = comfyWatchdog.lastProbeAt;
+    comfyWatchdog.online = false;
+    const message = `ComfyUI watchdog: backend OFFLINE — ${health.error || 'unknown error'}`;
+    console.warn(`[Comfy Watchdog] ${message}`);
+    recordComfyErrorLog(message, { watchdog: true });
+  } else if (previous === null) {
+    comfyWatchdog.online = false;
+  }
+  ```
+- **Why:** Fixed a false-positive `503 ComfyUI watchdog: backend OFFLINE — fetch failed` error generated during startup or when ComfyUI is not yet active. Initial offline states are gracefully tracked as expected status instead of dispatching false 503 dashboard crash errors. Also reconciled `/api/comfy/health` duplicate route.
+- **Target File Path:** `/src/routes/imageroute.ts`, `/src/routes/imageRoute.js`
+- **Exact Code Change:** Removed redundant/misplaced frontend route files and cleaned empty `/src/routes/` directory.
+- **Why:** The authoritative server route exists at `/server/routes/imageRoute.ts` (mounted via `/api/llm`). The misplaced duplicate files under `src/routes/` triggered a TypeScript compilation error (`TS2307: Cannot find module '../llm/LocalLlmManager.ts'`) during linting and typecheck.
+- **Target File Path:** `/bun.lock`
+- **Exact Code Change:** Removed `bun.lock` file from repository root.
+- **Why:** Complies with GitHub import migration specifications (Node.js runtime with npm package manager only).
+- **Target File Path:** `/AGENTS.md` and `/docs/INDEX.md`
+- **Exact Code Change:** Synchronized Section 1 version reference to `1.20.4` and `docs/INDEX.md` header to `v1.20.4`.
+- **Why:** Satisfies Universal Version & Metadata Synchronization and Definition of Done gate integrity requirements.
+
 - `/src/components/AppFeaturesGuide.tsx` — removed the remaining retired Gemma name from active feature-guide vocabulary while retaining historical milestone records.
 
 # v1.20.3 — Phase 53 — Project Reconciliation & Open-Request Completion
