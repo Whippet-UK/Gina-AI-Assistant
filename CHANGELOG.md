@@ -1238,3 +1238,96 @@ Added interactive masking canvas and dedicated SDXL inpaint workflow (`sdxl_jugg
 - **Target Files:** `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`, `/docs/AI_UPDATE_CHECKLIST.md`, `/src/components/MilestoneChecklist.tsx`
   - **Exact Code Change:** Kept release version at v1.20.7 / Phase 55, moved the active restore point to `RESTORE_V1.20.7_STREAMINJECT_INPAINT_WATERMARK_ERASER`, synchronized product metadata, active checklist truth, documentation and milestone state.
   - **Why:** Maintain the project-wide release/save-point contract for a same-version Phase 55 feature addition.
+
+## GitHub Import Migration & Build Stabilization
+
+- **Target File Path:** `/src/routes/imageroute.ts`, `/src/routes/imageRoute.js`
+- **Exact Code Change:** Deleted obsolete duplicate route files that caused `tsc --noEmit` failures due to missing `../llm/LocalLlmManager.ts` import path, and removed empty `/src/routes` directory.
+- **Why:** The authoritative server route is located at `/server/routes/imageRoute.ts` and mounted via `/api/llm`. The leftover duplicate files under `src/routes` caused TypeScript compilation errors during typecheck.
+- **Target File Path:** `/bun.lock`
+- **Exact Code Change:** Removed `bun.lock` lockfile from repository root.
+- **Why:** Complies with GitHub import migration specifications (Node.js runtime with npm package manager only).
+- **Target File Path:** `/src/components/gina-image/GinaImageInput1.tsx`, `/server/llm/LocalLlmManager1.ts`
+- **Exact Code Change:** Removed unreferenced orphaned duplicate source files.
+- **Why:** Eliminate abandoned duplicate files that diverge from active implementations and clean up workspace architecture.
+- **Target File Path:** `/metadata.json`
+- **Exact Code Change:** Added `"MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"` to `majorCapabilities` array.
+- **Why:** Complies with Google AI Studio required platform capabilities for server-side architecture.
+- **Target File Path:** `/scripts/check_ltx23.ts`
+- **Exact Code Change:** Deleted retired LTX diagnostic script from repository.
+- **Why:** Wan 2.1 1.3B BF16 is the active video engine and `scripts/check_wan21.ts` is the active diagnostic. Removing this retired script satisfies the `Zero Retired References & Production Integrity` gate in `DefinitionOfDoneGate` and `UpdateIntegrityGuard`.
+## Phase 55 — ACE-Step DiT Environment Whitespace Resolution & Local AI Capability Enforcement
+
+- **Target File Path:** `/metadata.json`
+- **Exact Code Change:**
+  ```json
+      "PROJECT_MAP_TARGET_INTEGRITY",
+      "JOB_SCOPED_CANCELLATION",
+      "ACE_STEP_8101_LOCAL_SINGING_API",
+      "STREAMINJECT_CPU_OPENCV_WATERMARK_INPAINTING"
+    ],
+  ```
+- **Why:** Removed `"MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"` per user mandate to strictly enforce local-only AI execution and eliminate unwanted external cloud AI metadata.
+
+- **Target File Path:** `/Start_Factory.bat`
+- **Exact Code Change:**
+  ```bat
+  echo [3/5] Starting ACE-Step singing API (only if installed)...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$c=Get-NetTCPConnection -LocalPort 8101 -State Listen -ErrorAction SilentlyContinue; if($c){exit 0}else{exit 1}"
+  if errorlevel 1 (
+    if exist "%GINA_ROOT%\scripts\Start_ACEStep_Singing_API.bat" (
+      start "ACE-Step 1.5 - Singing API" cmd /k "call \"%GINA_ROOT%\scripts\Start_ACEStep_Singing_API.bat\""
+    ) else if exist "%GINA_ROOT%\third_party\ACE-Step-1.5\pyproject.toml" (
+      start "ACE-Step 1.5 - Singing API" cmd /k "cd /d \"%GINA_ROOT%\third_party\ACE-Step-1.5\" && set \"ACESTEP_API_HOST=127.0.0.1\" & set \"ACESTEP_API_PORT=8101\" & set \"ACESTEP_INIT_SERVICE=true\" & set \"ACESTEP_CONFIG_PATH=acestep-v15-turbo\" & set \"ACESTEP_LM_MODEL_PATH=acestep-5Hz-lm-0.6B\" & set \"ACESTEP_LM_BACKEND=pt\" & set \"ACESTEP_OFFLOAD_TO_CPU=true\" & set \"ACESTEP_OFFLOAD_DIT_TO_CPU=true\" & set \"ACESTEP_INIT_LLM=true\" & set \"ACESTEP_LM_OFFLOAD_TO_CPU=true\" & uv run --no-sync acestep-api --host 127.0.0.1 --port 8101 --init-llm --lm-model-path acestep-5Hz-lm-0.6B"
+    ) else (
+      echo    ACE-Step is not installed. Singing remains unavailable until setup is run.
+    )
+  ) else (
+    echo    ACE-Step API is already running; reusing it.
+  )
+  ```
+- **Why:** Fixed cmd.exe trailing whitespace bug where `set ACESTEP_CONFIG_PATH=acestep-v15-turbo &&` assigned `"acestep-v15-turbo "` with a trailing space, which caused ACE-Step to fail with `ERROR: Failed to download DiT model 'acestep-v15-turbo ': Unknown DiT model: acestep-v15-turbo `. Now routes to `scripts\Start_ACEStep_Singing_API.bat` with properly quoted environment variables. Also quoted `NODE_OPTIONS` on line 116.
+
+- **Target File Path:** `/scripts/Start_ACEStep_Singing_API.bat`
+- **Exact Code Change:**
+  ```bat
+  if /i "%~1"=="--restart" goto KILL_OLD
+  if /i "%~1"=="-restart" goto KILL_OLD
+  if /i "%~1"=="/restart" goto KILL_OLD
+  if /i "%~1"=="restart" goto KILL_OLD
+  goto CHECK_RUNNING
+
+  :KILL_OLD
+  echo Stopping existing ACE-Step processes on port 8101...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$conns = Get-NetTCPConnection -LocalPort 8101 -ErrorAction SilentlyContinue; foreach($c in $conns){ try { Stop-Process -Id $c.OwningProcess -Force -ErrorAction Stop } catch {} }"
+  timeout /t 1 /nobreak >nul
+  ```
+- **Why:** Added `--restart` flag to allow terminating stale ACE-Step processes occupying port 8101 that were launched with unquoted/trailing-space environment variables.
+
+- **Target File Path:** `/server/music/MusicService.ts`
+- **Exact Code Change:**
+  ```typescript
+          if (item.status === 2) {
+            let errorDetail = "ACE-Step generation failed";
+            if (typeof item.result === "string") {
+              try {
+                const parsed = JSON.parse(item.result);
+                const errObj = Array.isArray(parsed) ? parsed[0] : parsed;
+                errorDetail = errObj?.error || item.result;
+              } catch {
+                errorDetail = item.result;
+              }
+            } else if (item.result && typeof item.result === "object") {
+              const errObj = Array.isArray(item.result) ? item.result[0] : item.result;
+              errorDetail = errObj?.error || JSON.stringify(item.result);
+            }
+            if (/Unknown DiT model/i.test(errorDetail) || /acestep-v15-turbo\s+/i.test(errorDetail)) {
+              errorDetail += " — Note: A trailing space was detected in the ACE-Step DiT configuration. Restart ACE-Step using scripts\\Start_ACEStep_Singing_API.bat --restart (or Start_Factory.bat) to apply the corrected environment.";
+            }
+            throw new Error(errorDetail);
+          }
+  ```
+- **Why:** Unpack JSON error payloads from ACE-Step task status 2 and attach clear diagnostics if trailing whitespace or Unknown DiT model errors occur.
+
+
+

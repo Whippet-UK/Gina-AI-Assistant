@@ -88,8 +88,10 @@ echo.
 echo [3/5] Starting ACE-Step singing API (only if installed)...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$c=Get-NetTCPConnection -LocalPort 8101 -State Listen -ErrorAction SilentlyContinue; if($c){exit 0}else{exit 1}"
 if errorlevel 1 (
-  if exist "%GINA_ROOT%\third_party\ACE-Step-1.5\pyproject.toml" (
-    start "ACE-Step 1.5 - Singing API" cmd /k "cd /d %GINA_ROOT%\third_party\ACE-Step-1.5 && set ACESTEP_API_HOST=127.0.0.1 && set ACESTEP_API_PORT=8101 && set ACESTEP_INIT_SERVICE=true && set ACESTEP_CONFIG_PATH=acestep-v15-turbo && set ACESTEP_LM_MODEL_PATH=acestep-5Hz-lm-0.6B && set ACESTEP_LM_BACKEND=pt && set ACESTEP_OFFLOAD_TO_CPU=true && set ACESTEP_OFFLOAD_DIT_TO_CPU=true && set ACESTEP_INIT_LLM=true && set ACESTEP_LM_OFFLOAD_TO_CPU=true && uv run --no-sync acestep-api --host 127.0.0.1 --port 8101 --init-llm --lm-model-path acestep-5Hz-lm-0.6B"
+  if exist "%GINA_ROOT%\scripts\Start_ACEStep_Singing_API.bat" (
+    start "ACE-Step 1.5 - Singing API" cmd /k "call \"%GINA_ROOT%\scripts\Start_ACEStep_Singing_API.bat\""
+  ) else if exist "%GINA_ROOT%\third_party\ACE-Step-1.5\pyproject.toml" (
+    start "ACE-Step 1.5 - Singing API" cmd /k "cd /d \"%GINA_ROOT%\third_party\ACE-Step-1.5\" && set \"ACESTEP_API_HOST=127.0.0.1\" & set \"ACESTEP_API_PORT=8101\" & set \"ACESTEP_INIT_SERVICE=true\" & set \"ACESTEP_CONFIG_PATH=acestep-v15-turbo\" & set \"ACESTEP_LM_MODEL_PATH=acestep-5Hz-lm-0.6B\" & set \"ACESTEP_LM_BACKEND=pt\" & set \"ACESTEP_OFFLOAD_TO_CPU=true\" & set \"ACESTEP_OFFLOAD_DIT_TO_CPU=true\" & set \"ACESTEP_INIT_LLM=true\" & set \"ACESTEP_LM_OFFLOAD_TO_CPU=true\" & uv run --no-sync acestep-api --host 127.0.0.1 --port 8101 --init-llm --lm-model-path acestep-5Hz-lm-0.6B"
   ) else (
     echo    ACE-Step is not installed. Singing remains unavailable until setup is run.
   )
@@ -111,7 +113,7 @@ if not errorlevel 1 (
   pause
   exit /b 1
 )
-start "Gina Dashboard" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && set NODE_OPTIONS=--max-old-space-size=8192 && npm.cmd run dev"
+start "Gina Dashboard" cmd /k "cd /d \"%GINA_ROOT%\" && call g_env\Scripts\activate.bat && set \"NODE_OPTIONS=--max-old-space-size=8192\" & npm.cmd run dev"
 
 echo.
 echo [4/5] Waiting for Gina at %GINA_URL% ...

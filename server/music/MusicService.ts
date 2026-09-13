@@ -566,7 +566,23 @@ export class MusicService {
           continue;
         }
         if (item.status === 2) {
-          throw new Error(typeof item.result === "string" ? item.result : "ACE-Step generation failed");
+          let errorDetail = "ACE-Step generation failed";
+          if (typeof item.result === "string") {
+            try {
+              const parsed = JSON.parse(item.result);
+              const errObj = Array.isArray(parsed) ? parsed[0] : parsed;
+              errorDetail = errObj?.error || item.result;
+            } catch {
+              errorDetail = item.result;
+            }
+          } else if (item.result && typeof item.result === "object") {
+            const errObj = Array.isArray(item.result) ? item.result[0] : item.result;
+            errorDetail = errObj?.error || JSON.stringify(item.result);
+          }
+          if (/Unknown DiT model/i.test(errorDetail) || /acestep-v15-turbo\s+/i.test(errorDetail)) {
+            errorDetail += " — Note: A trailing space was detected in the ACE-Step DiT configuration. Restart ACE-Step using scripts\\Start_ACEStep_Singing_API.bat --restart (or Start_Factory.bat) to apply the corrected environment.";
+          }
+          throw new Error(errorDetail);
         }
         if (item.status === 1) {
           let parsed: any[] = [];
