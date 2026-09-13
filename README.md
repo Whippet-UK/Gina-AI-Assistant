@@ -1,4 +1,15 @@
-# Gina AI Factory — v1.20.4
+# Gina AI Factory — v1.20.5
+
+## v1.20.5 — FLUX.1 Lite High-Precision T5 Text Encoder Reconciliation (2026-09-13)
+
+Resolved the ComfyUI `RuntimeError: Error(s) in loading state_dict for T5: size mismatch for shared.weight: copying a param with shape torch.Size([256384, 4096]) from checkpoint, the shape in current model is torch.Size([32128, 4096])` encountered when generating images in "Render In-Image Text / High Precision" mode:
+- **Root cause resolution:** The `flux_lite_image` workflow and `FLUX_T5` default were incorrectly referencing `umt5_xxl_fp8_e4m3fn_scaled.safetensors` (Wan 2.1 video text encoder with a 256,384 vocabulary table) instead of the genuine FLUX text encoder `t5xxl_fp8_e4m3fn.safetensors` (32,128 vocabulary table).
+- **Workflow update:** `workflows/flux_lite_image.json` node `2` (`DualCLIPLoader`) updated to `t5xxl_fp8_e4m3fn.safetensors`.
+- **Dynamic workflow adapter:** `server.ts` `adaptWorkflowForComfySession` now inspects ComfyUI's installed models dynamically, automatically routing to any installed T5-XXL variant (`t5xxl_fp8_e4m3fn.safetensors`, `t5xxl_fp8_e4m3fn_scaled.safetensors`, or `t5xxl_fp16.safetensors`).
+- **Disk self-healing:** `sanitizeLocalFluxLiteWorkflow` automatically detects and repairs legacy `umt5` references in local workflow files on startup.
+- **Pre-dispatch guard:** Explicit check in the `/api/jobs` dispatch pipeline blocks incompatible UMT5 inputs before hitting ComfyUI, returning a clear diagnostic message.
+- **UI & capability metadata:** Synchronized `CapabilityManager.ts` and `GinaImageSettings.tsx` to reflect the correct T5-XXL FP8 encoder.
+- **Versioned restore point:** `RESTORE_V1.20.5_FLUX_HIGH_PRECISION_T5_RECONCILIATION`.
 
 ## v1.20.4 — GIF Studio Frame-Sequence Export Fix (2026-09-13)
 

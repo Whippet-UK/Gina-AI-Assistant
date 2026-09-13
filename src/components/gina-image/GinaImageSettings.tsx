@@ -608,7 +608,7 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
                 <span className="text-zinc-300 font-bold truncate block">
                   {selectedWorkflow === 'sdxl_juggernaut'
                     ? 'SDXL Dual OpenCLIP + ViT-L'
-                    : 'umt5_xxl_fp8_e4m3fn_scaled.safetensors'}
+                    : 't5xxl_fp8_e4m3fn.safetensors'}
                 </span>
               </div>
               <div className="p-2.5 rounded bg-[#0a0e17] border border-[#252b3d]">

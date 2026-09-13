@@ -33,7 +33,7 @@ type ModelSeed = Omit<LocalModel, 'path'|'exists'|'sizeGB'> & { relative:string;
 const knownModels: ModelSeed[] = [
   { id:'flux-lite-gguf', fileName:'FLUX.1-lite-pure-Q4_0.gguf', category:'unet', relative:'models/unet/FLUX.1-lite-pure-Q4_0.gguf', purpose:'FLUX.1 Lite high-precision image generation', enabled:true },
   { id:'clip-l', fileName:'clip_l.safetensors', category:'clip', relative:'models/clip/clip_l.safetensors', purpose:'FLUX CLIP-L text encoder', enabled:true },
-  { id:'t5xxl-fp8', fileName:'t5xxl_fp8_e4m3fn.safetensors', category:'clip', relative:'models/clip/t5xxl_fp8_e4m3fn.safetensors', purpose:'FLUX T5-XXL text encoder', enabled:true },
+  { id:'t5xxl-fp8', fileName:'t5xxl_fp8_e4m3fn.safetensors', category:'clip', relative:'models/clip/t5xxl_fp8_e4m3fn.safetensors', purpose:'FLUX T5-XXL text encoder', enabled:true, aliases:['t5xxl_fp8_e4m3fn_scaled.safetensors', 't5xxl_fp16.safetensors'] },
   { id:'flux-vae', fileName:'ae.safetensors', category:'vae', relative:'models/vae/ae.safetensors', purpose:'FLUX autoencoder', enabled:true },
   { id:'juggernaut-xl-v9', fileName:'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', category:'checkpoint', relative:'models/checkpoints/Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', purpose:'Juggernaut XL v9 high-speed photorealistic image generation', enabled:true, aliases:['juggernaut-xl.safetensors', 'juggernaut_xl_v9.safetensors'] },
   { id:'qwen-2.5-vl-7b-it', fileName:'Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf', category:'other', relative:'..\\models\\llm\\Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf', purpose:'Qwen 2.5-VL 7B high-speed vision-language model via llama.cpp CUDA', enabled:true, aliases:['qwen2.5-vl-7b-instruct-q4_k_m.gguf', 'qwen2.5-vl-7b.gguf'] },
@@ -111,7 +111,7 @@ export async function scanLocalModels(comfyRoot:string){
 export function buildCapabilities(args:{hardware:any; comfy:any; models:LocalModel[]; workflows:any[]; customNodes?:any[]; nodeClasses?:string[]}):LocalCapabilities{
   const has=(id:string)=>!!args.models.find(m=>m.id===id&&m.exists);
   const hasLike=(re:RegExp)=>args.models.some(m=>m.exists&&re.test(m.fileName));
-  const flux=has('flux-lite-gguf')&&has('clip-l')&&hasLike(/umt5_xxl_fp8_e4m3fn_scaled/i);
+  const flux=has('flux-lite-gguf')&&has('clip-l')&&(has('t5xxl-fp8')||hasLike(/^t5.*xxl.*\.safetensors$/i));
   const rife=hasLike(/rife/i);
   const mmproj=has('qwen-mmproj')||hasLike(/(qwen.*mmproj|mmproj-f16).*\.gguf$/i);
   const qwen=has('qwen-2.5-vl-7b-it')||hasLike(/qwen.*2\.5.*vl.*\.gguf$/i);
@@ -155,7 +155,7 @@ export function buildCapabilities(args:{hardware:any; comfy:any; models:LocalMod
     },
     generators:[
       {id:'juggernaut-xl-sdxl',label:'Juggernaut-XL v9 Photorealism (SDXL Checkpoint)',type:'image',status:(juggernaut&&sdxlW.length)?'validated':juggernaut?'installed':comfyOnline?'not-configured':'unavailable',workflowIds:sdxlW.length?sdxlW:['sdxl_juggernaut'],modelIds:args.models.filter(m=>m.exists&&/juggernaut/i.test(m.fileName)).map(m=>m.id),notes:['Fooocus-speed high-resolution SDXL photorealism checkpoint (~8-12s on RTX 3070 Ti, zero T5 overhead).']},
-      {id:'flux-lite-image',label:'FLUX.1 Lite High Precision',type:'image',status:flux&&imageW.length?'validated':flux?'installed':'unavailable',workflowIds:imageW.filter((id:string)=>/flux_lite/i.test(id)),modelIds:['flux-lite-gguf','clip-l'],notes:['Optional high-precision text-in-image lane using UMT5 XXL.']},
+      {id:'flux-lite-image',label:'FLUX.1 Lite High Precision',type:'image',status:flux&&imageW.length?'validated':flux?'installed':'unavailable',workflowIds:imageW.filter((id:string)=>/flux_lite/i.test(id)),modelIds:['flux-lite-gguf','clip-l','t5xxl-fp8'],notes:['Optional high-precision text-in-image lane using T5-XXL FP8.']},
       {id:'qwen-local-vl',label:'Qwen 2.5-VL 7B Vision-Language Engine',type:'llm',status:qwen&&qwenMmproj?'validated':qwen?'installed':'unavailable',workflowIds:[],modelIds:args.models.filter(m=>m.exists&&/qwen|f16/i.test(m.fileName)).map(m=>m.id),notes:[qwenMmproj?'Full GPU offload (28 layers), ~35-45 t/s generation with mmproj-F16 vision projector.':'Qwen text model detected; vision projector not detected.']},      {id:'qwen-coder-local',label:'Qwen Coder 7B Local Coding Engine',type:'llm',status:qwenCoder?'validated':'unavailable',workflowIds:[],modelIds:args.models.filter(m=>m.exists&&/qwen.*coder/i.test(m.fileName)).map(m=>m.id),notes:['Text-only coding profile; mmproj is not mounted in Coder Mode.']},
       {id:'wan-video',label:'Wan 2.1 1.3B Native Video',type:'video',status:wan&&wanW.length?'validated':wan?'installed':'unavailable',workflowIds:wanW,modelIds:args.models.filter(m=>m.exists&&/wan2\.1|wan_2\.1|umt5_xxl/i.test(m.fileName)).map(m=>m.id),notes:['Native ComfyUI Wan 2.1 workflow with local UMT5 and Wan VAE.']},
       {id:'rife-motion',label:'RIFE Motion Studio',type:'video',status:(rife||rifeNode)?'validated':'unavailable',workflowIds:gifW,modelIds:args.models.filter(m=>m.exists&&/rife/i.test(m.fileName)).map(m=>m.id),notes:[rife||rifeNode?'RIFE runtime node/model detected locally.':'No RIFE runtime detected.']},

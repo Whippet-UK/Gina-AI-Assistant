@@ -20,6 +20,15 @@
 The former broad request “making Gina reliable and genuinely autonomous” is **completed**. Its five requested capabilities are implemented: machine-enforced Definition of Done, persistent project mapping, local + web research, autonomous repair/re-validation, and GitHub lifecycle integration.
 
 ## 🟥 Completed Requests
+- [x] **2026-09-13 — FLUX.1 Lite High-Precision T5 Text Encoder Reconciliation**
+  - Reconciled `DualCLIPLoader` `clip_name2` in `workflows/flux_lite_image.json` from `umt5_xxl_fp8_e4m3fn_scaled.safetensors` (Wan 2.1 video tokenizer with vocab 256,384) to `t5xxl_fp8_e4m3fn.safetensors` (FLUX tokenizer with vocab 32,128), eliminating the `RuntimeError: Error(s) in loading state_dict for T5: size mismatch for shared.weight: copying a param with shape torch.Size([256384, 4096]) from checkpoint, the shape in current model is torch.Size([32128, 4096])`.
+  - Reconciled `server.ts` `FLUX_T5` default to `t5xxl_fp8_e4m3fn.safetensors`.
+  - Added dynamic ComfyUI workflow adaptation in `adaptWorkflowForComfySession` to auto-discover and map available T5-XXL variants (`t5xxl_fp8_e4m3fn.safetensors`, `t5xxl_fp8_e4m3fn_scaled.safetensors`, `t5xxl_fp16.safetensors`).
+  - Added startup self-healing in `sanitizeLocalFluxLiteWorkflow` to automatically heal existing local disk workflows.
+  - Added pre-dispatch check rejecting any attempt to pass UMT5 to FLUX with a helpful error message.
+  - Updated `CapabilityManager.ts` and `GinaImageSettings.tsx` text encoder labels and aliases.
+  - Advanced version to v1.20.5 / `RESTORE_V1.20.5_FLUX_HIGH_PRECISION_T5_RECONCILIATION`.
+
 - [x] **2026-09-13 — GIF Studio Frame-Sequence Export Fix**
   - Batch-uploaded frame images are now grouped into one `sequence` asset (`listGifStudioAssets` in `server.ts`) instead of being flattened into unrelated single-frame entries.
   - `runGifAssetProcessingJob` gained a `sourceKind === 'sequence'` path that packs the frame set into one clip via the FFmpeg concat demuxer, instead of only ever looping a single static image.

@@ -50,7 +50,7 @@ const GINA_ROOT = process.env.GINA_ROOT || (isWin ? "C:\\Gina_AI" : process.cwd(
 const COMFY_ROOT = process.env.COMFY_ROOT || (isWin ? "C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI" : path.join(process.cwd(), "ComfyUI"));
 const FLUX_GGUF = process.env.FLUX_GGUF || "FLUX.1-lite-pure-Q4_0.gguf";
 const FLUX_CLIP_L = process.env.FLUX_CLIP_L || "clip_l.safetensors";
-const FLUX_T5 = process.env.FLUX_T5 || "umt5_xxl_fp8_e4m3fn_scaled.safetensors";
+const FLUX_T5 = process.env.FLUX_T5 || "t5xxl_fp8_e4m3fn.safetensors";
 const FLUX_VAE = process.env.FLUX_VAE || "ae.safetensors";
 const MODEL_ROOT = process.env.COMFY_MODEL_ROOT || path.join(COMFY_ROOT, "models");
 const LOCAL_WORKFLOW_DIR = path.join(process.cwd(), "workflows");
@@ -3852,12 +3852,60 @@ function ffmpegTextArgs(text: string, x: number, y: number, fontSize: number, st
   return `drawtext=fontfile='${esc(fontFile)}':textfile='${esc(textFile)}':fontcolor=white:fontsize=${safeSize}:bordercolor=black:borderw=${safeStroke}:x=(w*${safeX/100})-text_w/2:y=(h*${safeY/100})-text_h/2`;
 }
 
+async function sanitizeLocalFluxLiteWorkflow() {
+  const dirs = [LOCAL_WORKFLOW_DIR, GINA_WORKFLOW_DIR].filter(Boolean);
+  for (const dir of dirs) {
+    const filePath = path.join(dir, 'flux_lite_image.json');
+    try {
+      if (fsSync.existsSync(filePath)) {
+        const content = await fs.readFile(filePath, 'utf8');
+        if (content.includes('umt5_xxl_fp8_e4m3fn_scaled.safetensors')) {
+          const sanitized = content.replace(/umt5_xxl_fp8_e4m3fn_scaled\.safetensors/g, 't5xxl_fp8_e4m3fn.safetensors');
+          await fs.writeFile(filePath, sanitized, 'utf8');
+          console.log(`[Workflow Healing] Reconciled FLUX DualCLIPLoader text encoder to t5xxl_fp8_e4m3fn.safetensors in ${filePath}`);
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[Workflow Healing] Could not inspect ${filePath}: ${e?.message}`);
+    }
+  }
+}
+
 async function adaptWorkflowForComfySession(workflow: any) {
   try {
     const objectInfo = await getComfyObjectInfo();
-    // Active production workflows are already exported in ComfyUI API format; never rewrite
-  // them through retired-engine compatibility shims.
+    const availableClips: string[] = [
+      ...(objectInfo?.DualCLIPLoader?.input?.required?.clip_name2?.[0] || []),
+      ...(objectInfo?.CLIPLoader?.input?.required?.clip_name?.[0] || [])
+    ];
 
+    // For FLUX workflows with DualCLIPLoader:
+    // Ensure clip_name2 points to a genuine T5-XXL model (vocab 32128), NEVER Wan's UMT5-XXL (vocab 256384).
+    for (const node of Object.values(workflow || {}) as any[]) {
+      if (node?.class_type === 'DualCLIPLoader' && (node?.inputs?.type === 'flux' || !node?.inputs?.type)) {
+        const currentT5 = String(node?.inputs?.clip_name2 || '');
+        const isUmt5 = /umt5/i.test(currentT5);
+        const currentExists = availableClips.includes(currentT5);
+
+        if (isUmt5 || (!currentExists && availableClips.length > 0)) {
+          const preferredCandidates = [
+            't5xxl_fp8_e4m3fn.safetensors',
+            't5xxl_fp8_e4m3fn_scaled.safetensors',
+            't5xxl_fp16.safetensors',
+            't5-v1_1-xxl.safetensors'
+          ];
+          const matched = preferredCandidates.find(c => availableClips.includes(c)) ||
+            availableClips.find(c => /^t5.*xxl.*\.safetensors$/i.test(c) && !/umt5/i.test(c));
+
+          if (matched) {
+            console.log(`[Workflow Adapter] Routing FLUX DualCLIPLoader clip_name2 from '${currentT5}' to discovered '${matched}'`);
+            node.inputs.clip_name2 = matched;
+          } else if (isUmt5) {
+            node.inputs.clip_name2 = FLUX_T5 || 't5xxl_fp8_e4m3fn.safetensors';
+          }
+        }
+      }
+    }
   } catch {
     // Return original if object_info query is unavailable
   }
@@ -3884,10 +3932,15 @@ function validateFluxReadiness(objectInfo: Record<string, any>) {
   const requiredNodes = ["UnetLoaderGGUF", "DualCLIPLoader", "VAELoader", "CLIPTextEncode", "BasicGuider", "RandomNoise", "KSamplerSelect", "BasicScheduler", "EmptySD3LatentImage", "SamplerCustomAdvanced", "VAEDecode", "SaveImage"];
   const missingNodes = requiredNodes.filter(name => !objectInfo[name]);
   const has = (node: string, input: string, value: string) => !!objectInfo[node]?.input?.required?.[input]?.[0]?.includes?.(value);
+  const availableClips: string[] = [
+    ...(objectInfo["DualCLIPLoader"]?.input?.required?.clip_name1?.[0] || []),
+    ...(objectInfo["DualCLIPLoader"]?.input?.required?.clip_name2?.[0] || [])
+  ];
+  const hasT5 = availableClips.some(name => (/^t5.*xxl.*\.safetensors$/i.test(name) && !/umt5/i.test(name)) || name === FLUX_T5);
   const modelChecks = {
     unetGguf: has("UnetLoaderGGUF", "unet_name", FLUX_GGUF),
     clipL: has("DualCLIPLoader", "clip_name1", FLUX_CLIP_L) || has("DualCLIPLoader", "clip_name2", FLUX_CLIP_L),
-    t5: has("DualCLIPLoader", "clip_name1", FLUX_T5) || has("DualCLIPLoader", "clip_name2", FLUX_T5),
+    t5: hasT5,
     vae: has("VAELoader", "vae_name", FLUX_VAE)
   };
   return { ready: missingNodes.length === 0 && Object.values(modelChecks).every(Boolean), missingNodes, modelChecks, nodeCount: Object.keys(objectInfo).length, expected: { FLUX_GGUF, FLUX_CLIP_L, FLUX_T5, FLUX_VAE } };
@@ -4566,6 +4619,13 @@ app.post("/api/jobs", async (req, res) => {
       const promptNode = textImageAudit?.promptNodeId ? workflow[textImageAudit.promptNodeId] : null;
       const actualPrompt = String(promptNode?.inputs?.[textImageAudit?.promptInput || 'text'] || '');
       if (!actualPrompt.trim()) throw new Error('FLUX text-to-image prompt binding resolved to an empty prompt. Generation was blocked.');
+
+      // Check for incompatible UMT5 text encoder in FLUX DualCLIPLoader
+      const clipNode = Object.values(workflow).find((n: any) => n?.class_type === 'DualCLIPLoader') as any;
+      if (clipNode && /umt5/i.test(String(clipNode.inputs?.clip_name2 || ''))) {
+        throw new Error("FLUX.1 Lite high-precision text mode cannot use Wan 2.1's UMT5 model ('umt5_xxl_fp8_e4m3fn_scaled.safetensors', vocab size 256,384). A genuine FLUX T5-XXL text encoder (vocab size 32,128, e.g. 't5xxl_fp8_e4m3fn.safetensors' or 't5xxl_fp8_e4m3fn_scaled.safetensors') is required in ComfyUI/models/clip/.");
+      }
+
       jobManager.update(job.id, { parameters: { ...job.parameters, __generationAudit: { ...textImageAudit, actualPrompt: actualPrompt.slice(0, 2000), mode: 'text-to-image', steps: workflow['8']?.inputs?.steps, sampler: workflow['7']?.inputs?.sampler_name, scheduler: workflow['8']?.inputs?.scheduler, width: workflow['9']?.inputs?.width, height: workflow['9']?.inputs?.height } } });
       console.log(`[FLUX T2I] job=${job.id.slice(0,8)} promptNode=#${textImageAudit.promptNodeId}.${textImageAudit.promptInput} steps=${workflow['8']?.inputs?.steps ?? 'n/a'} size=${workflow['9']?.inputs?.width ?? '?'}x${workflow['9']?.inputs?.height ?? '?'} prompt="${actualPrompt.slice(0,180).replace(/\s+/g,' ')}"`);
     }
@@ -5647,6 +5707,7 @@ async function startServer() {
     });
   }
 
+  await sanitizeLocalFluxLiteWorkflow();
   await workflowRegistry.scan();
   comfyWebSocket.start();
   startComfyWatchdog();

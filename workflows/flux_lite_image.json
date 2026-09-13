@@ -1,6 +1,6 @@
 {
   "1": {"class_type":"UnetLoaderGGUF","inputs":{"unet_name":"FLUX.1-lite-pure-Q4_0.gguf"}},
-  "2": {"class_type":"DualCLIPLoader","inputs":{"clip_name1":"clip_l.safetensors","clip_name2":"umt5_xxl_fp8_e4m3fn_scaled.safetensors","type":"flux","device":"default"}},
+  "2": {"class_type":"DualCLIPLoader","inputs":{"clip_name1":"clip_l.safetensors","clip_name2":"t5xxl_fp8_e4m3fn.safetensors","type":"flux","device":"default"}},
   "3": {"class_type":"VAELoader","inputs":{"vae_name":"ae.safetensors"}},
   "4": {"class_type":"CLIPTextEncode","inputs":{"text":"high quality image with accurate readable text","clip":["2",0]}},
   "5": {"class_type":"BasicGuider","inputs":{"model":["1",0],"conditioning":["4",0]}},

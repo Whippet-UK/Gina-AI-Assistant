@@ -5,9 +5,9 @@
 ---
 
 ## 📌 Project Overview
-- **Current version:** `v1.20.4`
+- **Current version:** `v1.20.5`
 - **Active lifecycle:** `PHASE 53 — PROJECT RECONCILIATION & OPEN-REQUEST COMPLETION`
-- **Active save point:** `RESTORE_V1.20.4_GIF_STUDIO_FRAME_SEQUENCE_PACKING`
+- **Active save point:** `RESTORE_V1.20.5_FLUX_HIGH_PRECISION_T5_RECONCILIATION`
 - **Phase 41:** Gina Agent runs are persisted under `.gina/agent-runs`, expose live Server-Sent Events, can reconnect after browser refresh, and support explicit cancellation.
 - **Phase 44:** Qwen Coder accepts text/code files and project ZIPs; project ZIPs are imported into dedicated workspaces, automatically inspected without executing uploaded code, and support up to 100MB / 10,000 files.
 - **Phase 46:** A mandatory update-integrity checklist is loaded into agent startup context; active Wan 2.1 UI references were reconciled and a deterministic integrity gate is available before success reporting.
@@ -82,7 +82,7 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 ## 1. Project Overview & URLs
 
 - **App Name**: Gina AI Factory — Local Creator UI
-- **Version**: 1.20.4
+- **Version**: 1.20.5
 - **Local Dashboard URL**: `http://127.0.0.1:3000/` (Express server listens on `0.0.0.0:3000`)
 - **GIF Studio safety rule**: Existing uploaded media conversion must use the isolated FFmpeg asset path; do not route ordinary asset-to-GIF conversion through ComfyUI/VHS. ComfyUI is reserved for generative Wan/story work and optional explicitly requested RIFE stages.
 - **Local ComfyUI Backend URL**: `http://127.0.0.1:8188/`
@@ -117,7 +117,8 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
   - `wan2.1-1.3b.safetensors`
   - `hunyuan-video.safetensors`
   - `geneva_1-12b_fp8.safetensors`
-  - `umt5_xxl_fp8_e4m3fn_scaled.safetensors` (in `models/clip/`)
+  - `t5xxl_fp8_e4m3fn.safetensors` (in `models/clip/` for FLUX.1 Lite high-precision text, vocab 32,128)
+  - `umt5_xxl_fp8_e4m3fn_scaled.safetensors` (in `models/clip/` for Wan 2.1 native video, vocab 256,384)
 
 ---
 

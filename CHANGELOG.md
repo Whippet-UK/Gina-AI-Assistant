@@ -1,3 +1,114 @@
+# v1.20.5 — FLUX.1 Lite High-Precision T5 Text Encoder Reconciliation
+
+- **Target File Path:** `/workflows/flux_lite_image.json`
+- **Exact Code Change:**
+  ```json
+  "2": {"class_type":"DualCLIPLoader","inputs":{"clip_name1":"clip_l.safetensors","clip_name2":"t5xxl_fp8_e4m3fn.safetensors","type":"flux","device":"default"}},
+  ```
+- **Why:** Reconciled `DualCLIPLoader` `clip_name2` from `umt5_xxl_fp8_e4m3fn_scaled.safetensors` (Wan 2.1 video tokenizer with vocab 256,384) to `t5xxl_fp8_e4m3fn.safetensors` (FLUX tokenizer with vocab 32,128). This completely eliminates the `RuntimeError: Error(s) in loading state_dict for T5: size mismatch for shared.weight: copying a param with shape torch.Size([256384, 4096]) from checkpoint, the shape in current model is torch.Size([32128, 4096])`.
+
+- **Target File Path:** `/server.ts`
+- **Exact Code Change:**
+  ```typescript
+  const FLUX_T5 = process.env.FLUX_T5 || "t5xxl_fp8_e4m3fn.safetensors";
+  ```
+  ```typescript
+  async function adaptWorkflowForComfySession(workflow: any) {
+    try {
+      const objectInfo = await getComfyObjectInfo();
+      const availableClips: string[] = [
+        ...(objectInfo?.DualCLIPLoader?.input?.required?.clip_name2?.[0] || []),
+        ...(objectInfo?.CLIPLoader?.input?.required?.clip_name?.[0] || [])
+      ];
+
+      for (const node of Object.values(workflow || {}) as any[]) {
+        if (node?.class_type === 'DualCLIPLoader' && (node?.inputs?.type === 'flux' || !node?.inputs?.type)) {
+          const currentT5 = String(node?.inputs?.clip_name2 || '');
+          const isUmt5 = /umt5/i.test(currentT5);
+          const currentExists = availableClips.includes(currentT5);
+
+          if (isUmt5 || (!currentExists && availableClips.length > 0)) {
+            const preferredCandidates = [
+              't5xxl_fp8_e4m3fn.safetensors',
+              't5xxl_fp8_e4m3fn_scaled.safetensors',
+              't5xxl_fp16.safetensors',
+              't5-v1_1-xxl.safetensors'
+            ];
+            const matched = preferredCandidates.find(c => availableClips.includes(c)) ||
+              availableClips.find(c => /^t5.*xxl.*\.safetensors$/i.test(c) && !/umt5/i.test(c));
+
+            if (matched) {
+              console.log(`[Workflow Adapter] Routing FLUX DualCLIPLoader clip_name2 from '${currentT5}' to discovered '${matched}'`);
+              node.inputs.clip_name2 = matched;
+            } else if (isUmt5) {
+              node.inputs.clip_name2 = FLUX_T5 || 't5xxl_fp8_e4m3fn.safetensors';
+            }
+          }
+        }
+      }
+    } catch {
+      // Return original if object_info query is unavailable
+    }
+    return workflow;
+  }
+  ```
+  ```typescript
+  async function sanitizeLocalFluxLiteWorkflow() {
+    const dirs = [LOCAL_WORKFLOW_DIR, GINA_WORKFLOW_DIR].filter(Boolean);
+    for (const dir of dirs) {
+      const filePath = path.join(dir, 'flux_lite_image.json');
+      try {
+        if (fsSync.existsSync(filePath)) {
+          const content = await fs.readFile(filePath, 'utf8');
+          if (content.includes('umt5_xxl_fp8_e4m3fn_scaled.safetensors')) {
+            const sanitized = content.replace(/umt5_xxl_fp8_e4m3fn_scaled\.safetensors/g, 't5xxl_fp8_e4m3fn.safetensors');
+            await fs.writeFile(filePath, sanitized, 'utf8');
+            console.log(`[Workflow Healing] Reconciled FLUX DualCLIPLoader text encoder to t5xxl_fp8_e4m3fn.safetensors in ${filePath}`);
+          }
+        }
+      } catch (e: any) {
+        console.warn(`[Workflow Healing] Could not inspect ${filePath}: ${e?.message}`);
+      }
+    }
+  }
+  ```
+  ```typescript
+  // Check for incompatible UMT5 text encoder in FLUX DualCLIPLoader
+  const clipNode = Object.values(workflow).find((n: any) => n?.class_type === 'DualCLIPLoader') as any;
+  if (clipNode && /umt5/i.test(String(clipNode.inputs?.clip_name2 || ''))) {
+    throw new Error("FLUX.1 Lite high-precision text mode cannot use Wan 2.1's UMT5 model ('umt5_xxl_fp8_e4m3fn_scaled.safetensors', vocab size 256,384). A genuine FLUX T5-XXL text encoder (vocab size 32,128, e.g. 't5xxl_fp8_e4m3fn.safetensors' or 't5xxl_fp8_e4m3fn_scaled.safetensors') is required in ComfyUI/models/clip/.");
+  }
+  ```
+- **Why:** Updated default configuration, added dynamic model adaptation to discover any installed T5-XXL model variant in ComfyUI, added startup self-healing of external workflows on disk, and added pre-flight blocking with clear diagnostics if an incompatible UMT5 model is provided.
+
+- **Target File Path:** `/server/capabilities/CapabilityManager.ts`
+- **Exact Code Change:**
+  ```typescript
+  { id:'t5xxl-fp8', fileName:'t5xxl_fp8_e4m3fn.safetensors', category:'clip', relative:'models/clip/t5xxl_fp8_e4m3fn.safetensors', purpose:'FLUX T5-XXL text encoder', enabled:true, aliases:['t5xxl_fp8_e4m3fn_scaled.safetensors', 't5xxl_fp16.safetensors'] },
+  ```
+  ```typescript
+  const flux=has('flux-lite-gguf')&&has('clip-l')&&(has('t5xxl-fp8')||hasLike(/^t5.*xxl.*\.safetensors$/i));
+  ```
+  ```typescript
+  {id:'flux-lite-image',label:'FLUX.1 Lite High Precision',type:'image',status:flux&&imageW.length?'validated':flux?'installed':'unavailable',workflowIds:imageW.filter((id:string)=>/flux_lite/i.test(id)),modelIds:['flux-lite-gguf','clip-l','t5xxl-fp8'],notes:['Optional high-precision text-in-image lane using T5-XXL FP8.']},
+  ```
+- **Why:** Reconciled model inventory, capability checks, and generator metadata to properly map `t5xxl_fp8_e4m3fn.safetensors` and its scaled variant for FLUX instead of UMT5.
+
+- **Target File Path:** `/src/components/gina-image/GinaImageSettings.tsx`
+- **Exact Code Change:**
+  ```typescript
+  <span className="text-zinc-300 font-bold truncate block">
+    {selectedWorkflow === 'sdxl_juggernaut'
+      ? 'SDXL Dual OpenCLIP + ViT-L'
+      : 't5xxl_fp8_e4m3fn.safetensors'}
+  </span>
+  ```
+- **Why:** Fixed the settings drawer display to show the authentic T5-XXL FP8 text encoder for the FLUX lane.
+
+- **Target File Path:** `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`, `/docs/EDIT_REQUESTS.md`, `/src/components/MilestoneChecklist.tsx`
+- **Exact Code Change:** Advanced version to `1.20.5` and save point to `RESTORE_V1.20.5_FLUX_HIGH_PRECISION_T5_RECONCILIATION`.
+- **Why:** Universal version and metadata synchronization compliance across all project surfaces.
+
 # v1.20.4 — GitHub Import Migration & Build Sanitization
 
 - **Target File Path:** `/server.ts`
