@@ -66,11 +66,23 @@ export class AutonomousAgentEngine {
     return fileList.length > 0 ? fileList : ["Workspace is empty"];
   }
 
+  private resolveWorkspaceFile(workspaceRoot: string, relativePath: string): string {
+    if (!relativePath || path.isAbsolute(relativePath) || relativePath.split(/[\\/]+/).includes('..')) {
+      throw new Error(`Unsafe workspace file path: ${relativePath}`);
+    }
+    const root = path.resolve(workspaceRoot);
+    const target = path.resolve(root, relativePath);
+    if (target !== root && !target.startsWith(root + path.sep)) {
+      throw new Error(`Workspace file path escaped active workspace: ${relativePath}`);
+    }
+    return target;
+  }
+
   /**
    * 📖 Tool: Reading relevant file contents into plaintext string formats
    */
   public readFile(workspaceRoot: string, relativePath: string): string {
-    const fullPath = path.join(workspaceRoot, relativePath);
+    const fullPath = this.resolveWorkspaceFile(workspaceRoot, relativePath);
     if (!fs.existsSync(fullPath)) {
       return `Error: Target file reference not found at destination path: ${relativePath}`;
     }
@@ -81,7 +93,7 @@ export class AutonomousAgentEngine {
    * ✏️ Tool: Editing and writing code updates safely to physical disk
    */
   public writeFile(workspaceRoot: string, relativePath: string, content: string): string {
-    const fullPath = path.join(workspaceRoot, relativePath);
+    const fullPath = this.resolveWorkspaceFile(workspaceRoot, relativePath);
     const parentDir = path.dirname(fullPath);
     
     if (!fs.existsSync(parentDir)) {

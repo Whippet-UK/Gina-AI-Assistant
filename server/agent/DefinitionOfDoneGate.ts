@@ -3,13 +3,14 @@ import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { runUpdateIntegrityCheck } from './UpdateIntegrityGuard';
+import { ProjectMapManager } from './ProjectMapManager';
 
 const execAsync = promisify(exec);
 
 export interface DefinitionOfDoneCheck {
   id: string;
   name: string;
-  category: 'CHECKLIST' | 'VERSION_SYNC' | 'RETIRED_REFS' | 'TYPECHECK' | 'MILESTONES' | 'CLEAN_ROOT' | 'CHANGELOG';
+  category: 'CHECKLIST' | 'VERSION_SYNC' | 'RETIRED_REFS' | 'TYPECHECK' | 'MILESTONES' | 'CLEAN_ROOT' | 'CHANGELOG' | 'PROJECT_MAP';
   passed: boolean;
   details: string;
 }
@@ -123,7 +124,32 @@ export class DefinitionOfDoneGate {
       blockingErrors.push(msg);
     }
 
-    // 4. Stale Retired Engine References & Integrity Guard Check
+    // 4. Project map target verification: canonical AI context must never point
+    // at files that no longer exist. This prevents stale architecture metadata from
+    // sending future repair agents to the wrong implementation surface.
+    try {
+      const surfaces = new ProjectMapManager(this.root).getCanonicalSurfaces();
+      const missingTargets: string[] = [];
+      for (const surface of surfaces) {
+        for (const relPath of surface.primaryFiles) {
+          try { await fs.stat(path.join(this.root, relPath)); }
+          catch { missingTargets.push(`${surface.name}: ${relPath}`); }
+        }
+      }
+      if (!missingTargets.length) {
+        checks.push({ id:'project_map_targets', name:'Project Map Target Integrity', category:'PROJECT_MAP', passed:true, details:`All canonical project-map targets exist across ${surfaces.length} architectural surfaces.` });
+      } else {
+        const msg = `Project map contains missing canonical targets: ${missingTargets.join('; ')}`;
+        checks.push({ id:'project_map_targets', name:'Project Map Target Integrity', category:'PROJECT_MAP', passed:false, details:msg });
+        blockingErrors.push(msg);
+      }
+    } catch (err:any) {
+      const msg = `Project map target verification failed: ${err?.message || String(err)}`;
+      checks.push({ id:'project_map_targets', name:'Project Map Target Integrity', category:'PROJECT_MAP', passed:false, details:msg });
+      blockingErrors.push(msg);
+    }
+
+    // 5. Stale Retired Engine References & Integrity Guard Check
     try {
       const integrity = await runUpdateIntegrityCheck(this.root);
       if (integrity.ok) {
@@ -146,7 +172,7 @@ export class DefinitionOfDoneGate {
       blockingErrors.push(msg);
     }
 
-    // 5. TypeScript Lint / Compile Verification
+    // 6. TypeScript Lint / Compile Verification
     try {
       const tscResult = await execAsync('npx tsc --noEmit', { cwd: this.root, timeout: 60000 });
       checks.push({
@@ -163,7 +189,7 @@ export class DefinitionOfDoneGate {
       blockingErrors.push(msg);
     }
 
-    // 6. Clean Root Directory Enforcement
+    // 7. Clean Root Directory Enforcement
     try {
       const rootEntries = await fs.readdir(this.root, { withFileTypes: true });
       const forbiddenExtensions = ['.bak', '.tmp', '.swp', '.log', '.orig'];
@@ -195,7 +221,7 @@ export class DefinitionOfDoneGate {
       checks.push({ id: 'clean_root_enforcement', name: 'Clean Root Directory Enforcement', category: 'CLEAN_ROOT', passed: true, details: `Root check skipped: ${err?.message}` });
     }
 
-    // 7. CHANGELOG.md Entry Verification
+    // 8. CHANGELOG.md Entry Verification
     try {
       const changelogPath = path.join(this.root, 'CHANGELOG.md');
       const changelogContent = await fs.readFile(changelogPath, 'utf8');

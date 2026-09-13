@@ -80,6 +80,7 @@ export class AutonomousRepairLoop {
     const history: StageLogEntry[] = [];
     const maxCycles = Math.min(10, Math.max(1, options.maxRepairCycles ?? 5));
     const modifiedFiles: string[] = [];
+    const repairBackups = new Map<string, string>();
     let repairCycle = 0;
 
     const logStage = (stage: RepairLoopStage, summary: string, details?: any) => {
@@ -172,23 +173,71 @@ export class AutonomousRepairLoop {
       // Enter REPAIR state
       logStage('REPAIR', `Entering automated repair cycle ${repairCycle}/${maxCycles}...`);
 
-      // If we have an LLM manager available and an active failure, request an automated targeted repair
+      // The previous implementation only constructed a repair prompt and never
+      // sent it to the local model. That made the advertised repair loop a
+      // validation loop: every failed cycle re-ran the same broken workspace.
+      // When a local LLM is available, request one tightly-scoped JSON repair and
+      // write it only inside the active workspace. The next cycle is the actual
+      // validation gate for that edit.
       if (this.llmManager) {
         try {
+          const candidateFiles = primaryFilesToInspect.slice(0, 8);
+          const fileContext: string[] = [];
+          for (const relPath of candidateFiles) {
+            const fullPath = path.resolve(options.workspaceRoot, relPath);
+            const workspacePrefix = path.resolve(options.workspaceRoot) + path.sep;
+            if (!fullPath.startsWith(workspacePrefix)) continue;
+            try {
+              const content = await fs.readFile(fullPath, 'utf8');
+              fileContext.push(`FILE: ${relPath}\n${content.slice(0, 12000)}`);
+            } catch { /* affected surface may be missing in this workspace */ }
+          }
+
           const repairPrompt = `
-You are the Gina AI Factory Autonomous Repair Engine.
-The compilation / build validation step failed with the following errors:
-${val.errors.slice(0, 2000)}
+You are Gina AI Factory's constrained autonomous repair engine.
+A real validation command failed. Diagnose the failure and make ONE minimal production-safe edit.
+Return ONLY one JSON object with exactly: {"path":"relative/existing/file","contents":"full replacement file contents"}.
+Rules: path must be relative to the workspace; do not create new files; do not modify package dependencies; preserve unrelated behavior; fix only the reported failure.
 
-Relevant workspace files:
-${primaryFilesToInspect.slice(0, 10).join(', ')}
+VALIDATION ERROR:
+${val.errors.slice(0, 5000)}
 
-Please provide the exact file and minimal patch to repair this compilation error.
+AFFECTED FILES:
+${fileContext.join('\n\n').slice(0, 50000)}
 `;
-          logStage('REPAIR', `Dispatched automated repair prompt to local instruction engine.`);
+
+          const rawRepair = await this.llmManager.generateCompletion({
+            systemPrompt: 'Return only valid JSON. No markdown fences. No commentary.',
+            prompt: repairPrompt,
+            temperature: 0,
+            maxTokens: 4096
+          });
+          const match = String(rawRepair || '').match(/\{[\s\S]*\}/);
+          if (!match) throw new Error('Repair engine returned no JSON object.');
+          const repair = JSON.parse(match[0]);
+          const relPath = String(repair?.path || '').trim();
+          const contents = typeof repair?.contents === 'string' ? repair.contents : null;
+          const protectedFiles = new Set(['package.json','package-lock.json','pnpm-lock.yaml','yarn.lock','metadata.json','src/version.ts','AGENTS.md','docs/AI_UPDATE_CHECKLIST.md','src/components/MilestoneChecklist.tsx']);
+          if (!relPath || contents === null || path.isAbsolute(relPath) || relPath.split(/[\\/]+/).includes('..')) {
+            throw new Error('Repair engine returned an unsafe or incomplete file target.');
+          }
+          if (protectedFiles.has(relPath.replaceAll('\\', '/'))) throw new Error(`Repair engine cannot modify protected project-contract file: ${relPath}`);
+          if (contents.length > 512 * 1024) throw new Error(`Repair engine replacement is too large: ${relPath}`);
+          const target = path.resolve(options.workspaceRoot, relPath);
+          const workspacePrefix = path.resolve(options.workspaceRoot) + path.sep;
+          if (!target.startsWith(workspacePrefix)) throw new Error('Repair target escaped the active workspace.');
+          const existed = await fs.stat(target).then(stat => stat.isFile()).catch(() => false);
+          if (!existed) throw new Error(`Repair target does not already exist: ${relPath}`);
+          if (!repairBackups.has(relPath)) repairBackups.set(relPath, await fs.readFile(target, 'utf8'));
+
+          await fs.writeFile(target, contents, 'utf8');
+          if (!modifiedFiles.includes(relPath)) modifiedFiles.push(relPath);
+          logStage('REPAIR', `Applied constrained local-LLM repair to ${relPath}.`);
         } catch (repairErr: any) {
-          logStage('REPAIR', `LLM repair dispatch notice: ${repairErr?.message || String(repairErr)}`);
+          logStage('REPAIR', `Automated repair could not be applied: ${repairErr?.message || String(repairErr)}`);
         }
+      } else {
+        logStage('REPAIR', 'No local LLM manager is available; validation failure cannot be auto-edited.');
       }
 
       // Re-validate in next iteration of while loop
@@ -196,7 +245,13 @@ Please provide the exact file and minimal patch to repair this compilation error
     }
 
     if (!validationPassed) {
-      logStage('FAILED', `Exhausted ${maxCycles} repair cycles without clearing compilation errors.`);
+      // Never leave a workspace in a state made worse by the repair engine.
+      // Restore only files that this loop itself changed; pre-existing user edits
+      // remain untouched.
+      for (const [relPath, original] of repairBackups) {
+        try { await fs.writeFile(path.resolve(options.workspaceRoot, relPath), original, 'utf8'); } catch { /* preserve failure report if rollback itself is unavailable */ }
+      }
+      logStage('FAILED', `Exhausted ${maxCycles} repair cycles without clearing compilation errors; reverted ${repairBackups.size} automated repair file(s).`);
       return {
         ok: false,
         request: options.request,
@@ -216,7 +271,10 @@ Please provide the exact file and minimal patch to repair this compilation error
     try {
       gateResult = await this.dodGate.verify();
       if (!gateResult.ok) {
-        logStage('INTEGRITY_SCAN', `Definition of Done gate BLOCKED: ${gateResult.blockingErrors.join('; ')}`);
+        for (const [relPath, original] of repairBackups) {
+          try { await fs.writeFile(path.resolve(options.workspaceRoot, relPath), original, 'utf8'); } catch { /* preserve gate failure */ }
+        }
+        logStage('INTEGRITY_SCAN', `Definition of Done gate BLOCKED: ${gateResult.blockingErrors.join('; ')}; reverted ${repairBackups.size} automated repair file(s).`);
         return {
           ok: false,
           request: options.request,

@@ -30,6 +30,12 @@ export interface StreamInjectRenderOptions {
   audioFadeIn?: number;
   audioFadeOut?: number;
   subtitlePath?: string;
+  stripAudio?: boolean;
+  removeWatermark?: boolean;
+  wmX?: number;
+  wmY?: number;
+  wmW?: number;
+  wmH?: number;
   outputFilename?: string;
 }
 
@@ -423,6 +429,19 @@ export class StreamInjectService {
       "--output", outputPath,
       "--aspect", options.aspectMode || "original"
     ];
+
+    if (options.stripAudio) {
+      args.push("--strip-audio");
+    }
+
+    // CPU-only static watermark eraser matrix; keep it before source assets are mixed.
+    if (options.removeWatermark) {
+      args.push("--remove-watermark");
+      args.push("--wm-x", String(Number.isFinite(options.wmX) ? Math.trunc(options.wmX as number) : 85));
+      args.push("--wm-y", String(Number.isFinite(options.wmY) ? Math.trunc(options.wmY as number) : 5));
+      args.push("--wm-w", String(Number.isFinite(options.wmW) ? Math.trunc(options.wmW as number) : 12));
+      args.push("--wm-h", String(Number.isFinite(options.wmH) ? Math.trunc(options.wmH as number) : 8));
+    }
 
     if (options.introPath && fsSync.existsSync(options.introPath)) {
       args.push("--intro", options.introPath);

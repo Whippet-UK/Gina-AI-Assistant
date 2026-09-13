@@ -51,6 +51,7 @@ export class MusicService {
   // This lane serializes downloads and generations so a second heavy audio model
   // cannot start while another one is resident.
   private audioLane: Promise<void> = Promise.resolve();
+  private activeProcesses = new Map<string, ReturnType<typeof spawn>>();
 
   constructor(workspaceRoot: string) {
     this.outputDir = path.join(workspaceRoot, "local_ai_uploads", "audio");
@@ -415,7 +416,7 @@ export class MusicService {
   }
 
   private getAceStepBaseUrl(): string {
-    return process.env.ACESTEP_API_URL || "http://127.0.0.1:8001";
+    return process.env.ACESTEP_API_URL || "http://127.0.0.1:8101";
   }
 
   private async fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
@@ -695,6 +696,7 @@ export class MusicService {
         cwd: process.cwd(),
         env: { ...process.env, PYTHONUNBUFFERED: "1" }
       });
+      this.activeProcesses.set(jobId, child);
 
       let jsonResult: any = null;
 
@@ -730,6 +732,7 @@ export class MusicService {
       child.stderr.on("data", (data) => handleEngineLog(data.toString()));
 
       child.on("error", (error) => {
+        this.activeProcesses.delete(jobId);
         const message = `AudioCraft generation process error: ${error.message}`;
         jobManager.update(jobId, { status: "FAILED", error: message, completedAt: new Date().toISOString() });
         releaseLane();
@@ -737,6 +740,13 @@ export class MusicService {
       });
 
       child.on("close", (code) => {
+        this.activeProcesses.delete(jobId);
+        const currentJob = jobManager.get(jobId);
+        if (currentJob?.status === "CANCELLED") {
+          releaseLane();
+          reject(new Error("AudioCraft generation cancelled."));
+          return;
+        }
         if (code === 0 || fsSync.existsSync(outputPath)) {
           jobManager.update(jobId, {
             status: "COMPLETED",
@@ -768,6 +778,18 @@ export class MusicService {
     });
   }
 
+  cancelJob(jobId: string): boolean {
+    const child = this.activeProcesses.get(jobId);
+    if (!child || child.killed) return false;
+    try {
+      child.kill();
+      this.activeProcesses.delete(jobId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async separateStems(jobId: string, inputPath: string, jobManager: JobManager): Promise<{ vocalsUrl: string; instrumentalUrl: string }> {
     jobManager.update(jobId, {
       status: "RUNNING",
@@ -789,6 +811,7 @@ export class MusicService {
         cwd: process.cwd(),
         env: { ...process.env, PYTHONUNBUFFERED: "1" }
       });
+      this.activeProcesses.set(jobId, child);
 
       let jsonResult: any = null;
 
@@ -807,6 +830,12 @@ export class MusicService {
       });
 
       child.on("close", (code) => {
+        this.activeProcesses.delete(jobId);
+        const currentJob = jobManager.get(jobId);
+        if (currentJob?.status === "CANCELLED") {
+          reject(new Error("Stem separation cancelled."));
+          return;
+        }
         if (code === 0 && jsonResult) {
           const vocalsFile = path.basename(jsonResult.vocals_path);
           const instFile = path.basename(jsonResult.instrumental_path);

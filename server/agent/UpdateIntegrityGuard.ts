@@ -17,7 +17,6 @@ const HISTORICAL_FILES = new Set([
   'src/components/AppFeaturesGuide.tsx',
   'src/components/LTXWorkflowGenerator.tsx',
   'src/components/LTXDiagnostic.tsx',
-  'scripts/check_ltx23.ts',
   'server/agent/UpdateIntegrityGuard.ts'
 ]);
 

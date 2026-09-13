@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import { existsSync } from 'fs';
 import path from 'path';
 
 export interface ProjectSurface {
@@ -30,7 +31,7 @@ export class ProjectMapManager {
       {
         name: 'Video Studio',
         category: 'Frontend',
-        primaryFiles: ['src/components/VideoStudio.tsx', 'src/components/wan-video/WanVideoStudio.tsx'],
+        primaryFiles: ['src/components/VideoStudio.tsx'],
         description: 'Text-to-video generation studio, rendering presets, aspect ratios, and export controls.',
         engineBindings: ['Wan 2.1 1.3B BF16', 'ComfyUI wan_video.json'],
         relatedSurfaces: ['GIF Studio', 'Multimedia MoviePy Stitcher', 'ComfyUI Engine Proxy', 'Wan 2.1 Diagnostic Suite']
@@ -38,7 +39,7 @@ export class ProjectMapManager {
       {
         name: 'Image Studio (Create Studio)',
         category: 'Frontend',
-        primaryFiles: ['src/components/CreateStudio.tsx', 'src/components/gina-image/GinaImageCanvas.tsx', 'src/components/gina-image/GinaImagePreview.tsx'],
+        primaryFiles: ['src/components/PromptStudio.tsx', 'src/components/gina-image/GinaImageInput.tsx', 'src/components/gina-image/GinaImagePreview.tsx', 'src/components/gina-image/GinaImageSettings.tsx', 'src/components/gina-image/GinaInpaintCanvas.tsx'],
         description: 'High-speed image generation with photorealism and high-precision lanes.',
         engineBindings: ['Juggernaut-XL v9 (default)', 'FLUX.1 Lite GGUF (high-precision alternate)'],
         relatedSurfaces: ['AIDA64 Studio', 'Prompt Studio', 'ComfyUI Engine Proxy']
@@ -54,7 +55,7 @@ export class ProjectMapManager {
       {
         name: 'AIDA64 Studio',
         category: 'Frontend',
-        primaryFiles: ['src/components/Aida64Studio.tsx', 'src/components/aida64/Aida64Canvas.tsx', 'src/components/aida64/Aida64DialEditor.tsx'],
+        primaryFiles: ['src/components/Aida64Studio.tsx', 'src/components/aida64/Aida64CanvasAssembler.tsx'],
         description: 'Sensor panel creator, 100-state radial gauge generator, telemetry pods and ZIP exporter.',
         engineBindings: ['HTML5 Canvas Shader / Alpha Renderer'],
         relatedSurfaces: ['Image Studio', 'Hardware Sentinel & Telemetry']
@@ -62,7 +63,7 @@ export class ProjectMapManager {
       {
         name: 'StreamInject Pure Render Suite',
         category: 'Frontend',
-        primaryFiles: ['src/components/StreamInjectSuite.tsx'],
+        primaryFiles: ['src/components/StreamInjectStudio.tsx'],
         description: 'Pure render overlay compositor, chroma key green-screen, CTA generator, and timeline.',
         engineBindings: ['Headless Python FFmpeg', 'HTML5 WebGL Compositor'],
         relatedSurfaces: ['Video Studio', 'Music Studio']
@@ -70,7 +71,7 @@ export class ProjectMapManager {
       {
         name: 'Music Studio & AudioCraft',
         category: 'Frontend',
-        primaryFiles: ['src/components/MusicStudio.tsx', 'src/components/music/MusicGeneratorSuite.tsx'],
+        primaryFiles: ['src/components/MusicStudio.tsx', 'server/music/MusicService.ts'],
         description: 'AI music generator, stem separation, BGM generator, lyricist and audio timeline.',
         engineBindings: ['Meta AudioCraft / MusicGen', 'Local Qwen Lyricist'],
         relatedSurfaces: ['Multimedia MoviePy Stitcher', 'StreamInject Pure Render Suite']
@@ -86,7 +87,7 @@ export class ProjectMapManager {
       {
         name: 'Local AI & Qwen Chat',
         category: 'Frontend',
-        primaryFiles: ['src/components/LocalAiStudio.tsx'],
+        primaryFiles: ['src/components/LocalLlmStudio.tsx'],
         description: 'Local conversational and code assistant with vision mode and project file attachment.',
         engineBindings: ['Qwen 2.5-VL 7B (Vision)', 'Qwen 2.5 Coder 7B (Code/Text)'],
         relatedSurfaces: ['Local LLM Engine Service', 'Gina Agent Workbench']
@@ -187,21 +188,36 @@ export class ProjectMapManager {
     ];
   }
 
+  private async readActiveVersion(): Promise<string> {
+    try {
+      const source = await fs.readFile(path.join(this.root, 'src', 'version.ts'), 'utf8');
+      return source.match(/APP_VERSION\s*=\s*['\"]([^'\"]+)/)?.[1] || 'unknown';
+    } catch {
+      return 'unknown';
+    }
+  }
+
   public async getProjectMap(): Promise<ProjectMap> {
     if (this.cachedMap) return this.cachedMap;
 
     const surfaces = this.getCanonicalSurfaces();
+    const validatedSurfaces = surfaces.map(surface => ({
+      ...surface,
+      primaryFiles: surface.primaryFiles.filter(relPath => {
+        try { return existsSync(path.join(this.root, relPath)); } catch { return false; }
+      })
+    }));
     const relationships: Record<string, string[]> = {};
-    for (const surface of surfaces) {
+    for (const surface of validatedSurfaces) {
       if (surface.relatedSurfaces && surface.relatedSurfaces.length > 0) {
         relationships[surface.name] = surface.relatedSurfaces;
       }
     }
 
     const projectMap: ProjectMap = {
-      version: '1.19.8',
+      version: await this.readActiveVersion(),
       generatedAt: new Date().toISOString(),
-      surfaces,
+      surfaces: validatedSurfaces,
       relationships
     };
 

@@ -468,6 +468,107 @@ def resize_widescreen(
 
 
 # ===============================================================================
+# CPU WATERMARK INPAINTING MATRIX
+# ===============================================================================
+def inpaint_static_watermark(
+    input_path: str,
+    output_path: str,
+    wm_x: int = 85,
+    wm_y: int = 5,
+    wm_w: int = 12,
+    wm_h: int = 8,
+) -> str:
+    """Remove a static rectangular corner watermark frame-by-frame on CPU.
+
+    The mask is generated from percentage coordinates against the *source clip*
+    dimensions, so the operation happens before slicing/aspect conversion and
+    never consumes CUDA/VRAM. The output is a clean H.264 MP4 scratch asset.
+    """
+    if not HAS_OPENCV or cv2 is None or np is None:
+        raise RuntimeError("OpenCV and NumPy are required for watermark inpainting.")
+    if not os.path.isfile(input_path):
+        raise FileNotFoundError(f"Watermark inpainting input not found: {input_path}")
+
+    cap = cv2.VideoCapture(input_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"Could not open video for watermark inpainting: {input_path}")
+
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
+    if width <= 0 or height <= 0:
+        cap.release()
+        raise RuntimeError(f"Invalid video dimensions for watermark inpainting: {input_path}")
+
+    # Clamp UI percentages so malformed requests cannot create an out-of-frame mask.
+    x_pct = max(0, min(100, int(wm_x)))
+    y_pct = max(0, min(100, int(wm_y)))
+    w_pct = max(1, min(100, int(wm_w)))
+    h_pct = max(1, min(100, int(wm_h)))
+
+    box_x = int(width * x_pct / 100)
+    box_y = int(height * y_pct / 100)
+    box_w = max(1, int(width * w_pct / 100))
+    box_h = max(1, int(height * h_pct / 100))
+    box_x2 = min(width - 1, box_x + box_w)
+    box_y2 = min(height - 1, box_y + box_h)
+
+    # Prefer an actual H.264 OpenCV/FFmpeg writer. Some builds expose H264 as
+    # avc1; retry the canonical H264 tag if the first writer is unavailable.
+    writer = None
+    for fourcc_name in ("avc1", "H264"):
+        candidate = cv2.VideoWriter(
+            output_path,
+            cv2.VideoWriter_fourcc(*fourcc_name),
+            fps,
+            (width, height),
+        )
+        if candidate.isOpened():
+            writer = candidate
+            break
+        candidate.release()
+
+    if writer is None:
+        cap.release()
+        raise RuntimeError(
+            "OpenCV could not initialise an H.264 VideoWriter (tried avc1/H264). "
+            "Install an OpenCV build with FFmpeg H.264 encoding support."
+        )
+
+    frame_count = 0
+    try:
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+
+            # 1-channel binary mask: white = pixels to reconstruct, black = preserve.
+            mask = np.zeros((height, width), dtype=np.uint8)
+            cv2.rectangle(mask, (box_x, box_y), (box_x2, box_y2), 255, -1)
+            filtered = cv2.inpaint(frame, mask, 3, flags=cv2.INPAINT_TELEA)
+            writer.write(filtered)
+            frame_count += 1
+
+            if frame_count % 30 == 0:
+                print(
+                    f"[STREAMINJECT] Watermark inpainting: "
+                    f"{frame_count} frames processed ({os.path.basename(input_path)})"
+                )
+    finally:
+        cap.release()
+        writer.release()
+
+    if frame_count == 0 or not os.path.isfile(output_path):
+        raise RuntimeError(f"Watermark inpainting produced no frames: {input_path}")
+
+    print(
+        f"[STREAMINJECT] CPU watermark eraser complete: {os.path.basename(input_path)} "
+        f"box={x_pct}%,{y_pct}% {w_pct}%x{h_pct}% -> {os.path.basename(output_path)}"
+    )
+    return output_path
+
+
+# ===============================================================================
 # ENGINE 1: HARDCODED MASTER RENDER PIPELINE
 # ===============================================================================
 class MasterRenderPipeline:
@@ -505,10 +606,83 @@ class MasterRenderPipeline:
         audio_trim_end: Optional[float] = None,
         audio_volume: float = 1.0,
         audio_fade_in: float = 0.5,
-        audio_fade_out: float = 0.5
+        audio_fade_out: float = 0.5,
+        strip_audio: bool = False,
+        remove_watermark: bool = False,
+        wm_x: int = 85,
+        wm_y: int = 5,
+        wm_w: int = 12,
+        wm_h: int = 8
     ) -> Dict[str, Any]:
         start_time_all = time.time()
         scratch = ensure_scratch_directory()
+
+        if strip_audio:
+            source_paths = {
+                "intro_path": intro_path,
+                "main_gameplay_path": main_gameplay_path,
+                "outro_path": outro_path,
+                "green_screen_overlay": green_screen_overlay,
+            }
+            for source_name, source_path in source_paths.items():
+                if not source_path or not os.path.isfile(source_path):
+                    continue
+                silent_output = os.path.join(
+                    scratch,
+                    f"{os.path.splitext(os.path.basename(source_path))[0]}_silent_{source_name}.mp4"
+                )
+                ffmpeg_bin = get_ffmpeg_binary()
+                strip_cmd = [
+                    ffmpeg_bin, "-y", "-i", source_path,
+                    "-vcodec", "copy", "-an", silent_output
+                ]
+                print(f"[STREAMINJECT] Stripping source audio: {source_name} ({os.path.basename(source_path)})")
+                result = subprocess.run(
+                    strip_cmd,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    check=False
+                )
+                if result.returncode != 0:
+                    raise RuntimeError(
+                        f"FFmpeg audio stripping failed for {source_name}: {result.stderr[-400:]}"
+                    )
+                source_paths[source_name] = silent_output
+
+            intro_path = source_paths["intro_path"]
+            main_gameplay_path = source_paths["main_gameplay_path"] or main_gameplay_path
+            outro_path = source_paths["outro_path"]
+            green_screen_overlay = source_paths["green_screen_overlay"]
+
+        # CPU-only static watermark removal. This deliberately runs before any
+        # slicing/aspect work so the user percentages refer to the source clip.
+        if remove_watermark:
+            source_paths = {
+                "intro_path": intro_path,
+                "main_gameplay_path": main_gameplay_path,
+                "outro_path": outro_path,
+                "green_screen_overlay": green_screen_overlay,
+            }
+            for source_name, source_path in source_paths.items():
+                if not source_path or not os.path.isfile(source_path):
+                    continue
+                erased_output = os.path.join(
+                    scratch,
+                    f"{os.path.splitext(os.path.basename(source_path))[0]}_watermark_erased_{source_name}.mp4"
+                )
+                inpaint_static_watermark(
+                    source_path, erased_output,
+                    wm_x=wm_x, wm_y=wm_y, wm_w=wm_w, wm_h=wm_h
+                )
+                source_paths[source_name] = erased_output
+
+            intro_path = source_paths["intro_path"]
+            main_gameplay_path = source_paths["main_gameplay_path"] or main_gameplay_path
+            outro_path = source_paths["outro_path"]
+            green_screen_overlay = source_paths["green_screen_overlay"]
+
         purge_pycache()
 
         print("\n=======================================================")
@@ -1412,6 +1586,13 @@ def main():
     render_parser.add_argument("--audio-volume", type=float, default=1.0, help="Audio track volume scale")
     render_parser.add_argument("--audio-fade-in", type=float, default=0.5, help="Audio fade in duration")
     render_parser.add_argument("--audio-fade-out", type=float, default=0.5, help="Audio fade out duration")
+    render_parser.add_argument("--strip-audio", action="store_true", default=False, help="Strip embedded audio from source video inputs before processing")
+    # CPU-only static watermark eraser matrix. Percentages are relative to each source clip.
+    render_parser.add_argument("--remove-watermark", action="store_true", default=False, help="Enable CPU OpenCV static watermark inpainting")
+    render_parser.add_argument("--wm-x", type=int, default=85, help="Watermark box X position as percent of source width (default 85)")
+    render_parser.add_argument("--wm-y", type=int, default=5, help="Watermark box Y position as percent of source height (default 5)")
+    render_parser.add_argument("--wm-w", type=int, default=12, help="Watermark box width as percent of source width (default 12)")
+    render_parser.add_argument("--wm-h", type=int, default=8, help="Watermark box height as percent of source height (default 8)")
 
     # Pipeline 2: Intro/Outro Studio
     studio_parser = subparsers.add_parser("studio", help="Launch Intro & Outro Studio")
@@ -1451,7 +1632,13 @@ def main():
             audio_trim_end=args.audio_trim_end,
             audio_volume=args.audio_volume,
             audio_fade_in=args.audio_fade_in,
-            audio_fade_out=args.audio_fade_out
+            audio_fade_out=args.audio_fade_out,
+            strip_audio=args.strip_audio,
+            remove_watermark=args.remove_watermark,
+            wm_x=args.wm_x,
+            wm_y=args.wm_y,
+            wm_w=args.wm_w,
+            wm_h=args.wm_h
         )
     elif args.command == "studio":
         if args.layout_json:
