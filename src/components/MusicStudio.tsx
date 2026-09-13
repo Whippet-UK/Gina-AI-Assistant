@@ -426,6 +426,15 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
 
   // Main Music Generation Trigger
   const handleGenerateSong = async () => {
+    // `library` is a navigation/view mode, not a music-generator backend mode.
+    if (suiteMode === 'library') {
+      setSuiteMode('text_to_song');
+      return;
+    }
+    if (!['text_to_song', 'lyrics_to_song', 'song_cover', 'extend', 'edit'].includes(suiteMode)) {
+      setSuiteMode('text_to_song');
+      return;
+    }
     if (['song_cover', 'extend', 'edit'].includes(suiteMode) && !audioRefPath) {
       setAudioUploadError('Upload a source audio file before using this mode.');
       return;
@@ -1078,7 +1087,7 @@ export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamI
           {/* 5. Main Generate Button (Exact Style from Screenshot) */}
           <button
             type="button"
-            disabled={suiteMode === 'stem_remover' ? (!audioRefPath || isStemSplitting) : isMusicGenerating}
+            disabled={suiteMode === 'library' || (suiteMode === 'stem_remover' ? (!audioRefPath || isStemSplitting) : isMusicGenerating)}
             onClick={() => suiteMode === 'stem_remover' ? void handleStemRemoval() : void handleGenerateSong()}
             className={`w-full py-4 rounded-2xl font-extrabold text-sm md:text-base flex items-center justify-center gap-2 transition-all shadow-xl cursor-pointer ${
               isMusicGenerating
