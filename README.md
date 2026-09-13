@@ -1,4 +1,13 @@
-# Gina AI Factory — v1.20.5
+# Gina AI Factory — v1.20.7
+
+
+## v1.20.6 — StreamInject Source Audio Stripping Engine (2026-09-13)
+
+Added an end-to-end source-audio stripping pass to StreamInject so unwanted embedded audio can be removed before timeline processing without consuming GPU/VRAM resources.
+- **Python engine:** Added `--strip-audio` and a pre-processing FFmpeg `-vcodec copy -an` pass for intro, gameplay, outro, and green-screen overlay inputs.
+- **Backend/API:** `stripAudio` is recorded in the StreamInject render job ledger and forwarded to the Python renderer as `--strip-audio`.
+- **Dashboard:** Added the `stripAudioToggle` control to Step 4, with the requested mute-source description and render payload mapping.
+- **Versioned restore point:** `RESTORE_V1.20.6_STREAMINJECT_AUDIO_STRIPPING_ENGINE` (Phase 54).
 
 ## v1.20.5 — FLUX.1 Lite High-Precision T5 Text Encoder Reconciliation (2026-09-13)
 
@@ -195,3 +204,12 @@ Every autonomous project edit is governed by `docs/AI_UPDATE_CHECKLIST.md`. Gina
 
 ## Internet research
 Gina is local-first and can use controlled public-internet research for current documentation, releases, troubleshooting and other freshness-sensitive tasks. Set `GINA_WEB_ACCESS=false` to disable it. An optional `BRAVE_SEARCH_API_KEY` enables Brave Search API with DuckDuckGo fallback. See `docs/setup/GINA_WEB_RESEARCH.md`.
+
+
+## v1.20.7 / Phase 55 — Broader Code Review & Autonomy Hardening
+- Audited Music, Agent, AIDA64, Image, Video, GIF, StreamInject, Assets, Jobs, and Local AI surfaces for partially wired/stale assumptions.
+- Repaired the AutonomousRepairLoop so failed validation can trigger an actual constrained local-LLM edit instead of only constructing an unused prompt.
+- Changed job cancellation from global ComfyUI queue clearing to prompt-scoped deletion, with running-job interruption only when required; AudioCraft child processes can now be terminated by job ID.
+- Removed the unused duplicate `GinaImageInput1.tsx` surface and reconciled active metadata/parser vocabulary away from retired LTX/Gemma/Gemini capability names.
+- Added the StreamInject CPU Watermark Eraser Matrix: OpenCV frame-by-frame Telea inpainting runs before timeline slicing/aspect conversion, with X/Y/width/height percentage controls and no CUDA/VRAM usage.
+- Live Windows/ComfyUI/ACE-Step acceptance remains tracked separately and is not claimed from this review environment.

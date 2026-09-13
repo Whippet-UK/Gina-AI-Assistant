@@ -5,9 +5,9 @@
 ---
 
 ## 📌 Project Overview
-- **Current version:** `v1.20.5`
-- **Active lifecycle:** `PHASE 53 — PROJECT RECONCILIATION & OPEN-REQUEST COMPLETION`
-- **Active save point:** `RESTORE_V1.20.5_FLUX_HIGH_PRECISION_T5_RECONCILIATION`
+- **Current version:** `v1.20.7`
+- **Active lifecycle:** `PHASE 55 — BROADER CODE REVIEW & AUTONOMY HARDENING`
+- **Active save point:** `RESTORE_V1.20.7_STREAMINJECT_INPAINT_WATERMARK_ERASER`
 - **Phase 41:** Gina Agent runs are persisted under `.gina/agent-runs`, expose live Server-Sent Events, can reconnect after browser refresh, and support explicit cancellation.
 - **Phase 44:** Qwen Coder accepts text/code files and project ZIPs; project ZIPs are imported into dedicated workspaces, automatically inspected without executing uploaded code, and support up to 100MB / 10,000 files.
 - **Phase 46:** A mandatory update-integrity checklist is loaded into agent startup context; active Wan 2.1 UI references were reconciled and a deterministic integrity gate is available before success reporting.
@@ -16,7 +16,10 @@
 - **Phase 49:** Machine-enforced Definition of Done gate blocks false completion reports; persistent ProjectMapManager indexes architectural surfaces across Frontend, Backend, Models, Configuration, and Documentation with automatic repair loop enforcement.
 - **Phase 51:** Live time/date grounding for Local AI, pixel-grounded Qwen Vision image description, safe Wan 2.1 duration/frame routing, AIDA64-only 1024×600 enforcement, retired workflow removal, and Music Suite lyric routing through the configured LocalLlmManager.
 - **Phase 52:** Existing-media GIF Studio conversion is isolated to bounded FFmpeg processing; ComfyUI is reserved for generative story/RIFE work.
-- **Phase 53:** Project-wide request, metadata, milestone, checklist, and active-vocabulary reconciliation is complete; no coding requests remain open.
+- **Phase 53:** Project-wide request, metadata, milestone, checklist, and active-vocabulary reconciliation was completed before the current StreamInject infrastructure request.
+- **Phase 54:** StreamInject source audio stripping is implemented end-to-end with a zero-GPU FFmpeg stream-copy pre-pass and synchronized dashboard/API/engine controls.
+- **Phase 55:** StreamInject static watermark removal is implemented as a CPU-only OpenCV Telea inpainting pre-pass with percentage-controlled bounding coordinates and synchronized dashboard/API/Python controls.
+- **Phase 55:** Broader code review hardened the autonomous repair loop, job-scoped cancellation, project-map targets, retired-engine vocabulary, ACE-Step endpoint alignment, and duplicate image-input surface; live acceptance remains explicitly external where hardware/services are required.
 - **Phase 50:** Production-grade AutonomousResearchEngine (local RAG + DuckDuckGo web research with API signature caching), multi-stage AutonomousRepairLoop pipeline (REQUEST → UNDERSTAND → PLAN → INSPECT → RESEARCH → EDIT → VALIDATE → REPAIR → SCAN → DIFF → COMMIT), and GitHubLifecycleManager for automated branches, atomic commits, diffing, and PR metadata generation.
 - **Active video engine:** Wan 2.1 1.3B BF16. LTX is historical/retired from active production UI vocabulary.
 
@@ -82,7 +85,7 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 ## 1. Project Overview & URLs
 
 - **App Name**: Gina AI Factory — Local Creator UI
-- **Version**: 1.20.5
+- **Version**: 1.20.7
 - **Local Dashboard URL**: `http://127.0.0.1:3000/` (Express server listens on `0.0.0.0:3000`)
 - **GIF Studio safety rule**: Existing uploaded media conversion must use the isolated FFmpeg asset path; do not route ordinary asset-to-GIF conversion through ComfyUI/VHS. ComfyUI is reserved for generative Wan/story work and optional explicitly requested RIFE stages.
 - **Local ComfyUI Backend URL**: `http://127.0.0.1:8188/`
@@ -193,7 +196,7 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 - Before reporting a completed update, run the Definition of Done gate and reconcile version/save-point references across all required surfaces.
 
 
-### Log Entry # Phase 53 — Active UI retired-vocabulary reconciliation
+### Log Entry # Phase 55 — Broader code review hardening
 - **Target File:** `/src/components/AppFeaturesGuide.tsx`
 - **Exact Code Snippet:**
   ```typescript

@@ -4243,8 +4243,64 @@ app.post('/api/diagnostics/full', async (_req,res) => { try { const [gpu,comfy,l
  {name:'Node runtime',status:'PASS',details:process.version}, {name:'Gina API',status:'PASS',details:`${HOST}:${PORT} · ${APP_VERSION}`}, {name:'NVIDIA GPU',status:gpu.available?'PASS':'FAIL',details:gpu.available?gpu.name:gpu.error||'Unavailable'}, {name:'VRAM cage',status:gpu.available&&gpu.memoryUsedMB<gpu.memoryTotalMB*.9?'PASS':'WARN',details:gpu.available?`${gpu.memoryUsedMB}/${gpu.memoryTotalMB} MB`:'Unavailable'}, {name:'ComfyUI',status:comfy.online?'PASS':'FAIL',details:comfy.online?`${comfy.latencyMs}ms`:comfy.error||'Offline'}, {name:'Local LLM',status:(llm as any)?.running?'PASS':'WARN',details:(llm as any)?.running?`${(llm as any)?.modelName || 'LLM'} (Running)`:'Stopped'}, {name:'Vision mmproj',status:(llm as any)?.multimodal?'PASS':'WARN',details:(llm as any)?.multimodal?`Detected (${path.basename((llm as any)?.mmprojPath || 'mmproj')})`:'Missing'}, {name:'Juggernaut-XL v9 workflow',status:workflowRegistry.get('sdxl_juggernaut')?'PASS':'WARN',details:workflowRegistry.get('sdxl_juggernaut')?'Registered (sdxl_juggernaut)':'Missing'}, {name:'FLUX GGUF workflow',status:workflowRegistry.get('flux_lite_image')?'PASS':'WARN',details:workflowRegistry.get('flux_lite_image')?'Registered (flux_lite_image)':'Missing'}, {name:'Workflow registry',status:workflowRegistry.list().length?'PASS':'WARN',details:`${workflowRegistry.list().length} workflows`}, {name:'Knowledge watcher',status:knowledgeWatcherRunning?'PASS':'WARN',details:knowledgeWatcherRunning?'Running':'Stopped'}, {name:'Asset store',status:'PASS',details:ASSET_STORE}]; const report={ok:true,generatedAt:new Date().toISOString(),checks,summary:`${checks.filter(c=>c.status==='PASS').length}/${checks.length} checks passed`,copyText:checks.map(c=>`${c.status.padEnd(5)} ${c.name}: ${c.details}`).join('\n')}; res.json(report); } catch(e:any){recordDashboardError(e?.message||'Full diagnostics failed',{source:'diagnostics',status:500,stack:e?.stack});res.status(500).json({ok:false,error:e?.message||'Diagnostics failed'});} });
 
 app.post('/api/jobs/:id/cancel', async (req,res) => {
-  const job=jobManager.get(req.params.id); if(!job)return res.status(404).json({ok:false,error:'Job not found'});
-  try { await fetch(`${COMFY_URL}/interrupt`,{method:'POST',signal:AbortSignal.timeout(5000)}).catch(()=>null); await fetch(`${COMFY_URL}/queue`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({clear:true}),signal:AbortSignal.timeout(3000)}).catch(()=>null); await fetch(`${COMFY_URL}/free`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({unload_models:true,free_memory:true}),signal:AbortSignal.timeout(5000)}).catch(()=>null); jobManager.update(job.id,{status:'CANCELLED',error:'Cancelled by user; ComfyUI interrupted and VRAM flush requested.',completedAt:new Date().toISOString()}); res.json({ok:true,job:jobManager.get(job.id),flushed:true}); } catch(e:any){jobManager.update(job.id,{status:'CANCELLED',error:e?.message||'Cancelled; cleanup incomplete',completedAt:new Date().toISOString()});res.json({ok:true,job:jobManager.get(job.id),flushed:false});}
+  const job=jobManager.get(req.params.id);
+  if(!job)return res.status(404).json({ok:false,error:'Job not found'});
+  if(['COMPLETED','FAILED','CANCELLED'].includes(job.status)) return res.json({ok:true,job,flushed:false});
+
+  try {
+    const wasRunning = job.status === 'RUNNING';
+    let cancelledExternal = false;
+    const isComfyJob = Boolean(job.promptId);
+    if (isComfyJob) {
+      // Never use { clear:true } here: that clears every pending ComfyUI job,
+      // including work belonging to another studio/user action. Delete only the
+      // requested prompt from the queue. A running prompt additionally needs the
+      // global interrupt endpoint because the current local ComfyUI API exposes
+      // interruption separately from queued-item deletion.
+      await fetch(`${COMFY_URL}/queue`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({delete:[job.promptId]}), signal:AbortSignal.timeout(3000)
+      }).then(r => { cancelledExternal = r.ok; }).catch(()=>null);
+      if (job.status === 'RUNNING') {
+        // Confirm that this prompt is still the active ComfyUI runner before
+        // calling the global /interrupt endpoint. This avoids interrupting a
+        // different job if the selected job finished between the queue delete
+        // and the interrupt request.
+        let selectedPromptIsRunning = false;
+        try {
+          const queueResponse = await fetch(`${COMFY_URL}/queue`, { signal:AbortSignal.timeout(3000) });
+          if (queueResponse.ok) {
+            const queueState:any = await queueResponse.json();
+            selectedPromptIsRunning = Array.isArray(queueState?.queue_running) &&
+              queueState.queue_running.some((item:any) => Array.isArray(item) && item[1] === job.promptId);
+          }
+        } catch {}
+        if (selectedPromptIsRunning) {
+          await fetch(`${COMFY_URL}/interrupt`, {method:'POST',signal:AbortSignal.timeout(5000)})
+            .then(r => { cancelledExternal = cancelledExternal || r.ok; }).catch(()=>null);
+        }
+        await fetch(`${COMFY_URL}/free`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({unload_models:true,free_memory:true}), signal:AbortSignal.timeout(5000)
+        }).catch(()=>null);
+      }
+    }
+
+    // AudioCraft generation/stem subprocesses are independently cancellable.
+    if (job.workflowId === 'music_studio' || job.workflowId === 'stem_separation') {
+      cancelledExternal = musicService.cancelJob(job.id) || cancelledExternal;
+    }
+
+    jobManager.update(job.id,{
+      status:'CANCELLED',
+      error:cancelledExternal ? 'Cancelled by user; only the selected job was interrupted/removed.' : 'Cancelled by user; external cancellation was not confirmed.',
+      completedAt:new Date().toISOString()
+    });
+    res.json({ok:true,job:jobManager.get(job.id),flushed:isComfyJob && wasRunning,externalCancellationConfirmed:cancelledExternal});
+  } catch(e:any) {
+    jobManager.update(job.id,{status:'CANCELLED',error:e?.message||'Cancelled; external cleanup incomplete',completedAt:new Date().toISOString()});
+    res.json({ok:true,job:jobManager.get(job.id),flushed:false,externalCancellationConfirmed:false});
+  }
 });
 async function reconcileComfyJobFromHistory(job: any): Promise<any> {
   if (!job?.promptId || !['QUEUED', 'RUNNING'].includes(job.status)) return job;
@@ -4270,7 +4326,7 @@ async function reconcileComfyJobFromHistory(job: any): Promise<any> {
       if (!value || typeof value !== 'object') return false;
       return Object.values(value).some((items:any) => Array.isArray(items) && items.some((item:any) => item?.filename));
     });
-    const completed = status.completed === true || statusStr === 'success' || statusStr === 'completed' || hasOutput || Boolean(record.outputs);
+    const completed = status.completed === true || statusStr === 'success' || statusStr === 'completed' || hasOutput;
     if (completed) {
       return jobManager.update(job.id, { status:'COMPLETED', progress:100, currentNodeId:null, completedAt:job.completedAt || new Date().toISOString() }) || job;
     }
@@ -5152,16 +5208,47 @@ app.post("/api/streaminject/render", async (req, res) => {
     }
   }
 
+  // Normalize the watermark matrix at the HTTP boundary so malformed UI payloads
+  // cannot leak non-numeric values into the Python CLI.
+  const toInt = (value: unknown, fallback: number, min: number, max: number): number => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(min, Math.min(max, Math.trunc(parsed)));
+  };
+  const removeWatermark = options.removeWatermark === true;
+  const wmX = toInt(options.wmX, 85, 0, 100);
+  const wmY = toInt(options.wmY, 5, 0, 100);
+  const wmW = toInt(options.wmW, 12, 1, 100);
+  const wmH = toInt(options.wmH, 8, 1, 100);
+
   const job = jobManager.create("streaminject_render", {
     gameplay: resolvedGameplay,
     aspect: options.aspectMode || "original",
     splitStart: options.splitStartSec || 0,
-    splitEnd: options.splitEndSec
+    splitEnd: options.splitEndSec,
+    stripAudio: options.stripAudio === true,
+    removeWatermark,
+    wmX,
+    wmY,
+    wmW,
+    wmH
   });
 
   try {
     streamInjectService
-      .renderMasterPipeline(job.id, { ...options, mainGameplayPath: resolvedGameplay }, jobManager)
+      .renderMasterPipeline(
+        job.id,
+        {
+          ...options,
+          mainGameplayPath: resolvedGameplay,
+          removeWatermark,
+          wmX,
+          wmY,
+          wmW,
+          wmH
+        },
+        jobManager
+      )
       .then((result) => {
         console.log(`[StreamInject Master] Job ${job.id} completed: ${result.outputFilename}`);
       })
@@ -5316,7 +5403,7 @@ app.get("/api/music/status", async (_req, res) => {
 });
 
 app.get("/api/music/ace-step/status", async (_req, res) => {
-  const baseUrl = process.env.ACESTEP_API_URL || "http://127.0.0.1:8001";
+  const baseUrl = process.env.ACESTEP_API_URL || "http://127.0.0.1:8101";
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);

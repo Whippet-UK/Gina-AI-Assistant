@@ -9,7 +9,7 @@
 - [ ] Inspect the active workspace/project tree and identify the real runtime engine/model for every affected suite.
 - [ ] Search the affected area for retired names, old model filenames, old endpoint names, stale button labels, stale diagnostics, and contradictory documentation.
 
-## 2. Current platform truth (v1.20.3 / Phase 53)
+## 2. Current platform truth (v1.20.7 / Phase 55)
 - [ ] Primary local assistant: Qwen 2.5-VL 7B.
 - [ ] Coding model: Qwen Coder 7B, text-only.
 - [ ] Primary image generation: Juggernaut-XL v9.
@@ -24,6 +24,9 @@
 - [ ] AIDA64 1024×600 is a **preset-specific** output size, not the FLUX Lite baseline. FLUX Lite remains 1024×1024 unless an AIDA64 request explicitly locks it to 1024×600.
 - [ ] Image description must use the actual Qwen Vision projector and produce a meticulous reconstruction prompt; the description action auto-applies a quality profile only to settings the user has not manually changed.
 - [ ] Music lyric generation must use the configured `LocalLlmManager`, never a hard-coded localhost model endpoint.
+- [ ] ACE-Step local singing defaults to `127.0.0.1:8101`, matching the Windows launcher; `ACESTEP_API_URL` may override it explicitly.
+- [ ] Autonomous agent read/write targets must remain inside the assigned workspace; absolute paths and traversal segments are forbidden.
+- [ ] `ProjectMapManager` canonical primary files must all exist; stale architecture targets are a blocking integrity failure.
 
 ## 3. User-requested coding loop
 - [ ] For an uploaded ZIP: import safely into a dedicated workspace, reject path traversal, and inspect before editing.
@@ -40,6 +43,9 @@ For any engine/model/workflow migration, inspect **all** of these surfaces, not 
 
 ## 5. Version / metadata gate
 - [ ] `src/version.ts`, `package.json`, `metadata.json`, `index.html`, `AGENTS.md`, and `MilestoneChecklist.tsx` agree on version/save point/phase.
+- [ ] StreamInject source-audio stripping is wired consistently across Python engine, Express broker, orchestration service, and Step 4 dashboard toggle.
+- [ ] StreamInject static watermark inpainting is CPU-only, percentage-parameterized, and wired consistently across Python/OpenCV, Express, orchestration service, and Step 4 dashboard controls.
+- [ ] Broad review hardening is required for autonomous repair edits, job-scoped cancellation, duplicate UI surfaces, and stale retired capability metadata before completion is reported.
 - [ ] Every modified file has an entry in `CHANGELOG.md` with target path, exact code/config area changed, and reason.
 - [ ] No new temporary/generated artifacts are left in the root.
 

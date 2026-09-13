@@ -1,6 +1,6 @@
 # Gina AI Factory — Documentation Index & Architecture Manifest
 
-Welcome to the centralized documentation hub for **Gina AI Factory — Local Creator UI** (v1.20.5).
+Welcome to the centralized documentation hub for **Gina AI Factory — Local Creator UI** (v1.20.7).
 
 ---
 
@@ -38,6 +38,9 @@ Welcome to the centralized documentation hub for **Gina AI Factory — Local Cre
 6. **[Real-Time ComfyUI Node Graph Sync](architecture/SYSTEM_ARCHITECTURE.md#node-graph-sync)**: Live workflow introspection, dynamic parameter binding, and visual link mapping.
 7. **[Advanced Voice Pipeline & Persistent Presets](architecture/SYSTEM_ARCHITECTURE.md#voice-pipeline)**: Google US English priority default, permanent preference storage, SAPI bridge, and speech pacing.
 ## 📝 Release Notes & Milestones
+
+- **v1.20.7 / Phase 55:** Broader code review hardening repaired autonomous validation recovery, job-scoped cancellation, duplicate image-input drift, and stale retired-engine capability/parser vocabulary. The active StreamInject save point also includes the CPU/OpenCV static watermark inpainting matrix.
+- **v1.20.6 / Phase 54:** StreamInject source video audio stripping is implemented end-to-end with a zero-GPU FFmpeg stream-copy pre-pass and synchronized UI/API/engine controls.
 
 - **v1.20.3 / Phase 53:** Project-wide reconciliation completed; request tracking, version metadata, active save point, and autonomous completion contract synchronized.
 

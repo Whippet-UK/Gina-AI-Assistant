@@ -132,13 +132,13 @@ goto WAIT_GINA
 
 :GINA_READY
 echo    Gina Dashboard is READY.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $d=(Invoke-WebRequest -Uri '%GINA_URL%/api/version' -UseBasicParsing -TimeoutSec 3).Content | ConvertFrom-Json; if($d.version -ne '1.18.0' -and $d.version -ne 'v1.18.0'){ Write-Host ('[WARN] Dashboard reports version ' + $d.version + ' (expected v1.18.0).'); } else { Write-Host ('    Version: ' + $d.version + ' (RESTORE_V1.18.0_QWEN_VL_AND_JUGGERNAUT_INTEGRATION)'); } } catch { Write-Host '[WARN] Could not verify Gina API version.' }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $d=(Invoke-WebRequest -Uri '%GINA_URL%/api/version' -UseBasicParsing -TimeoutSec 3).Content | ConvertFrom-Json; Write-Host ('    Dashboard Version: ' + $d.version); } catch { Write-Host '[WARN] Could not verify Gina API version.' }"
 echo.
 
 echo [MusicGen] Checking local MusicGen Medium resolution...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $m=(Invoke-WebRequest -Uri '%GINA_URL%/api/music/status' -UseBasicParsing -TimeoutSec 5).Content | ConvertFrom-Json; $x=$m.availableModels | Where-Object { $_.id -eq 'facebook/musicgen-medium' }; Write-Host ('    Status: cached=' + $x.cached + ' weights=' + $x.hasWeights + ' backend=' + $x.backend); Write-Host ('    Path: ' + $x.managedPath); if($x.resolution.revision){ Write-Host ('    Revision: ' + $x.resolution.revision); }; if($x.resolution.refs){ Write-Host ('    Refs: ' + ($x.resolution.refs -join ', ')); } } catch { Write-Host '[WARN] Could not query MusicGen resolution.' }"
 echo.
-echo [5/5] Starting local Vision-Language Engine (Qwen 2.5-VL / Gemma)...
+echo [5/5] Starting local Qwen Vision/Code Engine...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r=Invoke-WebRequest -Method POST -Uri '%GINA_URL%/api/llm/start' -UseBasicParsing -TimeoutSec 180; if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 300) { exit 0 } else { exit 1 } } catch { exit 1 }"
 if errorlevel 1 (
   echo [WARN] Gina started, but Local LLM could not be started automatically.
@@ -171,7 +171,7 @@ echo ==========================================
 echo.
 echo ComfyUI:   %COMFY_URL%
 echo Gina:      %GINA_URL%
-echo Local LLM: http://127.0.0.1:8080 (Qwen 2.5-VL 7B / Gemma 3 12B)
+echo Local LLM: http://127.0.0.1:8080 (Qwen 2.5-VL 7B / Qwen Coder 7B)
 echo SDXL:      Juggernaut-XL v9 Photorealism (models/checkpoints/)
 echo FLUX:      FLUX.1-Schnell GGUF Q4_K_S (models/unet/)
 echo.

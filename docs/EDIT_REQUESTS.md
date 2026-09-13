@@ -9,6 +9,7 @@
   - **Context:** The file has been manually downloaded to the `models/checkpoints` directory but must be indexed by the server instance.
   - **Action Required:** Restart the server container via `Start_Factory.bat` to rebuild the ComfyUI checkpoint manifest mapping. Verify the dropdown selector registers the VACE footprint.
   - **Smoke Test Requirement:** Execute a micro-generation (1.0s target duration, 12 frames raw baseline) using the existing Whippet character image slot anchor to confirm CUDA/bfloat16 tensor allocation succeeds without causing a VRAM out-of-memory crash.
+  
 
 ## 🟨 External Acceptance Testing (not an open coding request)
 - [ ] v1.20.4 — Run the GIF Studio frame-sequence fix on the live Windows/FFmpeg installation: upload a multi-frame batch, run the workflow, and confirm the exported GIF/MP4 is one packed animation rather than fragmented per-frame output. Implemented and syntax-checked only; no FFmpeg/GPU environment was available to execute it end-to-end.
@@ -19,7 +20,21 @@
 ### Closed reliability/autonomy request
 The former broad request “making Gina reliable and genuinely autonomous” is **completed**. Its five requested capabilities are implemented: machine-enforced Definition of Done, persistent project mapping, local + web research, autonomous repair/re-validation, and GitHub lifecycle integration.
 
+- [x] **2026-09-13 — Broader Code Review & Autonomy Hardening**
+  - Reviewed Music/ACE-Step, Autonomous Agent/Repair Loop, AIDA64, Image, Video, GIF, StreamInject, Assets, Jobs, and Local AI surfaces for partially wired features and stale assumptions.
+  - Fixed the no-op `AutonomousRepairLoop` repair stage so a local LLM can produce one constrained existing-file edit which is then revalidated.
+  - Fixed `/api/jobs/:id/cancel` so cancellation no longer clears every queued ComfyUI job; cancellation is prompt-scoped, and AudioCraft child processes can be terminated by job ID.
+  - Removed the unused duplicate `src/components/gina-image/GinaImageInput1.tsx`, removed retired LTX bindings from the active workflow parser, and reconciled stale Gemma/Gemini/LTX capability names in `metadata.json`.
+  - Advanced the synchronized release to v1.20.7 / Phase 55 with restore point `RESTORE_V1.20.7_BROADER_CODE_REVIEW_HARDENING`.
+  - **Validation:** Python syntax and targeted TypeScript transpile checks are required; live Windows/ComfyUI/ACE-Step acceptance remains external.
+
 ## 🟥 Completed Requests
+- [x] **2026-09-13 — Infrastructure: Add StreamInject Source Audio Stripping Pass**
+  - Added the `--strip-audio` render flag and a pre-slice FFmpeg stream-copy pass (`-vcodec copy -an`) covering intro, gameplay, outro, and green-screen overlay inputs, with scratch-file substitution before timeline assembly.
+  - Propagated `stripAudio` through the StreamInject Express route/job ledger and `StreamInjectService`, then added the Step 4 `stripAudioToggle` dashboard control and request payload mapping.
+  - Advanced the synchronized release to v1.20.6 / Phase 54 with restore point `RESTORE_V1.20.6_STREAMINJECT_AUDIO_STRIPPING_ENGINE`.
+  - **Validation:** Python syntax and TypeScript compilation are required before completion; live Windows FFmpeg acceptance remains dependent on the user's local runtime.
+
 - [x] **2026-09-13 — FLUX.1 Lite High-Precision T5 Text Encoder Reconciliation**
   - Reconciled `DualCLIPLoader` `clip_name2` in `workflows/flux_lite_image.json` from `umt5_xxl_fp8_e4m3fn_scaled.safetensors` (Wan 2.1 video tokenizer with vocab 256,384) to `t5xxl_fp8_e4m3fn.safetensors` (FLUX tokenizer with vocab 32,128), eliminating the `RuntimeError: Error(s) in loading state_dict for T5: size mismatch for shared.weight: copying a param with shape torch.Size([256384, 4096]) from checkpoint, the shape in current model is torch.Size([32128, 4096])`.
   - Reconciled `server.ts` `FLUX_T5` default to `t5xxl_fp8_e4m3fn.safetensors`.

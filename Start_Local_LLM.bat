@@ -14,26 +14,22 @@ if not exist "%LLAMA_ROOT%\llama-server.exe" (
 set "MODEL_ROOT=C:\Gina_AI\models\llm"
 set "ENGINE=QWEN"
 
-rem Qwen is the Gina default. Pass GEMMA as the first argument to select Gemma.
-if /I "%~1"=="GEMMA" set "ENGINE=GEMMA"
-if /I "%~1"=="QWEN" set "ENGINE=QWEN"
-
-if /I "%ENGINE%"=="QWEN" (
-  set "MODEL=%MODEL_ROOT%\Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
-  set "MODEL_DESC=Qwen 2.5-VL 7B Instruct (Q4_K_M)"
-  set "MMPROJ=%MODEL_ROOT%\mmproj-F16.gguf"
-) else (
-  set "MODEL=%MODEL_ROOT%\gemma-3-12b-it-Q4_K_M.gguf"
-  set "MODEL_DESC=Gemma 3 12B IT (Q4_K_M)"
-  set "MMPROJ="
+rem Qwen is the only active Gina local inference lane.
+if /I not "%~1"=="" if /I not "%~1"=="QWEN" (
+  echo [GINA] Unsupported local LLM selector: %~1
+  echo [GINA] Active engines are Qwen 2.5-VL 7B / Qwen Coder 7B.
+  exit /b 2
 )
+
+set "MODEL=%MODEL_ROOT%\Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
+set "MODEL_DESC=Qwen 2.5-VL 7B Instruct (Q4_K_M)"
+set "MMPROJ=%MODEL_ROOT%\mmproj-F16.gguf"
 
 if not exist "%MODEL%" (
   echo [GINA] %ENGINE% model not found:
   echo %MODEL%
   echo.
-  if /I "%ENGINE%"=="QWEN" echo Start_Local_LLM.bat GEMMA can be used as the fallback engine.
-  pause
+    pause
   exit /b 1
 )
 

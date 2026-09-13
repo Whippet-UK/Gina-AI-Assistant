@@ -213,6 +213,9 @@
     ```
   - **Why:** Machine-enforce the completion gate so failed gates become new repair tasks instead of stopping.
 
+- **Target File:** `/server/agent/AutonomousRepairLoop.ts`
+  - **Exact Code Change:** Protected project-contract files from model edits, capped automated replacement size, and restored files changed by the repair loop when validation or the final Definition of Done gate fails.
+  - **Why:** An autonomous repair mechanism must fail closed and leave the workspace no worse than it found it.
 - **Target File:** `/server.ts`
   - **Exact Code Change:**
     ```typescript
@@ -1092,3 +1095,146 @@ Added interactive masking canvas and dedicated SDXL inpaint workflow (`sdxl_jugg
   ```
 - **Why**: Wire inpainting mask to the workflow bindings and trigger inpainting with optimal denoise inside the masked area.
 
+
+
+# v1.20.6 — Phase 54 — StreamInject Source Audio Stripping Engine
+
+## Infrastructure: Add StreamInject Source Audio Stripping Pass — Completed 2026-09-13
+
+- **Target File:** `/scripts/stream_inject.py`
+  - **Exact Code Change:** Registered `--strip-audio` with `action="store_true"`; added a pre-processing FFmpeg pass using `-vcodec copy -an` for `intro_path`, `main_gameplay_path`, `outro_path`, and `green_screen_overlay`; substituted the source variables with silent scratch outputs before slicing/processing; wired the CLI flag into `MasterRenderPipeline.execute`.
+  - **Why:** Remove unwanted embedded source audio before timeline assembly while preserving the original video bitstream and avoiding GPU/VRAM work.
+- **Target File:** `/server.ts`
+  - **Exact Code Change:** Added `stripAudio: options.stripAudio === true` to the `streaminject_render` job ledger metadata.
+  - **Why:** Persist the user's render choice with the queued job.
+- **Target File:** `/server/streaminject/StreamInjectService.ts`
+  - **Exact Code Change:** Added `stripAudio?: boolean` to `StreamInjectRenderOptions` and dynamically appends `--strip-audio` when enabled.
+  - **Why:** Propagate the dashboard/API option into the Python renderer.
+- **Target File:** `/src/components/StreamInjectStudio.tsx`
+  - **Exact Code Change:** Added `stripAudio` state, the Step 4 `stripAudioToggle` dashboard switch labelled `Mute Source Video Audio` with the requested description, and `stripAudio` in the `/api/streaminject/render` payload.
+  - **Why:** Give users an explicit source-audio mute control at the point where background audio/subtitles are configured.
+- **Target File:** `/src/version.ts`
+  - **Exact Code Change:** Advanced to `1.20.6`, save point `RESTORE_V1.20.6_STREAMINJECT_AUDIO_STRIPPING_ENGINE`, Phase 54, and lifecycle label `STREAMINJECT SOURCE AUDIO STRIPPING ENGINE`.
+  - **Why:** Establish the authoritative release/restore state for the completed infrastructure milestone.
+- **Target Files:** `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`
+  - **Exact Code Change:** Synchronized release references to `1.20.6`; updated current lifecycle/save-point documentation.
+  - **Why:** Satisfy the mandatory universal version and metadata synchronization gate.
+- **Target File:** `/src/components/MilestoneChecklist.tsx`
+  - **Exact Code Change:** Locked the previous active restore point and added completed Phase 54 with `RESTORE_V1.20.6_STREAMINJECT_AUDIO_STRIPPING_ENGINE`.
+  - **Why:** Keep the milestone registry aligned with the active restore point.
+- **Target File:** `/docs/EDIT_REQUESTS.md`
+  - **Exact Code Change:** Moved the StreamInject audio stripping request from Open Requests to Completed Requests with the 2026-09-13 completion record.
+  - **Why:** Reconcile the active backlog with implementation status.
+- **Target File:** `/docs/AI_UPDATE_CHECKLIST.md`
+  - **Exact Code Change:** Advanced current platform truth to v1.20.6 / Phase 54 and added a StreamInject cross-surface consistency gate.
+  - **Why:** Keep the autonomous update integrity contract synchronized with the active project state.
+
+
+# v1.20.7 — Phase 55 — Broader Code Review & Autonomy Hardening
+
+## Broader code review — Completed 2026-09-13
+- **Target File:** `/Start_Factory.bat`
+  - **Exact Code Change:** Removed the stale v1.18.0 startup-version comparison and retired Gemma wording; startup now reports the live dashboard version and current Qwen engine names.
+  - **Why:** Startup scripts are part of the active product surface and must not enforce or advertise obsolete release/model assumptions.
+- **Target File:** `/Start_Local_LLM.bat`
+  - **Exact Code Change:** Removed the retired Gemma selector/fallback and made Qwen 2.5-VL the sole active local launcher lane, with an explicit rejection of unsupported selectors.
+  - **Why:** Prevent the local inference launcher from silently reintroducing a retired engine.
+- **Target File:** `/AGENTS.md`
+  - **Exact Code Change:** Reconciled the Project Overview version to 1.20.7 and promoted the Phase 55 hardening entry to the current contract section.
+  - **Why:** Keep the mandatory AI startup context synchronized with the active release.
+- **Target File:** `/scripts/check_ltx23.ts`
+  - **Exact Code Change:** Deleted the retired LTX-2.3 diagnostic script from the active project package.
+  - **Why:** The diagnostic targeted a retired video engine and kept obsolete production vocabulary in the shipped source tree.
+- **Target File:** `/src/components/gina-image/GinaImageInput1.tsx`
+  - **Exact Code Change:** Deleted the unused duplicate Image Studio input component.
+  - **Why:** Prevent parallel abandoned implementations from drifting apart.
+- **Target File:** `/docs/AI_UPDATE_CHECKLIST.md`
+  - **Exact Code Change:** Added mandatory checks for the ACE-Step 8101 endpoint, workspace-bounded autonomous file access, and canonical ProjectMap target existence.
+  - **Why:** Turn the newly discovered failure patterns into permanent pre/post-edit safeguards for future AI sessions.
+- **Target File:** `/server/agent/DefinitionOfDoneGate.ts`
+  - **Exact Code Change:** Added `project_map_targets` to the machine gate and expanded its check category union.
+  - **Why:** The completion gate must detect stale canonical agent-context targets before accepting an update.
+- **Target File:** `/server/agent/UpdateIntegrityGuard.ts`
+  - **Exact Code Change:** Removed the deleted `scripts/check_ltx23.ts` entry from the historical exclusion set after the retired diagnostic was removed.
+  - **Why:** Keep the integrity guard's historical inventory synchronized with the actual tree.
+- **Target File:** `/server/agent/AutonomousAgentEngine.ts`
+  - **Exact Code Change:** Added `resolveWorkspaceFile()` and routed autonomous reads/writes through workspace-bounded path validation.
+  - **Why:** Prevent model-supplied absolute/traversal paths from escaping the assigned repair workspace.
+- **Target File:** `/src/context/GenerationJobContext.tsx`
+  - **Exact Code Change:** Changed cancellation to call the selected `/api/jobs/:id/cancel` endpoint and updated user-facing cancellation diagnostics.
+  - **Why:** Keep the UI aligned with job-scoped cancellation and avoid direct global engine interruption from the client.
+- **Target File:** `/src/components/gina-image/GinaImagePreview.tsx`
+  - **Exact Code Change:** Replaced the hard-coded FLUX.1 Lite progress message with active workflow-aware image engine copy.
+  - **Why:** Prevent misleading progress UI when Juggernaut/SDXL is the active image workflow.
+- **Target File:** `/server.ts`
+  - **Exact Code Change:** Corrected the selected-job cancellation completion flag and removed false-positive ComfyUI history completion from empty `outputs` objects; aligned the ACE-Step default port to 8101.
+  - **Why:** Keep job state truthful and make the backend default match the installed singing API launcher.
+- **Target File:** `/server/music/MusicService.ts`
+  - **Exact Code Change:** Aligned `getAceStepBaseUrl()` default to `127.0.0.1:8101` while retaining `ACESTEP_API_URL` override support.
+  - **Why:** Match the actual Windows ACE-Step launcher endpoint.
+- **Target File:** `/src/components/VideoStudio.tsx`
+  - **Exact Code Change:** Changed the submitted Wan 2.1 `batch_size` from the temporal frame count to `1`.
+  - **Why:** Preserve the 8GB safety contract: temporal frame count is not batch size.
+- **Target File:** `/server/agent/ProjectMapManager.ts`
+  - **Exact Code Change:** Replaced stale primary-file paths with the current Video, Image, AIDA64, StreamInject, Music and Local AI surfaces; the generated map now reads the active version and validates canonical targets before caching.
+  - **Why:** The autonomous context map itself had stale paths, so future agents could inspect the wrong file or miss the real implementation entirely.
+- **Target File:** `/server/agent/DefinitionOfDoneGate.ts`
+  - **Exact Code Change:** Added a machine-enforced Project Map Target Integrity check covering every canonical primary file.
+  - **Why:** A stale architecture map must block completion rather than silently becoming future agent context.
+- **Target File:** `/server/agent/AutonomousAgentEngine.ts`
+  - **Exact Code Change:** Added workspace-bounded path validation for autonomous read/write operations, rejecting absolute paths and traversal segments.
+  - **Why:** The self-modifying agent must not be able to escape its assigned workspace while repairing a project.
+- **Target File:** `/src/context/GenerationJobContext.tsx`
+  - **Exact Code Change:** Routed dashboard cancellation through `/api/jobs/:id/cancel` so cancellation uses the selected job's backend contract rather than a direct global ComfyUI interrupt.
+  - **Why:** Keep UI cancellation aligned with job-scoped server cancellation for ComfyUI and AudioCraft.
+- **Target Files:** `/server.ts`, `/server/music/MusicService.ts`
+  - **Exact Code Change:** Aligned the ACE-Step default endpoint to `127.0.0.1:8101`, matching the Windows launcher and documented local singing API.
+  - **Why:** The backend previously defaulted to port 8001 while the actual launcher listens on 8101, making a default singing setup appear offline.
+- **Target Files:** `/src/components/VideoStudio.tsx`, `/src/components/gina-image/GinaImagePreview.tsx`
+  - **Exact Code Change:** Forced Wan 2.1 UI requests to `batch_size: 1` and replaced the hard-coded FLUX-only image progress text with active-engine-aware copy.
+  - **Why:** Prevent stale UI assumptions from contradicting the Wan safety contract or misleading users about which image engine is running.
+
+
+- **Target File:** `/server/agent/AutonomousRepairLoop.ts`
+  - **Exact Code Change:** Replaced the no-op repair prompt construction with a constrained local-LLM repair request that returns one JSON existing-file replacement, validates the path stays inside the active workspace, writes the repair, and records the modified file before the next validation cycle.
+  - **Why:** The former “autonomous repair” stage never dispatched the prompt or changed the workspace, so repeated validation could never repair a failure.
+- **Target File:** `/server.ts`
+  - **Exact Code Change:** Reworked `/api/jobs/:id/cancel` to delete only the selected ComfyUI prompt, interrupt only when the selected job is running, and route AudioCraft cancellation through `musicService.cancelJob`; removed the global `{ clear:true }` queue operation.
+  - **Why:** Cancelling one job must never erase unrelated queued generation work.
+- **Target File:** `/server/music/MusicService.ts`
+  - **Exact Code Change:** Added per-job AudioCraft child-process tracking and `cancelJob(jobId)`; generation/stem close handlers now respect a prior `CANCELLED` state.
+  - **Why:** Give local AudioCraft subprocesses a real job-scoped cancellation path instead of leaving Python generation running after the dashboard marks a job cancelled.
+- **Target File:** `/server/comfy/WorkflowParser.ts`
+  - **Exact Code Change:** Removed retired LTX sampler/latent/loader class bindings from active workflow alias definitions.
+  - **Why:** Wan 2.1 is the active video lane and the active parser must not advertise retired production bindings.
+- **Target File:** `/src/components/gina-image/GinaImageInput1.tsx`
+  - **Exact Code Change:** Removed the unused duplicate `GinaImageInput` implementation after confirming the active application imports `GinaImageInput.tsx`.
+  - **Why:** Eliminate an abandoned parallel UI surface that could diverge from the active Image Studio implementation.
+- **Target File:** `/metadata.json`
+  - **Exact Code Change:** Reconciled stale Gemini/Gemma/LTX capability identifiers to current local-first/Qwen/Wan capability vocabulary.
+  - **Why:** Current metadata is part of the active product contract and must not advertise retired engines.
+- **Target File:** `/docs/updates/UPDATE_NOTES_v1.20.7_BROADER_CODE_REVIEW.md`
+  - **Exact Code Change:** Added the Phase 55 review record covering Music/ACE-Step, Agent, AIDA64, Image, Video, GIF, StreamInject, Assets, Jobs, and Local AI surfaces plus explicit acceptance boundaries.
+  - **Why:** Preserve the review findings and known follow-up limitations as auditable project documentation.
+- **Target Files:** `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`, `/docs/AI_UPDATE_CHECKLIST.md`, `/src/components/MilestoneChecklist.tsx`, `/docs/EDIT_REQUESTS.md`
+  - **Exact Code Change:** Advanced the synchronized release to v1.20.7 / Phase 55 with active restore point `RESTORE_V1.20.7_BROADER_CODE_REVIEW_HARDENING`.
+  - **Why:** Keep release identity, autonomous-agent contract, milestone state, and backlog truth synchronized after the hardening pass.
+
+
+## v1.20.7 / Phase 55 — StreamInject CPU Watermark Eraser Matrix
+
+- **Target File:** `/scripts/stream_inject.py`
+  - **Exact Code Change:** Added `--remove-watermark`, `--wm-x`, `--wm-y`, `--wm-w`, and `--wm-h`; added a CPU-only OpenCV `VideoCapture`/`VideoWriter` Telea inpainting pre-pass that generates H.264 scratch clips before slicing and timeline processing.
+  - **Why:** Remove static corner logos locally without CUDA/VRAM contention while keeping the existing hardcoded render pipeline intact.
+- **Target File:** `/server/streaminject/StreamInjectService.ts`
+  - **Exact Code Change:** Added watermark-erasure options to `StreamInjectRenderOptions` and forwarded normalized matrix values to the Python render CLI.
+  - **Why:** Keep the orchestration contract synchronized with the Python engine.
+- **Target File:** `/server.ts`
+  - **Exact Code Change:** Added safe integer normalization for `removeWatermark`, `wmX`, `wmY`, `wmW`, and `wmH` at `/api/streaminject/render`, persisted them to job metadata, and passed them explicitly to `renderMasterPipeline`.
+  - **Why:** Prevent malformed HTTP payloads from reaching the child-process boundary and keep job state auditable.
+- **Target File:** `/src/components/StreamInjectStudio.tsx`
+  - **Exact Code Change:** Added the Step 4 Watermark Eraser Matrix toggle, four percentage sliders, live boundary preview, and submission payload fields.
+  - **Why:** Give users direct visual control over the CPU inpainting region without exposing GPU-heavy processing.
+- **Target Files:** `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`, `/docs/AI_UPDATE_CHECKLIST.md`, `/src/components/MilestoneChecklist.tsx`
+  - **Exact Code Change:** Kept release version at v1.20.7 / Phase 55, moved the active restore point to `RESTORE_V1.20.7_STREAMINJECT_INPAINT_WATERMARK_ERASER`, synchronized product metadata, active checklist truth, documentation and milestone state.
+  - **Why:** Maintain the project-wide release/save-point contract for a same-version Phase 55 feature addition.
