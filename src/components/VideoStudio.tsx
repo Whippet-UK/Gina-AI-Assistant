@@ -310,7 +310,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
       negative_prompt: negativePrompt,
       duration_sec: selectedDuration,
       frames: customFrames,
-      batch_size: customFrames,
+      batch_size: 1,
       fps,
       motion_scale: motionScale,
       width,

@@ -170,6 +170,14 @@ export function StreamInjectStudio() {
   const [audioVolume, setAudioVolume] = useState<number>(1.0);
   const [audioFadeIn, setAudioFadeIn] = useState<number>(0.5);
   const [audioFadeOut, setAudioFadeOut] = useState<number>(0.5);
+  const [stripAudio, setStripAudio] = useState<boolean>(false);
+
+  // CPU-only static watermark eraser matrix (percentages of the source clip).
+  const [removeWatermark, setRemoveWatermark] = useState<boolean>(false);
+  const [wmX, setWmX] = useState<number>(85);
+  const [wmY, setWmY] = useState<number>(5);
+  const [wmW, setWmW] = useState<number>(12);
+  const [wmH, setWmH] = useState<number>(8);
 
   // Presets and Media
   const [presets, setPresets] = useState<Preset[]>([]);
@@ -994,7 +1002,13 @@ export function StreamInjectStudio() {
       audioTrimEnd: audioTrimEnd > 0 ? audioTrimEnd : undefined,
       audioVolume: audioVolume,
       audioFadeIn: audioFadeIn,
-      audioFadeOut: audioFadeOut
+      audioFadeOut: audioFadeOut,
+      stripAudio: stripAudio,
+      removeWatermark: removeWatermark,
+      wmX: wmX,
+      wmY: wmY,
+      wmW: wmW,
+      wmH: wmH
     };
 
     try {
@@ -2488,6 +2502,101 @@ export function StreamInjectStudio() {
               <label className="text-xs font-bold text-amber-300 uppercase tracking-wider">
                 Step 4: Background Audio Track & Subtitles
               </label>
+
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-slate-700/80 bg-slate-900/70 px-3 py-2.5">
+                <div className="min-w-0">
+                  <label htmlFor="stripAudioToggle" className="text-[11px] font-semibold text-slate-200 cursor-pointer">
+                    Mute Source Video Audio
+                  </label>
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    Wipes and drops embedded sound layers from inputs before processing.
+                  </p>
+                </div>
+                <label className="relative inline-flex shrink-0 items-center cursor-pointer" aria-label="Mute Source Video Audio">
+                  <input
+                    id="stripAudioToggle"
+                    type="checkbox"
+                    checked={stripAudio}
+                    onChange={(e) => setStripAudio(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <span className="w-10 h-5 rounded-full bg-slate-700 peer-checked:bg-amber-500 transition-colors" />
+                  <span className="absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
+                </label>
+              </div>
+
+              {/* Watermark Eraser Matrix — CPU/OpenCV inpainting runs before timeline flattening. */}
+              <div className="rounded-lg border border-cyan-500/20 bg-slate-900/80 p-3 shadow-inner">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <label htmlFor="removeWatermarkToggle" className="text-[11px] font-semibold text-cyan-200 cursor-pointer">
+                      Enable Smart Watermark Inpainting
+                    </label>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Removes corner watermarks or static broadcast channel logos frame-by-frame
+                    </p>
+                  </div>
+                  <label className="relative inline-flex shrink-0 items-center cursor-pointer" aria-label="Enable Smart Watermark Inpainting">
+                    <input
+                      id="removeWatermarkToggle"
+                      type="checkbox"
+                      checked={removeWatermark}
+                      onChange={(e) => setRemoveWatermark(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <span className="w-10 h-5 rounded-full bg-slate-700 peer-checked:bg-cyan-500 transition-colors" />
+                    <span className="absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+                  {[
+                    { label: "Box X Position %", value: wmX, set: setWmX },
+                    { label: "Box Y Position %", value: wmY, set: setWmY },
+                    { label: "Width %", value: wmW, set: setWmW },
+                    { label: "Height %", value: wmH, set: setWmH }
+                  ].map(({ label, value, set }) => (
+                    <div key={label}>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-[9px] uppercase tracking-wide text-slate-500">{label}</span>
+                        <span className="text-[10px] font-mono text-cyan-300">{value}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={value}
+                        onChange={(e) => set(parseInt(e.target.value, 10))}
+                        disabled={!removeWatermark}
+                        className="w-full accent-cyan-400 disabled:opacity-40"
+                        aria-label={label}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-3 rounded-md border border-slate-700 bg-slate-950/90 p-2">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">Eraser Boundary Preview</span>
+                    <span className="text-[9px] font-mono text-slate-600">SOURCE FRAME %</span>
+                  </div>
+                  <div className="relative aspect-video overflow-hidden rounded border border-slate-800 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950">
+                    <div className="absolute inset-0 opacity-30 bg-[linear-gradient(rgba(148,163,184,.15)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,.15)_1px,transparent_1px)] bg-[size:12px_12px]" />
+                    <div
+                      className="absolute border-2 border-dashed border-cyan-400 bg-cyan-400/10 shadow-[0_0_12px_rgba(34,211,238,0.25)] transition-all"
+                      style={{
+                        left: `${Math.min(wmX, 99)}%`,
+                        top: `${Math.min(wmY, 99)}%`,
+                        width: `${Math.min(wmW, 100 - Math.min(wmX, 99))}%`,
+                        height: `${Math.min(wmH, 100 - Math.min(wmY, 99))}%`
+                      }}
+                    >
+                      <span className="absolute -top-4 left-0 text-[8px] font-mono text-cyan-300 whitespace-nowrap">INPAINT AREA</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                 <div>

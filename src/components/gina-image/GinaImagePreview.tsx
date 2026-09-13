@@ -208,10 +208,10 @@ export const GinaImagePreview: React.FC<GinaImagePreviewProps> = ({
               Sampling Step {job?.currentStep || 1}/{job?.totalSteps || 4}
             </div>
             <div className="text-xs text-zinc-400 font-mono mt-1.5">
-              Denoising latents with FLUX.1 Lite…
+              {job?.workflowId?.includes('flux') ? 'Denoising with FLUX.1 Lite…' : job?.workflowId?.includes('juggernaut') || job?.workflowId?.includes('sdxl') ? 'Denoising with Juggernaut-XL…' : 'Processing image with the active local model…'}
             </div>
             <div className="text-[10px] text-zinc-500 font-mono mt-3 px-3 py-1 rounded bg-zinc-900 border border-zinc-800">
-              Live preview frames stream directly via ComfyUI WebSocket
+              Live progress is reported directly from the active local generation job
             </div>
           </div>
         ) : (

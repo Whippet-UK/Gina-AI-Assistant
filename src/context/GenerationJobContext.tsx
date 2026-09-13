@@ -441,11 +441,11 @@ export const GenerationJobProvider: React.FC<{
       requestQueueRef.current = [];
       setQueuedRequestsCount(0);
 
-      // Call server interrupt API to cancel ComfyUI execution
-      const response = await fetch('/api/comfy/interrupt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
+      // Cancel the selected server-side job so ComfyUI, AudioCraft and future
+      // non-Comfy jobs use the same job-scoped cancellation contract.
+      const response = job
+        ? await fetch(`/api/jobs/${encodeURIComponent(job.id)}/cancel`, { method: 'POST' })
+        : await fetch('/api/comfy/interrupt', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
       const data = await response.json().catch(() => ({}));
       if (!response.ok && !data.cancelled) {
         throw new Error(data?.error || `Cancel failed (HTTP ${response.status})`);
@@ -461,7 +461,7 @@ export const GenerationJobProvider: React.FC<{
           completedAt: new Date().toISOString()
         });
       }
-      onAddLogRef.current?.('WARN', data?.flushed === false ? 'Generation stopped and queue cleared, but VRAM flush did not complete.' : 'Generation stopped by user. ComfyUI interrupted, queue cleared, and VRAM flushed.');
+      onAddLogRef.current?.('WARN', data?.externalCancellationConfirmed === false ? 'Generation stopped locally, but the external engine did not confirm cancellation.' : 'Generation stopped by user. Only the selected job was cancelled.');
     } catch (err: any) {
       onAddLogRef.current?.('WARN', `Failed to cancel job: ${err?.message || err}`);
     }
