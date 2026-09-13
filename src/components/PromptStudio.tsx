@@ -163,6 +163,10 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     bytes: number;
     previewUrl: string;
   } | null>(null);
+  const [inpaintMask, setInpaintMask] = useState<{
+    filename: string;
+    previewUrl: string;
+  } | null>(null);
   const [imageWeight, setImageWeight] = useState(0.85);
   const [stopAt, setStopAt] = useState(0.85);
   const [uploadingReference, setUploadingReference] = useState(false);
@@ -516,7 +520,9 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     if (controls.some((c) => c.key === 'scheduler')) bound.scheduler = scheduler;
     // When no reference image is present, enforce denoise = 1.0 to prevent empty latent beige images
     const hasRef = Boolean(referenceImage);
-    const effectiveDenoise = hasRef ? denoise : 1.0;
+    const hasMask = Boolean(referenceImage && inpaintMask);
+    // Inpainting inside the mask requires adequate denoise (0.85) to cleanly transform dark fur to white, while SetLatentNoiseMask protects unmasked background 100%
+    const effectiveDenoise = hasMask ? 0.85 : hasRef ? denoise : 1.0;
     if (controls.some((c) => c.key === 'denoise')) bound.denoise = effectiveDenoise;
     if (controls.some((c) => c.key === 'batch_size')) bound.batch_size = imageNumber;
 
@@ -531,12 +537,19 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     }
     if (seedControl) bound[seedControl.key] = effectiveSeed;
 
-    // Workflow resolution: if reference image is present, route to reference workflow
+    // Workflow resolution: if inpaint mask is present, route to sdxl_juggernaut_inpaint
     let targetWorkflow = highPrecisionText ? 'flux_lite_image' : selectedWorkflow;
-    // Create Studio's primary image lane is Qwen 2.5-VL + Juggernaut-XL v9.
-    // Once an image has been kept/promoted, never silently fall back to FLUX.
     const hasKeptReference = Boolean(referenceImage || keptImageUrl);
-    if (hasKeptReference && !['sdxl_juggernaut','sdxl_juggernaut_reference','flux_lite_image'].includes(targetWorkflow)) {
+    if (referenceImage && inpaintMask) {
+      const inpaintWf = workflows.find((w) => w.id === 'sdxl_juggernaut_inpaint');
+      if (inpaintWf) {
+        targetWorkflow = inpaintWf.id;
+        setSelectedWorkflow(inpaintWf.id);
+      } else {
+        targetWorkflow = 'sdxl_juggernaut_inpaint';
+        setSelectedWorkflow('sdxl_juggernaut_inpaint');
+      }
+    } else if (hasKeptReference && !['sdxl_juggernaut','sdxl_juggernaut_reference','sdxl_juggernaut_inpaint','flux_lite_image'].includes(targetWorkflow)) {
       const refWf = workflows.find((w) => w.id === 'sdxl_juggernaut_reference');
       if (refWf) {
         targetWorkflow = refWf.id;
@@ -547,20 +560,24 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
         const refWf = workflows.find((w) => w.id === 'sdxl_juggernaut_reference' || w.id.includes('reference'));
         if (refWf) targetWorkflow = refWf.id;
       }
-    } else if (targetWorkflow === 'sdxl_juggernaut_reference') {
+    } else if (targetWorkflow === 'sdxl_juggernaut_reference' || targetWorkflow === 'sdxl_juggernaut_inpaint') {
       const baseWf = workflows.find((w) => w.id === 'sdxl_juggernaut');
       if (baseWf) targetWorkflow = baseWf.id;
     }
 
-    // Input image reference
+    // Input image reference & mask bindings
     const inputImageControl = controls.find((c) => c.key === 'input_image') || { key: 'input_image' };
     if (referenceImage) {
       bound[inputImageControl.key] = referenceImage.filename;
     }
+    const maskImageControl = controls.find((c) => c.key === 'mask_image') || { key: 'mask_image' };
+    if (referenceImage && inpaintMask) {
+      bound[maskImageControl.key] = inpaintMask.filename;
+    }
 
     onAddLog(
       'INFO',
-      `[Gina Image Studio] Generating with ${workflowModelLabel} (${effectiveWidth}×${effectiveHeight}, ${steps} steps, seed ${effectiveSeed}${hasRef ? `, ref: ${referenceImage.filename}, denoise ${effectiveDenoise}` : ''}). Styles: [${selectedStyles.join(', ')}]${highPrecisionText ? ', HIGH PRECISION / FLUX.1 LITE' : ''}`
+      `[Gina Image Studio] Generating with ${workflowModelLabel} (${effectiveWidth}×${effectiveHeight}, ${steps} steps, seed ${effectiveSeed}${hasRef ? `, ref: ${referenceImage.filename}, denoise ${effectiveDenoise}` : ''}${hasMask ? `, mask: ${inpaintMask.filename}` : ''}). Styles: [${selectedStyles.join(', ')}]${highPrecisionText ? ', HIGH PRECISION / FLUX.1 LITE' : ''}`
     );
 
     await startJob(targetWorkflow, bound);
@@ -595,6 +612,31 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
       onAddLog('INFO', `Gina Vary (Strong): set denoise to 0.85, seed ${freshSeed}.`);
     }
 
+    setTimeout(() => {
+      handleGenerate();
+    }, 50);
+  };
+
+  // Trigger Inpaint on Masked Area
+  const handleTriggerInpaint = async (additionalPrompt?: string) => {
+    if (!referenceImage) {
+      onAddLog('WARN', 'Cannot inpaint: Please upload or select a reference image first.');
+      return;
+    }
+    if (!inpaintMask) {
+      onAddLog('WARN', 'Cannot inpaint: Please draw a mask over the area you want to change.');
+      return;
+    }
+
+    if (additionalPrompt && additionalPrompt.trim()) {
+      const current = cfg.promptInput.trim();
+      if (!current.toLowerCase().includes(additionalPrompt.trim().toLowerCase())) {
+        const updated = current ? `${current}, ${additionalPrompt.trim()}` : additionalPrompt.trim();
+        updatePromptStudio({ promptInput: updated });
+      }
+    }
+
+    onAddLog('INFO', `[Inpaint Engine] Triggering SDXL Juggernaut inpainting on "${referenceImage.name}" with mask "${inpaintMask.filename}". Background preserved bit-for-bit.`);
     setTimeout(() => {
       handleGenerate();
     }, 50);
@@ -963,6 +1005,9 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
               onVaryStrong={() => handleVary('strong')}
               onUpscale={handleUpscale}
               onApplyDescribedPrompt={handleApplyDescribedPrompt}
+              inpaintMask={inpaintMask}
+              onSetInpaintMask={setInpaintMask}
+              onTriggerInpaint={handleTriggerInpaint}
             />
           )}
 

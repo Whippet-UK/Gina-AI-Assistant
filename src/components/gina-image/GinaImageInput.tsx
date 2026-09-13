@@ -1,8 +1,9 @@
 import React, { useRef, useState } from 'react';
 import {
   Upload, X, Image as ImageIcon, Sparkles, User, Scissors, Grid,
-  Maximize2, Wand2, Paintbrush, FileText, ArrowRight, Check, RefreshCw
+  Maximize2, Wand2, Paintbrush, FileText, ArrowRight, Check, RefreshCw, Undo2, RotateCcw
 } from 'lucide-react';
+import { GinaInpaintCanvas, MaskData } from './GinaInpaintCanvas';
 
 export type InputImageMode = 'image_prompt' | 'face_swap' | 'pyracanny' | 'cpds';
 export type InputImageTab = 'upscale_variation' | 'image_prompt' | 'inpaint_outpaint' | 'describe';
@@ -39,6 +40,9 @@ interface GinaImageInputProps {
   onVaryStrong?: () => void;
   onUpscale?: (factor: number, fast?: boolean) => void;
   onApplyDescribedPrompt?: (describedText: string) => void;
+  inpaintMask?: { filename: string; previewUrl: string } | null;
+  onSetInpaintMask?: (mask: { filename: string; previewUrl: string } | null) => void;
+  onTriggerInpaint?: (additionalPrompt?: string) => void;
 }
 
 export const GinaImageInput: React.FC<GinaImageInputProps> = ({
@@ -59,7 +63,10 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
   onVarySubtle,
   onVaryStrong,
   onUpscale,
-  onApplyDescribedPrompt
+  onApplyDescribedPrompt,
+  inpaintMask,
+  onSetInpaintMask,
+  onTriggerInpaint
 }) => {
   // Smarter tab tracking array layer
   const [activeTab, setActiveTab] = useState<InputImageTab>('image_prompt');
@@ -102,8 +109,82 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
   const [outpaintRight, setOutpaintRight] = useState(false);
   const [outpaintTop, setOutpaintTop] = useState(false);
   const [outpaintBottom, setOutpaintBottom] = useState(false);
-  const [inpaintAdditionalPrompt, setInpaintAdditionalPrompt] = useState('');
+  const [inpaintAdditionalPrompt, setInpaintAdditionalPrompt] = useState('pure white whippet fur, photorealistic, pristine white coat');
   const [brushSize, setBrushSize] = useState(30);
+
+  // Active inpaint mask data & upload state
+  const [currentMaskData, setCurrentMaskData] = useState<MaskData | null>(null);
+  const [uploadingMask, setUploadingMask] = useState(false);
+  const [inpaintMaskUploaded, setInpaintMaskUploaded] = useState<{ filename: string; previewUrl: string } | null>(null);
+
+  const handleMaskChange = async (mask: MaskData | null) => {
+    setCurrentMaskData(mask);
+    if (!mask || !mask.hasMask) {
+      setInpaintMaskUploaded(null);
+      onSetInpaintMask?.(null);
+      return;
+    }
+
+    setUploadingMask(true);
+    try {
+      const filename = `mask_${Date.now()}.png`;
+      const response = await fetch('/api/comfy/upload-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'image/png',
+          'X-Gina-Filename': encodeURIComponent(filename),
+          'X-Gina-Mime': 'image/png'
+        },
+        body: await mask.blob.arrayBuffer()
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.ok && data.filename) {
+        const uploaded = { filename: data.filename, previewUrl: mask.dataUrl };
+        setInpaintMaskUploaded(uploaded);
+        onSetInpaintMask?.(uploaded);
+      }
+    } catch (e) {
+      console.warn('Mask upload error:', e);
+    } finally {
+      setUploadingMask(false);
+    }
+  };
+
+  const handleExecuteInpaint = async () => {
+    if (!currentMaskData || !currentMaskData.hasMask) return;
+    let maskInfo = inpaintMaskUploaded;
+    if (!maskInfo) {
+      setUploadingMask(true);
+      try {
+        const filename = `mask_${Date.now()}.png`;
+        const response = await fetch('/api/comfy/upload-image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'image/png',
+            'X-Gina-Filename': encodeURIComponent(filename),
+            'X-Gina-Mime': 'image/png'
+          },
+          body: await currentMaskData.blob.arrayBuffer()
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.ok && data.ok && data.filename) {
+          maskInfo = { filename: data.filename, previewUrl: currentMaskData.dataUrl };
+          setInpaintMaskUploaded(maskInfo);
+          onSetInpaintMask?.(maskInfo);
+        }
+      } catch (err: any) {
+        console.error('Failed to upload mask:', err);
+        setUploadingMask(false);
+        return;
+      } finally {
+        setUploadingMask(false);
+      }
+    }
+
+    if (onTriggerInpaint) {
+      onTriggerInpaint(inpaintAdditionalPrompt);
+    }
+  };
 
   // Describe state
   const [describeContentType, setDescribeContentType] = useState<'photo' | 'anime'>('photo');
@@ -569,12 +650,146 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
         {/* TAB 3: Inpaint or Outpaint */}
         {activeTab === 'inpaint_outpaint' && (
           <div className="space-y-4">
-            <div className="text-xs text-zinc-400">
-              Paint masked areas to regenerate, improve face/hands, or expand canvas bounds via outpainting.
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs text-zinc-300 font-medium">
+                Paint over the exact area you want to change (e.g. paint the dog to change its fur to white).
+                Unpainted areas remain 100% frozen bit-for-bit.
+              </div>
+              {referenceImage && (
+                <div className="text-[11px] font-mono text-purple-400 bg-purple-500/10 border border-purple-500/30 px-2.5 py-1 rounded-md">
+                  Active Reference: {referenceImage.name}
+                </div>
+              )}
             </div>
 
+            {/* Interactive Canvas or Empty Image Prompt */}
+            {referenceImage ? (
+              <GinaInpaintCanvas
+                imageUrl={referenceImage.previewUrl}
+                imageName={referenceImage.name}
+                onMaskChange={handleMaskChange}
+                disabled={uploadingMask}
+              />
+            ) : (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-[#2b354c] hover:border-purple-500/60 bg-[#0c101a] rounded-xl p-8 text-center cursor-pointer transition-all space-y-3"
+              >
+                <div className="w-12 h-12 mx-auto rounded-xl bg-purple-600/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                  <Paintbrush className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-zinc-200">
+                    Upload an Image to Begin Inpainting
+                  </div>
+                  <div className="text-xs text-zinc-500 mt-1">
+                    Upload your dog picture or any reference image to mask and edit specific elements.
+                  </div>
+                </div>
+                <div className="flex justify-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg transition-all"
+                  >
+                    Select Image File
+                  </button>
+                  {activeOutputUrl && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUseActiveOutput();
+                      }}
+                      className="px-4 py-2 bg-[#171f30] hover:bg-[#1f2a42] text-zinc-200 border border-[#2b354c] text-xs font-bold rounded-lg transition-all"
+                    >
+                      Use Latest Output Image
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Inpaint Instructions & Presets */}
+            {referenceImage && (
+              <div className="space-y-3 bg-[#0c111d] border border-[#1f273b] p-3.5 rounded-xl">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider">
+                    Inpaint Instructions (What to generate in the masked area):
+                  </label>
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    <span className="text-zinc-500">Quick Presets:</span>
+                    <button
+                      type="button"
+                      onClick={() => setInpaintAdditionalPrompt('pure white whippet fur, pristine white coat, photorealistic texture, natural soft fur lighting')}
+                      className="px-2 py-0.5 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 font-mono transition-all"
+                    >
+                      🐕 White Whippet Fur
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInpaintAdditionalPrompt('golden retriever fur, soft golden honey fur texture, photorealistic')}
+                      className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-mono transition-all"
+                    >
+                      🦮 Golden Fur
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInpaintAdditionalPrompt('black sleek fur, shiny dark coat, photorealistic lighting')}
+                      className="px-2 py-0.5 rounded bg-zinc-700/40 hover:bg-zinc-700/60 text-zinc-300 border border-zinc-600 font-mono transition-all"
+                    >
+                      🐈‍⬛ Black Fur
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={inpaintAdditionalPrompt}
+                    onChange={(e) => setInpaintAdditionalPrompt(e.target.value)}
+                    placeholder="e.g. pure white whippet fur, pristine white coat, natural fur highlights..."
+                    className="flex-1 bg-[#0a0e17] border border-[#262e42] rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                {/* Primary Action Button */}
+                <div className="flex flex-col sm:flex-row items-center gap-3 pt-1">
+                  <button
+                    type="button"
+                    disabled={!currentMaskData?.hasMask || uploadingMask}
+                    onClick={handleExecuteInpaint}
+                    className={`flex-1 w-full py-3 px-5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-lg ${
+                      currentMaskData?.hasMask && !uploadingMask
+                        ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-600/30 cursor-pointer scale-[1.01]'
+                        : 'bg-zinc-800/70 text-zinc-500 cursor-not-allowed border border-zinc-700/40'
+                    }`}
+                  >
+                    <Paintbrush className="w-4 h-4" />
+                    <span>
+                      {uploadingMask
+                        ? 'Syncing Mask to ComfyUI…'
+                        : currentMaskData?.hasMask
+                        ? `🎨 Generate Inpaint (${currentMaskData.coveragePercent}% Masked — Background 100% Frozen)`
+                        : 'Draw Over the Dog to Mask for Inpainting'}
+                    </span>
+                  </button>
+
+                  {inpaintMaskUploaded && (
+                    <div className="text-[11px] font-mono text-purple-300 bg-purple-500/10 border border-purple-500/30 px-3 py-2.5 rounded-xl shrink-0 flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Mask Ready: {inpaintMaskUploaded.filename}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Inpaint Method selection */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs pt-1">
               {[
                 { id: 'default', label: 'Inpaint / Outpaint (Default)', desc: 'Standard fill masked areas' },
                 { id: 'improve_detail', label: 'Improve Detail (Face/Hand)', desc: 'Gentle detail refinement' },
@@ -603,7 +818,8 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
                 </label>
               ))}
             </div>
-{/* Outpaint Direction Checkboxes */}
+
+            {/* Outpaint Direction Checkboxes */}
             <div className="bg-[#0a0e17] border border-[#212738] rounded-xl p-3">
               <div className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider mb-2">
                 Outpaint Expansion Directions:
@@ -646,20 +862,6 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
                   <span>Bottom</span>
                 </label>
               </div>
-            </div>
-
-            {/* Inpaint Additional Prompt */}
-            <div>
-              <label className="block text-[11px] font-mono text-zinc-400 uppercase tracking-wider mb-1">
-                Inpaint Additional Prompt (Optional):
-              </label>
-              <input
-                type="text"
-                value={inpaintAdditionalPrompt}
-                onChange={(e) => setInpaintAdditionalPrompt(e.target.value)}
-                placeholder="Specific instructions for the masked region (e.g. wearing sunglasses, glowing amulet)..."
-                className="w-full bg-[#0d121c] border border-[#262e42] rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-purple-500"
-              />
             </div>
           </div>
         )}

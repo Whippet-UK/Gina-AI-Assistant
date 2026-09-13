@@ -1019,3 +1019,76 @@ Fixed the open GIF Studio bug from `docs/EDIT_REQUESTS.md`: batch-uploaded frame
 - **Why**: Satisfy the Universal Version & Metadata Synchronization Guard (Rule 7).
 
 **Not yet acceptance-tested**: this was implemented and statically syntax-checked in a sandboxed environment without ComfyUI, FFmpeg, or a GPU available. Live Windows verification (upload a multi-frame batch, run the workflow, confirm a single packed GIF/MP4 exports) is still required before this can be marked externally verified, consistent with Phase 53's separation of implementation-complete vs. externally accepted work.
+
+## v1.20.5 — SDXL Juggernaut Inpaint Masking Canvas & Workflow Integration
+
+Added interactive masking canvas and dedicated SDXL inpaint workflow (`sdxl_juggernaut_inpaint`) enabling 1:1 subject recoloring and element replacement while preserving unmasked backgrounds bit-for-bit.
+
+### Target File Path: `/workflows/sdxl_juggernaut_inpaint.json`
+- **Exact Code Snippet / Code Block**:
+  ```json
+  {
+    "9": { "class_type": "LoadImageMask", "inputs": { "image": "mask.png", "channel": "red" } },
+    "10": { "class_type": "SetLatentNoiseMask", "inputs": { "samples": ["5", 0], "mask": ["9", 0] } }
+  }
+  ```
+- **Why**: Standard SDXL img2img changes the entire image when denoise is increased, or cannot cleanly recolor dark fur when denoise is lowered. `SetLatentNoiseMask` freezes unmasked latents completely while allowing full sampling denoise inside the masked dog area.
+
+### Target File Path: `/server/comfy/WorkflowParser.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  if (['LoadImageMask'].includes(className)) {
+    capabilities.add('mask-input');
+  }
+  // Added alias:
+  if (['mask_image', 'maskimage', 'mask_filename', 'mask_path'].includes(lower)) return 'maskImage';
+  ```
+- **Why**: Enable workflow intelligence to identify mask inputs and bind mask image paths automatically.
+
+### Target File Path: `/server.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  function imageGenerationPolicy(engine: 'qwen' | 'qwen-coder', multimodal: boolean, hasReference: boolean, highPrecision = false, hasMask = false) {
+    ...
+    return {
+      workflowId: hasMask ? 'sdxl_juggernaut_inpaint' : hasReference ? 'sdxl_juggernaut_reference' : 'sdxl_juggernaut',
+      generationModel: 'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (SDXL)',
+      lane: 'qwen-juggernaut' as const
+    };
+  }
+  ```
+- **Why**: Intelligently route masked requests to `sdxl_juggernaut_inpaint`.
+
+### Target File Path: `/src/components/gina-image/GinaInpaintCanvas.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export const GinaInpaintCanvas: React.FC<GinaInpaintCanvasProps> = ({ imageUrl, imageName, onMaskChange }) => { ... }
+  ```
+- **Why**: Provides an interactive HTML5 drawing canvas over the reference image with brush, eraser, adjustable radius, undo history, clear, invert, and binary mask generation.
+
+### Target File Path: `/src/components/gina-image/GinaImageInput.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  <GinaInpaintCanvas
+    imageUrl={referenceImage.previewUrl}
+    imageName={referenceImage.name}
+    onMaskChange={handleMaskChange}
+    disabled={uploadingMask}
+  />
+  // Quick presets including: 🐕 White Whippet Fur
+  // Direct inpaint action: 🎨 Generate Inpaint
+  ```
+- **Why**: Embed the masking canvas into Tab 3 ("Inpaint or Outpaint"), upload drawn masks directly to ComfyUI, and give instant feedback with quick fur recoloring presets.
+
+### Target File Path: `/src/components/PromptStudio.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  if (referenceImage && inpaintMask) {
+    targetWorkflow = 'sdxl_juggernaut_inpaint';
+    bound.input_image = referenceImage.filename;
+    bound.mask_image = inpaintMask.filename;
+    bound.denoise = 0.85;
+  }
+  ```
+- **Why**: Wire inpainting mask to the workflow bindings and trigger inpainting with optimal denoise inside the masked area.
+

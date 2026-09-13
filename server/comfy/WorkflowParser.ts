@@ -43,6 +43,7 @@ const aliases: Record<string, { key: string; inputs: string[]; classes?: string[
   endFrame: [{ key: 'end_frame', inputs: ['frame_load_cap', 'image_load_cap'], classes: ['VHS_LoadVideo', 'VHS_LoadImagesPath'] }],
   denoise: [{ key: 'denoise', inputs: ['denoise'], classes: ['BasicScheduler', 'KSampler', 'KSamplerAdvanced'] }],
   inputImage: [{ key: 'input_image', inputs: ['image', 'image_path', 'filename'], classes: ['LoadImage'] }],
+  maskImage: [{ key: 'mask_image', inputs: ['image', 'image_path', 'filename'], classes: ['LoadImageMask'] }],
 };
 
 function isApiWorkflow(value: any): value is Record<string, any> {
@@ -57,7 +58,9 @@ function classifyNode(node: WorkflowNode) {
   if (cls.includes('latent') && ('width' in node.inputs || 'height' in node.inputs)) caps.push('resolution');
   if (cls.includes('saveimage')) caps.push('image-output');
   if (cls.includes('videocombine') || cls.includes('videooutput') || cls.includes('vhs_') || cls.includes('saveanimated')) caps.push('video-output');
-  if (cls.includes('loadimage')) caps.push('image-input');
+  if (cls.includes('loadimagemask')) caps.push('mask-input');
+  else if (cls.includes('loadimage')) caps.push('image-input');
+  if (cls.includes('latentnoisemask') || cls.includes('inpaint')) caps.push('inpaint');
   if (cls.includes('loadvideo') || cls.includes('loadimagespath')) caps.push('frame-input');
   if (cls.includes('rife') || cls.includes('vfi')) caps.push('frame-interpolation');
   if (cls.includes('videocombine')) caps.push('loop-output');

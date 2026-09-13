@@ -222,7 +222,7 @@ const modelMetadataRegistry: Record<string, { name: string; filename: string; vr
 };
 
 function recordOomIncident(errorText: string, meta?: { modelId?: string; workflowId?: string; vramMB?: number; nodeId?: string; resolution?: string; isSimulated?: boolean }) {
-  const modelId = meta?.modelId || (meta?.workflowId === 'wan_video' ? 'wan_video_21' : meta?.workflowId === 'flux_lite_image' ? 'flux_lite' : meta?.workflowId === 'sdxl_juggernaut' || meta?.workflowId === 'sdxl_juggernaut_reference' ? 'juggernaut_xl_v9' : meta?.workflowId === 'wan_video' ? 'wan_video_21' : meta?.workflowId === 'hunyuan_video' ? 'hunyuan_video' : (modelPreWarmState.activeWorkflowId === 'wan_video' ? 'wan_video_21' : 'flux_lite'));
+  const modelId = meta?.modelId || (meta?.workflowId === 'wan_video' ? 'wan_video_21' : meta?.workflowId === 'flux_lite_image' ? 'flux_lite' : meta?.workflowId === 'sdxl_juggernaut' || meta?.workflowId === 'sdxl_juggernaut_reference' || meta?.workflowId === 'sdxl_juggernaut_inpaint' ? 'juggernaut_xl_v9' : meta?.workflowId === 'wan_video' ? 'wan_video_21' : meta?.workflowId === 'hunyuan_video' ? 'hunyuan_video' : (modelPreWarmState.activeWorkflowId === 'wan_video' ? 'wan_video_21' : 'flux_lite'));
   const modelMeta = modelMetadataRegistry[modelId] || modelMetadataRegistry.other;
   const now = new Date();
 
@@ -2021,7 +2021,7 @@ function detectImageGenerationIntent(text: string, hasImageAttachment = false): 
   return { intent:'chat', create:false, modify:false, explicit:false, confidence:'normal', reason:'conversation/question' };
 }
 
-function imageGenerationPolicy(engine: 'qwen' | 'qwen-coder', multimodal: boolean, hasReference: boolean, highPrecision = false) {
+function imageGenerationPolicy(engine: 'qwen' | 'qwen-coder', multimodal: boolean, hasReference: boolean, highPrecision = false, hasMask = false) {
   if (engine !== 'qwen') throw new Error('Qwen Coder is text-only and cannot route image generation. Switch to Qwen 2.5-VL Vision Mode.');
   if (!multimodal) throw new Error('Qwen 2.5-VL Vision Mode requires its mmproj projector.');
   if (highPrecision) return {
@@ -2030,7 +2030,7 @@ function imageGenerationPolicy(engine: 'qwen' | 'qwen-coder', multimodal: boolea
     lane: 'qwen-vision-flux-lite' as const
   };
   return {
-    workflowId: hasReference ? 'sdxl_juggernaut_reference' : 'sdxl_juggernaut',
+    workflowId: hasMask ? 'sdxl_juggernaut_inpaint' : hasReference ? 'sdxl_juggernaut_reference' : 'sdxl_juggernaut',
     generationModel: 'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (SDXL)',
     lane: 'qwen-juggernaut' as const
   };
@@ -2590,7 +2590,7 @@ const AVAILABLE_PREWARM_MODELS: PreWarmModelDef[] = [
   {
     id: 'juggernaut_xl_v9', name: 'Juggernaut-XL v9 Photorealism (SDXL)', filename: 'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors',
     workflowId: 'sdxl_juggernaut', type: 'image', vramFootprintMB: 6200,
-    description: 'Primary Gina Image Creation Studio checkpoint for Qwen 2.5-VL image generation/edit routing. Reference edits use sdxl_juggernaut_reference.'
+    description: 'Primary Gina Image Creation Studio checkpoint for Qwen 2.5-VL image generation/edit routing. Reference edits use sdxl_juggernaut_reference or sdxl_juggernaut_inpaint.'
   },
   {
     id: 'qwen_25_vl_7b', name: 'Qwen 2.5-VL 7B Q4_K_M + mmproj-F16', filename: 'Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf',
