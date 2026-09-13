@@ -507,7 +507,9 @@ export class MusicService {
         vocal_language: vocalLanguage,
         audio_format: "wav",
         audio_duration: duration,
-        model: "acestep-v15-turbo",
+        // The ACE-Step API uses the server's configured primary DiT model.
+        // Do not send a hard-coded model name here: older/newer API builds can
+        // reject it as an unknown model even when the configured service is valid.
         inference_steps: 8,
         guidance_scale: 7.0,
         batch_size: 1,
@@ -620,7 +622,7 @@ export class MusicService {
     const outputFilename = `music_${timestamp}_${cleanTitle}.wav`;
     const outputPath = path.join(this.outputDir, outputFilename);
 
-    const requestedModel = options.model || "facebook/musicgen-small";
+    const requestedModel = String(options.model || "facebook/musicgen-small").trim();
     const wantsSinging = !!options.lyrics?.trim() && options.noVocals !== true && requestedModel !== "facebook/audiogen-medium";
     const isSongwritingMode = options.mode === "text_to_song" || options.mode === "lyrics_to_song" || !options.mode;
     // ACE-Step is reserved for actual singing requests. Cover/extend/edit modes
@@ -661,7 +663,7 @@ export class MusicService {
     const args = [
       this.scriptPath,
       "generate",
-      "--mode", options.mode || "text_to_song",
+      "--mode", ["text_to_song", "lyrics_to_song", "song_cover", "extend", "edit"].includes(options.mode) ? options.mode : "text_to_song",
       "--duration", String(Math.max(5, Math.min(480, Number(options.duration) || 15))),
       "--output_path", outputPath,
       "--model", modelName,

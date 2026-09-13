@@ -55,7 +55,17 @@ if not exist "%ACE_ROOT%\.git" (
   git clone https://github.com/ACE-Step/ACE-Step-1.5.git "%ACE_ROOT%"
   if errorlevel 1 goto FAIL
 ) else (
-  echo [2/4] ACE-Step repository already exists; keeping local checkout.
+  echo [2/4] ACE-Step repository already exists; updating local checkout...
+  cd /d "%ACE_ROOT%"
+  git fetch --all --prune
+  if errorlevel 1 goto FAIL
+  git pull --ff-only
+  if errorlevel 1 (
+    echo [WARN] Fast-forward update failed. The existing checkout was left unchanged.
+    echo [WARN] If ACE-Step still reports an unknown DiT model, remove:
+    echo        %ACE_ROOT%
+    echo        and run this installer again.
+  )
 )
 
 cd /d "%ACE_ROOT%"
