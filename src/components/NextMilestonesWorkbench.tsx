@@ -15,7 +15,7 @@ export const NextMilestonesWorkbench: React.FC = () => {
   const activeJobs=jobs.filter(j=>j.status==='RUNNING'||j.status==='QUEUED');
   const runDiag=async()=>{setDiagBusy(true);try{const r=await fetch('/api/diagnostics/full',{method:'POST'});setHealth(await r.json())}finally{setDiagBusy(false)}};
   const routeRequest=async()=>{const r=await fetch('/api/ai-tools/route',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:routeText,hasImage:false})});setRoute(await r.json())};
-  const inspectWorkflow=async()=>{const id=prompt('Workflow ID to inspect (e.g. flux_image):','flux_image');if(!id)return; const r=await fetch(`/api/workflows/${encodeURIComponent(id)}/intelligence`);setWorkflow(await r.json())};
+  const inspectWorkflow=async()=>{const id=prompt('Workflow ID to inspect (e.g. flux_lite_image):','flux_lite_image');if(!id)return; const r=await fetch(`/api/workflows/${encodeURIComponent(id)}/intelligence`);setWorkflow(await r.json())};
   const cancel=async(id:string)=>{await fetch(`/api/jobs/${encodeURIComponent(id)}/cancel`,{method:'POST'});refresh()};
   const statuses=useMemo(()=>({running:activeJobs.length,done:jobs.filter(j=>j.status==='COMPLETED').length,failed:jobs.filter(j=>j.status==='FAILED').length}),[jobs,activeJobs.length]);
   return <div className="space-y-5">

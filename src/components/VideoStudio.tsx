@@ -20,18 +20,17 @@ interface VideoStudioProps {
   onClearCache?: () => void;
 }
 
+// Wan 2.1 1.3B is running on an 8GB RTX 3070 Ti. Keep the UI inside the
+// tested conservative envelope: one temporal sequence, <=73 frames and <=393,216 pixels.
 const durationOptions = [
-  { seconds: 1, frames: 25, label: '1.0s (25 frames)', vram: '2.8 GB VRAM' },
-  { seconds: 2, frames: 49, label: '2.0s (49 frames)', vram: '4.2 GB VRAM' },
-  { seconds: 3, frames: 73, label: '3.0s (73 frames)', vram: '5.6 GB VRAM — Recommended' },
-  { seconds: 4, frames: 97, label: '4.0s (97 frames)', vram: '6.9 GB VRAM — 8GB Max Cap' },
-  { seconds: 5, frames: 121, label: '5.0s (121 frames)', vram: '7.8 GB VRAM — High Swapping Risk' },
+  { seconds: 1, frames: 25, label: '1.0s · 25 frames', vram: 'Safest · 512×512' },
+  { seconds: 2, frames: 49, label: '2.0s · 49 frames', vram: 'Safe · 512×512' },
+  { seconds: 3, frames: 73, label: '3.0s · 73 frames', vram: 'Safe ceiling · 512×512 / 512×768' },
 ];
 
 const videoResolutionPresets = [
-  { label: '768 × 512 · 16:9 Landscape', width: 768, height: 512, ratio: '16:9', vram: 'STANDARD (8GB Safe)' },
-  { label: '512 × 768 · 9:16 Shorts / Vertical', width: 512, height: 768, ratio: '9:16', vram: 'STANDARD (8GB Safe)' },
-  { label: '512 × 512 · 1:1 Compact Square', width: 512, height: 512, ratio: '1:1', vram: 'LOW (Fastest)' },
+  { label: '512 × 512 · 1:1 Safest', width: 512, height: 512, ratio: '1:1', vram: 'LOWEST VRAM' },
+  { label: '512 × 768 · 9:16 Vertical', width: 512, height: 768, ratio: '9:16', vram: 'HIGHER VRAM · 3s max' },
 ];
 
 const motionScalePresets = [
@@ -63,18 +62,18 @@ interface VideoPreset {
 
 const videoParameterPresets: VideoPreset[] = [
   {
-    id: 'compact_fast',
-    name: '8GB Safe · Fast 1.0s',
-    badge: '1:1 · 1s · 25 frames · 100% 8GB Safe',
-    description: 'Compact 512x512 resolution with 1.0s (25 frames @ 25fps) for instant, completely crash-free generation under 8GB VRAM.',
+    id: 'safe_1s_square',
+    name: 'Safe · 1.0s',
+    badge: '512×512 · 25 frames · Lowest VRAM',
+    description: 'Fastest conservative Wan 2.1 1.3B option for the 8GB RTX 3070 Ti. One temporal sequence at 24fps.',
     icon: '🚀',
-    motionScale: 1.0,
+    motionScale: 0.8,
     durationSec: 1,
     frames: 25,
-    fps: 25,
+    fps: 24,
     steps: 18,
     cfgScale: 3.0,
-    resolutionLabel: '512 × 512 · 1:1 Compact Square',
+    resolutionLabel: '512 × 512 · 1:1 Safest',
     width: 512,
     height: 512,
     cameraMotion: 'None / Static Camera',
@@ -82,79 +81,41 @@ const videoParameterPresets: VideoPreset[] = [
     interpolationMultiplier: 1
   },
   {
-    id: 'rife_2x_smooth',
-    name: '8GB Safe · 2× RIFE 50fps',
-    badge: '1:1 · 25 frames → 50fps · Smooth 2.0s',
-    description: 'Generates 25 safe keyframes and applies 2× RIFE frame interpolation for ultra-smooth 50fps motion without VRAM penalty.',
+    id: 'safe_2s_square',
+    name: 'Safe · 2.0s',
+    badge: '512×512 · 49 frames · Balanced',
+    description: 'Balanced short clip with 49 temporal frames and batch size 1. Recommended general-purpose starting point.',
     icon: '✨',
     motionScale: 1.0,
-    durationSec: 1,
-    frames: 25,
-    fps: 50,
-    steps: 20,
+    durationSec: 2,
+    frames: 49,
+    fps: 24,
+    steps: 18,
     cfgScale: 3.0,
-    resolutionLabel: '512 × 512 · 1:1 Compact Square',
+    resolutionLabel: '512 × 512 · 1:1 Safest',
     width: 512,
     height: 512,
     cameraMotion: 'Slow Cinematic Pan',
     isSafe8GB: true,
-    interpolationMultiplier: 2
-  },
-  {
-    id: 'rife_4x_slomo',
-    name: '8GB Safe · 4× RIFE 60fps Slomo',
-    badge: '1:1 · 25 frames → 100fps · 4s Slomo',
-    description: 'Generates 25 safe keyframes and applies 4× RIFE frame interpolation for silky 60fps slow-motion cinematic video on 8GB VRAM.',
-    icon: '📽️',
-    motionScale: 1.2,
-    durationSec: 1,
-    frames: 25,
-    fps: 60,
-    steps: 22,
-    cfgScale: 3.2,
-    resolutionLabel: '512 × 512 · 1:1 Compact Square',
-    width: 512,
-    height: 512,
-    cameraMotion: 'Slow Dolly Push In',
-    isSafe8GB: true,
-    interpolationMultiplier: 4
-  },
-  {
-    id: 'cinematic',
-    name: 'Cinematic Sweep (12GB+ GPU)',
-    badge: '16:9 · 3s · 73 frames · 12GB+ Req',
-    description: 'Filmic 768x512 sweep, 3.0s duration (73 frames). Note: Exceeds 8GB VRAM — requires 12GB+ GPU to prevent OOM.',
-    icon: '🎬',
-    motionScale: 0.8,
-    durationSec: 3,
-    frames: 73,
-    fps: 24,
-    steps: 28,
-    cfgScale: 3.5,
-    resolutionLabel: '768 × 512 · 16:9 Landscape',
-    width: 768,
-    height: 512,
-    cameraMotion: 'Pan Right & Slow Zoom',
-    isSafe8GB: false,
     interpolationMultiplier: 1
   },
   {
-    id: 'vertical_shorts',
-    name: 'Shorts Reel (12GB+ GPU)',
-    badge: '9:16 · 3s · 73 frames · 12GB+ Req',
-    description: 'Vertical 512x768 aspect ratio for Shorts/Reels, 3.0s duration. Note: Exceeds 8GB VRAM — requires 12GB+ GPU to prevent OOM.',
+    id: 'safe_3s_vertical',
+    name: 'Safe Ceiling · 3.0s',
+    badge: '512×768 · 73 frames · 24fps',
+    description: 'Longest direct Wan 2.1 1.3B option in Gina\'s conservative 8GB envelope. Best choice for Shorts/Reels.',
     icon: '📱',
-    motionScale: 1.2,
+    motionScale: 1.0,
     durationSec: 3,
     frames: 73,
-    fps: 25,
-    steps: 25,
-    cfgScale: 3.2,
-    resolutionLabel: '512 × 768 · 9:16 Shorts / Vertical',
+    fps: 24,
+    steps: 18,
+    cfgScale: 3.0,
+    resolutionLabel: '512 × 768 · 9:16 Vertical',
     width: 512,
     height: 768,
     cameraMotion: 'Slow Dolly Push In',
-    isSafe8GB: false,
+    isSafe8GB: true,
     interpolationMultiplier: 1
   }
 ];
@@ -210,9 +171,9 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
   const [prompt, setPrompt] = useState('A majestic black dragon breathing fiery embers in an obsidian cavern, slow cinematic camera pan, 8k resolution');
   const [negativePrompt, setNegativePrompt] = useState('blurry, static, distorted motion, flickering, low resolution, bad anatomy');
   const [showNegative, setShowNegative] = useState(false);
-  const [selectedDuration, setSelectedDuration] = useState(1); // 1 second = 25 frames
+  const [selectedDuration, setSelectedDuration] = useState(1); // Wan temporal length uses 24 intervals/sec + first frame
   const [customFrames, setCustomFrames] = useState(25);
-  const [fps, setFps] = useState(25);
+  const [fps, setFps] = useState(24);
   const [motionScale, setMotionScale] = useState(1.0);
   const [resolution, setResolution] = useState('512 × 512 · 1:1 Compact Square');
   const [width, setWidth] = useState(512);

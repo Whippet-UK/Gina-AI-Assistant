@@ -87,7 +87,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
   // Workflow & ComfyUI state
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const initialWorkflowId =
-    projectState.aiStudio.workflowId && projectState.aiStudio.workflowId !== 'ltx_video'
+    projectState.aiStudio.workflowId && ['sdxl_juggernaut', 'sdxl_juggernaut_reference', 'flux_lite_image'].includes(projectState.aiStudio.workflowId)
       ? projectState.aiStudio.workflowId
       : 'sdxl_juggernaut';
   const [selectedWorkflow, setSelectedWorkflow] = useState(initialWorkflowId);
@@ -109,9 +109,15 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<GinaSettingsTab>('setting');
   const [vramGraphOpen, setVramGraphOpen] = useState(false);
+  // Auto-quality tuning runs after an image is described. Manual changes are tracked
+  // so a later description never silently overwrites a user's deliberate setting.
+  const manualImageSettings = useRef({
+    performance: false, guidanceScale: false, steps: false, sampler: false,
+    scheduler: false, denoise: false, imageNumber: false, highPrecision: false
+  });
 
   // Ratio setup
-  const selectedRatio = cfg.aspectRatio || 'aida64';
+  const selectedRatio = cfg.aspectRatio || '1:1';
   const currentRatioDef = GINA_ASPECT_RATIOS.find((r) => r.id === selectedRatio) || GINA_ASPECT_RATIOS[1];
 
   // Gina Parameters
@@ -198,10 +204,9 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
       const list: WorkflowSummary[] = data.workflows || [];
       setWorkflows(list);
       const juggernautWf = list.find((w) => w.id === 'sdxl_juggernaut');
-      const fluxWf = list.find((w) => w.id === 'flux_image');
       const imageWf = list.find((w) => w.id.includes('juggernaut') || w.id.includes('flux') || w.id.includes('image') || !w.id.includes('video'));
-      if (!selectedWorkflow || selectedWorkflow === 'ltx_video' || selectedWorkflow === 'flux_image') {
-        setSelectedWorkflow(juggernautWf?.id || fluxWf?.id || imageWf?.id || list[0]?.id || 'sdxl_juggernaut');
+      if (!selectedWorkflow || !list.some((w) => w.id === selectedWorkflow)) {
+        setSelectedWorkflow(juggernautWf?.id || imageWf?.id || list[0]?.id || 'sdxl_juggernaut');
       }
     } catch (e: any) {
       onAddLog('WARN', `Workflow registry unavailable: ${e.message}`);
@@ -308,7 +313,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     /juggernaut/i.test(String(workflowModelValue))
       ? 'Juggernaut-XL v9 Photorealism'
       : workflowModelValue === 'FLUX.1-lite-pure-Q4_0.gguf'
-      ? 'FLUX.1-Schnell GGUF Q4_K_S'
+      ? 'FLUX.1 Lite GGUF Q4_0'
       : String(workflowModelValue);
 
   // Active Output Detection
@@ -531,7 +536,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     // Create Studio's primary image lane is Qwen 2.5-VL + Juggernaut-XL v9.
     // Once an image has been kept/promoted, never silently fall back to FLUX.
     const hasKeptReference = Boolean(referenceImage || keptImageUrl);
-    if (hasKeptReference && (targetWorkflow === 'flux_image' || targetWorkflow === 'flux_image_reference')) {
+    if (hasKeptReference && !['sdxl_juggernaut','sdxl_juggernaut_reference','flux_lite_image'].includes(targetWorkflow)) {
       const refWf = workflows.find((w) => w.id === 'sdxl_juggernaut_reference');
       if (refWf) {
         targetWorkflow = refWf.id;
@@ -785,7 +790,20 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
 
   const handleApplyDescribedPrompt = (text: string) => {
     updatePromptStudio({ promptInput: text });
-    onAddLog('INFO', 'Applied described image prompt to Prompt Studio.');
+    setAdvancedOpen(true);
+    setActiveSettingsTab('advanced');
+
+    // One-click reconstruction profile: favour quality while staying inside Gina's
+    // 8GB shared-GPU envelope. Only untouched settings are auto-adjusted.
+    if (!manualImageSettings.current.performance) setPerformance('quality');
+    if (!manualImageSettings.current.imageNumber) setImageNumber(1);
+    if (!manualImageSettings.current.steps) setSteps(highPrecisionText ? 4 : 24);
+    if (!manualImageSettings.current.guidanceScale) setGuidanceScale(highPrecisionText ? 3.0 : 5.0);
+    if (!manualImageSettings.current.sampler) setSampler('dpmpp_2m');
+    if (!manualImageSettings.current.scheduler) setScheduler('karras');
+    if (!manualImageSettings.current.denoise) setDenoise(referenceImage ? 0.70 : 1.0);
+
+    onAddLog('INFO', `Applied meticulous Qwen Vision reconstruction prompt and auto-tuned untouched image settings for ${highPrecisionText ? 'FLUX.1 Lite' : 'Juggernaut-XL v9'} quality.`);
   };
 
   return (
@@ -1095,7 +1113,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
               activeTab={activeSettingsTab}
               onTabChange={setActiveSettingsTab}
               performance={performance}
-              onChangePerformance={handleChangePerformance}
+              onChangePerformance={(value, stepCount) => { manualImageSettings.current.performance = true; manualImageSettings.current.steps = true; handleChangePerformance(value, stepCount); }}
               selectedRatio={selectedRatio}
               onSelectRatio={handleSelectRatio}
               width={width}
@@ -1105,7 +1123,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
               customSize={customSize}
               onToggleCustomSize={() => setCustomSize((v) => !v)}
               imageNumber={imageNumber}
-              onChangeImageNumber={setImageNumber}
+              onChangeImageNumber={(value) => { manualImageSettings.current.imageNumber = true; setImageNumber(value); }}
               negativePrompt={cfg.negativePrompt || ''}
               onChangeNegativePrompt={(val) => updatePromptStudio({ negativePrompt: val })}
               seed={seedValue}
@@ -1114,7 +1132,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
               onToggleRandomSeed={() => setRandomSeed((v) => !v)}
               onRandomizeSeed={() => setSeedValue(Math.floor(Math.random() * 2147483647))}
               highPrecisionText={highPrecisionText}
-              onToggleHighPrecisionText={() => setHighPrecisionText(v => !v)}
+              onToggleHighPrecisionText={() => { manualImageSettings.current.highPrecision = true; setHighPrecisionText(v => !v); }}
               selectedStyles={selectedStyles}
               onToggleStyle={handleToggleStyle}
               onClearStyles={handleClearStyles}
@@ -1129,15 +1147,15 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
               }
               workflowModelLabel={workflowModelLabel}
               guidanceScale={guidanceScale}
-              onChangeGuidanceScale={setGuidanceScale}
+              onChangeGuidanceScale={(value) => { manualImageSettings.current.guidanceScale = true; setGuidanceScale(value); }}
               steps={steps}
-              onChangeSteps={setSteps}
+              onChangeSteps={(value) => { manualImageSettings.current.steps = true; setSteps(value); }}
               sampler={sampler}
-              onChangeSampler={setSampler}
+              onChangeSampler={(value) => { manualImageSettings.current.sampler = true; setSampler(value); }}
               scheduler={scheduler}
-              onChangeScheduler={setScheduler}
+              onChangeScheduler={(value) => { manualImageSettings.current.scheduler = true; setScheduler(value); }}
               denoise={denoise}
-              onChangeDenoise={setDenoise}
+              onChangeDenoise={(value) => { manualImageSettings.current.denoise = true; setDenoise(value); }}
               telemetry={telemetry}
               gpuName={gpuName}
               vramTotal={vramTotal}

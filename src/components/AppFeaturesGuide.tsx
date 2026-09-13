@@ -119,7 +119,7 @@ export const AppFeaturesGuide: React.FC = () => {
       details: [
         'Qwen 2.5-VL 7B Q4_K_M with the configured mmproj-F16 projector handles image-aware prompt understanding locally.',
         'Create Studio routes Qwen image intent to Juggernaut-XL v9 SDXL for generation and sdxl_juggernaut_reference for edits.',
-        'FLUX.1-Schnell remains an explicit alternate workflow and is never silently selected after Keep Image.',
+        'FLUX.1 Lite remains an explicit high-precision alternate lane and is never silently selected after Keep Image.',
         'VRAM guardrails treat Qwen and ComfyUI generation as separate resource targets on the 8GB RTX 3070 Ti.'
       ]
     },
@@ -290,7 +290,7 @@ export const AppFeaturesGuide: React.FC = () => {
     { phase: 5, name: 'Python API Automation Engine Build', status: 'COMPLETED' },
     { phase: 6, name: 'Video & Image Pipeline Link (Wan 2.1 + RIFE)', status: 'COMPLETED' },
     { phase: 7, name: 'AIDA64 Sensor Panel Template Studio', status: 'COMPLETED' },
-    { phase: 8, name: 'Quantized Local AI Engine (Gemma 3 12B IT CUDA)', status: 'COMPLETED' },
+    { phase: 8, name: 'Quantized Local AI Engine (historical local CUDA stack)', status: 'COMPLETED' },
     { phase: 9, name: 'Autonomous Local Agent & 19-Tool Broker', status: 'COMPLETED' },
     { phase: 10, name: 'AIDA64 68-Feature Real-Time Sensor Panel & Shared Memory', status: 'COMPLETED' },
     { phase: 11, name: 'Local Zero-VRAM RAG Knowledge Base & Vector Engine', status: 'COMPLETED' },

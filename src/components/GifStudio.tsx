@@ -14,7 +14,7 @@ interface GifStudioProps {
   onClearCache?: () => void;
 }
 
-interface StudioAsset { id: string; name: string; path: string; kind: 'video'|'image'; bytes: number; createdAt: string; url?: string; }
+interface StudioAsset { id: string; name: string; path: string; kind: 'video'|'image'|'sequence'; bytes: number; createdAt: string; url?: string; framePaths?: string[]; frameCount?: number; }
 interface NodeMeta { id: string; classType: string; inputs: Record<string, any>; status?: 'pending'|'running'|'done'; }
 
 const clamp = (n:number, min:number, max:number) => Math.max(min, Math.min(max, n));
@@ -199,7 +199,8 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
   const submit = async () => {
     setError(null); setExportUrls({});
     if (sourceMode === 'asset' && !activeAsset) { setError('Select an MP4/MOV or image sequence first.'); return; }
-    if (sourceMode === 'asset' && !activeAsset?.path) { setError('Selected asset has no local path.'); return; }
+    if (sourceMode === 'asset' && activeAsset?.kind !== 'sequence' && !activeAsset?.path) { setError('Selected asset has no local path.'); return; }
+    if (sourceMode === 'asset' && activeAsset?.kind === 'sequence' && !activeAsset?.framePaths?.length) { setError('Selected frame sequence has no frames.'); return; }
     if (endFrame < startFrame) { setError('End frame must be greater than or equal to start frame.'); return; }
     const params = {
       generationMode,
@@ -226,6 +227,10 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
       sourceMode,
       sourcePath: activeAsset?.path || '',
       sourceKind: activeAsset?.kind || 'video',
+      // Only present for a grouped multi-frame upload (see listGifStudioAssets'
+      // 'sequence' asset on the server); runGifAssetProcessingJob uses this to pack
+      // the whole set into one clip instead of only ever looping a single frame.
+      framePaths: activeAsset?.kind === 'sequence' ? activeAsset.framePaths : undefined,
       prompt, negative_prompt: negativePrompt,
       steps: generationMode==='story' ? storySteps : wanSteps,
       cfg: storyCfg,
@@ -490,7 +495,7 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
         </div>
         <div className="grid grid-cols-2 gap-1 rounded-lg border border-slate-800 p-1 bg-slate-900"><button onClick={()=>setSourceMode('asset')} className={`py-2 text-[10px] font-bold rounded ${sourceMode==='asset'?'bg-emerald-500 text-slate-950':'text-slate-400'}`}>LOCAL ASSET</button><button onClick={()=>setSourceMode('wan')} className={`py-2 text-[10px] font-bold rounded ${sourceMode==='wan'?'bg-emerald-500 text-slate-950':'text-slate-400'}`}>WAN 2.1 GENERATE</button></div>
         <label className="block border border-dashed border-slate-700 hover:border-emerald-500/60 rounded-lg p-4 text-center cursor-pointer bg-slate-900/60"><Upload className="w-5 h-5 mx-auto text-emerald-400"/><div className="text-[10px] text-slate-300 font-bold mt-2">IMPORT MP4 / MOV / PNG ARRAY</div><div className="text-[9px] text-slate-600 mt-1">Stored locally in C:\Gina_AI\media\gif_studio</div><input type="file" multiple accept="video/mp4,video/quicktime,video/webm,image/png,image/jpeg,image/webp" className="hidden" onChange={e=>void handleUpload(e.target.files)} /></label>
-        {assets.length > 0 && <select value={assetId} onChange={e=>setAssetId(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-2 text-xs text-slate-200"><option value="">Select local source…</option>{assets.map(a=><option key={a.id} value={a.id}>{a.kind==='video'?'🎥':'🖼️'} {a.name}</option>)}</select>}
+        {assets.length > 0 && <select value={assetId} onChange={e=>setAssetId(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-2 text-xs text-slate-200"><option value="">Select local source…</option>{assets.map(a=><option key={a.id} value={a.id}>{a.kind==='video'?'🎥':a.kind==='sequence'?'🎞️':'🖼️'} {a.name}</option>)}</select>}
         {activeAsset && <div className="rounded border border-slate-800 bg-slate-900/70 p-2 text-[9px] font-mono text-slate-500 break-all"><span className="text-slate-300">SOURCE</span><br/>{activeAsset.path}</div>}
         {sourceMode==='wan' && <div className="space-y-2"><label className="text-[9px] uppercase tracking-wider text-slate-500">WAN 2.1 prompt</label><textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={4} className="w-full bg-slate-900 border border-slate-800 rounded p-2 text-xs text-slate-200 resize-none"/><label className="text-[9px] uppercase tracking-wider text-slate-500">Negative</label><textarea value={negativePrompt} onChange={e=>setNegativePrompt(e.target.value)} rows={2} className="w-full bg-slate-900 border border-slate-800 rounded p-2 text-xs text-slate-200 resize-none"/></div>}
         <div className="space-y-3 border-t border-slate-800 pt-3"><div className="flex justify-between text-[10px]"><span className="text-slate-400">START FRAME</span><span className="font-mono text-emerald-400">{startFrame}</span></div><input type="range" min="0" max="500" value={startFrame} onChange={e=>setStartFrame(Number(e.target.value))} className="w-full"/><div className="flex justify-between text-[10px]"><span className="text-slate-400">END FRAME</span><span className="font-mono text-emerald-400">{endFrame}</span></div><input type="range" min={startFrame} max="500" value={endFrame} onChange={e=>setEndFrame(Number(e.target.value))} className="w-full"/></div>

@@ -33,7 +33,7 @@ export const RestoreManifestModal: React.FC<RestoreManifestModalProps> = ({
       "--gpu-only"
     ],
     targetNetworks: {
-      imageNetwork: "FLUX.1-Schnell (Quantized FP8) [Verified Operational]",
+      imageNetwork: "FLUX.1 Lite GGUF Q4_0 [Verified Operational]",
       videoNetwork: "Wan 2.1 1.3B BF16 (wan2.1_t2v_1.3B_bf16.safetensors) [H.264 MP4 Export Verified Operational]",
       upscaleEngine: "Ultimate SD Upscale (4x-UltraSharp Model)"
     },

@@ -188,8 +188,8 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
   const { updatePromptStudio } = useProjectState();
   const [stagedAida64Reference, setStagedAida64Reference] = useState<{ filename: string; name: string; bytes: number; previewUrl: string } | null>(null);
   const isJobActive = job?.status === 'RUNNING' || job?.status === 'QUEUED' || outputLoading;
-  const isVideoJob = job?.workflowId === 'ltx_video' || (job?.workflowId && job.workflowId.includes('video'));
-  const isImageJob = !job?.workflowId || job?.workflowId === 'flux_image' || job?.workflowId.includes('flux') || job?.workflowId.includes('image');
+  const isVideoJob = job?.workflowId === 'wan_video' || (job?.workflowId && job.workflowId.includes('video'));
+  const isImageJob = !job?.workflowId || job?.workflowId.includes('flux') || job?.workflowId.includes('image');
 
   const navItems = [
     { id: 'create' as const, label: 'IMAGE CREATION STUDIO', icon: Image, isGenerating: isJobActive && isImageJob },
@@ -234,7 +234,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
                 {id === 'video' && <ComfyUIStatusIndicator activeView={activeView} />}
               </button>
             ))}
-            {isJobActive && <div className="ml-2 hidden lg:flex items-center gap-2 px-2.5 py-1 rounded bg-slate-900 border border-emerald-500/30 text-[9px] font-mono text-emerald-300"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" /><span className="font-bold uppercase tracking-wider">{job?.workflowId === 'ltx_video' ? 'Video Gen' : 'Image Gen'}: {job?.progress || 0}%</span>{job?.currentStep && <span className="text-slate-500">({job.currentStep}/{job.totalSteps || '?'})</span>}</div>}
+            {isJobActive && <div className="ml-2 hidden lg:flex items-center gap-2 px-2.5 py-1 rounded bg-slate-900 border border-emerald-500/30 text-[9px] font-mono text-emerald-300"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" /><span className="font-bold uppercase tracking-wider">{job?.workflowId?.includes('video') ? 'Video Gen' : 'Image Gen'}: {job?.progress || 0}%</span>{job?.currentStep && <span className="text-slate-500">({job.currentStep}/{job.totalSteps || '?'})</span>}</div>}
             <div className="ml-auto hidden md:flex items-center gap-2 text-[9px] font-mono text-slate-600"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> LOCAL-FIRST CREATOR ENGINE</div>
           </nav>
         </div>

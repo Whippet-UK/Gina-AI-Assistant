@@ -203,19 +203,32 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
     onChangeStopAt(defStop);
   };
 
-  const handleDescribeImage = () => {
+  const handleDescribeImage = async () => {
     if (!referenceImage && !activeOutputUrl) return;
+    if (!referenceImage) {
+      setDescribedResult('Use the active output as a reference first, then run Describe again.');
+      return;
+    }
     setDescribing(true);
-    setTimeout(() => {
-      let simulatedPrompt = '';
-      if (describeContentType === 'photo') {
-        simulatedPrompt = 'photorealistic cinematic capture, natural lighting, high dynamic range, intricate textures, shallow depth of field, 35mm photograph, sharp focus';
-      } else {
-        simulatedPrompt = 'vibrant anime aesthetic, clean outlines, dynamic cel shading, soft ambient illumination, atmospheric digital illustration, detailed background';
+    setDescribedResult(null);
+    try {
+      const response = await fetch('/api/llm/describe-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: referenceImage.filename, contentType: describeContentType })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok || !data.description) {
+        throw new Error(data.error || `Vision description failed (HTTP ${response.status}).`);
       }
-      setDescribedResult(simulatedPrompt);
+      setDescribedResult(String(data.description).trim());
+      // Applying immediately keeps the described image and the next generation in sync.
+      if (onApplyDescribedPrompt) onApplyDescribedPrompt(String(data.description).trim());
+    } catch (err: any) {
+      setDescribedResult(`Unable to describe image: ${err?.message || err}`);
+    } finally {
       setDescribing(false);
-    }, 800);
+    }
   };
 
   return (
@@ -655,7 +668,7 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
         {activeTab === 'describe' && (
           <div className="space-y-4">
             <div className="text-xs text-zinc-400">
-              Upload an image to automatically deconstruct and extract prompt tags into your studio prompt box.
+              Upload an image to automatically deconstruct it into a meticulous reconstruction prompt. The description is pixel-grounded by Qwen Vision and is applied to the main prompt automatically.
             </div>
 
             <div className="flex items-center gap-4 text-xs">
@@ -707,7 +720,7 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
                     className="px-3 py-1 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs hover:bg-amber-500/30 flex items-center gap-1.5 transition-colors"
                   >
                     <ArrowRight className="w-3.5 h-3.5" />
-                    <span>Apply to Main Prompt</span>
+                    <span>Re-apply to Main Prompt</span>
                   </button>
                 )}
               </div>

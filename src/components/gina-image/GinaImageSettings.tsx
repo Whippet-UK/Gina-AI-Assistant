@@ -549,23 +549,23 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    if (onSelectWorkflow) onSelectWorkflow('flux_image');
+                    if (onSelectWorkflow) onSelectWorkflow('flux_lite_image');
                     onChangeBaseModel('Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors');
                   }}
                   className={`p-3 rounded-lg border text-left transition-all ${
-                    selectedWorkflow === 'flux_image'
+                    selectedWorkflow === 'flux_lite_image'
                       ? 'bg-blue-950/40 border-blue-500 shadow-sm shadow-blue-500/10'
                       : 'bg-[#0a0e17] border-[#252b3d] hover:border-zinc-700'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-white font-mono">FLUX.1-Schnell GGUF</span>
+                    <span className="text-xs font-bold text-white font-mono">FLUX.1 Lite GGUF</span>
                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono border ${
-                      selectedWorkflow === 'flux_image'
+                      selectedWorkflow === 'flux_lite_image'
                         ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
                         : 'bg-zinc-800 text-zinc-400 border-zinc-700'
                     }`}>
-                      {selectedWorkflow === 'flux_image' ? 'ACTIVE' : 'READY'}
+                      {selectedWorkflow === 'flux_lite_image' ? 'ACTIVE' : 'READY'}
                     </span>
                   </div>
                   <div className="text-[10px] text-zinc-400 font-mono">Q4_K_S UNet · 4-step generation</div>
@@ -608,7 +608,7 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
                 <span className="text-zinc-300 font-bold truncate block">
                   {selectedWorkflow === 'sdxl_juggernaut'
                     ? 'SDXL Dual OpenCLIP + ViT-L'
-                    : 't5xxl_fp8_e4m3fn.safetensors'}
+                    : 'umt5_xxl_fp8_e4m3fn_scaled.safetensors'}
                 </span>
               </div>
               <div className="p-2.5 rounded bg-[#0a0e17] border border-[#252b3d]">
