@@ -4,203 +4,58 @@
 - Always implement clean error checking across both client and server files.
 - Test your modifications locally before marking them complete.
 
-## 🟩 Open Requests (Process sequentially)
-- [ ] making Gina reliable and genuinely autonomous.
-
-I'd prioritize it like this:
-
-1. 🔒 Project-wide "Definition of Done" gate — Definitely worth it
-
-This is the most important next upgrade.
-
-Before Gina says "finished", it should automatically verify:
-
-Project
-
- Read AGENTS.md
- Read the mandatory update checklist
- Identify project version/current phase
- Map relevant files/components
- Check for deprecated terminology/references
- Check UI + backend + API + docs + tests
- Check related suites, not just the file being edited
-
-After changes
-
- Re-scan the entire project
- Search for stale references
- Validate imports/routes/API calls
- Type/lint/build where available
- Run relevant tests
- Check changed files against the original request
- Produce a change summary
- Refuse to claim completion if a gate fails
-
-This directly addresses the problem you've already seen where one part gets updated while another suite still contains old references.
-
-2. 🧠 Persistent project understanding — Very worth it
-
-Instead of Gina rediscovering the project every time:
-
-Upload ZIP → scan everything → build project map → understand architecture → store an indexed project model.
-
-Then a request like:
-
-"Replace the old video engine everywhere."
-
-would cause Gina to locate all affected surfaces rather than only modifying the obvious Video Studio component.
-
-I'd have it maintain something like:
-
-PROJECT MAP
-├── Frontend
-│   ├── Video Studio
-│   ├── GIF Studio
-│   ├── Image Studio
-│   └── System
-├── Backend
-│   ├── API
-│   ├── Agents
-│   └── Services
-├── Models
-├── Configuration
-├── Tests
-└── Documentation
-
-with relationships between components.
-
-3. 🌐 Local + Internet research — Yes, absolutely
-
-The web layer we just added becomes much more useful here.
-
-Gina could determine:
-
-"I need to change this library/model/API."
-
-Then automatically:
-
-Inspect the local implementation.
-Search current official documentation.
-Check current version/API compatibility.
-Compare local code against current documentation.
-Make the change.
-Validate it.
-
-That is much better than relying on the Qwen model's training knowledge.
-
-4. 🔄 Autonomous repair loop — This is the big one
-
-Eventually the workflow should be:
-
-REQUEST
-
-↓
-
-UNDERSTAND
-
-↓
-
-PLAN
-
-↓
-
-INSPECT
-
-↓
-
-RESEARCH LOCAL + WEB
-
-↓
-
-EDIT
-
-↓
-
-RUN VALIDATION
-
-↓
-
-FIND FAILURES
-
-↓
-
-REPAIR
-
-↓
-
-RE-VALIDATE
-
-↓
-
-PROJECT-WIDE INTEGRITY SCAN
-
-↓
-
-FINAL DIFF
-
-↓
-
-ZIP / Git commit
-
-The critical part is that a failed test becomes another agent task, rather than the workflow stopping and asking you what to do.
-
-5. GitHub integration — Worth it after the above
-
-Once the autonomous loop is dependable, then I'd add:
-
-"Push this to GitHub."
-
-Gina could:
-
-inspect Git state
-create a branch
-make changes
-validate
-show the diff
-commit
-push
-optionally create a PR
-
-That would make the system much closer to the development workflow you originally described.
-
-What I would do next
-
-I'd make Phase 49 the "Autonomous Project Completion Gate" rather than adding another UI feature.
-
-The goal would be:
-
-Gina is not allowed to declare a project update complete until the entire project has been checked against the request and the mandatory project rules.
-
-And I'd make the gate machine-enforced, not another instruction buried in AGENTS.md.
-
-That's the distinction that matters.
-
-AGENTS.md says:
-
-"Please remember to do this."
-
-The completion gate says:
-
-"You cannot report success until this is demonstrably true."
-
-## 🟨 In Progress
-- *None*
+## 🟩 Open Requests
+- [ ] **Infrastructure: Mount and Validate `wan2.1_vace_1.3B_fp16.safetensors`**
+  - **Context:** The file has been manually downloaded to the `models/checkpoints` directory but must be indexed by the server instance.
+  - **Action Required:** Restart the server container via `Start_Factory.bat` to rebuild the ComfyUI checkpoint manifest mapping. Verify the dropdown selector registers the VACE footprint.
+  - **Smoke Test Requirement:** Execute a micro-generation (1.0s target duration, 12 frames raw baseline) using the existing Whippet character image slot anchor to confirm CUDA/bfloat16 tensor allocation succeeds without causing a VRAM out-of-memory crash.
+
+## 🟨 External Acceptance Testing (not an open coding request)
+- [ ] v1.20.4 — Run the GIF Studio frame-sequence fix on the live Windows/FFmpeg installation: upload a multi-frame batch, run the workflow, and confirm the exported GIF/MP4 is one packed animation rather than fragmented per-frame output. Implemented and syntax-checked only; no FFmpeg/GPU environment was available to execute it end-to-end.
+- [ ] Phase 54 — Run the classic-fallback web retrieval loop against various live news and wiki surfaces to verify that the string anchor-splitter handles structural changes across external layout layers.
+- [ ] Phase 52 — Run the existing-media GIF Studio test on the live Windows installation and confirm ComfyUI remains online. This requires the user's local ComfyUI/FFmpeg environment and cannot be truthfully simulated here.
+- [ ] Phase 51 — Run the live Windows/ComfyUI acceptance suite for Wan 2.1, image description, Music lyrics, AIDA64 preset semantics, live grounding, and retired-workflow cleanup.
+
+### Closed reliability/autonomy request
+The former broad request “making Gina reliable and genuinely autonomous” is **completed**. Its five requested capabilities are implemented: machine-enforced Definition of Done, persistent project mapping, local + web research, autonomous repair/re-validation, and GitHub lifecycle integration.
 
 ## 🟥 Completed Requests
+- [x] **2026-09-13 — GIF Studio Frame-Sequence Export Fix**
+  - Batch-uploaded frame images are now grouped into one `sequence` asset (`listGifStudioAssets` in `server.ts`) instead of being flattened into unrelated single-frame entries.
+  - `runGifAssetProcessingJob` gained a `sourceKind === 'sequence'` path that packs the frame set into one clip via the FFmpeg concat demuxer, instead of only ever looping a single static image.
+  - `GifStudio.tsx` passes the frame list through on submit and distinguishes sequence assets in the source picker.
+  - `resolveStoredJobOutput` now honours the requested export format (GIF vs MP4) instead of returning whichever stored output came first.
+  - Version advanced to v1.20.4 / `RESTORE_V1.20.4_GIF_STUDIO_FRAME_SEQUENCE_PACKING`. Live Windows/FFmpeg acceptance is tracked separately above.
+
+- [x] **2026-09-13 — Sovereign Web Research Integration Pass**
+  - Completely removed external API, token-key, and account creation requirements from internet search modules.
+  - Rewrote `server/agent/WebResearchService.ts` to implement a custom, local HTML slicing engine that scrapes Google's classic minimalist portal (`gbv=1`), extracting URLs, titles, and text snippets by targeting layout anchor tags (`<a href="/url?q=">`).
+  - Hardened `server/agent/AutonomousResearchEngine.ts` to protect context construction loops from out-of-bounds array errors when search indexes return zero entries.
+  - Modernized the React dashboard layout layer within `src/components/LocalCapabilityPanel.tsx` to explicitly monitor sovereign crawler configurations and trace search pipeline boundaries right on the user dashboard interface.
+
+- [x] Initial hardware footprint configuration for memory-safe 12 Base FPS pipelines.
+- [x] 2026-09-12 — Phase 53 project-wide reconciliation: synchronized version/save-point metadata across all required surfaces, reconciled AGENTS/AI checklist/request tracker/milestones, closed the broad reliability/autonomy request, and converted live hardware checks into explicit external acceptance testing.
+- [x] 2026-09-12 — Phase 52 implementation: GIF Studio existing-media conversion moved to an isolated, bounded FFmpeg path; ComfyUI is no longer used for ordinary asset-to-GIF conversion.
+- [x] 2026-09-12 — Phase 51 implementation pass: Creator Suite Reliability & Workflow Consistency
+  - Local AI live-information requests now receive a server-generated Europe/London date/time plus live web verification when enabled.
+  - Wan 2.1 direct generation now keeps temporal frames separate from batch size, uses 24fps timing, and enforces the conservative 8GB-safe direct envelope (73 frames / 3s / 393,216 pixels).
+  - Retired LTX and legacy `flux_image` production workflows/components were removed from the active package and stale active UI references were reconciled to Wan 2.1 / FLUX.1 Lite.
+  - AIDA64 1024×600 validation was corrected to be request/preset-specific rather than incorrectly treating 1024×600 as the FLUX Lite baseline.
+  - “Describe this Image into Prompt” now uses Qwen Vision against the actual image and auto-applies a reconstruction-quality profile without overwriting settings already manually changed by the user.
+  - Music “Write Lyrics” now routes through the configured LocalLlmManager rather than a hard-coded localhost endpoint.
+  - Project version advanced to v1.20.1 / Phase 51.
 - [x] 2026-09-12 — Phase 49: Autonomous Project Completion Gate & Persistent Project Map
   - Machine-enforced Definition of Done gate (`DefinitionOfDoneGate.ts`) verifies version synchronization across 6 root files, checklist presence, zero retired engine references, TypeScript compilation, and root cleanliness.
   - Persistent Project Map manager (`ProjectMapManager.ts`) indexes Frontend, Backend, Models, Workflows, Configuration, Tests, and Documentation with surface relationship tracking and query capability.
   - Enforced in `AutonomousAgentEngine.ts` and `server.ts` execution loops with automatic repair feedback into subsequent agent turns upon failure.
   - Added `inspect_project_map` and `verify_definition_of_done` tools and `/api/agent/project-map` and `/api/agent/definition-of-done` REST endpoints.
   - Versioned restore point: `RESTORE_V1.19.8_PROJECT_COMPLETION_GATE`.
-
 - [x] 2026-09-12 — Phase 44: Local AI Project Attachments & Large ZIP Ingestion
   - Qwen Coder Attach control is enabled for text/code/config files and project ZIP archives.
   - Image attachments remain restricted to Qwen 2.5-VL Vision Mode.
   - Project ZIP uploads are imported into dedicated workspaces and automatically inspected without executing uploaded code.
   - Local AI ZIP capacity increased from 100 files to 10,000 files, with a 100MB archive upload limit.
   - Large project archives are handled as workspaces rather than injecting every file into the LLM prompt.
-
 - [x] 2026-09-12 — Phase 43: Local AI Stack Optimization & UI Toggle Swap
   - Replaced Gemma routing with Qwen 2.5-VL Vision + Qwen Coder 7B text-only mode.
   - Qwen Vision remains the boot/default model and uses the local multimodal projector; Coder mode unloads the projector and raises the effective context to 16K.

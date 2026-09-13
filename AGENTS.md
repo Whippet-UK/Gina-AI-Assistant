@@ -5,15 +5,18 @@
 ---
 
 ## 📌 Project Overview
-- **Current version:** `v1.20.0`
-- **Active lifecycle:** `PHASE 50 — AUTONOMOUS RESEARCH ENGINE, REPAIR LOOP & GITHUB LIFECYCLE`
-- **Active save point:** `RESTORE_V1.20.0_AUTONOMOUS_RESEARCH_REPAIR_GITHUB`
+- **Current version:** `v1.20.4`
+- **Active lifecycle:** `PHASE 53 — PROJECT RECONCILIATION & OPEN-REQUEST COMPLETION`
+- **Active save point:** `RESTORE_V1.20.4_GIF_STUDIO_FRAME_SEQUENCE_PACKING`
 - **Phase 41:** Gina Agent runs are persisted under `.gina/agent-runs`, expose live Server-Sent Events, can reconnect after browser refresh, and support explicit cancellation.
 - **Phase 44:** Qwen Coder accepts text/code files and project ZIPs; project ZIPs are imported into dedicated workspaces, automatically inspected without executing uploaded code, and support up to 100MB / 10,000 files.
 - **Phase 46:** A mandatory update-integrity checklist is loaded into agent startup context; active Wan 2.1 UI references were reconciled and a deterministic integrity gate is available before success reporting.
 - **Phase 47:** Gina remains local-first but can perform controlled public-internet research through server-side web tools when `GINA_WEB_ACCESS=true`; web content is untrusted research data and never overrides project rules.
 - **Phase 48:** Reconciled AutonomousAgentEngine workspace path resolution and LocalLlmManager completion generation; unified diagnostic suite to Wan 2.1.
 - **Phase 49:** Machine-enforced Definition of Done gate blocks false completion reports; persistent ProjectMapManager indexes architectural surfaces across Frontend, Backend, Models, Configuration, and Documentation with automatic repair loop enforcement.
+- **Phase 51:** Live time/date grounding for Local AI, pixel-grounded Qwen Vision image description, safe Wan 2.1 duration/frame routing, AIDA64-only 1024×600 enforcement, retired workflow removal, and Music Suite lyric routing through the configured LocalLlmManager.
+- **Phase 52:** Existing-media GIF Studio conversion is isolated to bounded FFmpeg processing; ComfyUI is reserved for generative story/RIFE work.
+- **Phase 53:** Project-wide request, metadata, milestone, checklist, and active-vocabulary reconciliation is complete; no coding requests remain open.
 - **Phase 50:** Production-grade AutonomousResearchEngine (local RAG + DuckDuckGo web research with API signature caching), multi-stage AutonomousRepairLoop pipeline (REQUEST → UNDERSTAND → PLAN → INSPECT → RESEARCH → EDIT → VALIDATE → REPAIR → SCAN → DIFF → COMMIT), and GitHubLifecycleManager for automated branches, atomic commits, diffing, and PR metadata generation.
 - **Active video engine:** Wan 2.1 1.3B BF16. LTX is historical/retired from active production UI vocabulary.
 
@@ -79,8 +82,9 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 ## 1. Project Overview & URLs
 
 - **App Name**: Gina AI Factory — Local Creator UI
-- **Version**: 1.20.0
+- **Version**: 1.20.3
 - **Local Dashboard URL**: `http://127.0.0.1:3000/` (Express server listens on `0.0.0.0:3000`)
+- **GIF Studio safety rule**: Existing uploaded media conversion must use the isolated FFmpeg asset path; do not route ordinary asset-to-GIF conversion through ComfyUI/VHS. ComfyUI is reserved for generative Wan/story work and optional explicitly requested RIFE stages.
 - **Local ComfyUI Backend URL**: `http://127.0.0.1:8188/`
 
 ---
@@ -113,7 +117,7 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
   - `wan2.1-1.3b.safetensors`
   - `hunyuan-video.safetensors`
   - `geneva_1-12b_fp8.safetensors`
-  - `t5xxl_fp8_e4m3fn.safetensors` (in `models/clip/`)
+  - `umt5_xxl_fp8_e4m3fn_scaled.safetensors` (in `models/clip/`)
 
 ---
 
@@ -180,3 +184,18 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 - **Target Files**: `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`
 - **Exact Change**: synchronized release/version references to `1.18.2` and documented the Create Studio completion/finalisation fix.
 - **Why**: Maintain the project's mandatory version synchronization and documentation contract.
+
+## 7. Phase 53 completion contract
+
+- The authoritative open-request list is `/docs/EDIT_REQUESTS.md`.
+- A request is not considered coding-complete merely because implementation exists; live hardware acceptance must be labelled separately unless evidence is available.
+- Before reporting a completed update, run the Definition of Done gate and reconcile version/save-point references across all required surfaces.
+
+
+### Log Entry # Phase 53 — Active UI retired-vocabulary reconciliation
+- **Target File:** `/src/components/AppFeaturesGuide.tsx`
+- **Exact Code Snippet:**
+  ```typescript
+  { phase: 8, name: 'Quantized Local AI Engine (historical local CUDA stack)', status: 'COMPLETED' },
+  ```
+- **Why:** The active feature guide must not expose retired Gemma terminology as current product vocabulary; historical implementation history remains preserved in locked milestone records.

@@ -1,6 +1,23 @@
-# Gina AI Factory — v1.20.0
+# Gina AI Factory — v1.20.4
 
-## v1.20.0 — Autonomous Research Engine, Repair Loop & GitHub Lifecycle (2026-09-12)
+## v1.20.4 — GIF Studio Frame-Sequence Export Fix (2026-09-13)
+
+Fixed the open GIF Studio backlog bug: batch-uploaded frame sets were grouped on disk at upload time but never reconstructed as a single selectable asset, so a multi-frame source could never be queued as one job — which is why the "Export GIF" action appeared to do nothing and animation output was fragmented rather than packed.
+- **Grouped sequence assets:** `listGifStudioAssets` now surfaces a same-batch folder of images as one `sequence` asset instead of N separate single-frame entries.
+- **Real frame packing:** `runGifAssetProcessingJob` gained a `sourceKind === 'sequence'` path that combines the frame set into one clip via the FFmpeg concat demuxer.
+- **Format-correct export:** `resolveStoredJobOutput` now returns the stored output matching the requested GIF/MP4 format instead of whichever was stored first (previously affected Sequential Story exports, which store both).
+- **Versioned restore point:** `RESTORE_V1.20.4_GIF_STUDIO_FRAME_SEQUENCE_PACKING`.
+- **Status:** Implemented and syntax-checked only; live Windows/FFmpeg acceptance testing is still required (tracked in `docs/EDIT_REQUESTS.md`).
+
+## v1.20.3 — Project Reconciliation & Open-Request Completion (2026-09-12)
+
+The project has completed a full cross-surface reconciliation pass. The authoritative Definition of Done gate, request tracker, milestone registry, version metadata, active runtime vocabulary, and documentation now point to the same Phase 53 state. Phase 51 and Phase 52 implementation work is recorded as complete, with live Windows verification explicitly treated as external acceptance testing rather than an open coding request.
+- **Open-request reconciliation:** the previously broad “making Gina reliable and genuinely autonomous” request is now closed because its Definition of Done gate, persistent project map, web research, autonomous repair loop, and GitHub lifecycle capabilities are implemented.
+- **GIF Studio isolation:** ordinary existing-media conversion remains FFmpeg-only and isolated from ComfyUI; generative story/RIFE paths retain ComfyUI where required.
+- **Version consistency:** `src/version.ts`, package metadata, product title, AGENTS, README, docs index, and milestone restore point are synchronized to v1.20.3 / Phase 53.
+- **Versioned restore point:** `RESTORE_V1.20.3_PROJECT_RECONCILIATION_COMPLETE`.
+
+## v1.20.1 — Creator Suite Reliability, Live Grounding & Workflow Consistency (2026-09-12)
 
 Gina now features a fully autonomous research-and-repair lifecycle with end-to-end GitHub pull request integration:
 - **Autonomous Research Engine:** Hybrid local RAG + web search (DuckDuckGo integration when `GINA_WEB_ACCESS=true`) with in-memory caching for API signatures, official documentation, and library compatibility matrices.
@@ -8,7 +25,7 @@ Gina now features a fully autonomous research-and-repair lifecycle with end-to-e
 - **GitHub Lifecycle Manager:** Complete automated Git branching, staging, atomic commit generation, diff auditing, and GitHub PR creation via GitHub REST API with safe token resolution.
 - **Definition of Done Gate Integration:** Machine-enforced gate validating version synchronization, checklist compliance, clean root, and compilation before PR creation or completion.
 - **Agent Tools & REST Endpoints:** Exposes `research_docs`, `verify_compatibility`, `run_repair_loop`, and `create_github_pr` tools, plus `/api/agent/repair-loop`, `/api/agent/research`, and `/api/agent/git/*` endpoints.
-- **Versioned restore point:** `RESTORE_V1.20.0_AUTONOMOUS_RESEARCH_REPAIR_GITHUB`.
+- **Versioned restore point:** `RESTORE_V1.20.1_CREATOR_RELIABILITY_LIVE_GROUNDING`.
 
 ## v1.19.8 — Autonomous Project Completion Gate & Persistent Project Map (2026-09-12)
 

@@ -1,3 +1,34 @@
+- `/src/components/AppFeaturesGuide.tsx` — removed the remaining retired Gemma name from active feature-guide vocabulary while retaining historical milestone records.
+
+# v1.20.3 — Phase 53 — Project Reconciliation & Open-Request Completion
+
+- `/src/version.ts` — advanced authoritative version/save point/lifecycle to v1.20.3 / Phase 53.
+- `/package.json`, `/metadata.json`, `/index.html`, `/README.md`, `/docs/INDEX.md` — synchronized release metadata and current product documentation.
+- `/src/components/MilestoneChecklist.tsx` — added completed Phases 51–53 and made the Phase 53 reconciliation restore point authoritative.
+- `/docs/EDIT_REQUESTS.md` — closed the previously open coding backlog; live Windows checks are explicitly tracked as external acceptance tests rather than unfinished implementation.
+- `/docs/AI_UPDATE_CHECKLIST.md` and `/AGENTS.md` — reconciled current platform truth, active roadmap, completion contract, and mandatory acceptance-test distinction.
+- `/server/agent/DefinitionOfDoneGate.ts` — updated fallback state and completion-gate documentation for the current Phase 53 release.
+
+## 2026-09-12 — v1.20.2 / Phase 52 — GIF Studio ComfyUI Isolation & Reliability
+
+- Existing-media GIF Studio processing now uses a bounded local FFmpeg path instead of VHS/ComfyUI.
+- GIF Studio asset conversion is capped at 24fps and 768px maximum long-side before final export, with optional CPU interpolation also capped to the safe 24fps envelope.
+- A GIF conversion failure is now isolated to the Gina job and cannot intentionally interrupt/stop the ComfyUI process.
+- Completed FFmpeg source jobs expose a normal Gina output so the existing GIF + MP4 finalisation flow remains intact.
+- Sequential-story generation continues to use ComfyUI/Wan 2.1 because that path genuinely requires the generative backend.
+
+## v1.20.1 — Phase 51 — Creator Suite Reliability, Live Grounding & Workflow Consistency
+
+- `server.ts` — added live date/time grounding and web verification for current-information Local AI requests; added Qwen Vision image-description endpoint; routed lyric writing through `LocalLlmManager`; enforced safe Wan 2.1 direct-generation limits.
+- `server/comfy/WorkflowParser.ts` — added explicit temporal `frames` binding and kept video `batch_size` independent; removed retired-engine compatibility bindings.
+- `src/components/VideoStudio.tsx` — corrected Wan temporal frame routing, reduced direct duration choices to the conservative 1–3 second 8GB-safe envelope, and removed unsafe 4–5 second choices.
+- `src/components/gina-image/GinaImageInput.tsx` — replaced simulated image description with pixel-grounded Qwen Vision analysis and automatic prompt application.
+- `src/components/PromptStudio.tsx` / `src/components/gina-image/GinaImageSettings.tsx` — made 1:1 the normal image baseline, retained AIDA64 as a dedicated 1024×600 preset, and reconciled the active FLUX.1 Lite lane.
+- `src/components/VRAMHistoryGraph.tsx` / `src/components/VRAMOomFrequencyChart.tsx` / `src/App.tsx` — removed retired workflow vocabulary from active diagnostics and corrected Wan/FLUX Lite labels.
+- `server/agent/UpdateIntegrityGuard.ts` — added active legacy `flux_image` detection.
+- Removed obsolete active workflow files/components: `workflows/ltx_video.json`, `workflows/flux_image.json`, `workflows/flux_image_reference.json`, legacy LTX UI components and diagnostic script.
+- `docs/AI_UPDATE_CHECKLIST.md` / `docs/EDIT_REQUESTS.md` / `AGENTS.md` — updated the mandatory project contract, request tracking and Phase 51 state.
+
 # v1.19.8 — Phase 49 — Autonomous Project Completion Gate & Persistent Project Map
 
 ## Machine-Enforced Definition of Done Gate & Persistent Architectural Project Map
@@ -808,3 +839,45 @@ AIDA64 generation is hard-locked to 1024×600 at workflow submission and output 
   ```
 - **Why**: Satisfy the Universal Version & Metadata Synchronization Guard and Definition of Done Gate.
 
+
+## v1.20.4 — GIF Studio Frame-Sequence Export Fix (2026-09-13)
+
+Fixed the open GIF Studio bug from `docs/EDIT_REQUESTS.md`: batch-uploaded frame sets were never packed into a single animation, and the "Export GIF" action had no completed job to act on.
+
+### Target File Path: `/server.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  // listGifStudioAssets(): a same-batch folder of images is now surfaced as one
+  // grouped asset instead of N flattened single-frame entries.
+  if (files.length > 1 && subdirs.length === 0) {
+    const allImages = exts.every(ext => GIF_STUDIO_IMAGE_EXTENSIONS.has(ext));
+    if (allImages) { assets.push({ id:`gif_seq_${batchName}`, kind:'sequence', framePaths, frameCount, ... }); return; }
+  }
+
+  // runGifAssetProcessingJob(): new sourceKind === 'sequence' branch packs the
+  // frame set into one clip via the FFmpeg concat demuxer instead of only ever
+  // looping a single static image.
+  if (sourceKind === 'sequence') {
+    const framePaths = parameters.framePaths.map(validateManaged);
+    // build concat list with duration-per-frame, encode to one mp4
+  }
+
+  // resolveStoredJobOutput(job, preferredFormat): now prefers the stored output
+  // matching the requested export format instead of blindly taking outputs[0].
+  ```
+- **Why**: (1) Batch image uploads were grouped on disk but never reconstructed as one selectable asset, so a multi-frame source could never be queued as a single job — this is why Export appeared to do nothing. (2) The asset processor had no code path to combine multiple frames at all. (3) Sequential Story jobs store both a final `.mp4` and `.gif`; the export route was returning whichever was stored first regardless of the requested format.
+
+### Target File Path: `/src/components/GifStudio.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  interface StudioAsset { ...; kind: 'video'|'image'|'sequence'; framePaths?: string[]; frameCount?: number; }
+  // submit(): pass framePaths through when activeAsset.kind === 'sequence'
+  // asset dropdown: 🎞️ icon for sequence assets
+  ```
+- **Why**: Wire the new grouped sequence asset into job submission and the UI.
+
+### Target Files: `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/src/components/MilestoneChecklist.tsx`
+- **Exact Change**: Synchronized version to `1.20.4`, active save point to `RESTORE_V1.20.4_GIF_STUDIO_FRAME_SEQUENCE_PACKING`, added `GIF_STUDIO_FRAME_SEQUENCE_PACKING` to `metadata.json` capabilities.
+- **Why**: Satisfy the Universal Version & Metadata Synchronization Guard (Rule 7).
+
+**Not yet acceptance-tested**: this was implemented and statically syntax-checked in a sandboxed environment without ComfyUI, FFmpeg, or a GPU available. Live Windows verification (upload a multi-frame batch, run the workflow, confirm a single packed GIF/MP4 exports) is still required before this can be marked externally verified, consistent with Phase 53's separation of implementation-complete vs. externally accepted work.
