@@ -5116,6 +5116,32 @@ app.get("/api/streaminject/media-files", async (_req, res) => {
   }
 });
 
+app.get("/api/streaminject/video-preview", async (req, res) => {
+  try {
+    const rawPath = String(req.query.path || "").trim();
+    if (!rawPath) {
+      return res.status(400).json({ ok: false, error: "Missing video path parameter" });
+    }
+    const resolvedPath = path.resolve(rawPath);
+    if (!fsSync.existsSync(resolvedPath)) {
+      return res.status(404).json({ ok: false, error: "Media file not found on disk" });
+    }
+    const stat = await fs.stat(resolvedPath);
+    if (!stat.isFile()) {
+      return res.status(400).json({ ok: false, error: "Target path is not a file" });
+    }
+    return res.sendFile(resolvedPath, {
+      acceptRanges: true,
+      headers: {
+        "Content-Type": "video/mp4",
+        "Cache-Control": "public, max-age=3600"
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error?.message || "Failed to serve video preview" });
+  }
+});
+
 app.post("/api/streaminject/upload", async (req, res) => {
   try {
     const { filename, base64Data } = req.body;

@@ -1,3 +1,127 @@
+# v1.20.7 — The Whippet Cinematic Spotlight Intro Preset & Neon Glow Typography Suite
+
+- **Target File Path:** `/src/components/StreamInjectStudio.tsx`
+- **Exact Code Change:**
+  ```typescript
+  {
+    id: "the_whippet_cinematic_intro",
+    name: "The Whippet — Cinematic Spotlight Intro (16:9)",
+    description: "Signature cinematic studio title card featuring deep midnight indigo spotlight vignette, electric cyan neon-glow typography, wide-tracked subtitle, and smooth luminous fade-in.",
+    aspectRatio: "16:9",
+    category: "classic",
+    config: {
+      width: 1920,
+      height: 1080,
+      duration: 15.0,
+      fps: 30.0,
+      background: {
+        type: "spotlight",
+        max_red: 25,
+        center_color: "#261c42",
+        edge_color: "#07060a",
+        show_grid: false
+      },
+      text_layers: [
+        {
+          text: "THE WHIPPET",
+          size: 92,
+          color: "#FFFFFF",
+          glow_color: "#00E5FF",
+          glow_blur: 28,
+          stroke_color: "#00E5FF",
+          stroke_width: 3.5,
+          animation: "cinematic_fade",
+          x: 960,
+          y: 495
+        },
+        {
+          text: "A WHIPPET PRODUCTION",
+          size: 26,
+          color: "#FFFFFF",
+          glow_color: "#00E5FF",
+          glow_blur: 8,
+          letter_spacing: 6,
+          animation: "cinematic_fade",
+          x: 960,
+          y: 575
+        }
+      ],
+      video_boxes: [],
+      profile_circles: [],
+      physics_layers: [
+        {
+          id: "phys_whippet_spotlight",
+          type: "volumetric_glow",
+          name: "Deep Indigo Vignette Spotlight",
+          enabled: true,
+          params: { cx: 960, cy: 540, radius: 460, zoom_speed: 0.5, intensity: 0.85, glow_color: "#302254" }
+        }
+      ],
+      vfx: { enable_glitch: false, enable_shake: false, enable_bloom: true, enable_chroma: false }
+    }
+  }
+  ```
+- **Why:** Delivers the exact 16:9 cinematic studio production intro layout preset requested by the user, matching "THE WHIPPET / A WHIPPET PRODUCTION" with central indigo spotlight vignette, neon electric cyan outer stroke, wide tracking subtitle, and smooth luminous fade-in.
+
+- **Target File Path:** `/server/streaminject/StreamInjectService.ts`
+- **Exact Code Change:**
+  Registered `the_whippet_cinematic_intro` as the leading featured preset in `StreamInjectService.getPresets()`.
+- **Why:** Ensure `/api/streaminject/presets` serves the preset to both the frontend studio and persistent preset state.
+
+- **Target File Path:** `/scripts/stream_inject.py`
+- **Exact Code Change:**
+  Added native support for `spotlight` indigo vignette background rendering, `cinematic_fade` smooth luminance ramp, and Pillow stroke/stroke_fill rendering for neon text outlines.
+- **Why:** Allow the preset to be rendered directly through the backend Python export pipeline to MP4.
+
+# v1.20.7 — StreamInject Vectorized Motion Physics Engine & UI Inspector Suite
+
+- **Target File Path:** `/scripts/gina_motion_physics_engine.py`
+- **Exact Code Change:**
+  Created production vectorized physics and geometric effects module `GMPE` implementing `Vector2D`, `SquashStretchTransform`, `ElasticSpring`, `KineticDispersion`, `radial_shockwave_blast`, `rolling_sine_wave_horizon`, `localized_twirl_vortex`, `page_curl_3d`, `crt_scanlines_aberration`, `datamosh_block_glitch`, `optical_liquid_flow_warp`, and `volumetric_pulsing_aura` utilizing pure NumPy broadcasting and OpenCV remap matrices without Python pixel loops.
+- **Why:** Delivers hardware-efficient, zero-loop native video motion physics and optical distortion effects.
+
+- **Target File Path:** `/scripts/stream_inject.py`
+- **Exact Code Change:**
+  Integrated `gmpe` motion physics into the frame rendering loop under `physics_layers` config with multi-pass compositing.
+- **Why:** Allow video layouts baked by StreamInject Studio to render native physics effects onto video frames in production.
+
+- **Target File Path:** `/src/components/StreamInjectStudio.tsx`
+- **Exact Code Change:**
+  ```typescript
+  {/* Motion & Geometric FX Layers (Physics Engine) Inspector */}
+  <div className="p-5 rounded-2xl bg-slate-900/70 border border-cyan-500/30 shadow-xl shadow-cyan-950/20 backdrop-blur-md flex flex-col gap-3 relative">
+    <div className="flex items-center justify-between flex-wrap gap-2">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+        <Waves className="w-4 h-4 text-cyan-400 animate-pulse" /> Motion & Geometric FX Layers ({physicsLayers.length})
+      </h2>
+      <button onClick={() => setShowAddPhysicsMenu(!showAddPhysicsMenu)}>Add Physics FX</button>
+    </div>
+    ...
+  </div>
+  ```
+  Added dynamic dropdown for adding native physics layers (Shockwave, Sine Wave Horizon, Twirl Vortex, 3D Page Curl, CRT Scanlines, Datamosh Glitch, Liquid Flow, Volumetric Glow), interactive parameter sliders/color pickers, drag reordering, duplicate/delete actions, and quick preset filters ("Physics FX" and "Classic").
+- **Why:** Ensure users can directly discover, add, configure, and preview motion physics layers directly in the StreamInject Studio dashboard under layers and presets.
+
+- **Target File Path:** `/src/components/aida64/Aida64StateGaugeGenerator.tsx`
+- **Exact Code Change:**
+  ```typescript
+  const arcR = Math.max(1, radius + (seeded(i + 141) - 0.5) * 16);
+  ctx.arc(centerX, centerY, arcR, a0, a0 + span);
+  const r = Math.max(1, cfg.outerRadius + 10 + i * 7);
+  ctx.arc(centerX, centerY, r, off, off + Math.PI * (.25 + .12 * i));
+  ```
+- **Why:** Fixed `Uncaught IndexSizeError: Failed to execute 'arc' on 'CanvasRenderingContext2D': The radius provided (-0.276) is negative.` caused by pseudo-random variance dropping below zero when `cfg.energyArcEnabled` is active on small gauge radii.
+
+- **Target File Path:** `/src/components/StreamInjectStudio.tsx`
+- **Exact Code Change:**
+  ```typescript
+  const maxR = Math.max(1, (pl.params.radius ?? 300) * scaleX);
+  const curR = Math.max(0.1, maxR * (progress / 1.5));
+  ctx.arc(pcx, pcy, Math.max(0.1, curR), 0, Math.PI * 2);
+  ctx.arc(pcx, pcy, Math.max(0.1, curR - waveWidth * 0.5), 0, Math.PI * 2);
+  ```
+- **Why:** Safeguarded all physics layer and canvas preview `ctx.arc` calls with positive lower bounds (`Math.max(0.1, ...)`).
+
 # v1.20.5 — FLUX.1 Lite High-Precision T5 Text Encoder Reconciliation
 
 - **Target File Path:** `/workflows/flux_lite_image.json`
@@ -1329,5 +1453,80 @@ Added interactive masking canvas and dedicated SDXL inpaint workflow (`sdxl_jugg
   ```
 - **Why:** Unpack JSON error payloads from ACE-Step task status 2 and attach clear diagnostics if trailing whitespace or Unknown DiT model errors occur.
 
+## Phase 55 — StreamInjectStudio Watermark Eraser JSX Reconciliation
 
+- **Target File Path:** `/src/components/StreamInjectStudio.tsx`
+- **Exact Code Change:**
+  ```tsx
+  {/* Reconciled CPU Watermark Eraser Matrix control chassis and removed redundant duplicate JSX elements and closing tags */}
+  ```
+- **Why:** Fixed a JSX parsing syntax error (`Unexpected token, expected ","`) caused by duplicate closing tags and a repeated mask view container block during watermark control styling update.
 
+## Phase 55 — Motion Physics Engine & StreamInject Watermark Video Preview
+
+- **Target File Path:** `/scripts/gina_motion_physics_engine.py` & `/gina_motion_physics_engine.py`
+- **Exact Code Change:**
+  ```python
+  def squash_and_stretch_element(frame, text, font_path, size, cx, cy, t, duration=2.0) -> np.ndarray: ...
+  def apply_elastic_spring_track(target_pos, current_pos, velocity, dt, stiffness=180.0, damping=12.0) -> Tuple[Tuple[float, float], Tuple[float, float]]: ...
+  def reveal_typography_dispersion(frame, text, font_path, size, cx, cy, progress) -> np.ndarray: ...
+  def apply_rolling_wave_line(frame, t, amplitude=25.0, frequency=0.015, color=(0, 255, 255), thickness=3) -> np.ndarray: ...
+  def apply_radial_shockwave(frame, center, radius, amplitude=40.0, width=50.0) -> np.ndarray: ...
+  def apply_page_curl(frame, progress, roll_width_pct=0.15) -> np.ndarray: ...
+  def apply_vortex_twirl(frame, center, max_radius, max_angle_deg) -> np.ndarray: ...
+  def apply_crt_scanlines(frame, opacity=0.20, aberration_px=3) -> np.ndarray: ...
+  def apply_datamosh_glitch(frame, progress, block_size=16, probability=0.25) -> np.ndarray: ...
+  def apply_optical_liquid_flow(frame, t, viscosity=20.0) -> np.ndarray: ...
+  def render_volumetric_glow_layer(frame, cx, cy, t, config) -> np.ndarray: ...
+  ```
+- **Why:** Implemented the complete, 100% vectorized native Python motion design, geometric video distortion, and blending layer suite without heavy third-party media libraries using only NumPy, OpenCV, Pillow, and scikit-image with zero per-pixel loops.
+
+- **Target File Path:** `/server.ts`
+- **Exact Code Change:**
+  ```typescript
+  app.get("/api/streaminject/video-preview", async (req, res) => {
+    // Serves requested video file with acceptRanges HTTP range streaming support
+  });
+  ```
+- **Why:** Enabled direct streaming and scrubbing of local video files (gameplay clips, ComfyUI outputs, user uploads) for frame-accurate UI previews.
+
+- **Target File Path:** `/src/components/StreamInjectStudio.tsx`
+- **Exact Code Change:**
+  ```tsx
+  {/* Mask Target Grid Area Layout Simulator with Live Video Preview */}
+  <video ref={wmVideoRef} src={...} ... />
+  {/* Inpainting Mask Bounding Box */}
+  <div style={{ left: `${wmX}%`, top: `${wmY}%`, width: `${wmW}%`, height: `${wmH}%` }} ... />
+  {/* Video Scrubber & Playback Controls */}
+  ```
+- **Why:** The Static Watermark Eraser Matrix now loads the actual video preview beneath the dashed inpainting mask with playback controls, frame scrubbing, time readout, and quick quadrant positioning presets.
+
+- **Target File Path:** `/src/components/StreamInjectStudio.tsx`
+- **Exact Code Change:**
+  ```tsx
+  // Canvas Error Shielding & Safe Dimension Checking
+  try {
+    if (w <= 0 || h <= 0) return;
+    // ... safe render loop ...
+  } catch (err) {
+    console.error("[StreamInjectStudio] Canvas render error:", err);
+  }
+
+  // Full Color Suite: Text layers, Video boxes, Profile circles & Canvas gradients
+  <input type="color" value={layer.color} ... />
+  <input type="color" value={layer.stroke_color} ... />
+  <input type="color" value={layer.glow_color} ... />
+  <input type="color" value={box.border_color} ... />
+  <input type="color" value={circ.glow_color} ... />
+  ```
+- **Why:** Resolved the canvas loop white screen with strict dimension validation and try/catch crash isolation, and provided comprehensive color pickers, text hex inputs, and quick palette swatches across background gradients, typography fills, stroke outlines, glow auras, and safe-zone boxes.
+
+- **Target File Path:** `/scripts/stream_inject.py`
+- **Exact Code Change:**
+  ```python
+  bg_center_color = bg_cfg.get("center_color")
+  bg_edge_color = bg_cfg.get("edge_color")
+  bg_show_grid = bool(bg_cfg.get("show_grid", bg_type != "spotlight"))
+  # BGR gradient interpolation and cyber grid drawing in OpenCV
+  ```
+- **Why:** Synchronized the Python render engine to consume dynamic background colors, gradients, and grid toggles configured from the Studio dashboard.

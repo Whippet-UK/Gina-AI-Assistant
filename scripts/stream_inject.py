@@ -48,6 +48,16 @@ except ImportError:
     ImageFont = None
     NDArray = Any
 
+try:
+    _script_dir = os.path.dirname(os.path.abspath(__file__))
+    if _script_dir not in sys.path:
+        sys.path.insert(0, _script_dir)
+    import gina_motion_physics_engine as gmpe
+    HAS_MOTION_PHYSICS = True
+except Exception as _e:
+    HAS_MOTION_PHYSICS = False
+    gmpe = None
+
 # ===============================================================================
 # GLOBAL CONSTANTS & CONFIGURATION
 # ===============================================================================
@@ -1050,6 +1060,7 @@ class IntroOutroStudio:
         text_layers = config.get("text_layers", [])
         video_boxes = config.get("video_boxes", [])
         profile_circles = config.get("profile_circles", [])
+        physics_layers = config.get("physics_layers", [])
         vfx_cfg = config.get("vfx", {})
 
         # Audio track mixing for Intro/Outro Studio
@@ -1076,16 +1087,75 @@ class IntroOutroStudio:
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             writer = cv2.VideoWriter(raw_custom, fourcc, fps, (canvas_w, canvas_h))
 
+            bg_center_color = bg_cfg.get("center_color")
+            bg_edge_color = bg_cfg.get("edge_color")
+            bg_show_grid = bool(bg_cfg.get("show_grid", bg_type != "spotlight"))
+
+            def hex_to_bgr(hex_str, default_bgr=(255, 255, 255)):
+                if not hex_str or not isinstance(hex_str, str):
+                    return default_bgr
+                clean = hex_str.strip().lstrip("#")
+                if len(clean) == 3:
+                    clean = "".join([c * 2 for c in clean])
+                if len(clean) >= 6:
+                    try:
+                        r = int(clean[0:2], 16)
+                        g = int(clean[2:4], 16)
+                        b = int(clean[4:6], 16)
+                        return (b, g, r)
+                    except Exception:
+                        pass
+                return default_bgr
+
             # Base background
             if bg_type == "image" and bg_image_path and os.path.isfile(bg_image_path):
                 bg_loaded = cv2.imread(bg_image_path)
                 bg_base = cv2.resize(bg_loaded, (canvas_w, canvas_h))
             elif bg_type == "linear":
                 y, x = np.ogrid[:canvas_h, :canvas_w]
-                gradient = (bg_max_red * (y / float(canvas_h))).astype(np.uint8)
-                bg_base = cv2.merge([np.zeros_like(gradient), np.zeros_like(gradient), gradient])
+                top_bgr = hex_to_bgr(bg_center_color, default_bgr=(20, 10, bg_max_red))
+                bot_bgr = hex_to_bgr(bg_edge_color, default_bgr=(5, 0, 3))
+                ratio = (y / float(max(1, canvas_h)))
+                b_chan = (top_bgr[0] + (bot_bgr[0] - top_bgr[0]) * ratio).astype(np.uint8)
+                g_chan = (top_bgr[1] + (bot_bgr[1] - top_bgr[1]) * ratio).astype(np.uint8)
+                r_chan = (top_bgr[2] + (bot_bgr[2] - top_bgr[2]) * ratio).astype(np.uint8)
+                bg_base = cv2.merge([b_chan, g_chan, r_chan])
+            elif bg_type in ("spotlight", "indigo_vignette"):
+                # Central indigo spotlight vignette (matching The Whippet cinematic card)
+                y, x = np.ogrid[:canvas_h, :canvas_w]
+                center_x, center_y = canvas_w / 2.0, canvas_h / 2.0
+                max_dist = math.sqrt(center_x ** 2 + center_y ** 2) * 0.75
+                dist = np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
+                norm_dist = np.clip(dist / max(1.0, max_dist), 0.0, 1.0)
+                center_bgr = hex_to_bgr(bg_center_color, default_bgr=(66, 27, 37))
+                edge_bgr = hex_to_bgr(bg_edge_color, default_bgr=(10, 6, 7))
+                b_chan = (edge_bgr[0] + (center_bgr[0] - edge_bgr[0]) * (1.0 - norm_dist)).astype(np.uint8)
+                g_chan = (edge_bgr[1] + (center_bgr[1] - edge_bgr[1]) * (1.0 - norm_dist)).astype(np.uint8)
+                r_chan = (edge_bgr[2] + (center_bgr[2] - edge_bgr[2]) * (1.0 - norm_dist)).astype(np.uint8)
+                bg_base = cv2.merge([b_chan, g_chan, r_chan])
             else:
-                bg_base = cls.generate_radial_background(canvas_w, canvas_h, max_red=bg_max_red)
+                if bg_center_color or bg_edge_color:
+                    y, x = np.ogrid[:canvas_h, :canvas_w]
+                    center_x, center_y = canvas_w / 2.0, canvas_h / 2.0
+                    max_dist = math.sqrt(center_x ** 2 + center_y ** 2) * 0.95
+                    dist = np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
+                    norm_dist = np.clip(dist / max(1.0, max_dist), 0.0, 1.0)
+                    center_bgr = hex_to_bgr(bg_center_color, default_bgr=(18, 8, bg_max_red))
+                    edge_bgr = hex_to_bgr(bg_edge_color, default_bgr=(5, 0, 3))
+                    b_chan = (edge_bgr[0] + (center_bgr[0] - edge_bgr[0]) * (1.0 - norm_dist)).astype(np.uint8)
+                    g_chan = (edge_bgr[1] + (center_bgr[1] - edge_bgr[1]) * (1.0 - norm_dist)).astype(np.uint8)
+                    r_chan = (edge_bgr[2] + (center_bgr[2] - edge_bgr[2]) * (1.0 - norm_dist)).astype(np.uint8)
+                    bg_base = cv2.merge([b_chan, g_chan, r_chan])
+                else:
+                    bg_base = cls.generate_radial_background(canvas_w, canvas_h, max_red=bg_max_red)
+
+            if bg_show_grid and bg_type != "spotlight":
+                grid_size = 40
+                grid_color = (25, 0, 80)  # subtle BGR overlay
+                for gx in range(0, canvas_w, grid_size):
+                    cv2.line(bg_base, (gx, 0), (gx, canvas_h), grid_color, 1)
+                for gy in range(0, canvas_h, grid_size):
+                    cv2.line(bg_base, (0, gy), (canvas_w, gy), grid_color, 1)
 
             for frame_idx in range(total_frames):
                 time_sec = frame_idx / fps
@@ -1107,6 +1177,11 @@ class IntroOutroStudio:
                             anim_offset = int(math.sin(time_sec * 4.0) * 10.0)
                         elif anim == "flicker" and random.random() < 0.2 and time_sec < 2.0:
                             f_color = "#444444"
+                        elif anim == "cinematic_fade":
+                            # Luminous fade in first 3.5s
+                            fade_val = min(1.0, max(0.15, time_sec * 0.38))
+                            if fade_val < 0.6:
+                                f_color = "#888888"
 
                         try:
                             font = ImageFont.truetype("arial.ttf", f_size)
@@ -1130,7 +1205,12 @@ class IntroOutroStudio:
                         else:
                             draw_y = int(canvas_h * 0.25) + (i * (f_size + 24))
 
-                        draw.text((draw_x, draw_y + anim_offset), t_str, font=font, fill=f_color)
+                        stroke_col = tl.get("stroke_color")
+                        stroke_w = int(tl.get("stroke_width", 3)) if stroke_col else 0
+                        if stroke_col and stroke_w > 0:
+                            draw.text((draw_x, draw_y + anim_offset), t_str, font=font, fill=f_color, stroke_width=stroke_w, stroke_fill=stroke_col)
+                        else:
+                            draw.text((draw_x, draw_y + anim_offset), t_str, font=font, fill=f_color)
 
                     frame = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
@@ -1179,6 +1259,57 @@ class IntroOutroStudio:
                     enable_bloom=enable_bloom,
                     enable_chroma=enable_chroma
                 )
+
+                # Motion Physics & Geometric Distortion Suite
+                if HAS_MOTION_PHYSICS and gmpe is not None and physics_layers:
+                    for p_layer in physics_layers:
+                        if not p_layer.get("enabled", True):
+                            continue
+                        p_type = p_layer.get("type", "")
+                        p_params = p_layer.get("params", {})
+                        try:
+                            if p_type == "shockwave":
+                                cx = int(p_params.get("cx", canvas_w // 2))
+                                cy = int(p_params.get("cy", canvas_h // 2))
+                                base_r = float(p_params.get("radius", 180.0))
+                                radius = max(10.0, base_r * (0.3 + 0.7 * abs(math.sin(time_sec * 2.0))))
+                                amp = float(p_params.get("amplitude", 35.0))
+                                width = float(p_params.get("width", 45.0))
+                                processed = gmpe.apply_radial_shockwave(processed, (cx, cy), radius, amp, width)
+                            elif p_type == "wave_line":
+                                amp = float(p_params.get("amplitude", 30.0))
+                                freq = float(p_params.get("frequency", 0.015))
+                                thick = int(p_params.get("thickness", 3))
+                                processed = gmpe.apply_rolling_wave_line(processed, time_sec, amp, freq, thickness=thick)
+                            elif p_type == "vortex":
+                                cx = int(p_params.get("cx", canvas_w // 2))
+                                cy = int(p_params.get("cy", canvas_h // 2))
+                                max_r = float(p_params.get("max_radius", 250.0))
+                                max_ang = float(p_params.get("max_angle_deg", 90.0)) * math.sin(time_sec * 2.0)
+                                processed = gmpe.apply_vortex_twirl(processed, (cx, cy), max_r, max_ang)
+                            elif p_type == "page_curl":
+                                p = float(p_params.get("progress", (time_sec / max(0.1, duration_sec)) % 1.0))
+                                rw = float(p_params.get("roll_width_pct", 0.15))
+                                processed = gmpe.apply_page_curl(processed, p, rw)
+                            elif p_type == "crt_scanlines":
+                                op = float(p_params.get("opacity", 0.25))
+                                ab = int(p_params.get("aberration_px", 3))
+                                processed = gmpe.apply_crt_scanlines(processed, op, ab)
+                            elif p_type == "datamosh":
+                                bs = int(p_params.get("block_size", 16))
+                                prob = float(p_params.get("probability", 0.25))
+                                p = (time_sec / max(0.1, duration_sec))
+                                processed = gmpe.apply_datamosh_glitch(processed, p, bs, prob)
+                            elif p_type == "liquid_flow":
+                                visc = float(p_params.get("viscosity", 18.0))
+                                processed = gmpe.apply_optical_liquid_flow(processed, time_sec, visc)
+                            elif p_type == "volumetric_glow":
+                                cx = int(p_params.get("cx", canvas_w // 2))
+                                cy = int(p_params.get("cy", canvas_h // 2))
+                                processed = gmpe.render_volumetric_glow_layer(processed, cx, cy, time_sec, p_params)
+                        except Exception as p_err:
+                            pass
+
                 writer.write(processed)
                 if frame_idx % max(1, total_frames // 5) == 0:
                     pct = int(20 + (frame_idx / total_frames) * 60)

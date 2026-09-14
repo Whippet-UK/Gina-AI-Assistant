@@ -53,7 +53,7 @@ export interface StreamInjectStudioOptions {
     text: string;
     size?: number;
     color?: string;
-    animation?: "bounce" | "flicker" | "static";
+    animation?: "bounce" | "flicker" | "static" | "squash_and_stretch" | "elastic_spring" | "kinetic_dispersion";
     x?: number;
     y?: number;
   }>;
@@ -71,6 +71,13 @@ export interface StreamInjectStudioOptions {
     radius: number;
     pulse?: boolean;
     glow_color?: string;
+  }>;
+  physics_layers?: Array<{
+    id: string;
+    type: "shockwave" | "wave_line" | "vortex" | "page_curl" | "crt_scanlines" | "datamosh" | "liquid_flow" | "volumetric_glow";
+    name: string;
+    enabled: boolean;
+    params: Record<string, any>;
   }>;
   vfx?: {
     enable_glitch?: boolean;
@@ -194,6 +201,75 @@ export class StreamInjectService {
   public getPresets() {
     return [
       {
+        id: "the_whippet_cinematic_intro",
+        name: "The Whippet — Cinematic Spotlight Intro (16:9)",
+        description: "Signature cinematic studio title card featuring deep midnight indigo spotlight vignette, electric cyan neon-glow typography, wide-tracked subtitle, and smooth luminous fade-in.",
+        aspectRatio: "16:9",
+        category: "classic",
+        config: {
+          width: 1920,
+          height: 1080,
+          duration: 15.0,
+          fps: 30.0,
+          background: {
+            type: "spotlight",
+            max_red: 25,
+            center_color: "#261c42",
+            edge_color: "#07060a",
+            show_grid: false
+          },
+          text_layers: [
+            {
+              text: "THE WHIPPET",
+              size: 92,
+              color: "#FFFFFF",
+              glow_color: "#00E5FF",
+              glow_blur: 28,
+              stroke_color: "#00E5FF",
+              stroke_width: 3.5,
+              animation: "cinematic_fade",
+              x: 960,
+              y: 495
+            },
+            {
+              text: "A WHIPPET PRODUCTION",
+              size: 26,
+              color: "#FFFFFF",
+              glow_color: "#00E5FF",
+              glow_blur: 8,
+              letter_spacing: 6,
+              animation: "cinematic_fade",
+              x: 960,
+              y: 575
+            }
+          ],
+          video_boxes: [],
+          profile_circles: [],
+          physics_layers: [
+            {
+              id: "phys_whippet_spotlight",
+              type: "volumetric_glow",
+              name: "Deep Indigo Vignette Spotlight",
+              enabled: true,
+              params: {
+                cx: 960,
+                cy: 540,
+                radius: 460,
+                zoom_speed: 0.5,
+                intensity: 0.85,
+                glow_color: "#302254"
+              }
+            }
+          ],
+          vfx: {
+            enable_glitch: false,
+            enable_shake: false,
+            enable_bloom: true,
+            enable_chroma: false
+          }
+        }
+      },
+      {
         id: "cyberpunk_dual_box_outro",
         name: "Cyberpunk Crimson Dual-Box Outro (16:9)",
         description: "10-second kinetic loop with radial crimson glow (capped <= 55), dual 16:9 video boxes, subscribe pulse circle, and glitch/shake/bloom VFX matrix.",
@@ -286,6 +362,166 @@ export class StreamInjectService {
           profile_circles: [],
           vfx: { enable_glitch: true, enable_shake: true, enable_bloom: true, enable_chroma: true }
         }
+      },
+      {
+        id: "physics_squash_stretch_intro",
+        name: "Kinetic Squash & Stretch Intro (16:9)",
+        description: "Physics-driven intro featuring native gravitational drop, impact squash/stretch deformation, harmonic spring settling, and luminous volumetric glow aura.",
+        aspectRatio: "16:9",
+        config: {
+          width: 1920,
+          height: 1080,
+          duration: 8.0,
+          fps: 30.0,
+          background: { type: "radial", max_red: 50 },
+          text_layers: [
+            { text: "GINA MOTION DYNAMICS", size: 72, color: "#00FFCC", animation: "squash_and_stretch", x: 960, y: 320 },
+            { text: "VECTORIZED HIGH-PERFORMANCE GRAPHICS", size: 28, color: "#FFFFFF", animation: "elastic_spring", x: 960, y: 460 }
+          ],
+          video_boxes: [
+            { x: 560, y: 550, width: 800, height: 450, label: "MAIN HIGHLIGHT", border_color: "#00FFCC" }
+          ],
+          profile_circles: [],
+          physics_layers: [
+            {
+              id: "phys_glow_1",
+              type: "volumetric_glow",
+              name: "Volumetric Aura Pulse",
+              enabled: true,
+              params: { cx: 960, cy: 380, zoom_speed: 1.8, intensity: 0.8, glow_color: "#00FFCC" }
+            },
+            {
+              id: "phys_shock_1",
+              type: "shockwave",
+              name: "Impact Refractive Blast",
+              enabled: true,
+              params: { cx: 960, cy: 540, radius: 180, amplitude: 35, width: 45 }
+            }
+          ],
+          vfx: { enable_glitch: false, enable_shake: true, enable_bloom: true, enable_chroma: true }
+        }
+      },
+      {
+        id: "physics_shockwave_wave_outro",
+        name: "Radial Shockwave & Wave Line Outro (16:9)",
+        description: "High-impact video endscreen with rolling sinusoidal wave line, radial shockwave refractive displacement, dual 16:9 video slots, and harmonic CTA.",
+        aspectRatio: "16:9",
+        config: {
+          width: 1920,
+          height: 1080,
+          duration: 10.0,
+          fps: 30.0,
+          background: { type: "radial", max_red: 55 },
+          text_layers: [
+            { text: "THANKS FOR WATCHING", size: 64, color: "#FFFFFF", animation: "elastic_spring", x: 960, y: 130 },
+            { text: "SUBSCRIBE FOR FUTURE RELEASES", size: 28, color: "#FF0077", animation: "flicker", x: 960, y: 210 }
+          ],
+          video_boxes: [
+            { x: 140, y: 350, width: 640, height: 360, label: "PREVIOUS VIDEO", border_color: "#00FFFF" },
+            { x: 1140, y: 350, width: 640, height: 360, label: "RECOMMENDED", border_color: "#FF0077" }
+          ],
+          profile_circles: [
+            { x: 960, y: 530, radius: 125, pulse: true, glow_color: "#00FFFF" }
+          ],
+          physics_layers: [
+            {
+              id: "phys_wave_1",
+              type: "wave_line",
+              name: "Rolling Sine Wave Horizon",
+              enabled: true,
+              params: { amplitude: 30, frequency: 0.015, color: "#00FFFF", thickness: 3 }
+            },
+            {
+              id: "phys_shock_2",
+              type: "shockwave",
+              name: "Center Radial Blast",
+              enabled: true,
+              params: { cx: 960, cy: 530, radius: 220, amplitude: 40, width: 50 }
+            }
+          ],
+          vfx: { enable_glitch: false, enable_shake: false, enable_bloom: true, enable_chroma: true }
+        }
+      },
+      {
+        id: "physics_liquid_flow_crt_outro",
+        name: "Liquid Optical Flow & CRT Glitch (16:9)",
+        description: "Atmospheric cyber-retro studio template utilizing fluid dynamic liquid flow warping, phosphor CRT scanline separation, and kinetic character dispersion.",
+        aspectRatio: "16:9",
+        config: {
+          width: 1920,
+          height: 1080,
+          duration: 10.0,
+          fps: 30.0,
+          background: { type: "radial", max_red: 40 },
+          text_layers: [
+            { text: "TRANSMISSION COMPLETE", size: 68, color: "#39FF14", animation: "kinetic_dispersion", x: 960, y: 150 },
+            { text: "SIGNAL FREQUENCY ARCHIVED", size: 26, color: "#FFFFFF", animation: "static", x: 960, y: 230 }
+          ],
+          video_boxes: [
+            { x: 180, y: 330, width: 720, height: 405, label: "DATA ARCHIVE", border_color: "#39FF14" }
+          ],
+          profile_circles: [
+            { x: 1350, y: 530, radius: 140, pulse: true, glow_color: "#39FF14" }
+          ],
+          physics_layers: [
+            {
+              id: "phys_crt_1",
+              type: "crt_scanlines",
+              name: "CRT Phosphor Grid & Aberration",
+              enabled: true,
+              params: { opacity: 0.25, aberration_px: 4 }
+            },
+            {
+              id: "phys_liquid_1",
+              type: "liquid_flow",
+              name: "Fluid Viscous Warp",
+              enabled: true,
+              params: { viscosity: 18 }
+            }
+          ],
+          vfx: { enable_glitch: true, enable_shake: false, enable_bloom: true, enable_chroma: false }
+        }
+      },
+      {
+        id: "physics_datamosh_spring_shorts",
+        name: "Viral 9:16 Datamosh & Elastic Spring Shorts (9:16)",
+        description: "High-retention 9:16 vertical shorts layout with H.264 macroblock corruption datamosh glitch, rubber-band spring tracked CTA, and 3D page curl roll transition.",
+        aspectRatio: "9:16",
+        config: {
+          width: 1080,
+          height: 1920,
+          duration: 8.0,
+          fps: 30.0,
+          background: { type: "linear", max_red: 45 },
+          text_layers: [
+            { text: "WAIT FOR THE END!", size: 54, color: "#FFCC00", animation: "squash_and_stretch", x: 540, y: 240 },
+            { text: "SUBSCRIBE FOR PART 2", size: 38, color: "#FFFFFF", animation: "elastic_spring", x: 540, y: 330 },
+            { text: "@GinaAIFactory", size: 34, color: "#00FFFF", animation: "flicker", x: 540, y: 1740 }
+          ],
+          video_boxes: [
+            { x: 90, y: 480, width: 900, height: 900, label: "MAIN HIGHLIGHT", border_color: "#FFCC00" }
+          ],
+          profile_circles: [
+            { x: 540, y: 1540, radius: 115, pulse: true, glow_color: "#FF0077" }
+          ],
+          physics_layers: [
+            {
+              id: "phys_mosh_1",
+              type: "datamosh",
+              name: "Macroblock Datamosh Corruption",
+              enabled: true,
+              params: { block_size: 16, probability: 0.3 }
+            },
+            {
+              id: "phys_curl_1",
+              type: "page_curl",
+              name: "3D Page Curl Fold",
+              enabled: true,
+              params: { roll_width_pct: 0.15, progress: 0.35 }
+            }
+          ],
+          vfx: { enable_glitch: true, enable_shake: true, enable_bloom: true, enable_chroma: true }
+        }
       }
     ];
   }
@@ -309,6 +545,7 @@ export class StreamInjectService {
       text_layers: options.text_layers || [],
       video_boxes: options.video_boxes || [],
       profile_circles: options.profile_circles || [],
+      physics_layers: options.physics_layers || [],
       vfx: options.vfx || { enable_glitch: true, enable_shake: true, enable_bloom: true, enable_chroma: true },
       audio: options.audio || undefined
     };

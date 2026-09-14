@@ -39,14 +39,58 @@ import {
   Square,
   Type,
   Copy,
-  Crosshair
+  Crosshair,
+  Waves,
+  Activity,
+  Cpu,
+  Wand2
 } from "lucide-react";
+
+export interface PhysicsLayer {
+  id: string;
+  type: "shockwave" | "wave_line" | "vortex" | "page_curl" | "crt_scanlines" | "datamosh" | "liquid_flow" | "volumetric_glow";
+  name: string;
+  enabled: boolean;
+  params: {
+    cx?: number;
+    cy?: number;
+    y?: number;
+    radius?: number;
+    amplitude?: number;
+    width?: number;
+    wave_width?: number;
+    frequency?: number;
+    color?: string;
+    thickness?: number;
+    max_radius?: number;
+    max_angle_deg?: number;
+    angle?: number;
+    curl_angle?: number;
+    roll_width_pct?: number;
+    progress?: number;
+    opacity?: number;
+    aberration_px?: number;
+    block_size?: number;
+    macroblock_size?: number;
+    probability?: number;
+    viscosity?: number;
+    zoom_speed?: number;
+    intensity?: number;
+    glow_color?: string;
+    speed?: number;
+  };
+}
 
 interface TextLayer {
   text: string;
   size: number;
   color: string;
-  animation: "bounce" | "flicker" | "static";
+  glow_color?: string;
+  glow_blur?: number;
+  stroke_color?: string;
+  stroke_width?: number;
+  letter_spacing?: number;
+  animation: "bounce" | "flicker" | "static" | "squash_and_stretch" | "elastic_spring" | "kinetic_dispersion" | "cinematic_fade";
   x?: number;
   y?: number;
 }
@@ -73,15 +117,24 @@ interface Preset {
   name: string;
   description: string;
   aspectRatio: "16:9" | "9:16";
+  category?: "physics" | "classic";
   config: {
     width: number;
     height: number;
     duration: number;
     fps: number;
-    background: { type: "radial" | "linear" | "image"; max_red?: number; image_path?: string };
+    background: {
+      type: "radial" | "linear" | "image" | "spotlight";
+      max_red?: number;
+      image_path?: string;
+      center_color?: string;
+      edge_color?: string;
+      show_grid?: boolean;
+    };
     text_layers: TextLayer[];
     video_boxes: VideoBox[];
     profile_circles: ProfileCircle[];
+    physics_layers?: PhysicsLayer[];
     vfx: {
       enable_glitch: boolean;
       enable_shake: boolean;
@@ -91,11 +144,358 @@ interface Preset {
   };
 }
 
+const DEFAULT_PRESETS: Preset[] = [
+  {
+    id: "the_whippet_cinematic_intro",
+    name: "The Whippet — Cinematic Spotlight Intro (16:9)",
+    description: "Signature cinematic studio title card featuring deep midnight indigo spotlight vignette, electric cyan neon-glow typography, wide-tracked subtitle, and smooth luminous fade-in.",
+    aspectRatio: "16:9",
+    category: "classic",
+    config: {
+      width: 1920,
+      height: 1080,
+      duration: 15.0,
+      fps: 30.0,
+      background: {
+        type: "spotlight",
+        max_red: 25,
+        center_color: "#261c42",
+        edge_color: "#07060a",
+        show_grid: false
+      },
+      text_layers: [
+        {
+          text: "THE WHIPPET",
+          size: 92,
+          color: "#FFFFFF",
+          glow_color: "#00E5FF",
+          glow_blur: 28,
+          stroke_color: "#00E5FF",
+          stroke_width: 3.5,
+          animation: "cinematic_fade",
+          x: 960,
+          y: 495
+        },
+        {
+          text: "A WHIPPET PRODUCTION",
+          size: 26,
+          color: "#FFFFFF",
+          glow_color: "#00E5FF",
+          glow_blur: 8,
+          letter_spacing: 6,
+          animation: "cinematic_fade",
+          x: 960,
+          y: 575
+        }
+      ],
+      video_boxes: [],
+      profile_circles: [],
+      physics_layers: [
+        {
+          id: "phys_whippet_spotlight",
+          type: "volumetric_glow",
+          name: "Deep Indigo Vignette Spotlight",
+          enabled: true,
+          params: {
+            cx: 960,
+            cy: 540,
+            radius: 460,
+            zoom_speed: 0.5,
+            intensity: 0.85,
+            glow_color: "#302254"
+          }
+        }
+      ],
+      vfx: {
+        enable_glitch: false,
+        enable_shake: false,
+        enable_bloom: true,
+        enable_chroma: false
+      }
+    }
+  },
+  {
+    id: "physics_squash_stretch_intro",
+    name: "Kinetic Squash & Stretch Intro (16:9)",
+    description: "Physics-driven intro featuring native gravitational drop, impact squash/stretch deformation, harmonic spring settling, and luminous volumetric glow aura.",
+    aspectRatio: "16:9",
+    category: "physics",
+    config: {
+      width: 1920,
+      height: 1080,
+      duration: 8.0,
+      fps: 30.0,
+      background: { type: "radial", max_red: 50 },
+      text_layers: [
+        { text: "GINA MOTION DYNAMICS", size: 72, color: "#00FFCC", animation: "squash_and_stretch", x: 960, y: 320 },
+        { text: "VECTORIZED HIGH-PERFORMANCE GRAPHICS", size: 28, color: "#FFFFFF", animation: "elastic_spring", x: 960, y: 460 }
+      ],
+      video_boxes: [
+        { x: 560, y: 550, width: 800, height: 450, label: "MAIN HIGHLIGHT", border_color: "#00FFCC" }
+      ],
+      profile_circles: [],
+      physics_layers: [
+        {
+          id: "phys_glow_1",
+          type: "volumetric_glow",
+          name: "Volumetric Aura Pulse",
+          enabled: true,
+          params: { cx: 960, cy: 380, zoom_speed: 1.8, intensity: 0.8, glow_color: "#00FFCC" }
+        },
+        {
+          id: "phys_shock_1",
+          type: "shockwave",
+          name: "Impact Refractive Blast",
+          enabled: true,
+          params: { cx: 960, cy: 540, radius: 180, amplitude: 35, width: 45 }
+        }
+      ],
+      vfx: { enable_glitch: false, enable_shake: true, enable_bloom: true, enable_chroma: true }
+    }
+  },
+  {
+    id: "physics_shockwave_wave_outro",
+    name: "Radial Shockwave & Wave Line Outro (16:9)",
+    description: "High-impact video endscreen with rolling sinusoidal wave line, radial shockwave refractive displacement, dual 16:9 video slots, and harmonic CTA.",
+    aspectRatio: "16:9",
+    category: "physics",
+    config: {
+      width: 1920,
+      height: 1080,
+      duration: 10.0,
+      fps: 30.0,
+      background: { type: "radial", max_red: 55 },
+      text_layers: [
+        { text: "THANKS FOR WATCHING", size: 64, color: "#FFFFFF", animation: "elastic_spring", x: 960, y: 130 },
+        { text: "SUBSCRIBE FOR FUTURE RELEASES", size: 28, color: "#FF0077", animation: "flicker", x: 960, y: 210 }
+      ],
+      video_boxes: [
+        { x: 140, y: 350, width: 640, height: 360, label: "PREVIOUS VIDEO", border_color: "#00FFFF" },
+        { x: 1140, y: 350, width: 640, height: 360, label: "RECOMMENDED", border_color: "#FF0077" }
+      ],
+      profile_circles: [
+        { x: 960, y: 530, radius: 125, pulse: true, glow_color: "#00FFFF" }
+      ],
+      physics_layers: [
+        {
+          id: "phys_wave_1",
+          type: "wave_line",
+          name: "Rolling Sine Wave Horizon",
+          enabled: true,
+          params: { amplitude: 30, frequency: 0.015, color: "#00FFFF", thickness: 3 }
+        },
+        {
+          id: "phys_shock_2",
+          type: "shockwave",
+          name: "Center Radial Blast",
+          enabled: true,
+          params: { cx: 960, cy: 530, radius: 220, amplitude: 40, width: 50 }
+        }
+      ],
+      vfx: { enable_glitch: false, enable_shake: false, enable_bloom: true, enable_chroma: true }
+    }
+  },
+  {
+    id: "physics_liquid_flow_crt_outro",
+    name: "Liquid Optical Flow & CRT Glitch (16:9)",
+    description: "Atmospheric cyber-retro studio template utilizing fluid dynamic liquid flow warping, phosphor CRT scanline separation, and kinetic character dispersion.",
+    aspectRatio: "16:9",
+    category: "physics",
+    config: {
+      width: 1920,
+      height: 1080,
+      duration: 10.0,
+      fps: 30.0,
+      background: { type: "radial", max_red: 40 },
+      text_layers: [
+        { text: "TRANSMISSION COMPLETE", size: 68, color: "#39FF14", animation: "kinetic_dispersion", x: 960, y: 150 },
+        { text: "SIGNAL FREQUENCY ARCHIVED", size: 26, color: "#FFFFFF", animation: "static", x: 960, y: 230 }
+      ],
+      video_boxes: [
+        { x: 180, y: 330, width: 720, height: 405, label: "DATA ARCHIVE", border_color: "#39FF14" }
+      ],
+      profile_circles: [
+        { x: 1350, y: 530, radius: 140, pulse: true, glow_color: "#39FF14" }
+      ],
+      physics_layers: [
+        {
+          id: "phys_crt_1",
+          type: "crt_scanlines",
+          name: "CRT Phosphor Grid & Aberration",
+          enabled: true,
+          params: { opacity: 0.25, aberration_px: 4 }
+        },
+        {
+          id: "phys_liquid_1",
+          type: "liquid_flow",
+          name: "Fluid Viscous Warp",
+          enabled: true,
+          params: { viscosity: 18 }
+        }
+      ],
+      vfx: { enable_glitch: true, enable_shake: false, enable_bloom: true, enable_chroma: false }
+    }
+  },
+  {
+    id: "physics_datamosh_spring_shorts",
+    name: "Viral 9:16 Datamosh & Elastic Spring Shorts (9:16)",
+    description: "High-retention 9:16 vertical shorts layout with H.264 macroblock corruption datamosh glitch, rubber-band spring tracked CTA, and 3D page curl roll transition.",
+    aspectRatio: "9:16",
+    category: "physics",
+    config: {
+      width: 1080,
+      height: 1920,
+      duration: 8.0,
+      fps: 30.0,
+      background: { type: "linear", max_red: 45 },
+      text_layers: [
+        { text: "WAIT FOR THE END!", size: 54, color: "#FFCC00", animation: "squash_and_stretch", x: 540, y: 240 },
+        { text: "SUBSCRIBE FOR PART 2", size: 38, color: "#FFFFFF", animation: "elastic_spring", x: 540, y: 330 },
+        { text: "@GinaAIFactory", size: 34, color: "#00FFFF", animation: "flicker", x: 540, y: 1740 }
+      ],
+      video_boxes: [
+        { x: 90, y: 480, width: 900, height: 900, label: "MAIN HIGHLIGHT", border_color: "#FFCC00" }
+      ],
+      profile_circles: [
+        { x: 540, y: 1540, radius: 115, pulse: true, glow_color: "#FF0077" }
+      ],
+      physics_layers: [
+        {
+          id: "phys_mosh_1",
+          type: "datamosh",
+          name: "Macroblock Datamosh Corruption",
+          enabled: true,
+          params: { block_size: 16, probability: 0.3 }
+        },
+        {
+          id: "phys_curl_1",
+          type: "page_curl",
+          name: "3D Page Curl Fold",
+          enabled: true,
+          params: { roll_width_pct: 0.15, progress: 0.35 }
+        }
+      ],
+      vfx: { enable_glitch: true, enable_shake: true, enable_bloom: true, enable_chroma: true }
+    }
+  },
+  {
+    id: "cyberpunk_dual_box_outro",
+    name: "Cyberpunk Crimson Dual-Box Outro (16:9)",
+    description: "10-second kinetic loop with radial crimson glow (capped <= 55), dual 16:9 video boxes, subscribe pulse circle, and glitch/shake/bloom VFX matrix.",
+    aspectRatio: "16:9",
+    category: "classic",
+    config: {
+      width: 1920,
+      height: 1080,
+      duration: 10.0,
+      fps: 30.0,
+      background: { type: "radial", max_red: 55 },
+      text_layers: [
+        { text: "THANKS FOR WATCHING", size: 68, color: "#FFFFFF", animation: "bounce", x: 960, y: 140 },
+        { text: "SUBSCRIBE FOR NEXT MISSION", size: 30, color: "#00FFFF", animation: "flicker", x: 960, y: 220 }
+      ],
+      video_boxes: [
+        { x: 140, y: 360, width: 620, height: 350, label: "PREVIOUS VIDEO", border_color: "#00FFFF" },
+        { x: 1160, y: 360, width: 620, height: 350, label: "RECOMMENDED", border_color: "#FF0055" }
+      ],
+      profile_circles: [
+        { x: 960, y: 535, radius: 130, pulse: true, glow_color: "#00FFFF" }
+      ],
+      vfx: { enable_glitch: true, enable_shake: true, enable_bloom: true, enable_chroma: true }
+    }
+  },
+  {
+    id: "shorts_kinetic_viral",
+    name: "Viral Shorts 9:16 Kinetic Converter",
+    description: "Vertical 1080x1920 portrait format with center spotlight, blurred kinetic sidebars, top & bottom banner cards, and subscribe CTA.",
+    aspectRatio: "9:16",
+    category: "classic",
+    config: {
+      width: 1080,
+      height: 1920,
+      duration: 10.0,
+      fps: 30.0,
+      background: { type: "linear", max_red: 45 },
+      text_layers: [
+        { text: "GINA AI FACTORY", size: 56, color: "#00FFFF", animation: "bounce", x: 540, y: 220 },
+        { text: "FOLLOW & DROP A LIKE", size: 36, color: "#FFFFFF", animation: "static", x: 540, y: 300 },
+        { text: "@GinaAIFactory", size: 32, color: "#FFCC00", animation: "flicker", x: 540, y: 1720 }
+      ],
+      video_boxes: [
+        { x: 90, y: 460, width: 900, height: 900, label: "MAIN CLIP", border_color: "#00FFFF" }
+      ],
+      profile_circles: [
+        { x: 540, y: 1520, radius: 110, pulse: true, glow_color: "#FF0055" }
+      ],
+      vfx: { enable_glitch: true, enable_shake: true, enable_bloom: true, enable_chroma: true }
+    }
+  },
+  {
+    id: "clean_gamer_minimal",
+    name: "Clean Gamer Minimal Endscreen (16:9)",
+    description: "High-contrast minimalist dark palette with single left feature frame, channel branding on the right, and subtle kinetic shimmer.",
+    aspectRatio: "16:9",
+    category: "classic",
+    config: {
+      width: 1920,
+      height: 1080,
+      duration: 10.0,
+      fps: 30.0,
+      background: { type: "radial", max_red: 35 },
+      text_layers: [
+        { text: "WATCH NEXT", size: 52, color: "#FFFFFF", animation: "static", x: 1350, y: 380 },
+        { text: "DAILY GENERATIVE AI & GAMING", size: 26, color: "#AAAAAA", animation: "static", x: 1350, y: 450 }
+      ],
+      video_boxes: [
+        { x: 160, y: 260, width: 960, height: 540, label: "LATEST UPLOAD", border_color: "#FFFFFF" }
+      ],
+      profile_circles: [
+        { x: 1350, y: 640, radius: 100, pulse: true, glow_color: "#00FFCC" }
+      ],
+      vfx: { enable_glitch: false, enable_shake: false, enable_bloom: true, enable_chroma: false }
+    }
+  },
+  {
+    id: "neon_burst_intro",
+    name: "Neon Burst 5s Intro Sting",
+    description: "Fast 5-second high-energy intro hook with aggressive shake, chromatic aberration, and neon flicker headers.",
+    aspectRatio: "16:9",
+    category: "classic",
+    config: {
+      width: 1920,
+      height: 1080,
+      duration: 5.0,
+      fps: 30.0,
+      background: { type: "radial", max_red: 55 },
+      text_layers: [
+        { text: "GINA AI FACTORY", size: 76, color: "#FF0055", animation: "bounce", x: 960, y: 440 },
+        { text: "POWERED BY LOCAL HARDWARE", size: 32, color: "#00FFFF", animation: "flicker", x: 960, y: 560 }
+      ],
+      video_boxes: [],
+      profile_circles: [],
+      vfx: { enable_glitch: true, enable_shake: true, enable_bloom: true, enable_chroma: true }
+    }
+  }
+];
+
 interface MediaAsset {
   name: string;
   path: string;
   source: string;
   sizeBytes?: number;
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  if (!hex || typeof hex !== 'string') return `rgba(0, 255, 255, ${alpha})`;
+  let clean = hex.replace('#', '').trim();
+  if (clean.length === 3) clean = clean.split('').map(c => c + c).join('');
+  if (clean.length >= 6) {
+    const r = parseInt(clean.substring(0, 2), 16) || 0;
+    const g = parseInt(clean.substring(2, 4), 16) || 0;
+    const b = parseInt(clean.substring(4, 6), 16) || 0;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return hex;
 }
 
 export function StreamInjectStudio() {
@@ -106,8 +506,11 @@ export function StreamInjectStudio() {
   const [canvasWidth, setCanvasWidth] = useState(1920);
   const [canvasHeight, setCanvasHeight] = useState(1080);
   const [duration, setDuration] = useState(10.0);
-  const [bgType, setBgType] = useState<"radial" | "linear" | "image">("radial");
+  const [bgType, setBgType] = useState<"radial" | "linear" | "image" | "spotlight">("radial");
   const [bgMaxRed, setBgMaxRed] = useState(55);
+  const [bgCenterColor, setBgCenterColor] = useState<string>("#370812");
+  const [bgEdgeColor, setBgEdgeColor] = useState<string>("#030005");
+  const [showBgGrid, setShowBgGrid] = useState<boolean>(true);
   
   // Studio Audio Track State (Intro/Outro Audio Injection)
   const [studioAudioPath, setStudioAudioPath] = useState<string>("");
@@ -132,13 +535,35 @@ export function StreamInjectStudio() {
     { x: 960, y: 535, radius: 130, pulse: true, glow_color: "#00FFFF" }
   ]);
 
+  // Motion Physics & Geometric FX Layers
+  const [physicsLayers, setPhysicsLayers] = useState<PhysicsLayer[]>([
+    {
+      id: "phys_glow_demo",
+      type: "volumetric_glow",
+      name: "Volumetric Glow Aura",
+      enabled: true,
+      params: { cx: 960, cy: 380, zoom_speed: 1.8, intensity: 0.75, glow_color: "#00FFFF" }
+    },
+    {
+      id: "phys_wave_demo",
+      type: "wave_line",
+      name: "Rolling Sine Wave Horizon",
+      enabled: false,
+      params: { amplitude: 30, frequency: 0.015, color: "#00FFFF", thickness: 3 }
+    }
+  ]);
+
+  // Presets filtering
+  const [presetFilter, setPresetFilter] = useState<"all" | "physics" | "classic">("all");
+  const [showAddPhysicsMenu, setShowAddPhysicsMenu] = useState<boolean>(false);
+
   const [vfxGlitch, setVfxGlitch] = useState(true);
   const [vfxShake, setVfxShake] = useState(true);
   const [vfxBloom, setVfxBloom] = useState(true);
   const [vfxChroma, setVfxChroma] = useState(true);
 
   // Interactive Selection & Drag-and-Drop Movement State
-  const [selectedTarget, setSelectedTarget] = useState<{ type: "text" | "box" | "circle"; index: number } | null>({ type: "text", index: 0 });
+  const [selectedTarget, setSelectedTarget] = useState<{ type: "text" | "box" | "circle" | "physics"; index: number } | null>({ type: "text", index: 0 });
   const [nudgeStep, setNudgeStep] = useState<number>(10);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [dragStartCanvasPos, setDragStartCanvasPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -178,9 +603,12 @@ export function StreamInjectStudio() {
   const [wmY, setWmY] = useState<number>(5);
   const [wmW, setWmW] = useState<number>(12);
   const [wmH, setWmH] = useState<number>(8);
+  const wmVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [wmIsPlaying, setWmIsPlaying] = useState<boolean>(false);
+  const [wmVideoProgress, setWmVideoProgress] = useState<number>(0);
 
   // Presets and Media
-  const [presets, setPresets] = useState<Preset[]>([]);
+  const [presets, setPresets] = useState<Preset[]>(DEFAULT_PRESETS);
   const [mediaFiles, setMediaFiles] = useState<{ videos: MediaAsset[]; images: MediaAsset[]; audio: MediaAsset[]; subtitles: MediaAsset[] }>({
     videos: [],
     images: [],
@@ -241,6 +669,59 @@ export function StreamInjectStudio() {
     }
   };
 
+  const handleAddPhysicsLayer = (type: PhysicsLayer["type"]) => {
+    const id = `phys_${type}_${Date.now().toString(36)}`;
+    let name = "";
+    let params: PhysicsLayer["params"] = {};
+
+    switch (type) {
+      case "shockwave":
+        name = "Radial Shockwave Blast";
+        params = { cx: Math.round(canvasWidth * 0.5), cy: Math.round(canvasHeight * 0.5), radius: 200, amplitude: 40, width: 50, speed: 1.0 };
+        break;
+      case "wave_line":
+        name = "Rolling Sine Wave Horizon";
+        params = { y: Math.round(canvasHeight * 0.65), amplitude: 30, frequency: 0.015, color: "#00FFFF", thickness: 3 };
+        break;
+      case "vortex":
+        name = "Localized Twirl Vortex";
+        params = { cx: Math.round(canvasWidth * 0.5), cy: Math.round(canvasHeight * 0.5), radius: 220, angle: 180 };
+        break;
+      case "page_curl":
+        name = "3D Page Curl Fold";
+        params = { roll_width_pct: 0.25, curl_angle: 45, progress: 0.5 };
+        break;
+      case "crt_scanlines":
+        name = "CRT Phosphor Scanlines & Aberration";
+        params = { opacity: 0.3, aberration_px: 4 };
+        break;
+      case "datamosh":
+        name = "Datamosh Block Glitch";
+        params = { macroblock_size: 16, probability: 0.3 };
+        break;
+      case "liquid_flow":
+        name = "Optical Liquid Flow Warp";
+        params = { viscosity: 18 };
+        break;
+      case "volumetric_glow":
+        name = "Volumetric Pulsing Aura";
+        params = { cx: Math.round(canvasWidth * 0.5), cy: Math.round(canvasHeight * 0.4), zoom_speed: 1.8, intensity: 0.8, glow_color: "#00FFCC" };
+        break;
+    }
+
+    const newLayer: PhysicsLayer = {
+      id,
+      type,
+      name,
+      enabled: true,
+      params
+    };
+
+    setPhysicsLayers([...physicsLayers, newLayer]);
+    setSelectedTarget({ type: "physics", index: physicsLayers.length });
+    setShowAddPhysicsMenu(false);
+  };
+
   // Keyboard shortcut listener for precise nudging
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -277,9 +758,13 @@ export function StreamInjectStudio() {
     setDuration(preset.config.duration);
     setBgType(preset.config.background.type);
     setBgMaxRed(preset.config.background.max_red || 55);
+    setBgCenterColor(preset.config.background.center_color || (preset.config.background.type === "spotlight" ? "#261c42" : "#370812"));
+    setBgEdgeColor(preset.config.background.edge_color || (preset.config.background.type === "spotlight" ? "#07060a" : "#030005"));
+    setShowBgGrid(preset.config.background.show_grid ?? (preset.config.background.type !== "spotlight"));
     setTextLayers(preset.config.text_layers || []);
     setVideoBoxes(preset.config.video_boxes || []);
     setProfileCircles(preset.config.profile_circles || []);
+    setPhysicsLayers(preset.config.physics_layers || []);
     setVfxGlitch(preset.config.vfx.enable_glitch);
     setVfxShake(preset.config.vfx.enable_shake);
     setVfxBloom(preset.config.vfx.enable_bloom);
@@ -443,6 +928,16 @@ export function StreamInjectStudio() {
       };
       setProfileCircles([...profileCircles, newCircle]);
       setSelectedTarget({ type: "circle", index: profileCircles.length });
+    } else if (selectedTarget.type === "physics" && physicsLayers[selectedTarget.index]) {
+      const source = physicsLayers[selectedTarget.index];
+      const newLayer: PhysicsLayer = {
+        ...source,
+        id: `phys_${Date.now()}`,
+        name: `${source.name} Copy`,
+        params: { ...source.params }
+      };
+      setPhysicsLayers([...physicsLayers, newLayer]);
+      setSelectedTarget({ type: "physics", index: physicsLayers.length });
     }
   };
 
@@ -458,11 +953,14 @@ export function StreamInjectStudio() {
     } else if (selectedTarget.type === "circle") {
       setProfileCircles(profileCircles.filter((_, i) => i !== selectedTarget.index));
       setSelectedTarget(null);
+    } else if (selectedTarget.type === "physics") {
+      setPhysicsLayers(physicsLayers.filter((_, i) => i !== selectedTarget.index));
+      setSelectedTarget(null);
     }
   };
 
   // Move layer order in array
-  const moveLayerOrder = (type: "text" | "box" | "circle", index: number, direction: -1 | 1) => {
+  const moveLayerOrder = (type: "text" | "box" | "circle" | "physics", index: number, direction: -1 | 1) => {
     if (type === "text") {
       const targetIdx = index + direction;
       if (targetIdx < 0 || targetIdx >= textLayers.length) return;
@@ -490,6 +988,15 @@ export function StreamInjectStudio() {
       copy[targetIdx] = temp;
       setProfileCircles(copy);
       setSelectedTarget({ type: "circle", index: targetIdx });
+    } else if (type === "physics") {
+      const targetIdx = index + direction;
+      if (targetIdx < 0 || targetIdx >= physicsLayers.length) return;
+      const copy = [...physicsLayers];
+      const temp = copy[index];
+      copy[index] = copy[targetIdx];
+      copy[targetIdx] = temp;
+      setPhysicsLayers(copy);
+      setSelectedTarget({ type: "physics", index: targetIdx });
     }
   };
 
@@ -508,7 +1015,7 @@ export function StreamInjectStudio() {
     };
   };
 
-  const hitTestElement = (cx: number, cy: number): { type: "text" | "box" | "circle"; index: number } | null => {
+  const hitTestElement = (cx: number, cy: number): { type: "text" | "box" | "circle" | "physics"; index: number } | null => {
     // 1. Check Profile Circles (Top priority for small precise circles)
     for (let i = profileCircles.length - 1; i >= 0; i--) {
       const circ = profileCircles[i];
@@ -541,6 +1048,17 @@ export function StreamInjectStudio() {
       }
     }
 
+    // 4. Check Physics Layers with centers
+    for (let i = physicsLayers.length - 1; i >= 0; i--) {
+      const pl = physicsLayers[i];
+      if (pl.enabled && pl.params.cx !== undefined && pl.params.cy !== undefined) {
+        const distSq = (cx - pl.params.cx) ** 2 + (cy - pl.params.cy) ** 2;
+        if (distSq <= 60 ** 2) {
+          return { type: "physics", index: i };
+        }
+      }
+    }
+
     return null;
   };
 
@@ -564,6 +1082,12 @@ export function StreamInjectStudio() {
       } else if (hit.type === "circle") {
         const circ = profileCircles[hit.index];
         setDragInitialElementPos({ x: circ.x, y: circ.y });
+      } else if (hit.type === "physics") {
+        const pl = physicsLayers[hit.index];
+        setDragInitialElementPos({
+          x: pl.params.cx ?? canvasWidth / 2,
+          y: pl.params.cy ?? canvasHeight / 2
+        });
       }
     } else {
       setSelectedTarget(null);
@@ -600,6 +1124,14 @@ export function StreamInjectStudio() {
         y: Math.round(dragInitialElementPos.y + dy)
       };
       setProfileCircles(copy);
+    } else if (selectedTarget.type === "physics" && physicsLayers[selectedTarget.index]) {
+      const copy = [...physicsLayers];
+      const pl = copy[selectedTarget.index];
+      if (pl.params.cx !== undefined && pl.params.cy !== undefined) {
+        pl.params.cx = Math.round(dragInitialElementPos.x + dx);
+        pl.params.cy = Math.round(dragInitialElementPos.y + dy);
+        setPhysicsLayers(copy);
+      }
     }
   };
 
@@ -636,52 +1168,132 @@ export function StreamInjectStudio() {
 
     animationFrameId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isPlaying, currentTime, duration, canvasWidth, canvasHeight, bgType, bgMaxRed, textLayers, videoBoxes, profileCircles, showGuides, vfxGlitch, vfxShake, vfxBloom, vfxChroma, selectedTarget]);
+  }, [isPlaying, currentTime, duration, canvasWidth, canvasHeight, bgType, bgMaxRed, bgCenterColor, bgEdgeColor, showBgGrid, textLayers, videoBoxes, profileCircles, physicsLayers, showGuides, vfxGlitch, vfxShake, vfxBloom, vfxChroma, selectedTarget]);
 
   const drawCanvas = (ctx: CanvasRenderingContext2D, w: number, h: number, time: number) => {
+    if (!w || !h || w <= 0 || h <= 0) return;
     ctx.save();
-    ctx.clearRect(0, 0, w, h);
+    try {
+      ctx.clearRect(0, 0, w, h);
 
-    // Apply Screen Shake VFX in initial 1.2s
-    if (vfxShake && time <= 1.2) {
-      const shakeAmt = (1.2 - time) * 6;
-      const sx = (Math.random() - 0.5) * shakeAmt;
-      const sy = (Math.random() - 0.5) * shakeAmt;
-      ctx.translate(sx, sy);
-    }
+      // Apply Screen Shake VFX in initial 1.2s
+      if (vfxShake && time <= 1.2) {
+        const shakeAmt = (1.2 - time) * 6;
+        const sx = (Math.random() - 0.5) * shakeAmt;
+        const sy = (Math.random() - 0.5) * shakeAmt;
+        ctx.translate(sx, sy);
+      }
 
-    // 1. Draw Background
-    if (bgType === "radial") {
-      const radGrad = ctx.createRadialGradient(w / 2, h / 2, 20, w / 2, h / 2, Math.max(w, h) / 1.5);
-      radGrad.addColorStop(0, `rgb(${bgMaxRed}, 8, 18)`);
-      radGrad.addColorStop(0.6, `rgb(${Math.floor(bgMaxRed * 0.4)}, 4, 8)`);
-      radGrad.addColorStop(1, "#030005");
-      ctx.fillStyle = radGrad;
-      ctx.fillRect(0, 0, w, h);
-    } else {
-      const linGrad = ctx.createLinearGradient(0, 0, 0, h);
-      linGrad.addColorStop(0, `rgb(${bgMaxRed}, 10, 20)`);
-      linGrad.addColorStop(1, "#030005");
-      ctx.fillStyle = linGrad;
-      ctx.fillRect(0, 0, w, h);
-    }
+      // 1. Draw Background
+      if (bgType === "spotlight") {
+        const r0 = Math.max(0.1, 10);
+        const r1 = Math.max(r0 + 10, Math.max(w, h) * 0.48);
+        const radGrad = ctx.createRadialGradient(w / 2, h / 2, r0, w / 2, h / 2, r1);
+        const centerCol = bgCenterColor || "#251b42";
+        const edgeCol = bgEdgeColor || "#07060a";
+        radGrad.addColorStop(0, centerCol);
+        radGrad.addColorStop(0.35, hexToRgba(centerCol, 0.7));
+        radGrad.addColorStop(0.7, hexToRgba(edgeCol, 0.9));
+        radGrad.addColorStop(1, edgeCol);
+        ctx.fillStyle = radGrad;
+        ctx.fillRect(0, 0, w, h);
+      } else if (bgType === "radial") {
+        const r0 = Math.max(0.1, 20);
+        const r1 = Math.max(r0 + 10, Math.max(w, h) / 1.5);
+        const radGrad = ctx.createRadialGradient(w / 2, h / 2, r0, w / 2, h / 2, r1);
+        const centerCol = bgCenterColor || `rgb(${bgMaxRed}, 8, 18)`;
+        const edgeCol = bgEdgeColor || "#030005";
+        radGrad.addColorStop(0, centerCol);
+        radGrad.addColorStop(0.6, hexToRgba(centerCol, 0.4));
+        radGrad.addColorStop(1, edgeCol);
+        ctx.fillStyle = radGrad;
+        ctx.fillRect(0, 0, w, h);
+      } else {
+        const linGrad = ctx.createLinearGradient(0, 0, 0, Math.max(1, h));
+        const topCol = bgCenterColor || `rgb(${bgMaxRed}, 10, 20)`;
+        const botCol = bgEdgeColor || "#030005";
+        linGrad.addColorStop(0, topCol);
+        linGrad.addColorStop(1, botCol);
+        ctx.fillStyle = linGrad;
+        ctx.fillRect(0, 0, w, h);
+      }
 
-    // Background Cyber Grid
-    ctx.strokeStyle = "rgba(255, 0, 80, 0.08)";
-    ctx.lineWidth = 1;
-    const gridSize = 40;
-    for (let x = 0; x < w; x += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, h);
-      ctx.stroke();
-    }
-    for (let y = 0; y < h; y += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(w, y);
-      ctx.stroke();
-    }
+      // Background Cyber Grid
+      if (showBgGrid && bgType !== "spotlight") {
+        ctx.strokeStyle = "rgba(255, 0, 80, 0.08)";
+        ctx.lineWidth = 1;
+        const gridSize = 40;
+        for (let x = 0; x < w; x += gridSize) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, h);
+          ctx.stroke();
+        }
+        for (let y = 0; y < h; y += gridSize) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(w, y);
+          ctx.stroke();
+        }
+      }
+
+      // 1.5 Draw Background-level Physics Layers (volumetric_glow, wave_line, liquid_flow)
+      const scaleX = w / canvasWidth;
+      const scaleY = h / canvasHeight;
+
+      physicsLayers.forEach((pl, idx) => {
+        if (!pl.enabled) return;
+        ctx.save();
+
+        if (pl.type === "volumetric_glow") {
+          const pcx = (pl.params.cx ?? canvasWidth / 2) * scaleX;
+          const pcy = (pl.params.cy ?? canvasHeight / 2) * scaleY;
+          const pulse = 1.0 + Math.sin(time * 3.0 * (pl.params.speed ?? 1.0)) * 0.25;
+          const radius = Math.max(1, Math.min(w, h) * 0.45 * pulse);
+          const r0 = Math.max(0.1, Math.min(5, radius * 0.5));
+          const r1 = Math.max(r0 + 5, radius);
+          const grad = ctx.createRadialGradient(pcx, pcy, r0, pcx, pcy, r1);
+          const glowColor = pl.params.glow_color || pl.params.color || "#00FFFF";
+          grad.addColorStop(0, glowColor);
+          grad.addColorStop(0.3, hexToRgba(glowColor, 0.4));
+          grad.addColorStop(1, "transparent");
+          ctx.globalAlpha = (pl.params.intensity ?? 0.8) * 0.4;
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(pcx, pcy, Math.max(0.1, radius), 0, Math.PI * 2);
+          ctx.fill();
+      } else if (pl.type === "wave_line") {
+        const amp = (pl.params.amplitude ?? 30) * scaleY;
+        const freq = (pl.params.frequency ?? 0.02) / scaleX;
+        const baseY = (pl.params.y ?? canvasHeight * 0.65) * scaleY;
+        ctx.beginPath();
+        ctx.strokeStyle = pl.params.color || "#00FFFF";
+        ctx.lineWidth = Math.max(1.5, (pl.params.thickness ?? 2) * scaleY);
+        ctx.shadowColor = pl.params.color || "#00FFFF";
+        ctx.shadowBlur = vfxBloom ? 10 : 2;
+        for (let x = 0; x <= w; x += 6) {
+          const y = baseY + Math.sin(x * freq + time * 4.0) * amp;
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      } else if (pl.type === "liquid_flow") {
+        ctx.strokeStyle = "rgba(0, 255, 200, 0.18)";
+        ctx.lineWidth = 1.5;
+        for (let row = 0; row < 4; row++) {
+          ctx.beginPath();
+          const base = (h * (0.2 + row * 0.22));
+          for (let x = 0; x <= w; x += 10) {
+            const y = base + Math.sin(x * 0.015 + time * 2.5 + row) * 14 + Math.cos(x * 0.008 + time * 1.8) * 8;
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        }
+      }
+
+      ctx.restore();
+    });
 
     // 2. Draw Video Boxes
     videoBoxes.forEach((box, idx) => {
@@ -822,11 +1434,28 @@ export function StreamInjectStudio() {
     textLayers.forEach((tl, idx) => {
       let animOffset = 0;
       let alpha = 1.0;
+      let scaleFactorX = 1.0;
+      let scaleFactorY = 1.0;
 
       if (tl.animation === "bounce") {
         animOffset = Math.sin(time * 4.0) * (h * 0.015);
       } else if (tl.animation === "flicker" && vfxGlitch && Math.random() < 0.25 && time < 2.0) {
         alpha = 0.3;
+      } else if (tl.animation === "squash_and_stretch") {
+        const cycle = Math.sin(time * 5.0);
+        scaleFactorX = 1.0 + cycle * 0.22;
+        scaleFactorY = 1.0 - cycle * 0.22;
+      } else if (tl.animation === "elastic_spring") {
+        const decay = Math.exp(-Math.min(time * 1.5, 4));
+        const spring = Math.cos(time * 10.0) * decay;
+        scaleFactorX = 1.0 + spring * 0.25;
+        scaleFactorY = 1.0 + spring * 0.25;
+      } else if (tl.animation === "kinetic_dispersion") {
+        const disperse = Math.sin(time * 4.0) * 8;
+        animOffset = (Math.random() - 0.5) * disperse * 0.5;
+      } else if (tl.animation === "cinematic_fade") {
+        // Smooth cinematic luminous fade-in matching The Whippet video (0 to 3.5s)
+        alpha = Math.min(1.0, Math.max(0.15, time * 0.38));
       }
 
       ctx.save();
@@ -841,14 +1470,46 @@ export function StreamInjectStudio() {
       let posX = tl.x !== undefined ? tl.x * scaleX : w / 2;
       let posY = (tl.y !== undefined ? tl.y * scaleY : h * 0.3) + animOffset;
 
+      ctx.translate(posX, posY);
+      ctx.scale(scaleFactorX, scaleFactorY);
+      ctx.translate(-posX, -posY);
+
       ctx.textAlign = "center";
-      if (vfxBloom) {
-        ctx.shadowColor = tl.color || "#FFFFFF";
-        ctx.shadowBlur = 12;
+
+      // Letter spacing support for cinematic widescreen cards
+      if (tl.letter_spacing) {
+        try {
+          (ctx as any).letterSpacing = `${Math.round(tl.letter_spacing * scaleX)}px`;
+        } catch {
+          // ignore if letterSpacing is unsupported
+        }
+      }
+
+      const glowColor = tl.glow_color || (vfxBloom ? (tl.color || "#00FFFF") : undefined);
+      const glowBlur = tl.glow_blur !== undefined ? (tl.glow_blur * scaleY) : (vfxBloom ? 18 : 0);
+
+      // Neon electric glow stroke (e.g. The Whippet electric cyan outline)
+      if (tl.stroke_color) {
+        ctx.save();
+        ctx.strokeStyle = tl.stroke_color;
+        ctx.lineWidth = Math.max(1, (tl.stroke_width || 3) * scaleY);
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        if (glowColor) {
+          ctx.shadowColor = glowColor;
+          ctx.shadowBlur = glowBlur * 1.5;
+        }
+        ctx.strokeText(tl.text, posX, posY);
+        ctx.restore();
+      }
+
+      if (glowColor) {
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = glowBlur;
       }
 
       // Chromatic Aberration Simulation (Offset red & cyan)
-      if (vfxChroma && time <= 2.5) {
+      if ((vfxChroma && time <= 2.5) || tl.animation === "kinetic_dispersion") {
         ctx.fillStyle = "rgba(255, 0, 80, 0.7)";
         ctx.fillText(tl.text, posX + 3, posY);
         ctx.fillStyle = "rgba(0, 255, 255, 0.7)";
@@ -885,6 +1546,129 @@ export function StreamInjectStudio() {
       }
     });
 
+    // 4.5 Draw Foreground Physics Layers (shockwave, vortex, page_curl, crt_scanlines, datamosh) & Selection Handles
+    physicsLayers.forEach((pl, idx) => {
+      if (!pl.enabled) return;
+      ctx.save();
+
+      if (pl.type === "shockwave") {
+        const pcx = (pl.params.cx ?? canvasWidth / 2) * scaleX;
+        const pcy = (pl.params.cy ?? canvasHeight / 2) * scaleY;
+        const speed = pl.params.speed ?? 1.0;
+        const progress = (time * speed) % 1.5;
+        const maxR = Math.max(1, (pl.params.radius ?? 300) * scaleX);
+        const curR = Math.max(0.1, maxR * (progress / 1.5));
+        const waveWidth = Math.max(1, (pl.params.wave_width ?? 40) * scaleX);
+
+        ctx.beginPath();
+        ctx.arc(pcx, pcy, Math.max(0.1, curR), 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(0, 255, 255, 0.7)";
+        ctx.lineWidth = Math.max(2, waveWidth * 0.3);
+        ctx.shadowColor = "#00FFFF";
+        ctx.shadowBlur = 15;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(pcx, pcy, Math.max(0.1, curR - waveWidth * 0.5), 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255, 0, 128, 0.4)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      } else if (pl.type === "vortex") {
+        const pcx = (pl.params.cx ?? canvasWidth / 2) * scaleX;
+        const pcy = (pl.params.cy ?? canvasHeight / 2) * scaleY;
+        const maxR = Math.max(1, (pl.params.radius ?? 250) * scaleX);
+        const angleOffset = time * 3.0;
+
+        ctx.save();
+        ctx.translate(pcx, pcy);
+        ctx.rotate(angleOffset);
+        for (let ring = 0; ring < 3; ring++) {
+          ctx.beginPath();
+          ctx.arc(0, 0, Math.max(0.1, (maxR / 3) * (ring + 1)), 0, Math.PI * 1.6);
+          ctx.strokeStyle = ring === 1 ? "#00FFFF" : "rgba(255, 0, 128, 0.5)";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else if (pl.type === "page_curl") {
+        const curlW = w * (pl.params.roll_width_pct ?? 0.25);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+        ctx.beginPath();
+        ctx.moveTo(w, 0);
+        ctx.lineTo(w - curlW, 0);
+        ctx.lineTo(w, curlW);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(w - curlW, 0);
+        ctx.lineTo(w, curlW);
+        ctx.stroke();
+      } else if (pl.type === "crt_scanlines") {
+        const lineSpacing = 4;
+        const lineAlpha = (pl.params.opacity ?? 0.25) * 0.3;
+        ctx.fillStyle = `rgba(0, 0, 0, ${lineAlpha})`;
+        for (let y = 0; y < h; y += lineSpacing) {
+          ctx.fillRect(0, y, w, 1.5);
+        }
+      } else if (pl.type === "datamosh" && Math.random() < (pl.params.probability ?? 0.15)) {
+        const blockSize = (pl.params.macroblock_size ?? 16) * scaleX;
+        ctx.fillStyle = "rgba(0, 255, 200, 0.3)";
+        for (let i = 0; i < 4; i++) {
+          const gx = Math.random() * (w - blockSize * 3);
+          const gy = Math.random() * (h - blockSize * 2);
+          ctx.fillRect(gx, gy, blockSize * 2, blockSize);
+        }
+      }
+
+      ctx.restore();
+
+      // Selection Frame for Physics Layer
+      if (selectedTarget && selectedTarget.type === "physics" && selectedTarget.index === idx) {
+        ctx.save();
+        const pcx = (pl.params.cx ?? canvasWidth / 2) * scaleX;
+        const pcy = (pl.params.cy ?? canvasHeight / 2) * scaleY;
+
+        ctx.strokeStyle = "#00FFFF";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+
+        // Draw crosshair or bounding circle
+        if (pl.params.cx !== undefined && pl.params.cy !== undefined) {
+          ctx.beginPath();
+          ctx.arc(pcx, pcy, 28, 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(pcx - 36, pcy);
+          ctx.lineTo(pcx + 36, pcy);
+          ctx.moveTo(pcx, pcy - 36);
+          ctx.lineTo(pcx, pcy + 36);
+          ctx.stroke();
+
+          // Info badge
+          ctx.setLineDash([]);
+          ctx.fillStyle = "#00FFFF";
+          ctx.fillRect(pcx - 80, pcy - 50, 160, 20);
+          ctx.fillStyle = "#000000";
+          ctx.font = "bold 10px monospace";
+          ctx.textAlign = "center";
+          ctx.fillText(`PHYSICS • ${pl.name.toUpperCase()}`, pcx, pcy - 36);
+        } else {
+          ctx.strokeRect(10, 10, w - 20, h - 20);
+          ctx.setLineDash([]);
+          ctx.fillStyle = "#00FFFF";
+          ctx.fillRect(14, 14, 180, 20);
+          ctx.fillStyle = "#000000";
+          ctx.font = "bold 10px monospace";
+          ctx.fillText(`GLOBAL FX • ${pl.name.toUpperCase()}`, 20, 28);
+        }
+        ctx.restore();
+      }
+    });
+
     // 5. Overlay Visual Guides if enabled
     if (showGuides) {
       ctx.strokeStyle = "rgba(0, 255, 200, 0.25)";
@@ -904,8 +1688,11 @@ export function StreamInjectStudio() {
 
       ctx.setLineDash([]);
     }
-
-    ctx.restore();
+    } catch (err) {
+      console.warn("[StreamInject] Draw error:", err);
+    } finally {
+      ctx.restore();
+    }
   };
 
   // Trigger Studio Template Generation via Python
@@ -923,11 +1710,15 @@ export function StreamInjectStudio() {
       fps: 30.0,
       background: {
         type: bgType,
-        max_red: bgMaxRed
+        max_red: bgMaxRed,
+        center_color: bgCenterColor,
+        edge_color: bgEdgeColor,
+        show_grid: showBgGrid
       },
       text_layers: textLayers,
       video_boxes: videoBoxes,
       profile_circles: profileCircles,
+      physics_layers: physicsLayers,
       vfx: {
         enable_glitch: vfxGlitch,
         enable_shake: vfxShake,
@@ -1593,29 +2384,96 @@ export function StreamInjectStudio() {
           <div className="xl:col-span-5 flex flex-col gap-4">
             {/* Presets Gallery Accordion */}
             <div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-xl backdrop-blur-md flex flex-col gap-3">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4" /> Studio Quick Presets
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {presets.map((preset) => (
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4" /> Studio Quick Presets ({presets.length})
+                </h2>
+                {/* Category Filter Tabs */}
+                <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-lg border border-slate-800">
                   <button
-                    key={preset.id}
-                    onClick={() => applyPreset(preset)}
-                    className="flex flex-col items-start p-3 rounded-xl bg-slate-950/70 border border-slate-800 hover:border-purple-500/50 text-left transition-all group"
+                    onClick={() => setPresetFilter("all")}
+                    className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                      presetFilter === "all"
+                        ? "bg-purple-600 text-white shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
                   >
-                    <div className="flex items-center justify-between w-full">
-                      <span className="text-xs font-bold text-slate-200 group-hover:text-purple-300 transition-colors">
-                        {preset.name}
-                      </span>
-                      <span className="px-1.5 py-0.5 text-[9px] rounded bg-purple-500/20 text-purple-300 font-mono">
-                        {preset.aspectRatio}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-tight">
-                      {preset.description}
-                    </p>
+                    All ({presets.length})
                   </button>
-                ))}
+                  <button
+                    onClick={() => setPresetFilter("physics")}
+                    className={`px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 transition-colors ${
+                      presetFilter === "physics"
+                        ? "bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30"
+                        : "text-cyan-400 hover:text-cyan-300"
+                    }`}
+                  >
+                    <Zap className="w-3 h-3" /> Physics FX ({presets.filter(p => !!p.config.physics_layers?.length || p.id.startsWith("physics_")).length})
+                  </button>
+                  <button
+                    onClick={() => setPresetFilter("classic")}
+                    className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                      presetFilter === "classic"
+                        ? "bg-purple-600 text-white shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    Classic ({presets.filter(p => !p.config.physics_layers?.length && !p.id.startsWith("physics_")).length})
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {presets
+                  .filter((preset) => {
+                    const isPhysics = !!preset.config.physics_layers?.length || preset.id.startsWith("physics_");
+                    if (presetFilter === "physics") return isPhysics;
+                    if (presetFilter === "classic") return !isPhysics;
+                    return true;
+                  })
+                  .map((preset) => {
+                    const isPhysics = !!preset.config.physics_layers?.length || preset.id.startsWith("physics_");
+                    return (
+                      <button
+                        key={preset.id}
+                        onClick={() => applyPreset(preset)}
+                        className={`flex flex-col items-start p-3 rounded-xl bg-slate-950/70 border text-left transition-all group relative overflow-hidden ${
+                          isPhysics
+                            ? "border-cyan-500/30 hover:border-cyan-400 hover:shadow-lg hover:shadow-cyan-950/30"
+                            : "border-slate-800 hover:border-purple-500/50"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full gap-1">
+                          <span className={`text-xs font-bold transition-colors ${
+                            isPhysics ? "text-cyan-200 group-hover:text-cyan-100" : "text-slate-200 group-hover:text-purple-300"
+                          }`}>
+                            {preset.name}
+                          </span>
+                          <span className="px-1.5 py-0.5 text-[9px] rounded bg-purple-500/20 text-purple-300 font-mono flex-shrink-0">
+                            {preset.aspectRatio}
+                          </span>
+                        </div>
+
+                        {/* Physics Badges */}
+                        {isPhysics && (
+                          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                            <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-mono flex items-center gap-1">
+                              <Zap className="w-2.5 h-2.5 text-cyan-400" /> GMPE Physics
+                            </span>
+                            {preset.config.physics_layers?.map((pl) => (
+                              <span key={pl.id} className="px-1 py-0.2 text-[8px] rounded bg-slate-800 text-slate-300 font-mono">
+                                {pl.type}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-tight">
+                          {preset.description}
+                        </p>
+                      </button>
+                    );
+                  })}
               </div>
             </div>
 
@@ -1665,7 +2523,101 @@ export function StreamInjectStudio() {
                   >
                     <option value="radial">Kinetic Dark Radial</option>
                     <option value="linear">Neon Linear Gradient</option>
+                    <option value="spotlight">Cinematic Spotlight (Indigo Vignette)</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Background Color Customizer & Quick Palettes */}
+              <div className="pt-2.5 mt-1 border-t border-slate-800/80 flex flex-col gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  {/* Center / Primary Color */}
+                  <div className="flex flex-col gap-1">
+                    <span className="text-slate-400 text-[10px] font-semibold flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full inline-block border border-white/20" style={{ backgroundColor: bgCenterColor }} />
+                      {bgType === "linear" ? "Top Gradient Color" : "Center Glow Color"}
+                    </span>
+                    <div className="flex items-center gap-2 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800">
+                      <input
+                        type="color"
+                        value={bgCenterColor}
+                        onChange={(e) => setBgCenterColor(e.target.value)}
+                        className="w-6 h-6 bg-transparent border-0 rounded cursor-pointer shrink-0"
+                        title="Pick Center Background Color"
+                      />
+                      <input
+                        type="text"
+                        value={bgCenterColor}
+                        onChange={(e) => setBgCenterColor(e.target.value)}
+                        className="w-full bg-transparent text-xs text-white font-mono focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Edge / Vignette Color */}
+                  <div className="flex flex-col gap-1">
+                    <span className="text-slate-400 text-[10px] font-semibold flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full inline-block border border-white/20" style={{ backgroundColor: bgEdgeColor }} />
+                      {bgType === "linear" ? "Bottom Gradient Color" : "Outer Edge / Vignette Color"}
+                    </span>
+                    <div className="flex items-center gap-2 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800">
+                      <input
+                        type="color"
+                        value={bgEdgeColor}
+                        onChange={(e) => setBgEdgeColor(e.target.value)}
+                        className="w-6 h-6 bg-transparent border-0 rounded cursor-pointer shrink-0"
+                        title="Pick Edge Background Color"
+                      />
+                      <input
+                        type="text"
+                        value={bgEdgeColor}
+                        onChange={(e) => setBgEdgeColor(e.target.value)}
+                        className="w-full bg-transparent text-xs text-white font-mono focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Cyber Grid Toggle */}
+                  <div className="flex flex-col justify-end">
+                    <label className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-950/70 border border-slate-800 cursor-pointer text-slate-300 hover:text-white transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={showBgGrid}
+                        onChange={(e) => setShowBgGrid(e.target.checked)}
+                        className="accent-purple-500 rounded"
+                      />
+                      <span className="text-[11px] font-semibold">Overlay Cyber Grid</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Quick Background Theme Palettes */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                  <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mr-1">Background Palettes:</span>
+                  {[
+                    { name: "Whippet Indigo", center: "#251b42", edge: "#07060a", type: "spotlight" as const, grid: false },
+                    { name: "Midnight Crimson", center: "#370812", edge: "#030005", type: "radial" as const, grid: true },
+                    { name: "Cyber Matrix", center: "#062c19", edge: "#020a06", type: "radial" as const, grid: true },
+                    { name: "Neon Ocean", center: "#082436", edge: "#02070d", type: "radial" as const, grid: true },
+                    { name: "Royal Violet", center: "#280938", edge: "#06020c", type: "radial" as const, grid: true },
+                    { name: "Golden Solar", center: "#382405", edge: "#0c0701", type: "radial" as const, grid: true },
+                    { name: "Stealth Noir", center: "#111115", edge: "#050507", type: "spotlight" as const, grid: false },
+                  ].map((p) => (
+                    <button
+                      key={p.name}
+                      type="button"
+                      onClick={() => {
+                        setBgCenterColor(p.center);
+                        setBgEdgeColor(p.edge);
+                        setBgType(p.type);
+                        setShowBgGrid(p.grid);
+                      }}
+                      className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-950 hover:bg-slate-800 border border-slate-700/80 text-[10px] text-slate-300 hover:text-white transition-all shadow-sm"
+                    >
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.center }} />
+                      <span>{p.name}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1836,7 +2788,204 @@ export function StreamInjectStudio() {
                             <option value="bounce">Bounce</option>
                             <option value="flicker">Flicker</option>
                             <option value="static">Static</option>
+                            <option value="cinematic_fade">✨ Cinematic Luminous Fade-In</option>
+                            <option value="squash_and_stretch">⚡ Squash & Stretch (Physics)</option>
+                            <option value="elastic_spring">⚡ Elastic Spring (Physics)</option>
+                            <option value="kinetic_dispersion">⚡ Kinetic Dispersion (Physics)</option>
                           </select>
+                        </div>
+                      </div>
+
+                      {/* Text Layer Color & Style Controls */}
+                      <div className="pt-2 border-t border-slate-800/80 flex flex-col gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          {/* Text Fill Color */}
+                          <div className="flex flex-col gap-1">
+                            <span className="text-slate-400 text-[10px] font-semibold flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full inline-block border border-white/20" style={{ backgroundColor: layer.color || "#FFFFFF" }} />
+                              Text Color
+                            </span>
+                            <div className="flex items-center gap-1.5 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">
+                              <input
+                                type="color"
+                                value={layer.color || "#FFFFFF"}
+                                onChange={(e) => {
+                                  const copy = [...textLayers];
+                                  copy[idx].color = e.target.value;
+                                  setTextLayers(copy);
+                                }}
+                                className="w-5 h-5 bg-transparent border-0 rounded cursor-pointer shrink-0"
+                                title="Text Fill Color"
+                              />
+                              <input
+                                type="text"
+                                value={layer.color || "#FFFFFF"}
+                                onChange={(e) => {
+                                  const copy = [...textLayers];
+                                  copy[idx].color = e.target.value;
+                                  setTextLayers(copy);
+                                }}
+                                className="w-full bg-transparent text-[11px] text-white font-mono focus:outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Outline / Stroke Color */}
+                          <div className="flex flex-col gap-1">
+                            <span className="text-slate-400 text-[10px] font-semibold flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full inline-block border border-white/20" style={{ backgroundColor: layer.stroke_color || "#00E5FF" }} />
+                              Outline Stroke
+                            </span>
+                            <div className="flex items-center gap-1.5 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">
+                              <input
+                                type="color"
+                                value={layer.stroke_color || "#00E5FF"}
+                                onChange={(e) => {
+                                  const copy = [...textLayers];
+                                  copy[idx].stroke_color = e.target.value;
+                                  if (!copy[idx].stroke_width) copy[idx].stroke_width = 3;
+                                  setTextLayers(copy);
+                                }}
+                                className="w-5 h-5 bg-transparent border-0 rounded cursor-pointer shrink-0"
+                                title="Outline Stroke Color"
+                              />
+                              <input
+                                type="text"
+                                value={layer.stroke_color || ""}
+                                placeholder="None"
+                                onChange={(e) => {
+                                  const copy = [...textLayers];
+                                  copy[idx].stroke_color = e.target.value;
+                                  setTextLayers(copy);
+                                }}
+                                className="w-full bg-transparent text-[11px] text-white font-mono focus:outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Glow / Aura Color */}
+                          <div className="flex flex-col gap-1">
+                            <span className="text-slate-400 text-[10px] font-semibold flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full inline-block border border-white/20" style={{ backgroundColor: layer.glow_color || "#00FFFF" }} />
+                              Glow / Aura
+                            </span>
+                            <div className="flex items-center gap-1.5 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">
+                              <input
+                                type="color"
+                                value={layer.glow_color || "#00FFFF"}
+                                onChange={(e) => {
+                                  const copy = [...textLayers];
+                                  copy[idx].glow_color = e.target.value;
+                                  if (!copy[idx].glow_blur) copy[idx].glow_blur = 18;
+                                  setTextLayers(copy);
+                                }}
+                                className="w-5 h-5 bg-transparent border-0 rounded cursor-pointer shrink-0"
+                                title="Neon Glow Color"
+                              />
+                              <input
+                                type="text"
+                                value={layer.glow_color || ""}
+                                placeholder="None"
+                                onChange={(e) => {
+                                  const copy = [...textLayers];
+                                  copy[idx].glow_color = e.target.value;
+                                  setTextLayers(copy);
+                                }}
+                                className="w-full bg-transparent text-[11px] text-white font-mono focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Sliders for Outline Width, Glow Blur, Letter Spacing */}
+                        <div className="grid grid-cols-3 gap-2 text-[11px] pt-0.5">
+                          <div>
+                            <div className="flex justify-between text-[10px] text-slate-400">
+                              <span>Stroke Width:</span>
+                              <span className="font-mono text-cyan-400">{layer.stroke_width ?? 0}px</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="12"
+                              step="0.5"
+                              value={layer.stroke_width ?? 0}
+                              onChange={(e) => {
+                                const copy = [...textLayers];
+                                copy[idx].stroke_width = parseFloat(e.target.value) || 0;
+                                setTextLayers(copy);
+                              }}
+                              className="w-full accent-cyan-500 h-1 mt-1 cursor-pointer"
+                            />
+                          </div>
+                          <div>
+                            <div className="flex justify-between text-[10px] text-slate-400">
+                              <span>Glow Blur:</span>
+                              <span className="font-mono text-cyan-400">{layer.glow_blur ?? 0}px</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="50"
+                              step="1"
+                              value={layer.glow_blur ?? 0}
+                              onChange={(e) => {
+                                const copy = [...textLayers];
+                                copy[idx].glow_blur = parseInt(e.target.value, 10) || 0;
+                                setTextLayers(copy);
+                              }}
+                              className="w-full accent-cyan-500 h-1 mt-1 cursor-pointer"
+                            />
+                          </div>
+                          <div>
+                            <div className="flex justify-between text-[10px] text-slate-400">
+                              <span>Tracking:</span>
+                              <span className="font-mono text-purple-400">{layer.letter_spacing ?? 0}px</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="-2"
+                              max="20"
+                              step="1"
+                              value={layer.letter_spacing ?? 0}
+                              onChange={(e) => {
+                                const copy = [...textLayers];
+                                copy[idx].letter_spacing = parseInt(e.target.value, 10) || 0;
+                                setTextLayers(copy);
+                              }}
+                              className="w-full accent-purple-500 h-1 mt-1 cursor-pointer"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Quick Color Palette Swatches */}
+                        <div className="flex items-center gap-1 pt-1 flex-wrap">
+                          <span className="text-[10px] text-slate-500 mr-1 font-semibold">Swatches:</span>
+                          {[
+                            { name: "Whippet Cyan", fill: "#FFFFFF", stroke: "#00E5FF", glow: "#00E5FF" },
+                            { name: "Electric Blue", fill: "#00FFFF", stroke: "#0077FF", glow: "#00FFFF" },
+                            { name: "Neon Pink", fill: "#FFFFFF", stroke: "#FF007F", glow: "#FF007F" },
+                            { name: "Solar Gold", fill: "#FFF7D6", stroke: "#FFB700", glow: "#FFB700" },
+                            { name: "Matrix Green", fill: "#E6FFF2", stroke: "#00FF66", glow: "#00FF66" },
+                            { name: "Pure White", fill: "#FFFFFF", stroke: "", glow: "" }
+                          ].map((palette) => (
+                            <button
+                              key={palette.name}
+                              type="button"
+                              onClick={() => {
+                                const copy = [...textLayers];
+                                copy[idx].color = palette.fill;
+                                copy[idx].stroke_color = palette.stroke || undefined;
+                                copy[idx].stroke_width = palette.stroke ? 3 : 0;
+                                copy[idx].glow_color = palette.glow || undefined;
+                                copy[idx].glow_blur = palette.glow ? 20 : 0;
+                                setTextLayers(copy);
+                              }}
+                              className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] text-slate-300 transition-colors"
+                            >
+                              {palette.name}
+                            </button>
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -1897,17 +3046,6 @@ export function StreamInjectStudio() {
                           }}
                           className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-emerald-400 focus:outline-none"
                           placeholder="Box Label (e.g. PREVIOUS VIDEO)"
-                        />
-                        <input
-                          type="color"
-                          value={box.border_color || "#00FFFF"}
-                          onChange={(e) => {
-                            const copy = [...videoBoxes];
-                            copy[idx].border_color = e.target.value;
-                            setVideoBoxes(copy);
-                          }}
-                          className="w-6 h-6 bg-transparent border-0 rounded cursor-pointer"
-                          title="Border Glow Color"
                         />
                         <button
                           onClick={(e) => {
@@ -1975,6 +3113,59 @@ export function StreamInjectStudio() {
                           />
                         </div>
                       </div>
+
+                      {/* Video Box Border Color & Palette */}
+                      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-400 text-[10px] font-semibold flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full inline-block border border-white/20" style={{ backgroundColor: box.border_color || "#00FFFF" }} />
+                            Border Glow:
+                          </span>
+                          <input
+                            type="color"
+                            value={box.border_color || "#00FFFF"}
+                            onChange={(e) => {
+                              const copy = [...videoBoxes];
+                              copy[idx].border_color = e.target.value;
+                              setVideoBoxes(copy);
+                            }}
+                            className="w-5 h-5 bg-transparent border-0 rounded cursor-pointer"
+                            title="Border Glow Color"
+                          />
+                          <input
+                            type="text"
+                            value={box.border_color || "#00FFFF"}
+                            onChange={(e) => {
+                              const copy = [...videoBoxes];
+                              copy[idx].border_color = e.target.value;
+                              setVideoBoxes(copy);
+                            }}
+                            className="w-20 bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-[11px] text-white font-mono"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {[
+                            { name: "Cyan", color: "#00FFFF" },
+                            { name: "Pink", color: "#FF0055" },
+                            { name: "Emerald", color: "#00FFCC" },
+                            { name: "Amber", color: "#FFB700" },
+                            { name: "Violet", color: "#A855F7" }
+                          ].map((sw) => (
+                            <button
+                              key={sw.name}
+                              type="button"
+                              onClick={() => {
+                                const copy = [...videoBoxes];
+                                copy[idx].border_color = sw.color;
+                                setVideoBoxes(copy);
+                              }}
+                              className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] text-slate-300 transition-colors"
+                            >
+                              {sw.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
@@ -2036,17 +3227,6 @@ export function StreamInjectStudio() {
                             />
                             <span>Kinetic Pulse</span>
                           </label>
-                          <input
-                            type="color"
-                            value={circ.glow_color || "#00FFFF"}
-                            onChange={(e) => {
-                              const copy = [...profileCircles];
-                              copy[idx].glow_color = e.target.value;
-                              setProfileCircles(copy);
-                            }}
-                            className="w-5 h-5 bg-transparent border-0 rounded cursor-pointer"
-                            title="Glow Color"
-                          />
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -2101,10 +3281,790 @@ export function StreamInjectStudio() {
                           />
                         </div>
                       </div>
+
+                      {/* Profile Circle Glow Color & Palette */}
+                      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-400 text-[10px] font-semibold flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full inline-block border border-white/20" style={{ backgroundColor: circ.glow_color || "#00FFFF" }} />
+                            Aura Glow:
+                          </span>
+                          <input
+                            type="color"
+                            value={circ.glow_color || "#00FFFF"}
+                            onChange={(e) => {
+                              const copy = [...profileCircles];
+                              copy[idx].glow_color = e.target.value;
+                              setProfileCircles(copy);
+                            }}
+                            className="w-5 h-5 bg-transparent border-0 rounded cursor-pointer"
+                            title="Circle Aura Glow Color"
+                          />
+                          <input
+                            type="text"
+                            value={circ.glow_color || "#00FFFF"}
+                            onChange={(e) => {
+                              const copy = [...profileCircles];
+                              copy[idx].glow_color = e.target.value;
+                              setProfileCircles(copy);
+                            }}
+                            className="w-20 bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-[11px] text-white font-mono"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {[
+                            { name: "Cyan", color: "#00FFFF" },
+                            { name: "Pink", color: "#FF007F" },
+                            { name: "Emerald", color: "#00FF66" },
+                            { name: "Gold", color: "#FFB700" },
+                            { name: "Purple", color: "#A855F7" }
+                          ].map((sw) => (
+                            <button
+                              key={sw.name}
+                              type="button"
+                              onClick={() => {
+                                const copy = [...profileCircles];
+                                copy[idx].glow_color = sw.color;
+                                setProfileCircles(copy);
+                              }}
+                              className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] text-slate-300 transition-colors"
+                            >
+                              {sw.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
               </div>
+            </div>
+
+            {/* Motion & Geometric FX Layers (Physics Engine) Inspector */}
+            <div className="p-5 rounded-2xl bg-slate-900/70 border border-cyan-500/30 shadow-xl shadow-cyan-950/20 backdrop-blur-md flex flex-col gap-3 relative">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                    <Waves className="w-4 h-4 text-cyan-400 animate-pulse" /> Motion & Geometric FX Layers ({physicsLayers.length})
+                  </h2>
+                  <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono text-[9px] font-bold border border-cyan-500/30">
+                    GMPE Vectorized
+                  </span>
+                </div>
+
+                {/* Add Layer Dropdown Toggle */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowAddPhysicsMenu(!showAddPhysicsMenu)}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition-all shadow-md shadow-cyan-500/20"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Physics FX <ChevronDown className="w-3 h-3 ml-0.5" />
+                  </button>
+
+                  {showAddPhysicsMenu && (
+                    <div className="absolute right-0 top-full mt-1.5 w-64 p-2 bg-slate-950 border border-cyan-500/40 rounded-xl shadow-2xl shadow-black z-50 flex flex-col gap-1 text-xs">
+                      <div className="text-[10px] uppercase font-bold text-slate-400 px-2 py-1 tracking-wider border-b border-slate-800">
+                        Vectorized Python FX Suite
+                      </div>
+                      <button
+                        onClick={() => handleAddPhysicsLayer("shockwave")}
+                        className="flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-cyan-950/60 hover:text-cyan-300 text-slate-200 transition-colors text-left"
+                      >
+                        <span className="font-semibold">Radial Shockwave Blast</span>
+                        <span className="text-[9px] font-mono text-cyan-400">Refractive</span>
+                      </button>
+                      <button
+                        onClick={() => handleAddPhysicsLayer("wave_line")}
+                        className="flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-cyan-950/60 hover:text-cyan-300 text-slate-200 transition-colors text-left"
+                      >
+                        <span className="font-semibold">Rolling Sine Wave Horizon</span>
+                        <span className="text-[9px] font-mono text-cyan-400">Sinusoidal</span>
+                      </button>
+                      <button
+                        onClick={() => handleAddPhysicsLayer("vortex")}
+                        className="flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-cyan-950/60 hover:text-cyan-300 text-slate-200 transition-colors text-left"
+                      >
+                        <span className="font-semibold">Localized Twirl Vortex</span>
+                        <span className="text-[9px] font-mono text-cyan-400">Radial Twist</span>
+                      </button>
+                      <button
+                        onClick={() => handleAddPhysicsLayer("page_curl")}
+                        className="flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-cyan-950/60 hover:text-cyan-300 text-slate-200 transition-colors text-left"
+                      >
+                        <span className="font-semibold">3D Page Curl Fold</span>
+                        <span className="text-[9px] font-mono text-cyan-400">Cylindrical</span>
+                      </button>
+                      <button
+                        onClick={() => handleAddPhysicsLayer("crt_scanlines")}
+                        className="flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-cyan-950/60 hover:text-cyan-300 text-slate-200 transition-colors text-left"
+                      >
+                        <span className="font-semibold">CRT Scanlines & Aberration</span>
+                        <span className="text-[9px] font-mono text-cyan-400">Phosphor</span>
+                      </button>
+                      <button
+                        onClick={() => handleAddPhysicsLayer("datamosh")}
+                        className="flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-cyan-950/60 hover:text-cyan-300 text-slate-200 transition-colors text-left"
+                      >
+                        <span className="font-semibold">Datamosh Block Glitch</span>
+                        <span className="text-[9px] font-mono text-cyan-400">Macroblock</span>
+                      </button>
+                      <button
+                        onClick={() => handleAddPhysicsLayer("liquid_flow")}
+                        className="flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-cyan-950/60 hover:text-cyan-300 text-slate-200 transition-colors text-left"
+                      >
+                        <span className="font-semibold">Optical Liquid Flow Warp</span>
+                        <span className="text-[9px] font-mono text-cyan-400">Viscous</span>
+                      </button>
+                      <button
+                        onClick={() => handleAddPhysicsLayer("volumetric_glow")}
+                        className="flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-cyan-950/60 hover:text-cyan-300 text-slate-200 transition-colors text-left"
+                      >
+                        <span className="font-semibold">Volumetric Pulsing Aura</span>
+                        <span className="text-[9px] font-mono text-cyan-400">Luminous</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Empty state or list */}
+              {physicsLayers.length === 0 ? (
+                <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 text-center flex flex-col items-center gap-2.5">
+                  <Waves className="w-8 h-8 text-cyan-500/50" />
+                  <div className="text-xs text-slate-300 font-semibold">No Motion Physics Layers Active</div>
+                  <p className="text-[11px] text-slate-400 max-w-sm">
+                    Add native vectorized physics effects (shockwaves, harmonic sine waves, 3D page curls, CRT scanlines, liquid flows, or volumetric glow) rendered directly via NumPy and OpenCV.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 justify-center mt-1">
+                    <button
+                      onClick={() => handleAddPhysicsLayer("shockwave")}
+                      className="px-2 py-1 rounded bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/30 text-[10px] text-cyan-300 font-semibold"
+                    >
+                      + Shockwave
+                    </button>
+                    <button
+                      onClick={() => handleAddPhysicsLayer("wave_line")}
+                      className="px-2 py-1 rounded bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/30 text-[10px] text-cyan-300 font-semibold"
+                    >
+                      + Rolling Wave
+                    </button>
+                    <button
+                      onClick={() => handleAddPhysicsLayer("crt_scanlines")}
+                      className="px-2 py-1 rounded bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/30 text-[10px] text-cyan-300 font-semibold"
+                    >
+                      + CRT Scanlines
+                    </button>
+                    <button
+                      onClick={() => handleAddPhysicsLayer("volumetric_glow")}
+                      className="px-2 py-1 rounded bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/30 text-[10px] text-cyan-300 font-semibold"
+                    >
+                      + Volumetric Glow
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3 max-h-[420px] overflow-y-auto pr-1">
+                  {physicsLayers.map((layer, idx) => {
+                    const isSelected = selectedTarget?.type === "physics" && selectedTarget.index === idx;
+                    return (
+                      <div
+                        key={layer.id}
+                        onClick={() => setSelectedTarget({ type: "physics", index: idx })}
+                        className={`p-3.5 rounded-xl transition-all cursor-pointer flex flex-col gap-2.5 border ${
+                          isSelected
+                            ? "bg-slate-900/90 border-cyan-400 shadow-lg shadow-cyan-950/30"
+                            : "bg-slate-950/70 border-slate-800 hover:border-slate-700"
+                        }`}
+                      >
+                        {/* Layer Top Bar */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={layer.enabled}
+                              onChange={(e) => {
+                                const copy = [...physicsLayers];
+                                copy[idx].enabled = e.target.checked;
+                                setPhysicsLayers(copy);
+                              }}
+                              className="accent-cyan-400 w-4 h-4 cursor-pointer"
+                              title={layer.enabled ? "Disable Layer" : "Enable Layer"}
+                            />
+                            <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono text-[9px] font-bold uppercase tracking-wider flex-shrink-0">
+                              {layer.type.replace("_", " ")}
+                            </span>
+                            <input
+                              type="text"
+                              value={layer.name}
+                              onChange={(e) => {
+                                const copy = [...physicsLayers];
+                                copy[idx].name = e.target.value;
+                                setPhysicsLayers(copy);
+                              }}
+                              className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-xs text-white focus:border-cyan-400 focus:outline-none truncate"
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {/* Reorder Up */}
+                            <button
+                              disabled={idx === 0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (idx > 0) {
+                                  const copy = [...physicsLayers];
+                                  const temp = copy[idx - 1];
+                                  copy[idx - 1] = copy[idx];
+                                  copy[idx] = temp;
+                                  setPhysicsLayers(copy);
+                                  setSelectedTarget({ type: "physics", index: idx - 1 });
+                                }
+                              }}
+                              className="p-1 text-slate-400 hover:text-white disabled:opacity-30"
+                              title="Move Up"
+                            >
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </button>
+                            {/* Reorder Down */}
+                            <button
+                              disabled={idx === physicsLayers.length - 1}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (idx < physicsLayers.length - 1) {
+                                  const copy = [...physicsLayers];
+                                  const temp = copy[idx + 1];
+                                  copy[idx + 1] = copy[idx];
+                                  copy[idx] = temp;
+                                  setPhysicsLayers(copy);
+                                  setSelectedTarget({ type: "physics", index: idx + 1 });
+                                }
+                              }}
+                              className="p-1 text-slate-400 hover:text-white disabled:opacity-30"
+                              title="Move Down"
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
+                            {/* Duplicate */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const clone: PhysicsLayer = {
+                                  ...layer,
+                                  id: `phys_${layer.type}_${Date.now().toString(36)}`,
+                                  name: `${layer.name} (Copy)`,
+                                  params: { ...layer.params }
+                                };
+                                const copy = [...physicsLayers];
+                                copy.splice(idx + 1, 0, clone);
+                                setPhysicsLayers(copy);
+                                setSelectedTarget({ type: "physics", index: idx + 1 });
+                              }}
+                              className="p-1 text-slate-400 hover:text-cyan-300"
+                              title="Duplicate Layer"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                            {/* Delete */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPhysicsLayers(physicsLayers.filter((_, i) => i !== idx));
+                                setSelectedTarget(null);
+                              }}
+                              className="p-1 text-slate-400 hover:text-red-400"
+                              title="Delete Layer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Parameter Controls Based on Type */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
+                          {/* Shockwave Parameters */}
+                          {layer.type === "shockwave" && (
+                            <>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Center X</span>
+                                <input
+                                  type="number"
+                                  value={layer.params.cx ?? Math.round(canvasWidth * 0.5)}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.cx = parseInt(e.target.value, 10) || 0;
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono mt-0.5"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Center Y</span>
+                                <input
+                                  type="number"
+                                  value={layer.params.cy ?? Math.round(canvasHeight * 0.5)}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.cy = parseInt(e.target.value, 10) || 0;
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono mt-0.5"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Max Radius (px)</span>
+                                <input
+                                  type="number"
+                                  value={layer.params.radius ?? 200}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.radius = Math.max(20, parseInt(e.target.value, 10) || 50);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono mt-0.5"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Amplitude ({layer.params.amplitude ?? 40}px)</span>
+                                <input
+                                  type="range"
+                                  min="5"
+                                  max="100"
+                                  value={layer.params.amplitude ?? 40}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.amplitude = parseInt(e.target.value, 10);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full accent-cyan-400 mt-1"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Wave Width ({layer.params.width ?? 50}px)</span>
+                                <input
+                                  type="range"
+                                  min="10"
+                                  max="120"
+                                  value={layer.params.width ?? 50}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.width = parseInt(e.target.value, 10);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full accent-cyan-400 mt-1"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Speed ({layer.params.speed ?? 1.0}x)</span>
+                                <input
+                                  type="range"
+                                  min="0.2"
+                                  max="3.0"
+                                  step="0.1"
+                                  value={layer.params.speed ?? 1.0}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.speed = parseFloat(e.target.value);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full accent-cyan-400 mt-1"
+                                />
+                              </div>
+                            </>
+                          )}
+
+                          {/* Wave Line Parameters */}
+                          {layer.type === "wave_line" && (
+                            <>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Horizon Y</span>
+                                <input
+                                  type="number"
+                                  value={layer.params.y ?? Math.round(canvasHeight * 0.65)}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.y = parseInt(e.target.value, 10) || 0;
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono mt-0.5"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Amplitude ({layer.params.amplitude ?? 30}px)</span>
+                                <input
+                                  type="range"
+                                  min="5"
+                                  max="100"
+                                  value={layer.params.amplitude ?? 30}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.amplitude = parseInt(e.target.value, 10);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full accent-cyan-400 mt-1"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Frequency ({layer.params.frequency ?? 0.015})</span>
+                                <input
+                                  type="range"
+                                  min="0.005"
+                                  max="0.04"
+                                  step="0.001"
+                                  value={layer.params.frequency ?? 0.015}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.frequency = parseFloat(e.target.value);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full accent-cyan-400 mt-1"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Thickness ({layer.params.thickness ?? 3}px)</span>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="15"
+                                  value={layer.params.thickness ?? 3}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.thickness = parseInt(e.target.value, 10) || 3;
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono mt-0.5"
+                                />
+                              </div>
+                              <div className="col-span-2">
+                                <span className="text-slate-400 text-[10px] font-semibold">Line Glow Color</span>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <input
+                                    type="color"
+                                    value={layer.params.color ?? "#00FFFF"}
+                                    onChange={(e) => {
+                                      const copy = [...physicsLayers];
+                                      copy[idx].params.color = e.target.value;
+                                      setPhysicsLayers(copy);
+                                    }}
+                                    className="w-7 h-7 rounded border border-slate-700 cursor-pointer bg-transparent"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={layer.params.color ?? "#00FFFF"}
+                                    onChange={(e) => {
+                                      const copy = [...physicsLayers];
+                                      copy[idx].params.color = e.target.value;
+                                      setPhysicsLayers(copy);
+                                    }}
+                                    className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-xs text-white font-mono"
+                                  />
+                                </div>
+                              </div>
+                            </>
+                          )}
+
+                          {/* Vortex Parameters */}
+                          {layer.type === "vortex" && (
+                            <>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Center X</span>
+                                <input
+                                  type="number"
+                                  value={layer.params.cx ?? Math.round(canvasWidth * 0.5)}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.cx = parseInt(e.target.value, 10) || 0;
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono mt-0.5"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Center Y</span>
+                                <input
+                                  type="number"
+                                  value={layer.params.cy ?? Math.round(canvasHeight * 0.5)}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.cy = parseInt(e.target.value, 10) || 0;
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono mt-0.5"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Vortex Radius</span>
+                                <input
+                                  type="number"
+                                  value={layer.params.radius ?? 220}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.radius = Math.max(30, parseInt(e.target.value, 10) || 100);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono mt-0.5"
+                                />
+                              </div>
+                              <div className="col-span-3">
+                                <span className="text-slate-400 text-[10px] font-semibold">Twist Angle ({layer.params.angle ?? 180}°)</span>
+                                <input
+                                  type="range"
+                                  min="-720"
+                                  max="720"
+                                  value={layer.params.angle ?? 180}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.angle = parseInt(e.target.value, 10);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full accent-cyan-400 mt-1"
+                                />
+                              </div>
+                            </>
+                          )}
+
+                          {/* Page Curl Parameters */}
+                          {layer.type === "page_curl" && (
+                            <>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Roll Width ({Math.round((layer.params.roll_width_pct ?? 0.25) * 100)}%)</span>
+                                <input
+                                  type="range"
+                                  min="0.05"
+                                  max="0.5"
+                                  step="0.01"
+                                  value={layer.params.roll_width_pct ?? 0.25}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.roll_width_pct = parseFloat(e.target.value);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full accent-cyan-400 mt-1"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Curl Angle ({layer.params.curl_angle ?? 45}°)</span>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="90"
+                                  value={layer.params.curl_angle ?? 45}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.curl_angle = parseInt(e.target.value, 10);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full accent-cyan-400 mt-1"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Fold Progress</span>
+                                <input
+                                  type="range"
+                                  min="0.1"
+                                  max="1.0"
+                                  step="0.05"
+                                  value={layer.params.progress ?? 0.5}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.progress = parseFloat(e.target.value);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full accent-cyan-400 mt-1"
+                                />
+                              </div>
+                            </>
+                          )}
+
+                          {/* CRT Scanlines Parameters */}
+                          {layer.type === "crt_scanlines" && (
+                            <>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Phosphor Opacity ({Math.round((layer.params.opacity ?? 0.3) * 100)}%)</span>
+                                <input
+                                  type="range"
+                                  min="0.05"
+                                  max="0.8"
+                                  step="0.05"
+                                  value={layer.params.opacity ?? 0.3}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.opacity = parseFloat(e.target.value);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full accent-cyan-400 mt-1"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">RGB Aberration ({layer.params.aberration_px ?? 4}px)</span>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="16"
+                                  value={layer.params.aberration_px ?? 4}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.aberration_px = parseInt(e.target.value, 10);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full accent-cyan-400 mt-1"
+                                />
+                              </div>
+                            </>
+                          )}
+
+                          {/* Datamosh Parameters */}
+                          {layer.type === "datamosh" && (
+                            <>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Macroblock Size</span>
+                                <select
+                                  value={layer.params.macroblock_size ?? 16}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.macroblock_size = parseInt(e.target.value, 10);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-1 text-xs text-white mt-0.5"
+                                >
+                                  <option value={8}>8×8 px</option>
+                                  <option value={16}>16×16 px</option>
+                                  <option value={24}>24×24 px</option>
+                                  <option value={32}>32×32 px</option>
+                                  <option value={64}>64×64 px</option>
+                                </select>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Glitch Probability ({Math.round((layer.params.probability ?? 0.3) * 100)}%)</span>
+                                <input
+                                  type="range"
+                                  min="0.05"
+                                  max="0.8"
+                                  step="0.05"
+                                  value={layer.params.probability ?? 0.3}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.probability = parseFloat(e.target.value);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full accent-cyan-400 mt-1"
+                                />
+                              </div>
+                            </>
+                          )}
+
+                          {/* Liquid Flow Parameters */}
+                          {layer.type === "liquid_flow" && (
+                            <div className="col-span-3">
+                              <span className="text-slate-400 text-[10px] font-semibold">Viscosity / Fluid Tension ({layer.params.viscosity ?? 18})</span>
+                              <input
+                                type="range"
+                                min="5"
+                                max="50"
+                                value={layer.params.viscosity ?? 18}
+                                onChange={(e) => {
+                                  const copy = [...physicsLayers];
+                                  copy[idx].params.viscosity = parseInt(e.target.value, 10);
+                                  setPhysicsLayers(copy);
+                                }}
+                                className="w-full accent-cyan-400 mt-1"
+                              />
+                            </div>
+                          )}
+
+                          {/* Volumetric Glow Parameters */}
+                          {layer.type === "volumetric_glow" && (
+                            <>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Center X</span>
+                                <input
+                                  type="number"
+                                  value={layer.params.cx ?? Math.round(canvasWidth * 0.5)}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.cx = parseInt(e.target.value, 10) || 0;
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono mt-0.5"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Center Y</span>
+                                <input
+                                  type="number"
+                                  value={layer.params.cy ?? Math.round(canvasHeight * 0.4)}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.cy = parseInt(e.target.value, 10) || 0;
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-xs text-white font-mono mt-0.5"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Aura Intensity ({layer.params.intensity ?? 0.8})</span>
+                                <input
+                                  type="range"
+                                  min="0.2"
+                                  max="2.0"
+                                  step="0.1"
+                                  value={layer.params.intensity ?? 0.8}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.intensity = parseFloat(e.target.value);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full accent-cyan-400 mt-1"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-slate-400 text-[10px] font-semibold">Pulse Speed ({layer.params.zoom_speed ?? 1.8}x)</span>
+                                <input
+                                  type="range"
+                                  min="0.5"
+                                  max="4.0"
+                                  step="0.2"
+                                  value={layer.params.zoom_speed ?? 1.8}
+                                  onChange={(e) => {
+                                    const copy = [...physicsLayers];
+                                    copy[idx].params.zoom_speed = parseFloat(e.target.value);
+                                    setPhysicsLayers(copy);
+                                  }}
+                                  className="w-full accent-cyan-400 mt-1"
+                                />
+                              </div>
+                              <div className="col-span-2">
+                                <span className="text-slate-400 text-[10px] font-semibold">Glow Tint</span>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <input
+                                    type="color"
+                                    value={layer.params.glow_color ?? "#00FFCC"}
+                                    onChange={(e) => {
+                                      const copy = [...physicsLayers];
+                                      copy[idx].params.glow_color = e.target.value;
+                                      setPhysicsLayers(copy);
+                                    }}
+                                    className="w-7 h-7 rounded border border-slate-700 cursor-pointer bg-transparent"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={layer.params.glow_color ?? "#00FFCC"}
+                                    onChange={(e) => {
+                                      const copy = [...physicsLayers];
+                                      copy[idx].params.glow_color = e.target.value;
+                                      setPhysicsLayers(copy);
+                                    }}
+                                    className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-xs text-white font-mono"
+                                  />
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Audio Track Mixing & Upload for Intro/Outro (Identical to Master Pipeline Audio Suite) */}
@@ -2524,19 +4484,21 @@ export function StreamInjectStudio() {
                   <span className="absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
                 </label>
               </div>
-
-              {/* Watermark Eraser Matrix — CPU/OpenCV inpainting runs before timeline flattening. */}
-              <div className="rounded-lg border border-cyan-500/20 bg-slate-900/80 p-3 shadow-inner">
-                <div className="flex items-start justify-between gap-4">
+			  
+              {/* =============================================================================== */}
+              {/* CPU WATERMARK ERASER MATRIX CONTROL CHASSIS */}
+              {/* =============================================================================== */}
+              <div className="flex flex-col gap-3 p-3.5 rounded-lg border border-purple-500/20 bg-slate-900/40 mt-1">
+                <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0">
-                    <label htmlFor="removeWatermarkToggle" className="text-[11px] font-semibold text-cyan-200 cursor-pointer">
-                      Enable Smart Watermark Inpainting
+                    <label htmlFor="removeWatermarkToggle" className="text-[11px] font-semibold text-slate-200 cursor-pointer">
+                      Static Watermark Eraser Matrix
                     </label>
                     <p className="text-[10px] text-slate-500 mt-0.5">
-                      Removes corner watermarks or static broadcast channel logos frame-by-frame
+                      OpenCV Telea inpainting pass. Runs entirely on CPU to prevent VRAM allocations.
                     </p>
                   </div>
-                  <label className="relative inline-flex shrink-0 items-center cursor-pointer" aria-label="Enable Smart Watermark Inpainting">
+                  <label className="relative inline-flex shrink-0 items-center cursor-pointer" aria-label="Static Watermark Eraser Matrix">
                     <input
                       id="removeWatermarkToggle"
                       type="checkbox"
@@ -2544,58 +4506,214 @@ export function StreamInjectStudio() {
                       onChange={(e) => setRemoveWatermark(e.target.checked)}
                       className="sr-only peer"
                     />
-                    <span className="w-10 h-5 rounded-full bg-slate-700 peer-checked:bg-cyan-500 transition-colors" />
+                    <span className="w-10 h-5 rounded-full bg-slate-700 peer-checked:bg-purple-500 transition-colors" />
                     <span className="absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
                   </label>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-                  {[
-                    { label: "Box X Position %", value: wmX, set: setWmX },
-                    { label: "Box Y Position %", value: wmY, set: setWmY },
-                    { label: "Width %", value: wmW, set: setWmW },
-                    { label: "Height %", value: wmH, set: setWmH }
-                  ].map(({ label, value, set }) => (
-                    <div key={label}>
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-[9px] uppercase tracking-wide text-slate-500">{label}</span>
-                        <span className="text-[10px] font-mono text-cyan-300">{value}%</span>
+                {removeWatermark && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-slate-800/80 animate-in fade-in duration-150">
+                    {/* Bounding Area Coordinate Sliders */}
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] font-mono">
+                          <span className="text-slate-400 font-bold">X OFFSET BOUNDARY</span>
+                          <span className="text-purple-400 font-bold">{wmX}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={wmX}
+                          onChange={(e) => setWmX(parseInt(e.target.value, 10))}
+                          className="w-full accent-purple-500 cursor-pointer"
+                        />
                       </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={value}
-                        onChange={(e) => set(parseInt(e.target.value, 10))}
-                        disabled={!removeWatermark}
-                        className="w-full accent-cyan-400 disabled:opacity-40"
-                        aria-label={label}
-                      />
-                    </div>
-                  ))}
-                </div>
 
-                <div className="mt-3 rounded-md border border-slate-700 bg-slate-950/90 p-2">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-500">Eraser Boundary Preview</span>
-                    <span className="text-[9px] font-mono text-slate-600">SOURCE FRAME %</span>
-                  </div>
-                  <div className="relative aspect-video overflow-hidden rounded border border-slate-800 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950">
-                    <div className="absolute inset-0 opacity-30 bg-[linear-gradient(rgba(148,163,184,.15)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,.15)_1px,transparent_1px)] bg-[size:12px_12px]" />
-                    <div
-                      className="absolute border-2 border-dashed border-cyan-400 bg-cyan-400/10 shadow-[0_0_12px_rgba(34,211,238,0.25)] transition-all"
-                      style={{
-                        left: `${Math.min(wmX, 99)}%`,
-                        top: `${Math.min(wmY, 99)}%`,
-                        width: `${Math.min(wmW, 100 - Math.min(wmX, 99))}%`,
-                        height: `${Math.min(wmH, 100 - Math.min(wmY, 99))}%`
-                      }}
-                    >
-                      <span className="absolute -top-4 left-0 text-[8px] font-mono text-cyan-300 whitespace-nowrap">INPAINT AREA</span>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-[10px] font-mono">
+                          <span className="text-slate-400 font-bold">Y OFFSET BOUNDARY</span>
+                          <span className="text-purple-400 font-bold">{wmY}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={wmY}
+                          onChange={(e) => setWmY(parseInt(e.target.value, 10))}
+                          className="w-full accent-purple-500 cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[10px] font-mono">
+                            <span className="text-slate-400 font-bold">BOX WIDTH</span>
+                            <span className="text-cyan-400 font-bold">{wmW}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="1"
+                            max="100"
+                            step="1"
+                            value={wmW}
+                            onChange={(e) => setWmW(parseInt(e.target.value, 10))}
+                            className="w-full accent-cyan-500 cursor-pointer"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[10px] font-mono">
+                            <span className="text-slate-400 font-bold">BOX HEIGHT</span>
+                            <span className="text-pink-400 font-bold">{wmH}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="1"
+                            max="100"
+                            step="1"
+                            value={wmH}
+                            onChange={(e) => setWmH(parseInt(e.target.value, 10))}
+                            className="w-full accent-pink-500 cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Mask Target Grid Area Layout Simulator with Live Video Preview */}
+                    <div className="bg-slate-950 rounded-xl border border-slate-800/80 p-2.5 flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-[9px] font-mono text-slate-400 uppercase tracking-wider">
+                        <span>Watermark Region Mask View</span>
+                        {gameplayPath && (
+                          <span className="text-purple-400 font-semibold truncate max-w-[140px]">
+                            {gameplayPath.split("/").pop()?.split("\\").pop()}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Quick Location Presets */}
+                      <div className="flex items-center gap-1.5 mt-1.5 overflow-x-auto pb-1 text-[8px] font-mono">
+                        <span className="text-slate-500 uppercase">Presets:</span>
+                        <button
+                          type="button"
+                          onClick={() => { setWmX(85); setWmY(5); setWmW(12); setWmH(8); }}
+                          className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-purple-300 border border-slate-800"
+                        >
+                          Top-Right
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setWmX(3); setWmY(5); setWmW(12); setWmH(8); }}
+                          className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-purple-300 border border-slate-800"
+                        >
+                          Top-Left
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setWmX(85); setWmY(88); setWmW(12); setWmH(8); }}
+                          className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-purple-300 border border-slate-800"
+                        >
+                          Bottom-Right
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setWmX(3); setWmY(88); setWmW(12); setWmH(8); }}
+                          className="px-1.5 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-purple-300 border border-slate-800"
+                        >
+                          Bottom-Left
+                        </button>
+                      </div>
+
+                      <div className="relative w-full aspect-video bg-black rounded-lg border border-slate-800 overflow-hidden mt-1 select-none">
+                        {gameplayPath ? (
+                          <video
+                            ref={wmVideoRef}
+                            src={gameplayPath.startsWith("/media/") ? gameplayPath : `/api/streaminject/video-preview?path=${encodeURIComponent(gameplayPath)}`}
+                            className="absolute inset-0 w-full h-full object-contain bg-black"
+                            playsInline
+                            muted
+                            onTimeUpdate={(e) => {
+                              const v = e.currentTarget;
+                              if (v.duration && !isNaN(v.duration)) {
+                                setWmVideoProgress((v.currentTime / v.duration) * 100);
+                              }
+                            }}
+                            onEnded={() => setWmIsPlaying(false)}
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-slate-500 text-[10px] p-2 text-center">
+                            <span>No gameplay stream selected</span>
+                            <span className="text-[9px] text-slate-600">Select or upload a video in Step 1 to preview watermark</span>
+                          </div>
+                        )}
+
+                        {/* Inpainting Mask Bounding Box */}
+                        <div 
+                          className="absolute border-2 border-dashed border-purple-400 bg-purple-500/30 shadow-[0_0_12px_rgba(168,85,247,0.5)] transition-all pointer-events-none"
+                          style={{
+                            left: `${Math.min(wmX, 99)}%`,
+                            top: `${Math.min(wmY, 99)}%`,
+                            width: `${Math.min(wmW, 100 - Math.min(wmX, 99))}%`,
+                            height: `${Math.min(wmH, 100 - Math.min(wmY, 99))}%`
+                          }}
+                        >
+                          <span className="absolute -top-4 left-0 text-[8px] font-mono text-purple-300 bg-slate-950 px-1 border border-purple-500/60 rounded shadow whitespace-nowrap">
+                            MASK ({wmX}%, {wmY}%) [{wmW}×{wmH}%]
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Video Scrubber & Playback Controls for Locating Watermark */}
+                      {gameplayPath && (
+                        <div className="mt-2 flex items-center gap-2 pt-1.5 border-t border-slate-800/80">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (wmVideoRef.current) {
+                                if (wmIsPlaying) {
+                                  wmVideoRef.current.pause();
+                                  setWmIsPlaying(false);
+                                } else {
+                                  wmVideoRef.current.play();
+                                  setWmIsPlaying(true);
+                                }
+                              }
+                            }}
+                            className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-purple-400 transition-colors shrink-0"
+                            title={wmIsPlaying ? "Pause Video" : "Play Video"}
+                          >
+                            {wmIsPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                          </button>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            value={wmVideoProgress}
+                            onChange={(e) => {
+                              const pct = parseFloat(e.target.value);
+                              setWmVideoProgress(pct);
+                              if (wmVideoRef.current && wmVideoRef.current.duration) {
+                                wmVideoRef.current.currentTime = (pct / 100) * wmVideoRef.current.duration;
+                              }
+                            }}
+                            className="flex-1 accent-purple-500 cursor-pointer h-1.5"
+                            title="Scrub video to locate watermark across frames"
+                          />
+                          <span className="text-[8px] font-mono text-slate-400 shrink-0">
+                            {wmVideoRef.current?.currentTime ? `${wmVideoRef.current.currentTime.toFixed(1)}s` : "0.0s"}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="text-[8px] font-mono text-slate-500 mt-1.5">
+                        Scrub video to a clear frame with the watermark, then adjust offset & dimensions.
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
