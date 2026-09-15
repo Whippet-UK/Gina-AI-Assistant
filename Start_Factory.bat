@@ -59,7 +59,7 @@ if not exist "%GINA_ROOT%\node_modules\jszip\package.json" (
 echo [1/4] Starting ComfyUI (only if port 8188 is free)...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$c=Get-NetTCPConnection -LocalPort 8188 -State Listen -ErrorAction SilentlyContinue; if($c){exit 0}else{exit 1}"
 if errorlevel 1 (
-  start "ComfyUI - Gina Backend" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && python ComfyUI_windows_portable\ComfyUI\main.py --lowvram --fp8_e4m3fn-text-enc"
+  start "ComfyUI - Gina Backend" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && python ComfyUI_windows_portable\ComfyUI\main.py --lowvram --fp8_e4m3fn-text-enc --preview-method latent2rgb"
 ) else (
   echo    ComfyUI is already running; reusing it.
 )
@@ -88,8 +88,10 @@ echo.
 echo [3/5] Starting ACE-Step singing API (only if installed)...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$c=Get-NetTCPConnection -LocalPort 8101 -State Listen -ErrorAction SilentlyContinue; if($c){exit 0}else{exit 1}"
 if errorlevel 1 (
-  if exist "%GINA_ROOT%\third_party\ACE-Step-1.5\pyproject.toml" (
-    start "ACE-Step 1.5 - Singing API" cmd /k "cd /d %GINA_ROOT%\third_party\ACE-Step-1.5 && set ACESTEP_API_HOST=127.0.0.1 && set ACESTEP_API_PORT=8101 && set ACESTEP_INIT_SERVICE=true && set ACESTEP_CONFIG_PATH=acestep-v15-turbo && set ACESTEP_LM_MODEL_PATH=acestep-5Hz-lm-0.6B && set ACESTEP_LM_BACKEND=pt && set ACESTEP_OFFLOAD_TO_CPU=true && set ACESTEP_OFFLOAD_DIT_TO_CPU=true && set ACESTEP_INIT_LLM=true && set ACESTEP_LM_OFFLOAD_TO_CPU=true && uv run --no-sync acestep-api --host 127.0.0.1 --port 8101 --init-llm --lm-model-path acestep-5Hz-lm-0.6B"
+  if exist "%GINA_ROOT%\scripts\Start_ACEStep_Singing_API.bat" (
+    start "ACE-Step 1.5 - Singing API" cmd /k call "%GINA_ROOT%\scripts\Start_ACEStep_Singing_API.bat"
+  ) else if exist "%GINA_ROOT%\third_party\ACE-Step-1.5\pyproject.toml" (
+    start "ACE-Step 1.5 - Singing API" cmd /k "cd /d \"%GINA_ROOT%\third_party\ACE-Step-1.5\" && set \"ACESTEP_API_HOST=127.0.0.1\" & set \"ACESTEP_API_PORT=8101\" & set \"ACESTEP_INIT_SERVICE=true\" & set \"ACESTEP_CONFIG_PATH=acestep-v15-turbo\" & set \"ACESTEP_LM_MODEL_PATH=acestep-5Hz-lm-0.6B\" & set \"ACESTEP_LM_BACKEND=pt\" & set \"ACESTEP_OFFLOAD_TO_CPU=true\" & set \"ACESTEP_OFFLOAD_DIT_TO_CPU=true\" & set \"ACESTEP_INIT_LLM=true\" & set \"ACESTEP_LM_OFFLOAD_TO_CPU=true\" & uv run --no-sync acestep-api --host 127.0.0.1 --port 8101 --init-llm --lm-model-path acestep-5Hz-lm-0.6B"
   ) else (
     echo    ACE-Step is not installed. Singing remains unavailable until setup is run.
   )
@@ -111,7 +113,7 @@ if not errorlevel 1 (
   pause
   exit /b 1
 )
-start "Gina Dashboard" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && set NODE_OPTIONS=--max-old-space-size=8192 && npm.cmd run dev"
+start "Gina Dashboard" cmd /k "cd /d \"%GINA_ROOT%\" && call g_env\Scripts\activate.bat && set \"NODE_OPTIONS=--max-old-space-size=8192\" & npm.cmd run dev"
 
 echo.
 echo [4/5] Waiting for Gina at %GINA_URL% ...
@@ -132,17 +134,17 @@ goto WAIT_GINA
 
 :GINA_READY
 echo    Gina Dashboard is READY.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $d=(Invoke-WebRequest -Uri '%GINA_URL%/api/version' -UseBasicParsing -TimeoutSec 3).Content | ConvertFrom-Json; if($d.version -ne 'v1.17.85'){ Write-Host ('[WARN] Dashboard reports version ' + $d.version + ' (expected v1.17.85).'); } } catch { Write-Host '[WARN] Could not verify Gina API version.' }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $d=(Invoke-WebRequest -Uri '%GINA_URL%/api/version' -UseBasicParsing -TimeoutSec 3).Content | ConvertFrom-Json; Write-Host ('    Dashboard Version: ' + $d.version); } catch { Write-Host '[WARN] Could not verify Gina API version.' }"
 echo.
 
 echo [MusicGen] Checking local MusicGen Medium resolution...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $m=(Invoke-WebRequest -Uri '%GINA_URL%/api/music/status' -UseBasicParsing -TimeoutSec 5).Content | ConvertFrom-Json; $x=$m.availableModels | Where-Object { $_.id -eq 'facebook/musicgen-medium' }; Write-Host ('    Status: cached=' + $x.cached + ' weights=' + $x.hasWeights + ' backend=' + $x.backend); Write-Host ('    Path: ' + $x.managedPath); if($x.resolution.revision){ Write-Host ('    Revision: ' + $x.resolution.revision); }; if($x.resolution.refs){ Write-Host ('    Refs: ' + ($x.resolution.refs -join ', ')); } } catch { Write-Host '[WARN] Could not query MusicGen resolution.' }"
 echo.
-echo [5/5] Starting local Gemma engine...
+echo [5/5] Starting local Qwen Vision/Code Engine...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r=Invoke-WebRequest -Method POST -Uri '%GINA_URL%/api/llm/start' -UseBasicParsing -TimeoutSec 180; if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 300) { exit 0 } else { exit 1 } } catch { exit 1 }"
 if errorlevel 1 (
-  echo [WARN] Gina started, but Gemma could not be started automatically.
-  echo       You can start Gemma from LOCAL AI in the dashboard.
+  echo [WARN] Gina started, but Local LLM could not be started automatically.
+  echo       You can start the engine from LOCAL AI in the dashboard.
   goto GINA_READY_FINAL
 )
 
@@ -152,16 +154,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r=Invoke-WebReque
 if not errorlevel 1 goto LLM_READY
 set /a LLM_TRIES+=1
 if !LLM_TRIES! GEQ 120 (
-  echo [WARN] Gemma did not become ready within 240 seconds.
+  echo [WARN] Local LLM did not become ready within 240 seconds.
   echo       Gina is still available; check LOCAL AI and the Gina terminal.
   goto GINA_READY_FINAL
 )
-echo    Gemma is loading... ^(!LLM_TRIES!^)
+echo    Local LLM is loading... ^(!LLM_TRIES!^)
 timeout /t 2 /nobreak >nul
 goto WAIT_LLM
 
 :LLM_READY
-echo    Gemma 3 12B is READY.
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $d=(Invoke-WebRequest -Uri '%GINA_URL%/api/llm/status' -UseBasicParsing -TimeoutSec 3).Content | ConvertFrom-Json; Write-Host ('    Local LLM Engine READY: ' + $d.modelName + ' (Multimodal=' + $d.multimodal + ', Layers=' + $d.gpuLayers + ')'); } catch { Write-Host '    Local LLM Engine is READY.' }"
 echo.
 
 :GINA_READY_FINAL
@@ -169,9 +171,11 @@ echo ==========================================
 echo             GINA IS READY
 echo ==========================================
 echo.
-echo ComfyUI: %COMFY_URL%
-echo Gina:    %GINA_URL%
-echo Gemma:   http://127.0.0.1:8080
+echo ComfyUI:   %COMFY_URL%
+echo Gina:      %GINA_URL%
+echo Local LLM: http://127.0.0.1:8080 (Qwen 2.5-VL 7B / Qwen Coder 7B)
+echo SDXL:      Juggernaut-XL v9 Photorealism (models/checkpoints/)
+echo FLUX:      FLUX.1-Schnell GGUF Q4_K_S (models/unet/)
 echo.
 echo Opening Gina in your default browser...
 start "" "%GINA_URL%/?startup=ready"

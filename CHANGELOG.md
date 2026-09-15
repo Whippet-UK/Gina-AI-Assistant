@@ -1,2219 +1,226 @@
-# v1.17.87 — Fooocus-Inspired Gina Image Studio
+# v1.20.7 — Phase 42.1 Intent Routing, Context Firewall & Performance Telemetry
 
-- Reworked the image creation workspace around a focused Fooocus-inspired layout: prompt + core image controls on the left, large preview/actions on the right.
-- Preserved Gina's local ComfyUI execution path and FLUX.1-Schnell GGUF Q4_K_S workflow; this is a UI/UX redesign, not a replacement of the validated backend.
-- Kept AIDA64 1024×600 support, reference-image upload, Keep Image/reference continuation, variation, download, asset save, VRAM purge, workflow-aware controls, and technical diagnostics.
-- Reduced visual noise by moving advanced/technical controls behind compact disclosure buttons.
-- Added local-only status/model indicators directly into the image workspace.
+- Added deterministic `server/agent/IntentRouter.ts` so current-web/news, network diagnostics, code/file operations, capability questions and ordinary chat are classified before local inference.
+- Added a context firewall: normal web/general requests no longer receive the full capability registry, RAG project context, or authoritative agent skills unless the route requires them.
+- Explicit web requests such as “top new on bbc news site” now route as `web-research` and use live web grounding without project/skills contamination.
+- Local LLM skill injection is now opt-out for lightweight chat and remains enabled for coding/agent workflows.
+- Extended runtime telemetry with context-source breakdown, prompt/completion tokens per second, duration, iteration/tool-call fields and session timing totals.
+- Extended the global telemetry panel with tokens/sec, context, average request time and tool-call metrics.
+- Added release-blocking regression rules for the BBC-news/PCIe-Paging contamination bug and the 12k-token context explosion.
 
-# v1.17.86 — ACE-Step API CLI Fix
+# v1.20.7 — Network Capability Truth & Diagnostics
 
-- Fixed the Windows ACE-Step REST API launcher to use the current `acestep-api` CLI contract: `--init-llm` and `--lm-model-path`.
-- Removed unsupported API-server arguments (`--init-service`, `--config-path`, and `--offload-to-cpu`) that caused immediate startup failure.
-- Kept the 8GB-safe configuration in environment variables: `acestep-v15-turbo`, 0.6B LM, PyTorch backend, DiT/LM CPU offload, and localhost port 8101.
-- Updated the one-click `Start_Factory.bat` ACE-Step launch path to use the same corrected command and `uv --no-sync`.
-- Bumped the dashboard/runtime version to `v1.17.86`.
+- Added machine-audited `network_test` broker capability for controlled public HTTPS connectivity diagnostics.
+- Added `/api/agent/network-test` and live Local AI network-diagnostic grounding for explicit connectivity/ping questions.
+- Runtime capability contract now distinguishes local LLM inference from server-brokered outbound internet access.
+- Gina must not claim that a local model means the Gina runtime has no internet access when the brokered web capability is enabled.
+- Network diagnostics test multiple public HTTPS endpoints and report confirmed success/failure with latency and HTTP status.
 
-# v1.17.84 — One-Click Singing + Audio Deck
+# v1.20.7 — Runtime Capability Self-Audit, Prompt/Web Telemetry, VRAM Stage History & Theme-Locked Lyrics
 
-- Added ACE-Step 1.5 local singing backend with lyrics-aware routing.
-- Added 8GB-safe 0.6B LM / PyTorch / CPU-offload configuration.
-- Added ACE-Step install/start scripts.
-- Added automatic WAV registration and Audio Deck loading after successful generation.
-- Added vocal language selection and truthful singing-engine status.
+- Added runtime broker self-audit: the capability contract now derives its registered tool list from the active `runAgentTool` dispatcher and reports missing declared handlers/duplicate handlers instead of trusting a stale hand-maintained list.
+- Added `server/telemetry/RuntimeTelemetry.ts` and `/api/runtime/telemetry` for in-memory prompt telemetry across local LLM callers, including prompt/completion/total tokens, suite, source, duration, context size and web-search state. Exact llama.cpp usage is preferred; a conservative character-based estimate is used only when the backend omits usage metadata.
+- Local AI chat now distinguishes local inference from local+web grounded requests. Requests such as “search the web”, “look this up”, “latest”, “current”, etc. trigger live web grounding and expose the actual provider/result state.
+- Added a global `TELEMETRY` panel available from every suite, showing current inference source, prompt tokens, total tokens, web-search state, session totals and a live 30-second VRAM/stage graph.
+- Removed fabricated/random startup VRAM history from `VRAMHistoryGraph`; the graph now begins from real observations and maintains a rolling 30-second live window.
+- Added suite labels to major local LLM callers so prompt telemetry can be attributed to Local AI, Image Studio, Music Suite, Gina Agent and Gina Repair Loop.
+- Hardened Music Suite lyric generation with a theme lock, story-progression requirements, theme keyword anchors, a targeted compliance repair pass when the first draft drifts off-topic, and a theme-compliance result in the API response.
 
-## 1.17.83 — MusicGen runtime hardening
+# v1.20.7 — Runtime Capability Contract Hardening
 
-- Fixed Windows managed model path normalization: `facebook/musicgen-medium` now resolves to `facebook_musicgen-medium` instead of throwing `ReferenceError: g is not defined`.
-- Fixed PCM16 WAV writer by importing `torch` inside `save_wav_pcm16()`.
-- MusicGen model loading remains local/offline and prefers an existing Safetensors weight when both representations are present.
-- Status telemetry can now resolve the same local snapshot used by generation without crashing the `/api/music/status` endpoint.
+- Added a machine-generated runtime capability contract to `server.ts` for Gina Agent.
+- The contract explicitly exposes verified local filesystem read/write access, command execution, validation, Git, research, and the active broker tool registry when Full Local Access is enabled.
+- Added strict capability truth rules so Gina distinguishes unavailable capabilities from failed tool executions and cannot truthfully deny registered local file editing/reading capabilities.
+- Wired the same contract into the agent system prompt, `/api/agent/access`, and the capability snapshot so capability discovery and execution use the same declared registry.
+- Preserved workspace/path-traversal boundaries and the existing validation + Definition of Done completion gates.
 
-# Changelog
+# v1.20.7 — Autonomous Agent Skill Runtime Loader & Completion Integrity Hardening
 
-## v1.17.85 — ACE-Step Windows uv Bootstrap
+- **Target File Path:** `/server/agent/AgentSkillLoader.ts`
+- **Exact Code Change:** Added a dependency-free recursive loader for `.gina/docs/agent_skills/**/skill.md`, YAML front-matter extraction, deterministic `activeAgentSkillsContext` buffering, expected five-skill detection, and machine-readable system-prompt compilation. The loader supports the existing `docs/agent_skills` location only as a legacy fallback.
+- **Why:** Makes the five local `skill.md` rule sets available to the autonomous agent at runtime instead of relying on the model to discover them itself.
 
-- Fixed the ACE-Step 1.5 Windows singing installer so a missing `uv` is installed automatically with the official Astral PowerShell installer instead of stopping with a manual-install error.
-- Added PATH-independent `uv.exe` resolution for `%USERPROFILE%\.local\bin\uv.exe` and the Windows App Installer/WinGet link location.
-- Hardened the ACE-Step API launcher to use the resolved `uv.exe` directly.
-- Explicitly passes the 8GB-safe ACE-Step configuration: turbo DiT, 0.6B LM, PyTorch backend, CPU offload, and local API on `127.0.0.1:8101`.
-- Bumped the dashboard/runtime version to `v1.17.85`.
+- **Target File Path:** `/server/llm/LocalLlmManager.ts`
+- **Exact Code Change:** Loads the active skill bundle during manager initialization and injects the compiled `ACTIVE AGENT SKILLS` context into every local LLM chat/completion turn unless that exact context is already present.
+- **Why:** Ensures every local execution turn receives the authoritative workspace skill rules, including callers outside `AutonomousAgentEngine`.
 
+- **Target File Path:** `/server/agent/AutonomousAgentEngine.ts`
+- **Exact Code Change:** Loads the skill bundle before orchestration, injects it into the core system prompt, tracks successful tool execution and validation state, records compilation/processing diagnostics, rejects empty tool parameters, blocks `TASK_COMPLETE` until a successful tool execution plus validation pass exists, and feeds failure diagnostics back into the bounded corrective loop.
+- **Why:** Prevents false completion reports and converts parse/tool/validation failures into explicit repair-loop work instead of allowing the model to claim success.
 
-## 1.17.82 — MusicGen audio-save and status hardening
-- Fixed successful MusicGen synthesis failing at WAV output because the installed torchaudio build had no save backend.
-- Added dependency-light PCM16 WAV writing through Python stdlib `wave`.
-- Hardened `/api/music/status` against Windows HF-cache filesystem edge cases so it does not repeatedly return HTTP 500.
-- Kept MusicGen Medium offline/local-only and Safetensors-first when both weight formats are present.
+- **Validation:** TypeScript parsing reached project dependency-resolution errors after the new files parsed without syntax errors. The uploaded archive does not contain `node_modules`, so a clean project-wide `npx tsc --noEmit` could not be completed in this environment.
 
-# v1.17.81 — MusicGen HF Snapshot Path Resolution Hardening
+# v1.20.7 — The Whippet Cinematic Spotlight Intro Preset & Neon Glow Typography Suite
 
-- **Fixed:** MusicGen Medium local snapshot discovery now follows Windows symlink/junction-backed Hugging Face snapshot files with `statSync()`.
-- **Fixed:** resolver now checks Gina's managed HF cache plus the standard per-user Hugging Face cache location, while remaining strictly local/offline.
-- **Fixed:** backend weight telemetry follows the resolved snapshot files instead of relying on directory-entry type flags that can misclassify Windows links.
-- **Preserved:** when both `model.safetensors` and `pytorch_model.bin` exist, Safetensors is preferred and only one weight representation is treated as active.
-- **Preserved:** Generate never downloads from Hugging Face automatically.
-
-# v1.17.81 — MusicGen Dual-Weight Snapshot Resolution
-
-- **Clarified:** a Hugging Face MusicGen Medium snapshot can legitimately contain both `model.safetensors` and `pytorch_model.bin`; these are alternate weight formats from the same checkpoint, not two separate models.
-- **Fixed:** cache telemetry now counts only the preferred active weight (`model.safetensors` when present) instead of adding both 8.04 GB weight files together.
-- **Added:** MusicGen status reports the resolved snapshot revision and any matching local refs, making it clear whether the cached copy came from `main` or an older HF revision/PR.
-- **Preserved:** generation remains local/offline and uses the exact resolved snapshot path; no automatic Hub download.
-- **Safety:** replaced the misleading “Sequential 8GB VRAM Safe” label with “Sequential GPU lane · one audio model at a time”; sequential execution does not guarantee that MusicGen Medium fits in 8 GB VRAM.
-
-# v1.17.79 — MusicGen Snapshot Status Resolution
-
-- **Target:** `server/music/MusicService.ts` — status/backend detection now inspects the exact resolved MusicGen Medium path instead of only `facebook_musicgen-medium`.
-- **Target:** `server/music/MusicService.ts` — local Hugging Face snapshot resolver now requires a complete Transformers snapshot (config + weights + processor/tokenizer), prefers `model.safetensors` when multiple snapshots exist, and never uses the Hub as a generation fallback.
-- **Target:** `src/components/MusicStudio.tsx` — MusicGen banner now reports the resolved local path as well as backend and weight files.
-- **Preserved:** Generate remains offline/local-only and the audio GPU lane remains sequential (one heavy audio generation at a time).
-- **Preserved:** existing `models--facebook--musicgen-medium` cache is not deleted or moved.
-
-# v1.17.78 — MusicGen Transformers Snapshot Routing
-- **Target:** `server/music/MusicService.ts` — MusicGen Medium now resolves the existing local `models--facebook--musicgen-medium\snapshots\<revision>` directory when it contains `model.safetensors`/compatible Transformers weights. This is an explicit local path, not a network fallback.
-- **Target:** `scripts/music_generator.py` — unchanged offline/local-only loader receives the resolved snapshot path; Generate cannot download.
-- **Target:** `server.ts` / `src/components/MusicStudio.tsx` — status and telemetry now report the actual active snapshot path/backend instead of claiming the Hub cache is ignored when it is the selected local checkpoint.
-- The 14 GB Hugging Face cache is retained; the dashboard accounts for the active snapshot/weights rather than summing the cache's blob storage with the Gina AudioCraft directory.
-- Preserved AudioGen/MusicGen separation and the exclusive sequential audio GPU lane.
-
-# v1.17.77 — AudioCraft Explicit Backend & Sequential Generation
-- **Target File:** `server/music/MusicService.ts`
-  - Fixed generation telemetry initialization ordering.
-  - Managed model directories are the only generation source; Hugging Face `models--...` caches are ignored.
-  - Reports exact backend and weight files used.
-- **Target File:** `scripts/music_generator.py`
-  - Prints local model path and weight files; generation is offline/local-only.
-- **Target File:** `scripts/download_audiocraft.py`
-  - Reuses complete managed models and isolates temporary Hub cache metadata under the managed model directory.
-- **Target File:** `src/components/MusicStudio.tsx`
-  - Shows backend, weights, managed path, and duplicate-cache exclusion; Download is clearly separate from Generate.
-- **Target File:** `server.ts`
-  - Audio model status now exposes managed backend/weight metadata.
-- Preserved the AudioGen/MusicGen separation and sequential exclusive GPU lane.
-
-# v1.17.76 — AudioCraft Single Managed Cache
-- Fixed duplicate MusicGen storage: Generate now resolves the authoritative Gina-managed local model directory instead of the Hugging Face `models--facebook--...` cache.
-- Generate now refuses to auto-download missing AudioCraft models and explicitly runs offline.
-- Downloader now writes directly into `C:\\Gina_AI\\models\\audio\\facebook_<model>` and recognizes both `pytorch_model.bin` and `model.safetensors` layouts.
-- Cache telemetry no longer sums a managed model and an old Hub cache together, preventing inflated values such as 26.12 GB.
-- Preserved AudioGen's dedicated AudioCraft runtime and the sequential exclusive GPU lane.
-- Exact modified files: `server/music/MusicService.ts`, `scripts/music_generator.py`, `scripts/download_audiocraft.py`, `src/components/MusicStudio.tsx`, version/manifest files, `src/components/MilestoneChecklist.tsx`, `docs/updates/UPDATE_NOTES_v1.17.76.md`.
-
-# v1.17.75 — AudioCraft Local Cache, Sequential Audio Lane & Dashboard Telemetry
-
-- **Target File:** `server/music/MusicService.ts`
-  - Shared MusicGen/AudioGen Hugging Face cache discovery for legacy and standard `models--...` cache layouts.
-  - AudioCraft download and generation jobs now use an exclusive audio lane so heavy audio models run sequentially.
-  - Generation passes the same cache root used by the Download button and refuses hidden network downloads.
-  - Live job progress now reports cache load, model load, synthesis, and output stages.
-- **Target File:** `scripts/music_generator.py`
-  - MusicGen uses `local_files_only=True`.
-  - AudioGen uses the official `AudioGen.get_pretrained()` AudioCraft path instead of the MusicGen Transformers loader.
-  - Added AudioCraft/Transformers cache environment alignment and offline mode.
-  - Removed the synthetic fallback so a failed requested model cannot masquerade as a successful generation.
-- **Target File:** `scripts/download_audiocraft.py`
-  - Download button now populates the same Hugging Face cache consumed by generation.
-  - AudioGen is verified as an AudioCraft checkpoint (`state_dict.bin` + `compression_state_dict.bin`).
-- **Target File:** `src/components/MusicStudio.tsx`
-  - Correct AudioGen naming: `AudioGen Medium 1.5B · SFX / Atmosphere`.
-  - Generate button now explicitly says `Generate SFX / Atmosphere` for AudioGen.
-  - Added live AudioCraft job telemetry panel with model, duration, progress, and current step.
-- **Target File:** `server.ts`
-  - `/api/jobs/:id/workflow` now returns an external-job inspection envelope for Python/AudioCraft jobs instead of 404.
-  - Added AudioGen to pre-warm inventory and corrected medium-model VRAM metadata to the official 16 GB guidance.
-- **Preserved:** existing Story stall/history fallback, LTX `batch_size=1` OOM guard, StreamInject fixes, and clean-root `docs/updates/` convention.
-
-# v1.17.73 — Multimedia MoviePy Stitcher, MusicGen Medium 1.5B Default & Neural Cache Verification
-
-### 1. Target File: `/server/music/MusicService.ts` & `/server.ts`
-```typescript
-// Verified true weights file presence (>500MB) before declaring cached
-getModelCacheInfo(modelName: string): { cached: boolean; totalBytes: number; fileCount: number; hasWeights: boolean; sizeLabel: string } {
-  // Scans folder & .cache chunks, verifies model.safetensors or state_dict.bin presence
-}
-```
-- Upgraded cache detection logic from basic file existence to deep weight verification (>500MB neural tensors), eliminating false-positive "Cached" states when only JSON metadata is downloaded.
-- Exposed live size, file count, and weight verification to `/api/music/status`.
-
-### 2. Target File: `/src/components/MusicStudio.tsx`
-```tsx
-// Live Download Progress Bar & Accurate Size/Weight Status
-{isModelDownloading && job && (
-  <div className="flex flex-col gap-1.5">
-    <div className="flex items-center justify-between text-[11px] font-mono">
-      <span>{job.step}</span>
-      <span>{job.progress}%</span>
-    </div>
-    <div className="w-full h-1.5 bg-slate-900 rounded-full">
-      <div style={{ width: `${job.progress}%` }} />
-    </div>
-  </div>
-)}
-```
-- Integrated dynamic download tracking with live progress bar and step details directly inside the Music Studio model banner.
-```python
-# Pass optional HuggingFace token for rate limits & fast downloads
-hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN") or None
-processor = AutoProcessor.from_pretrained(model_id, cache_dir=model_cache_dir, token=hf_token)
-model = MusicgenForConditionalGeneration.from_pretrained(model_id, cache_dir=model_cache_dir, token=hf_token)
-```
-- Added seamless support for `HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN` across AudioCraft / MusicGen weight downloading and inference scripts to avoid unauthenticated Hugging Face Hub rate limits.
-
-### 2. Target File: `/src/components/MusicStudio.tsx`
-```tsx
-// Fixed empty string "" passed to audio tag src attribute
-<audio
-  ref={audioRef}
-  src={activeTrack?.url || undefined}
-  onPause={() => setIsPlaying(false)}
-  onPlay={() => setIsPlaying(true)}
-/>
-```
-- Resolved React console error caused by passing empty string `""` to the `src` attribute on `<audio>` element when no initial track was active by substituting `undefined`.
-
-### 2. Target File: `/scripts/media_stitcher.py`
-```python
-# Headless MoviePy / FFmpeg video & audio stitching compositor
-if audio_mode == "loop" and final_duration > audio_dur:
-    repeats = int(final_duration // audio_dur) + 1
-    audio_clip = afx.audio_loop(audio_clip, nloops=repeats).subclip(0, final_duration)
-```
-- Implemented Python headless compositor supporting MoviePy with FFmpeg fallback to merge LTX-Video/GIF Studio animations with AI Music / AudioCraft generated tracks.
-- Supports volume adjustment (0.0 - 2.0x), audio fade-in, audio fade-out, audio sync modes (`match_video`, `match_audio`, `loop`, `cut`), and H.264 MP4 / AAC export.
-
-### 2. Target File: `/server/multimedia/MultimediaService.ts`
-```typescript
-// Node.js backend orchestration for moviepy installation status and job dispatch
-export class MultimediaService {
-  public async getStatus(): Promise<{ installed: boolean; version?: string }>;
-  public async installMoviePy(): Promise<{ success: boolean; message: string }>;
-  public async stitchMedia(params: StitchParams): Promise<JobResult>;
-}
-```
-- Integrated with server endpoints `/api/multimedia/status`, `/api/multimedia/install-moviepy`, `/api/multimedia/stitch`, and `/media/stitched/*`.
-
-### 3. Target File: `/src/components/MediaStitcherModal.tsx`
-```tsx
-// Cross-Studio Stitcher Modal Component
-<MediaStitcherModal
-  isOpen={showStitchModal}
-  onClose={() => setShowStitchModal(false)}
-  videoSourceUrl={activeVideoUrl}
-  videoSourceName="LTX-Video Render"
-  onAddLog={onAddLog}
-/>
-```
-- Created the `MediaStitcherModal` enabling 1-click audio-video mixing directly from VideoStudio, GifStudio, and MusicStudio with media asset selectors, volume multipliers, fade sliders, sync modes, live progress tracking, and instant MP4 video player preview.
-
-### 4. Target Files: `/src/components/VideoStudio.tsx`, `/src/components/GifStudio.tsx`, `/src/components/MusicStudio.tsx`
-- Added 1-Click "Stitch with AI Music (MoviePy Engine)" triggers into VideoStudio action deck, GIF Studio timeline tray, and MusicStudio track deck and library items.
-
-# v1.17.72 — StreamInject Studio Interactive Layer Controls & Python MP4 Centering Alignment
-
-### 1. Target File: `/scripts/stream_inject.py`
-```python
-# Text layer centered horizontal coordinate calculations in Python rendering pipeline
-if align == "center" or "x" not in tl:
-    # Exact center alignment across PIL/OpenCV and FFmpeg drawtext filter paths
-    x = int(pos_x - (text_w / 2))
-    tl_x = w // 2
-```
-- Fixed text centering alignment in `stream_inject.py` for both the PIL/OpenCV rasterization path and the FFmpeg filtergraph path, eliminating rightward text drift on rendered MP4s.
-
-### 2. Target File: `/src/components/StreamInjectStudio.tsx`
-```tsx
-// Interactive selection, mouse canvas dragging, directional nudge pad, and alignment controls
-<canvas
-  ref={canvasRef}
-  width={canvasWidth}
-  height={canvasHeight}
-  onMouseDown={handleCanvasMouseDown}
-  onMouseMove={handleCanvasMouseMove}
-  onMouseUp={handleCanvasMouseUp}
-  onMouseLeave={handleCanvasMouseUp}
-  className={`max-h-[500px] w-auto max-w-full object-contain shadow-2xl ${
-    isDragging ? "cursor-grabbing" : selectedTarget ? "cursor-grab" : "cursor-crosshair"
-  }`}
-/>
-```
-- Added full interactive direct canvas manipulation: click to select layers/boxes/profile circles, drag with real-time feedback, directional keyboard nudge keys (Arrow keys + Shift for coarse adjustment), directional nudge pad with adjustable step sizes (1px, 5px, 10px, 25px, 50px), instant 1-click auto-align buttons (Center X, Center Y, Dead Center, Top, Left, Right), and layer management (clone, delete, reorder z-index).
-- Added explicit coordinate and dimension numeric inputs (X, Y, Width, Height, Radius, Font Size) to the Text Layers, Video Box Safe-Zones, and Profile Circles inspector panels.
-
-# v1.17.71 — StreamInject Media Filename Universalization & Studio Duration Inspector
-
-### Target File: `/server/streaminject/StreamInjectService.ts`
-```typescript
-const searchDirs = [
-  { dir: path.join(this.runtimeDir, "input"), source: "StreamInject Input" },
-  { dir: this.runtimeDir, source: "StreamInject Assets" },
-  { dir: "C:\\Gina_AI\\.gina_runtime\\streaminject\\input", source: "StreamInject Input" },
-  { dir: "C:\\Gina_AI\\.gina_runtime\\streaminject", source: "StreamInject Assets" },
-  { dir: "C:\\Gina_AI\\StreamInject\\input", source: "StreamInject Input" },
-  { dir: "C:\\Gina_AI\\StreamInject", source: "StreamInject Assets" },
-  { dir: path.join(process.cwd(), "output"), source: "ComfyUI Outputs" },
-  { dir: path.join(process.cwd(), "input"), source: "ComfyUI Inputs" },
-  { dir: path.join(process.cwd(), "local_ai_uploads"), source: "User Uploads" },
-  { dir: "C:\\Gina_AI\\output", source: "Gina Output" },
-  { dir: "C:\\Gina_AI\\input", source: "Gina Input" },
-  { dir: "C:\\Gina_AI\\models\\audio", source: "AudioCraft Library" }
-];
-```
-- Added dedicated `input` directories (`.gina_runtime/streaminject/input` and `C:\Gina_AI\StreamInject\input`) to the media scanning pipeline with path-based deduplication.
-- When placing files directly in `C:\Gina_AI\.gina_runtime\streaminject\input` or `C:\Gina_AI\StreamInject\input`, StreamInject detects them in the dropdowns directly with zero duplication and zero uploads to root.
-
-### Target File: `/server/streaminject/StreamInjectService.ts` (Universal Extension Scanner)
-```typescript
-const ext = path.extname(file).toLowerCase();
-if ([".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".wmv", ".flv", ".mpeg", ".mpg", ".ts", ".mts", ".m2ts", ".3gp", ".ogv"].includes(ext)) {
-  videos.push({ name: file, path: fullPath, source: item.source, sizeBytes: stat.size });
-} else if ([".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".svg"].includes(ext)) {
-  images.push({ name: file, path: fullPath, source: item.source });
-} else if ([".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".wma", ".aiff", ".opus"].includes(ext)) {
-  audio.push({ name: file, path: fullPath, source: item.source, sizeBytes: stat.size });
-} else if ([".srt", ".ass", ".vtt", ".sub"].includes(ext)) {
-  subtitles.push({ name: file, path: fullPath, source: item.source });
-}
-```
-- Universalized media scanning across all input directories to recognize any filename with standard container extensions (`.mp4`, `.mkv`, `.webm`, `.mov`, `.avi`, `.m4v`, `.wmv`, `.flv`, `.mpeg`, `.mpg`, `.ts`, `.mts`, `.m2ts`, `.3gp`, `.ogv`, `.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`, `.aac`, `.wma`, `.aiff`, `.opus`, `.srt`, `.ass`, `.vtt`, `.sub`).
-- Completely removed any expectation or requirement for hardcoded filenames (such as `gameplay.mp4` or `audio.mp3`).
-
-### Target File: `/src/components/StreamInjectStudio.tsx`
-```tsx
-// Canvas & Duration Settings Card in Intro/Outro Studio
-<div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-xl backdrop-blur-md flex flex-col gap-3">
-  <h2 className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
-    <Clock className="w-4 h-4" /> Canvas & Duration Settings
-  </h2>
-  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-    <div>
-      <span className="text-slate-400 text-[11px] font-semibold">Intro/Outro Duration (s)</span>
-      <div className="flex items-center gap-1.5 mt-1 bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-700">
-        <Clock className="w-3.5 h-3.5 text-purple-400 flex-shrink-0" />
-        <input
-          type="number"
-          min="1"
-          max="120"
-          step="0.5"
-          value={duration}
-          onChange={(e) => {
-            const newDur = Math.max(1, parseFloat(e.target.value) || 10.0);
-            setDuration(newDur);
-            if (currentTime > newDur) setCurrentTime(newDur);
-          }}
-          className="w-full bg-transparent text-xs text-white font-mono font-bold focus:outline-none"
-        />
-        <span className="text-slate-500 text-[10px]">sec</span>
-      </div>
-    </div>
-    ...
-  </div>
-</div>
-```
-- Added dedicated Canvas & Duration Settings card to the Intro/Outro Studio inspector allowing users to directly configure and fine-tune duration (in seconds), aspect ratio, resolution, and background theme.
-- Added direct Outro upload action and filename verification badges to Step 1 & Step 2 in the Master Pipeline Stitcher.
-- Added comprehensive file format acceptance on all upload inputs (`accept="video/*,.mp4,.mkv,.webm,.mov..."`, `accept="audio/*,.mp3,.wav..."`, etc.).
-
----
-
-# v1.17.71 — StreamInject v2.5 Timeline, Intro/Outro Studio & Audio Controls
-
-### Target File: `/src/components/StreamInjectStudio.tsx`
-```tsx
-// Renamed Visual Layout Studio -> Intro/Outro Studio with Duration Control
-<span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
-  <Tv className="w-4 h-4" /> Intro/Outro Stage
-</span>
-<div className="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-xs">
-  <Clock className="w-3.5 h-3.5 text-purple-400" />
-  <span className="text-slate-400 text-[11px]">Duration:</span>
-  <input type="number" min="1" max="120" step="0.5" value={duration} onChange={(e) => setDuration(Math.max(1, parseFloat(e.target.value) || 10.0))} />
-  <span className="text-slate-400 text-[11px]">sec</span>
-</div>
-
-// Added Intro/Outro Audio Track Mixing Panel & Controls
-<div className="p-5 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-xl backdrop-blur-md flex flex-col gap-3">
-  <h2 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-    <Music className="w-4 h-4" /> Intro/Outro Audio Track
-  </h2>
-  ...
-  <input type="number" min="0" step="0.5" value={studioAudioTrimStart} onChange={(e) => setStudioAudioTrimStart(parseFloat(e.target.value) || 0)} />
-  <input type="number" min="0" step="0.5" value={studioAudioTrimEnd} onChange={(e) => setStudioAudioTrimEnd(parseFloat(e.target.value) || 0)} />
-</div>
-```
-- Renamed "Visual Layout Studio" to "Intro/Outro Studio" across navigation tabs and stage headers.
-- Added dynamic Duration input field to the Intro/Outro stage allowing custom timing instead of a fixed 10s default.
-- Harmonized the Intro/Outro Studio Audio panel to have the exact same design layout, card container styles, track selectors, upload badges, and 6-parameter precision grid (Track Start Offset, Audio Start Cut, Audio Finish Cut, Volume, Fade In, Fade Out) as the Master Pipeline Stitcher.
-- Added start/finish cut controls to the Master Pipeline Stitcher audio track.
-- Passed audio configuration from Intro/Outro Studio into Python rendering pipeline (`render_custom_layout_from_config`) with FFmpeg `atrim`, `afade`, and `amix` audio mixing.
-
-### Target File: `/scripts/stream_inject.py` & `/server/streaminject/StreamInjectService.ts`
-```python
-# Audio mixing in custom layout render
-if audio_cfg and audio_cfg.get("path") and os.path.exists(audio_cfg["path"]):
-    audio_path = audio_cfg["path"]
-    vol = float(audio_cfg.get("volume", 1.0))
-    fade_in = float(audio_cfg.get("fade_in", 0.0))
-    fade_out = float(audio_cfg.get("fade_out", 0.0))
-    trim_start = float(audio_cfg.get("trim_start", 0.0))
-    trim_end = float(audio_cfg.get("trim_end", 0.0))
-    ...
-```
-- Added JSON payload parsing and FFmpeg filter chains for trimming, delaying, fading, and mixing audio directly into programmatic studio layout templates.
-
----
-
-# v1.17.71 (Initial) — StreamInject v2.5 Timeline & AudioCraft PreWarm Suite
-
-### Target File: `/scripts/download_audiocraft.py`
-```python
-"""
-AudioCraft & MusicGen Weight Downloader Utility for Gina AI Factory.
-Downloads and caches Meta AudioCraft (MusicGen Small 300M & Medium 1.5B) models
-locally into C:\Gina_AI\models\audio without saturating VRAM during download.
-"""
-```
-- Implemented headless model downloader for Meta AudioCraft / MusicGen models caching weights into `C:\Gina_AI\models\audio`.
-
-### Target File: `/src/components/StreamInjectStudio.tsx`
-```tsx
-// Staging & Master Pipeline Audio + Chromakey + Watermark timeline controls
-<div className="grid grid-cols-4 gap-2 mt-2">
-  <div>
-    <span className="text-slate-400 text-[10px]">Volume</span>
-    <input type="number" min="0" max="2.0" step="0.1" value={audioVolume} onChange={(e) => setAudioVolume(parseFloat(e.target.value) || 1.0)} />
-  </div>
-  <div>
-    <span className="text-slate-400 text-[10px]">Offset (s)</span>
-    <input type="number" min="0" step="0.5" value={audioStartOffset} onChange={(e) => setAudioStartOffset(parseFloat(e.target.value) || 0)} />
-  </div>
-  ...
-</div>
-```
-- Added full UI for Audio Track Mixing, start offset, volume, fade in/out, Green Screen tolerance & timeline duration, watermark start/finish times & opacity, and burned subtitle overlays.
-
-### Target File: `/server/streaminject/StreamInjectService.ts`
-```typescript
-if (options.audioTrackPath) {
-  cliArgs.push("--audio-track", options.audioTrackPath);
-  cliArgs.push("--audio-volume", String(options.audioVolume ?? 1.0));
-  cliArgs.push("--audio-start-offset", String(options.audioStartOffset ?? 0));
-  cliArgs.push("--audio-fade-in", String(options.audioFadeIn ?? 0));
-  cliArgs.push("--audio-fade-out", String(options.audioFadeOut ?? 0));
-}
-```
-- Augmented `StreamInjectService` media scanning to index `.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`, and `.aac` from `models/audio` and `output/audio`.
-- Passed all audio mixing, chromakey similarity, and watermark timeline parameters to Python subprocess.
-
-### Target File: `/server.ts` & `/src/components/ModelPreWarmPanel.tsx`
-```typescript
-{
-  id: 'musicgen_small', name: 'MusicGen Small (AudioCraft 300M)', filename: 'facebook/musicgen-small',
-  workflowId: 'audiocraft_music', type: 'music', vramFootprintMB: 2800,
-  description: 'Meta AudioCraft MusicGen 300M model for fast BGM generation and audio composition (cached in models/audio).'
-}
-```
-- Integrated AudioCraft MusicGen into Model Pre-Warm state machine and VRAM management visualizer with distinct `Music` icon badges and allocation budget tracking.
-
----
-
-# v1.17.69 (Patch 1) — Import Migration Verification & TypeScript Fixes
-
-### Target File: `/server/jobs/JobManager.ts`
-```typescript
-export interface GinaJob {
-  id: string;
-  promptId?: string;
-  workflowId: string;
-  status: JobStatus;
-  progress: number;
-  step?: string;
-  currentNodeId?: string | null;
-  currentNodeClass?: string;
-  currentStep?: number;
-  totalSteps?: number;
-  createdAt: string;
-  startedAt?: string;
-  completedAt?: string;
-  error?: string;
-  outputs: any[];
-  parameters: Record<string, any>;
-}
-```
-- Added optional `step?: string` field to `GinaJob` interface to align with StreamInject rendering progress tracking.
-
-### Target File: `/src/components/MilestoneChecklist.tsx`
-```typescript
-{ phase: 31, name: 'STREAMINJECT v2.5 PURE RENDER SUITE', status: 'IN_PROGRESS', details: 'Add Audio import (with duration and start/finish timeline)into both Visual Layout Studio and Master Pipeline Stitcher, Add Chromakey Overlay, Watermark & Subtitles duration and start/finish timeline' }
-```
-- Corrected status enum value from `'IN PROGRESS'` to `'IN_PROGRESS'`.
-
----
-
-# v1.17.69 — StreamInject v2.5 UI Integration & Navigation Wireup
-
-### Target File: `/src/App.tsx`
-```tsx
-import { StreamInjectStudio } from './components/StreamInjectStudio';
-
-const navItems = [
-  { id: 'create' as const, label: 'CREATE', icon: Image, isGenerating: isJobActive && isImageJob },
-  { id: 'video' as const, label: 'VIDEO', icon: Video, isGenerating: isJobActive && isVideoJob },
-  { id: 'gif' as const, label: 'GIF STUDIO', icon: Film, isGenerating: isJobActive && job?.workflowId === 'gif_studio' },
-  { id: 'streaminject' as const, label: 'STREAMINJECT', icon: Film, isGenerating: isJobActive && (job?.workflowId === 'streaminject_studio' || job?.workflowId === 'streaminject_render') },
-  { id: 'aida64' as const, label: 'AIDA64', icon: Gauge, isGenerating: false },
-  ...
-];
-
-<main className={`space-y-5 ${activeView === 'streaminject' ? 'block' : 'hidden'}`}>
-  <WorkspaceErrorBoundary name="StreamInject Studio">
-    <StreamInjectStudio />
-  </WorkspaceErrorBoundary>
-</main>
-```
-- Integrated the `StreamInjectStudio` visual layout designer and render workspace directly into the primary application navigation bar.
-- Connected real-time generation indicators for `streaminject_studio` and `streaminject_render` job types.
-
-### Target File: `/src/components/MilestoneChecklist.tsx`
-```tsx
-{ phase: 30, name: 'STREAMINJECT v2.5 PURE RENDER SUITE', status: 'COMPLETED', details: 'Headless OpenCV/FFmpeg Python render engine, visual canvas layout builder, 6-track timeline & master pipeline' }
-```
-- Added Phase 30 milestone and updated active restore point to `RESTORE_V1.17.69_STREAMINJECT_SUITE`.
-
-### Target File: `/src/components/AppFeaturesGuide.tsx`
-- Added comprehensive feature documentation for StreamInject v2.5 Pure Render Suite covering headless Python execution, canvas layout builder, and master rendering pipeline.
-
----
-
-# v1.17.68 — StreamInject v2.5 Pure Render Suite Integration
-
-### Target File: `/scripts/stream_inject.py`
-```python
-class MasterRenderPipeline:
-    @classmethod
-    def execute(
-        cls,
-        intro_path: Optional[str],
-        main_gameplay_path: str,
-        outro_path: Optional[str],
-        output_path: str,
-        aspect_mode: str = "original",
-        split_start_sec: float = 0.0,
-        split_end_sec: Optional[float] = None,
-        green_screen_overlay: Optional[str] = None,
-        overlay_start_time: float = 5.0,
-        watermark_path: Optional[str] = None,
-        watermark_pos: str = "TR",
-        subtitle_path: Optional[str] = None
-    ) -> Dict[str, Any]:
-```
-- Integrated the complete, unabridged, single-file production-ready Python video post-production suite **StreamInject v2.5** (`scripts/stream_inject.py`).
-- Implemented in-memory Kinetic FX matrices: Glitch/Flicker, Screen-Shake Rumble (affine warp with `BORDER_REFLECT`), Ethereal Volumetric Bloom Glow (luminosity mask > 200 + Gaussian blur), and Chromatic Aberration channel separation (+4px/-4px).
-- Implemented Multi-Aspect Engine: 16:9 Widescreen mode and 9:16 Portrait Shorts mode with automated dual-layer `boxblur=40:5` blurred sidebars.
-- Implemented Master Hardcoded Render Pipeline with dynamic markers, green screen chromakey (`0x00FF00:0.1:0.2`), subtitle burns, multi-track concatenation, and automated `build_perf_log.md` telemetry reporting.
-- Implemented Intro & Outro Studio with Ready-Built Template Mode (10s kinetic loop with `OUTRO_BG_RED_MAX=55`) and Blank Template Mode with infinite multi-layer step-by-step interactive inputs and smart safe-zone hints.
-- Enforced Audio Stream Safety Rule (48kHz Stereo via `anullsrc` harmonization) and Hard Audio Peak Limiter (`alimiter` at `-0.95dB` ceiling).
-
-### Target File: `/docs/guides/STREAM_INJECT_SUITE.md`
-- Added comprehensive architecture specification and CLI command guide for the StreamInject v2.5 engine.
-
----
-
-# v1.17.68 — RIFE Hardware Fallback & API Polling Diagnostic Stabilization
-
-### Target File: `/server.ts`
-```typescript
-async function interpolateStoryClip(sourcePath: string, destinationPath: string, targetFps: number) {
-  try {
-    await execFileAsync('ffmpeg', [
-      '-y', '-i', sourcePath, '-an',
-      '-vf', `minterpolate=fps=${targetFps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1`,
-      '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
-      '-movflags', '+faststart', destinationPath
-    ], { windowsHide: true, timeout: 600000, maxBuffer: 2 * 1024 * 1024 });
-  } catch {
-    await normalizeStoryClip(sourcePath, destinationPath, targetFps);
-  }
-}
-```
-- Added automatic, hardware-safe FFmpeg frame interpolation fallback when `RIFE_VFI` custom node is not installed in ComfyUI. This prevents `Smooth Animation` / `RIFE` post-processing in GIF Studio and Sequential Story generation from throwing unhandled exceptions and crashing generation jobs.
-- Updated `buildGifStudioWorkflow` to detect missing `RIFE_VFI` gracefully, returning clean base workflows with `rifeFallback: true` rather than throwing fatal runtime errors.
-- Enhanced API diagnostic middleware to suppress transient 404s on job polling routes (`/api/jobs/:id/workflow`, `/api/jobs/:id/events/history`), preventing the dashboard error tray from being flooded with harmless expired job lookups.
-
-### Target File: `/src/components/GifStudio.tsx`
-```tsx
-<select value={storyRife} onChange={e=>setStoryRife(e.target.value as any)} className="...">
-  <option value="off">RIFE OFF ({storyBaseFps} FPS)</option>
-  <option value="2x">2× Multiplier ({storyBaseFps*2} FPS · Auto-Fallback)</option>
-  <option value="4x">4× Multiplier ({storyBaseFps*4} FPS · Auto-Fallback)</option>
-</select>
-```
-- Clarified RIFE interpolation options in the UI to indicate automatic fallback support.
-
-### Target File: `/src/components/PromptStudio.tsx`
-```typescript
-if (!isBusy && (historyRes.status === 404 || workflowRes.status === 404)) {
-  if (timer) clearInterval(timer);
-}
-```
-- Optimized runtime polling loop to automatically stop querying when a completed or expired job is no longer active in memory.
-
----
-
-# v1.17.68 — GIF Studio LTX-Video Hardware Controls & Preview Layout Fix
-
-### Target File: `/src/components/GifStudio.tsx`
-```tsx
-{/* LTX-Video Hardware & Parameter Controls */}
-<div className="rounded-lg border border-fuchsia-500/30 bg-slate-950 p-2.5 space-y-2.5">
-  <div className="flex items-center justify-between">
-    <div className="text-[8px] font-bold tracking-wider text-fuchsia-300 flex items-center gap-1.5">
-      <Zap className="w-3 h-3 text-amber-400"/>
-      LTX-VIDEO HARDWARE ENGINE (8GB VRAM OPTIMIZED)
-    </div>
-    <button onClick={()=>setShowStoryAdvanced(v=>!v)} className="text-[8px] text-slate-400 hover:text-slate-200">
-      {showStoryAdvanced ? 'HIDE' : 'CONFIG'}
-    </button>
-  </div>
-  {/* Model Precision, Steps, Sampler/Scheduler, Resolution, Base FPS, RIFE, I2V Conditioning */}
-</div>
-```
-- Integrated comprehensive LTX-Video parameter controls for Sequential Story mode:
-  - **Model Precision**: Selection between `ltxv-2b-0.9.8-distilled-fp8` (FP8 quantized, ~50% VRAM reduction for 8GB) and FP16.
-  - **Sampling Steps & CFG**: 20-25 steps balance point with quick presets (20 fast, 22 crisp, 25 max) + CFG slider.
-  - **Sampler & Scheduler**: Euler Ancestral (Crisp), UniPC 2, Normal Scheduler (crisp detail across frames).
-  - **Resolution Presets**: 768×768 (1:1), 848×480 (16:9 cinematic), 512×512 (fast).
-  - **Frame Rate & RIFE**: Raw base FPS (12 FPS memory-safe) with RIFE 2× / 4× post-interpolation and live calculated output FPS telemetry.
-  - **I2V Continuity Conditioning**: Reference strength (0.75-0.85 lock), image noise scale, and Final-Frame I2V toggle.
-- **Fixed Preview Stretching Layout Bug**: Applied `items-start` on grid layout and constrained the live player with `aspect-video`, `min-h-[260px]`, and `max-h-[460px]` with `overflow-hidden` so expanding the Sequential Story drawer no longer elongates or distorts the preview player.
-
----
-
-# v1.17.68 — GIF Studio 30s Sequential Story & Universal Synchronization
-
-### Target Files: `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/docs/INDEX.md`, `/Start_Factory.bat`, `/src/App.tsx`, `/src/components/MilestoneChecklist.tsx`
-- Universal version string synchronized to `1.17.68` across the entire codebase.
-- Active restore point locked and set to `RESTORE_V1.17.68_GIF_STUDIO_FIX`.
-- Verified 30-second continuous and multi-scene GIF generation pipeline via sequential LTX-Video chunking, FFmpeg frame continuity, and color palette optimization.
-
----
-
-# v1.17.67 — Migration & Build Validation
-
-### Target File: `/server.ts`
-```typescript
-function recordComfyErrorLog(rawMessage: string, meta?: { jobId?: string; nodeId?: string; nodeType?: string; watchdog?: boolean }) { ... }
-const requested: number[] = Array.isArray(req.body?.layers) ? (req.body.layers as any[]).map((n: any) => Math.round(Number(n))).filter((n: number) => !isNaN(n) && n >= 8 && n <= 36) : [20, 24, 28, 32];
-const layers: number[] = Array.from(new Set<number>(requested)).sort((a: number, b: number) => a - b).slice(0, 6);
-```
-- Resolved TypeScript compiler errors TS2353 and TS2362/TS2363/TS2322 in `server.ts`.
-
-### Target File: `/src/components/GifStudio.tsx`
-```typescript
-const Metric = ({icon,label,value}:{icon:React.ReactElement<{className?: string}>;label:string;value:string}) => ...
-```
-- Resolved TypeScript compiler error TS2769 on `React.cloneElement` icon prop in `GifStudio.tsx`.
-
-### Target File: `/src/components/PromptStudio.tsx`
-```typescript
-interface WorkflowSummary {
-  id: string;
-  fileName: string;
-  nodeCount: number;
-  bindings: { key: string; nodeId: string; input: string; classType: string; confidence: string }[];
-  capabilities: string[];
-  warnings: string[];
-  nodes?: any[];
-  workflow?: any;
-}
-```
-- Added optional `nodes` and `workflow` properties to `WorkflowSummary` interface to resolve TS2339.
-
-### Target File: `/src/types.ts`
-```typescript
-export interface AiStudioConfig {
-  activeTab: 'creator'|'video'|'jobs'|'shorts'|'assets';
-  workflowId: string;
-  videoWorkflowId: string;
-  defaultAspectRatio: '1:1'|'16:9'|'9:16'|'aida64'|'4:3'|'3:4';
-}
-```
-- Updated `defaultAspectRatio` type union to include `'aida64'`, `'4:3'`, and `'3:4'` options.
-
-### Target Files: `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`
-- Synchronized universal app version string to `1.17.67` across all project files.
-
----
-
-# v1.17.67 — Sequential Story ComfyUI Completion Fallback
-
-- Fixed sequential GIF Studio stories stalling after an LTX scene reaches its final progress event when the ComfyUI WebSocket completion packet is missed.
-- Child LTX jobs now poll ComfyUI `/history/<prompt_id>` as an authoritative completion fallback.
-- History-reported execution errors are surfaced into the parent story job instead of leaving it waiting indefinitely.
-- Keeps the v1.17.66 batch-size=1 VRAM/OOM fix intact.
-
-## v1.17.66 — LTX Sequential Story CUDA OOM Guard
-
-- Fixed a critical Sequential Story bug where the temporal frame count could be written into an LTX `batch_size` input.
-- LTX story scenes now force `batch_size=1`; temporal duration remains controlled by the LTX frame/length input.
-- Removed the generic parser alias that treated LTX video `frames`/`frame_count`/`length` as batch size.
-- This prevents a 5-second scene at 25 FPS from accidentally becoming a 121-sample batch on an 8GB RTX 3070 Ti.
-- Added an explicit safety normalization immediately before each LTX story workflow is submitted to ComfyUI.
-
-## v1.17.65 — GIF Studio Sequential Story Execution & Preview Fixes
-
-- GIF Studio LTX generation now uses a real server-side sequential story runner instead of submitting only the first LTX scene.
-- Long single prompts are automatically split into safe LTX chunks and chained by final-frame image-to-video conditioning.
-- Each completed block exposes live ComfyUI node/progress events through the parent story job.
-- Final-frame PNGs are extracted between blocks and fed into `LTXVImgToVideo` when available.
-- Optional story-level RIFE is applied per block before final concatenation to keep RTX 3070 Ti VRAM bounded.
-- GIF Studio now previews its own finished GIF/MP4 output directly; Adopt LTX Output is no longer required.
-- Story jobs return stored media through the normal job output API and support re-export with meme text/compression.
-- Added reference strength/noise controls and story block telemetry.
-- Added update documentation under `docs/updates/` to keep the project root clean.
-
-## v1.17.64 — GIF Studio Sequential Story Controls
-
-- Added full Sequential Story workspace controls to GIF Studio.
-- Added per-scene prompts, durations, transitions, seed modes, continuity/reference toggles, story-level continuity settings and RIFE selection.
-- Added automatic total-duration calculation and story metadata packaging.
-- Fixed GIF audit metadata reference to `built.effectiveLoopCount`.
-
-# v1.17.63
-
-- Fixed GIF Studio not displaying completed LTX output until Adopt LTX Output was clicked.
-- Improved direct output media detection and preview refresh.
-
-# v1.17.62 — GIF Studio exact-duration output & result preview
-
-- Fixed the Output Duration control so 30s and longer targets are actually encoded to the requested duration.
-- Removed the ComfyUI repeat-count ceiling from final-duration calculation.
-- Added automatic GIF + MP4 finalization after the ComfyUI source clip completes.
-- GIF Studio now previews the finished exported result and provides GIF/MP4 preview switching.
-- Added long-form FFmpeg encoding time allowance up to 2 hours for extended outputs.
-- Corrected RIFE duration accounting: RIFE changes frame rate/count together and does not shorten the timeline.
-
-# v1.17.61 — GIF Studio Long-Form Controls & Generation Telemetry
-
-- Added 0–360 second duration slider plus exact duration entry up to 6 hours.
-- Added Loop vs Continuous output mode; continuous exports use FFmpeg stream looping and exact `-t` duration.
-- Exposed calculated source duration/repeat information in GIF Studio job metadata and live telemetry.
-- Exported GIF/MP4 requests now carry the selected duration and mode.
-- Kept ComfyUI as the source for actual node execution and preserved live node/event/workflow inspection.
-
-# v1.17.60 — Live System Inventory & Current Capability Discovery
-
-- Reworked the System capability map to auto-discover current local model files instead of relying on an obsolete fixed model list.
-- Added live ComfyUI `/object_info` node-class inventory and custom-node directory discovery.
-- System runtime now exposes current FLUX GGUF, LTX, RIFE, GIF Studio, graph-sync and Gemma projector readiness.
-- Updated the projector baseline to `mmproj-q8_0.gguf` while retaining wildcard `mmproj*.gguf` discovery.
-- Removed stale Wan/Hunyuan entries from Model Pre-Warm; LTX target is now auto-discovered or pinned with `LTX_MODEL`.
-- Updated System feature copy, model labels and thermal/VRAM descriptions to match the current stack.
-
-# v1.17.59 — Native GIF Studio
-
-- Added native **GIF STUDIO** dashboard tab with three-panel asset, player/timeline and AI processing workspace.
-- Added local MP4/MOV/WEBM/MKV and PNG/JPG image-sequence import into `C:\Gina_AI\media\gif_studio`.
-- Added dynamic ComfyUI GIF pipeline using VideoHelperSuite trim/load/combine nodes and optional `RIFE_VFI` interpolation when installed.
-- Added frame window, FPS/frame-delay, ping-pong, loop count and compression controls.
-- Added live ComfyUI node graph/event synchronisation and resolved workflow JSON inspection.
-- Added VRAM purge before GIF processing and a 60°C thermal governor that reduces output FPS under heat.
-- Added meme text preview and FFmpeg-burned dual export to GIF and H.264 MP4.
-- Added LTX generation hand-off so a completed LTX video can be adopted as a GIF Studio source.
-
-# v1.17.58
-
-- Workflow registry now keeps the live `C:\Gina_AI\workflows` definition as the active override, while packaged workflows remain the fallback; Creator Studio introspects that resolved definition so its controls match the workflow Gina actually submits.
-- Creator Studio now mirrors the actual workflow defaults (including 1024×600 AIDA64) instead of stale localStorage values.
-- Added direct scalar workflow-input controls, live execution node/status telemetry, job event history, and resolved-workflow inspection.
-- Corrected FLUX model identity everywhere to `FLUX.1-Schnell GGUF Q4_K_S` and made model pre-warm semantics explicit: armed target + VRAM flush, not falsely resident weights.
-
-## 1.17.57 — startup stability hotfix
-
-- Fixed a React render loop caused by unstable ProjectState callback identities.
-- Kept AIDA64 staging/reference state wired into Create Studio.
-- Removed the frontend dependency on a named `ACTIVE_SAVE_POINT_ID` export to avoid startup import failures.
-- Retained FLUX GGUF + 1024×600 workflow configuration.
-
-# v1.17.55 — FLUX GGUF + AIDA64 1024×600 Generation Lock
-
-- Switched the registered `flux_image` workflow from the FP8 `UNETLoader` to `UnetLoaderGGUF` using `flux1-schnell-Q4_K_S.gguf`.
-- Switched the FLUX reference workflow to the same GGUF model loader.
-- Kept the AIDA64 baseline workflow at exactly **1024×600** and retained server-side dimension enforcement/PNG verification.
-- Updated Creator Studio defaults to **FLUX.1-Schnell (GGUF Q4_K_S)** and **1024×600 AIDA64**.
-- Extended the one-click test suite with GGUF loader/model checks and an AIDA64 1024×600 workflow-lock check.
-
-# v1.17.53 — AIDA64 Template-Guided Image Generation
-
-- AIDA64 template is now uploaded as a visual reference image for FLUX generation.
-- Removed the aggressive gauge-zone masking workflow from the normal generation path.
-- The 12 Gauge Factory positions remain visible as composition landmarks.
-- Existing AIDA64 1024×600 generation lock remains in place.
-
-## v1.17.52 — AIDA64 hard resolution verification + protected gauge background
-- Hard-locks AIDA64 generation at 1024×600 at workflow payload level.
-- Verifies returned PNG dimensions and rejects 1024×576 output.
-- Adds protected 12-gauge background compositor that masks AI-generated gauges/needles/text inside real Gauge Factory zones.
-- Adds a Protect Gauge Zones action in Create Studio.
-- Updates 12-gauge prompt compiler to describe empty protected mounting zones rather than asking the model to render gauges.
-
-## v1.17.51 — AIDA64 1024×600 Generation Lock
-
-- Added a dedicated `AIDA64 Panel` aspect/resolution option at exactly **1024×600**.
-- Added `1024 × 600 · AIDA64` to Creator Studio resolution presets.
-- AIDA64 Studio → Create Studio handoff now preserves the exact 1024×600 canvas instead of converting it to generic 16:9 (1024×576).
-- App-level AIDA64 prompt handoff now preserves 1024×600 as well.
-- Generic image generation defaults remain unchanged; 1024×600 is an explicit AIDA64 target.
-- Note: local build/lint could not be executed in this packaging environment because dependencies (`node_modules`) are not installed here.
-
-## v1.17.47 — Test Suite Local AI Prerequisite Management
-- Live smoke tests can auto-start stopped Gemma and wait for readiness.
-- Distinguishes a stopped dependency from a failed smoke test.
-- Added an AUTO-START GEMMA control when live tests are enabled.
-
-# v1.17.46
-
-- Fixed false Gemma mmproj warning by resolving the projector path during status/diagnostic checks, independent of llama-server child state.
-- Added optional live Gemma vision smoke test to the unified test suite. It creates a temporary local PNG, sends it through the real multimodal chat path, verifies a response, and removes the test file.
-- Vision smoke test is only run when LIVE SMOKE TESTS is enabled.
-
-## v1.17.46 — Unified Diagnostic Test Suite
-
-- Added `/src/components/TestSuitePanel.tsx` with a single RUN ALL TESTS control, grouped PASS/FAIL/WARN results, optional live smoke test, rerun, and copy-ready report.
-- Added `/api/diagnostics/test-suite` in `server.ts` for non-destructive integration checks across Core, Local AI, Vision, Image Generation, Reference, Orchestration, Data, and Hardware.
-- Added optional live Gemma text smoke test; it is disabled by default to avoid unnecessary GPU work.
-- Added restore point `RESTORE_15_V1.17.46_TEST_SUITE` and synchronized version metadata.
-
-
-## v1.17.43 — Local Capability Map & Hardware Sentinel Update
-
-- Updated the capability map for the current local stack: Gemma 3 12B vision projector, FLUX reference/image-to-image workflows, workflow ingestion, and live runtime readiness.
-- Added `mmproj-model-f16.gguf` to local model dependency discovery.
-- Hardware Sentinel now reports live NVIDIA VRAM usage, temperature, and utilization instead of stale fixed values.
-- Added capability readiness indicators for text-to-image, image reference, Gemma Vision, and workflow ingestion.
-- Kept the capability scan local-only and non-destructive.
-
-## v1.17.41 — Shared image generation progress + safe development reloads
-
-- AI Tools now attaches to the same ComfyUI generation job state as Create Studio and displays live percentage/step progress plus STOP & FLUSH.
-- Restored Vite HMR for source changes and `tsx watch` for server changes while keeping mutable uploads/models/generated assets ignored.
-- AI Tool image generation and Create Studio now share the same cancellation/progress job state.
-
-# v1.17.39 — Local AI reliability / timeout pass
-
-- Increased Local AI request timeout default to 5 minutes.
-- Added explicit Local AI chat cancellation.
-- Cancelling aborts the in-flight request and asks the server to cancel the active llama.cpp request.
-- Added clearer cancellation diagnostics.
-
-# v1.17.38 — TTS Markdown Readback Sanitization
-
-- Added a central speech-only Markdown sanitizer for Local AI readback.
-- Removes bold/italic/code/link/list/table/heading markup before speech synthesis.
-- Keeps the original Markdown response unchanged in the chat UI.
-- Applies to browser SpeechSynthesis and the local voice bridge.
-
-
-### v1.17.36 — Create Studio Render Recovery
-
-- Fixed `PromptStudio` render crash caused by the `cancelJob` handler being referenced without being destructured from `useGenerationJob()`.
-- Keeps the STOP & FLUSH control functional without taking down the Create Studio render surface.
-- Bumped application/package metadata to v1.17.36.
-
-## v1.17.33 — Generation Stop + VRAM Flush
-- Added a visible Create Studio STOP & FLUSH control while image generation is queued/running.
-- Cancellation now interrupts ComfyUI, clears its queue, and awaits `/free` with model unload + memory release.
-- Cancellation reports whether the VRAM flush completed and records a diagnostic if it did not.
-
-## v1.17.32 — Dependency preflight fix
-- Start_Factory.bat now verifies JSZip before launching Gina.
-- Automatically runs npm install when required dependencies are missing.
-- Prevents ERR_MODULE_NOT_FOUND for jszip from producing a confusing startup failure.
-
-# v1.17.28 — Render Recovery
-
-- Fixed missing `ComfyUIStatusIndicator` import that caused the React dashboard to crash on startup.
-- Kept the System → Logs diagnostics work from v1.17.27.
-- Bumped application/save-point version to 1.17.28.
-
-# v1.17.27 — DIAGNOSTICS + HMR SAFETY FIX
-
-- Made `GET /api/error-log` failure-proof and non-recursive: it always returns a diagnostic JSON response instead of becoming HTTP 500.
-- Added safe serialization of log entries and degraded-mode reporting.
-- Prevented the central API-error recorder from recording `/api/error-log` failures, avoiding a diagnostic feedback loop.
-- Made Vite HMR opt-in (`GINA_HMR=true`) so runtime/metadata changes cannot reload the browser and abort in-flight uploads.
-- Disabled HMR in the Express middleware Vite instance used by Gina's local server.
-- Expanded watcher ignores for runtime/generated metadata files.
-- Dashboard Logs now surfaces degraded diagnostics state without repeatedly treating it as a new server error.
-
-# v1.17.26 — System UI reorganization
-
-- Reorganized the System workspace into Overview, Hardware, Models & Workflows, Safeguards, and Logs tabs.
-- Moved the Dashboard Error Log into the dedicated Logs tab with copy/clear/download controls.
-- Reduced the System page from a long stack of panels to focused functional sections.
-- Kept existing system components and diagnostics intact; this is a UI organization change only.
-
-# v1.17.25 — upload reload fix + dashboard error diagnostics
-
-- Fixed Vite HMR watching `local_ai_uploads`, which caused an upload to trigger a page reload and abort the in-flight POST (`BadRequestError: request aborted`).
-- Added `local_ai_uploads` and local launcher/script files (`*.bat`, `*.cmd`, `*.ps1`) to both Vite watch ignore configurations.
-- Added a bounded local Dashboard Error Log that captures Express/body-parser failures, request-aborted uploads, and API 4xx/5xx responses.
-- Added Copy Errors, refresh, clear, and combined telemetry/error-log download controls.
-- Error logs stay local and are cleared from both the browser and server buffers with the existing Clear control.
-- Bumped application version and restore point to v1.17.25.
-
-# v1.17.22 — attachment and local vision completion
-
-- Completed Create Studio reference-image UI and bundled `flux_image_reference` workflow.
-- Completed Local AI image attachment transport: uploaded images are passed as real multimodal OpenAI-compatible `image_url` parts when a llama.cpp projector is configured.
-- Added automatic `*mmproj*.gguf` detection and `GINA_LLM_MMPROJ` override.
-- Added Local AI `VISION READY` / `TEXT ONLY` status.
-- Updated standalone Local LLM launcher to pass the detected projector.
-
-# v1.17.21 — Local AI attachment handler hotfix
-
-- Removed duplicate `handleAttachFile` declaration from `src/components/LocalLlmStudio.tsx`.
-- Preserved the v1.17.20 Local AI attachment limits: text/code/config 2 MB, images 12 MB, ZIP 25 MB, 5 attachments per turn, 100 ZIP entries, 4 MB extracted text context.
-- This is a focused compile hotfix; no LTX or AIDA64 changes.
-
-# v1.17.20 — Local AI Universal Attachment Pipeline
-
-### Local-only attachment expansion
-- Added `/api/llm/upload-attachment` for strictly local attachment ingestion.
-- Local AI now accepts supported text/code/config files, PNG/JPG/WEBP/BMP/GIF images and ZIP archives from the Gina dashboard.
-- ZIP archives are inspected locally with JSZip; supported text/code files are extracted into the current Local AI prompt with a 4 MB aggregate text cap and 100-file archive cap.
-- Images are stored locally and surfaced as attachments. The current text-only Gemma/llama.cpp path receives image metadata only; no false visual interpretation is claimed.
-- Added per-kind limits: text 2 MB, images 12 MB, ZIP 25 MB; maximum 5 attachments per Local AI turn.
-- Removed stale `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API` metadata capability.
-- Created `RESTORE_11_V1.17.20_LOCAL_AI_ATTACHMENTS` and lifecycle Phase 19.
-
-# v1.17.18 — Advanced Voice Pipeline, Persistent Voice Presets, Real-Time Node Graph Sync & Milestone Roadmap Expansion
-
-### 1. Target File Path: `/src/components/LocalLlmStudio.tsx`
-```typescript
-// Permanent voice preference storage and visual default indicator
-const [voiceName, setVoiceName] = useState<string>(() => {
-  return localStorage.getItem('gina_voice_name') || localStorage.getItem('gina_voice_default') || '';
-});
-const [defaultVoiceName, setDefaultVoiceName] = useState<string>(() => {
-  return localStorage.getItem('gina_voice_default') || '';
-});
-
-const handleSetAsDefault = (selectedVoice: string) => {
-  setDefaultVoiceName(selectedVoice);
-  localStorage.setItem('gina_voice_default', selectedVoice);
-  localStorage.setItem('gina_voice_name', selectedVoice);
-};
-```
-**Summary**: Implemented persistent voice preset manager in `LocalLlmStudio.tsx` allowing users to select and permanently lock any voice (defaulting to Google US English) across sessions with a "★ Set Default" control.
-
-### 2. Target File Path: `/src/components/MilestoneChecklist.tsx`
-```typescript
-// Expanded lifecycle phases 1-17 with completed Phase 12 & Phase 13 and future roadmap suggestions
-{ phase: 12, name: 'REAL-TIME COMFYUI NODE GRAPH SYNC', status: 'COMPLETED' },
-{ phase: 13, name: 'ADVANCED LOCAL VOICE PIPELINE & PERSISTENCE', status: 'COMPLETED' },
-{ phase: 14, name: 'ONE-CLICK WORKFLOW JSON/PNG INGESTION', status: 'PENDING' },
-{ phase: 15, name: 'HIGH-DPI AIDA64 TRANSPARENT DESKTOP HUD', status: 'PENDING' },
-{ phase: 16, name: 'MULTI-GGUF BENCHMARK & DYNAMIC VRAM TUNER', status: 'PENDING' },
-{ phase: 17, name: 'KNOWLEDGE INGESTION & AUTO-INDEXING AGENT', status: 'PENDING' }
-```
-**Summary**: Updated `MilestoneChecklist.tsx` to mark Phase 12 and Phase 13 as COMPLETED, created active restore point `RESTORE_09_V1.17.18_VOICE_GRAPH_SYNC`, and added suggested future phases 14-17.
-
-### 3. Target File Path: `/src/components/AppFeaturesGuide.tsx`
-```typescript
-// Added advanced voice pipeline, drag-and-drop workflow ingestion, transparent HUD, benchmark tuner features, and 17-phase roadmap
-{
-  id: 'voice_synthesis',
-  title: 'Advanced Local Voice Pipeline & Persistent Presets',
-  badge: 'Google US English · Persistent',
-  shortDesc: 'Natural Google US English default voice with permanent localStorage persistence, Windows SAPI bridge fallback, and speech rate modifier.'
-}
-```
-**Summary**: Synchronized `AppFeaturesGuide.tsx` with all verified features, updated the version badge to V1.17.18, expanded the roadmap to 17 phases, and detailed the upcoming innovations.
-
-### 4. Target File Path: `/src/version.ts`, `/metadata.json`, `/package.json`, `/AGENTS.md`
-```typescript
-export const APP_VERSION = '1.17.18';
-export const APP_RELEASE_NAME = 'Advanced Voice Pipeline, Real-Time Node Graph Sync & Milestone Roadmap Expansion';
-export const ACTIVE_SAVE_POINT_ID = 'RESTORE_09_V1.17.18_VOICE_GRAPH_SYNC';
-export const ACTIVE_LIFECYCLE_PHASE = 13;
-export const ACTIVE_LIFECYCLE_NAME = 'ADVANCED LOCAL VOICE PIPELINE & PERSISTENCE';
-```
-**Summary**: Synchronized universal version numbers and metadata across all core manifests per RULE 7.
-
----
-
-# v1.17.17 — Gina Voice Default to "Google US English", AppFeaturesGuide Sync & Stage 12 Node Graph
-
-### 1. Target File Path: `/src/components/LocalLlmStudio.tsx`
-```typescript
-// Prioritize 'Google US English' in browser voice synthesis selection with intelligent fallbacks
-const preferred =
-  browserVoices.find(v => /google\s+us\s+english/i.test(v.name)) ||
-  browserVoices.find(v => /google/i.test(v.name) && /en-US/i.test(v.lang)) ||
-  browserVoices.find(v => /microsoft.*jenny/i.test(v.name)) ||
-  browserVoices.find(v => /jenny/i.test(v.name)) ||
-  browserVoices.find(v => /microsoft.*aria/i.test(v.name)) ||
-  browserVoices.find(v => /microsoft.*zira/i.test(v.name)) ||
-  browserVoices.find(v => /en-US/i.test(v.lang)) ||
-  browserVoices.find(v => /en-GB/i.test(v.lang)) ||
-  browserVoices[0];
-```
-**Summary**: Defaulted Gina voice synthesis to natural "Google US English" across browser and backend fallback routes per user specification.
-
-### 2. Target File Path: `/src/components/AppFeaturesGuide.tsx`
-```typescript
-// Synchronized PROJECT SYSTEM ARCHITECTURE & FEATURE GUIDE with Stage 12 Node Graph Sync & Voice Updates
-{
-  id: 'comfy_node_graph',
-  title: 'Real-Time ComfyUI Node Graph Sync & Workflow Inspector',
-  icon: Network,
-  badge: 'Phase 12 · Graph Sync',
-  category: 'Node Graph Sync',
-  shortDesc: 'Live ComfyUI node graph parser, dynamic input parameter bindings, and visual workflow topology mapper.'
-}
-```
-**Summary**: Updated `AppFeaturesGuide.tsx` to document Stage 12 ComfyUI Node Graph Sync capabilities, dual-mode visualizer, and updated voice default behavior.
-
-### 3. Target File Path: `/src/components/ComfyUINodeGraph.tsx`
-```typescript
-// Interactive multi-tab ComfyUI node graph inspector supporting parameters, graph nodes, and raw schema views
-export const ComfyUINodeGraph: React.FC<Props> = ({ onAddLog }) => { ... }
-```
-**Summary**: Expanded `ComfyUINodeGraph.tsx` with full multi-tab workflow inspector, search filtering, dynamic parameter mapping, and live connection topology.
-
-### 4. Target File Path: `/server.ts` & `/src/App.tsx`
-```typescript
-// Synchronized version constants and health endpoints to v1.17.2 and RESTORE_08_V1.17.2_LOCAL_RAG
-app.get('/api/version', (_req, res) => res.json({ ok:true, version:'v1.17.2', routes:{capabilities:true,agentQuick:true,pdf:true,nodeGraph:true} }));
-```
-**Summary**: Aligned version endpoints across Express server and React footer to dynamic constant `APP_VERSION`.
-
----
-
-# v1.17.16 — Vite Watcher Exhaustion & V8 Heap OOM Permanent Fix
-
-### 1. Target File Path: `/vite.config.ts` & `/server.ts`
-```typescript
-// Explicitly ignore massive Python virtualenvs, binary model weights, tools, outputs, and heavy assets from Vite watcher
-watch: {
-  usePolling: false,
-  ignored: [
-    '**/ComfyUI_windows_portable/**',
-    '**/g_env/**',
-    '**/.g_env/**',
-    '**/models/**',
-    '**/tools/**',
-    '**/output/**',
-    '**/input/**',
-    '**/.git/**',
-    '**/.gina/**',
-    '**/dist/**',
-    '**/logs/**',
-    '**/docs/**',
-    '**/*.safetensors',
-    '**/*.gguf',
-    '**/*.bin',
-    '**/*.pt',
-    '**/*.pth',
-    '**/*.mp4',
-    '**/*.png',
-    '**/*.webp',
-    '**/*.zip',
-    '**/*.tar*'
-  ]
-}
-```
-**Summary**: Resolved Node V8 heap exhaustion (`JavaScript heap out of memory`) caused by Vite's chokidar watcher recursively indexing over 100,000+ files and multi-gigabyte models inside `C:\Gina_AI`.
-
-### 2. Target File Path: `/Start_Factory.bat`
-```batch
-start "Gina Dashboard" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && set NODE_OPTIONS=--max-old-space-size=8192 && npm.cmd run dev"
-```
-**Summary**: Raised Node.js maximum old space size to 8192 MB (8 GB) in `Start_Factory.bat` to ensure high-headroom execution for full-stack local tooling.
-
----
-
-# v1.17.15 — Universal Version Synchronization, Milestone Protection & Rules 7/8 Enforcement
-
-### 1. Target File Path: `/src/version.ts` (New File)
-```typescript
-export const APP_VERSION = '1.17.2';
-export const APP_RELEASE_NAME = 'Local Zero-VRAM RAG Knowledge Engine';
-export const ACTIVE_SAVE_POINT_ID = 'RESTORE_08_V1.17.2_LOCAL_RAG';
-export const ACTIVE_LIFECYCLE_PHASE = 12;
-export const ACTIVE_LIFECYCLE_NAME = 'REAL-TIME COMFYUI NODE GRAPH SYNC';
-```
-**Summary**: Created a centralized single source of truth for versioning and active restore points across both UI and backend layers.
-
-### 2. Target File Path: `/AGENTS.md`
-```markdown
-### RULE 7: Universal Version & Metadata Synchronization Guard
-- Update /src/version.ts, package.json, metadata.json, index.html, AGENTS.md, and MilestoneChecklist.tsx with zero discrepancies across versions.
-
-### RULE 8: Strict Milestone Save & Restore Point Verification Protocol
-- Never revert completed milestones (Phases 1–11 are locked).
-- Synchronized restore points in MilestoneChecklist.tsx and ACTIVE_SAVE_POINT_ID.
-- Atomic changelog entries for every code modification.
-- Clean root enforcement: no loose documentation or log files in root.
-```
-**Summary**: Codified Rule 7 and Rule 8 to permanently prevent code loss, milestone regressions, and version drift across all AI sessions.
-
-### 3. Target File Path: `/package.json`, `/index.html`, `/src/App.tsx`, `/src/components/Header.tsx`, `/server/agent/AgentContextManager.ts`
-```typescript
-// package.json -> version 1.17.2
-// index.html -> synced description and title
-// App.tsx -> activeSavePoint bound to ACTIVE_SAVE_POINT_ID
-// Header.tsx -> dynamic COMMAND v{APP_VERSION}
-// AgentContextManager.ts -> added src/version.ts to context inspection snapshot
-```
-**Summary**: Reconciled all version discrepancies across package manifests, HTML tags, React headers, and agent context loaders.
-
----
-
-# v1.17.14 — Root Directory Cleanup & Full Migration to /docs/ Subdirectories
-
-### 1. Target Directory: `/` (Root Cleanup)
-```
-Moved to /docs/aida64/:
-- AIDA64_COMPLETE_ENGINE.md
-- AIDA64_ENGINE_MANIFEST.json
-- AIDA64_FULL_EFFECTS.md
-- AIDA64_TELEMETRY_IMPLEMENTATION_RECORD.md
-
-Moved to /docs/guides/:
-- GAUGE_FACTORY_IMPLEMENTATION_RECORD.md
-- GAUGE_FACTORY_STYLES.md
-
-Moved to /docs/setup/:
-- SETUP_V1.2.md
-- LOCAL_LLM_SETUP.md (deduplicated)
-- LOCAL_AGENT_SETUP.md (deduplicated)
-```
-**Summary**: Purged all scattered `.md` and `.json` documentation from the root directory into structured subdirectories (`/docs/aida64/`, `/docs/guides/`, `/docs/setup/`) per Rule 5. Root is now strictly reserved for core project files (`AGENTS.md`, `CHANGELOG.md`, `README.md`, `server.ts`, `package.json`, `index.html`, batch scripts).
-
-### 2. Target File Path: `/server/agent/AgentContextManager.ts`
-```typescript
-const files = [
-  'AGENTS.md',
-  'CHANGELOG.md',
-  'README.md',
-  'docs/INDEX.md',
-  'docs/architecture/SYSTEM_ARCHITECTURE.md',
-  'src/components/MilestoneChecklist.tsx',
-  'src/components/AppFeaturesGuide.tsx',
-  'src/components/LocalCapabilityPanel.tsx',
-  'package.json',
-  'metadata.json',
-  'docs/setup/LOCAL_LLM_SETUP.md',
-  'docs/setup/LOCAL_AGENT_SETUP.md'
-];
-```
-**Summary**: Synchronized Agent context snapshot inspection paths to target relocated documentation files.
-
----
-
-# v1.17.13 — Documentation Organization, Agent Startup Rules & System Architecture Overhaul
-
-### 1. Target File Path: `/AGENTS.md`
-```markdown
-### RULE 5: Directory Structure & File Organization Hierarchy
-- Root Directory (`/`): Reserved strictly for core configuration and execution entry points.
-- Documentation Directory (`/docs/`): All architecture guides, system topology specs, and setup guides belong in `/docs/`.
-- Logs & Audit Trails (`/logs/`): Runtime audit logs, benchmark summaries, and telemetry snapshots.
-
-### RULE 6: Mandatory AI Context Ingestion on Session Startup
-- The AI MUST inspect MilestoneChecklist.tsx, AppFeaturesGuide.tsx, LocalCapabilityPanel.tsx, CHANGELOG.md, and docs/INDEX.md on session start.
-```
-**Summary**: Codified Rule 5 (Directory Structure) and Rule 6 (Mandatory Startup Context Ingestion) to eliminate regressions and ensure immediate AI situational awareness.
-
-### 2. Target File Path: `/docs/INDEX.md` & `/docs/architecture/SYSTEM_ARCHITECTURE.md`
-```markdown
-# Gina AI Factory — Documentation Index & Architecture Manifest
-/docs/
-├── INDEX.md
-├── architecture/SYSTEM_ARCHITECTURE.md
-├── aida64/AIDA64_68_FEATURES.md
-├── setup/LOCAL_LLM_SETUP.md & LOCAL_AGENT_SETUP.md
-└── guides/GAUGE_FACTORY_STYLES.md
-```
-**Summary**: Established centralized `/docs/` and `/logs/` directories, providing a single index for all specifications, hardware constraints, and workflow guides.
-
-### 3. Target File Path: `/src/components/AppFeaturesGuide.tsx`
-```typescript
-// 3-Tab Interactive Architecture & Feature Guide
-const [activeTab, setActiveTab] = useState<'studios' | 'architecture' | 'roadmap'>('studios');
-// Tab 1: Studios & Engines (FLUX.1 Schnell, LTX-Video 2B + RIFE, AIDA64, Gemma 3 12B, Agent, RAG)
-// Tab 2: Architecture Flow (React 19 -> Express API -> ComfyUI 8188 / llama.cpp 8080 -> RTX 3070 Ti)
-// Tab 3: Roadmap (12 Phases status tracker)
-```
-**Summary**: Replaced static guide with an interactive 3-tab layout covering Studios, Architecture Flow topology, and the 12-phase Roadmap.
-
-### 4. Target File Path: `/src/components/LocalCapabilityPanel.tsx`
-```typescript
-// Modernized 4-Card Hardware Sentinel & Capability Matrix
-<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-  {/* GPU Sentinel & 7372 MB VRAM Cage */}
-  {/* Service Endpoints: 8188 ComfyUI, 8080 llama.cpp, AIDA64 Shm, RAG */}
-  {/* Generator Subsystems Matrix */}
-  {/* Verified Model Checkpoints */}
-</div>
-```
-**Summary**: Modernized the local capability view into a responsive 4-column matrix displaying real-time hardware status, port bindings, and model checkpoint health.
-
-### 5. Target File Path: `/server/agent/AgentContextManager.ts`
-```typescript
-const files = [
-  'AGENTS.md', 'CHANGELOG.md', 'README.md', 'docs/INDEX.md',
-  'docs/architecture/SYSTEM_ARCHITECTURE.md', 'src/components/MilestoneChecklist.tsx',
-  'src/components/AppFeaturesGuide.tsx', 'src/components/LocalCapabilityPanel.tsx',
-  'package.json', 'metadata.json', 'LOCAL_LLM_SETUP.md', 'LOCAL_AGENT_SETUP.md'
-];
-```
-**Summary**: Added documentation files and UI feature guide components to the autonomous agent's startup context snapshot.
-
----
-
-# v1.17.12 — Zero-VRAM Local RAG Knowledge Engine, Advanced Settings & Milestone Alignment
-
-### 1. Target File Path: `/server/rag/LocalRagEngine.ts`
-```typescript
-export class LocalRagEngine {
-  private chunks: RagChunk[] = [];
-  public getStatus(): RagStatus { ... }
-  public async reindex(customRoot?: string): Promise<RagStatus> { ... }
-  public search(query: string, category?: string, limit: number = 5): RagSearchResult[] { ... }
-  public getGroundingContext(query: string, maxTokens: number = 800): string { ... }
-}
-```
-**Summary**: Created the standalone in-memory, zero-VRAM hybrid BM25 + Vector local retrieval engine with pre-seeded hardware/LLM/AIDA64/agent knowledge chunks and sandbox document crawler.
-
-### 2. Target File Path: `/server.ts`
-```typescript
-import { LocalRagEngine } from "./server/rag/LocalRagEngine.js";
-const localRag = new LocalRagEngine(GINA_ROOT);
-
-// Zero-VRAM Local RAG API Routes
-app.get('/api/rag/status', (_req, res) => res.json(localRag.getStatus()));
-app.post('/api/rag/query', (req, res) => { ... });
-app.post('/api/rag/reindex', async (req, res) => { ... });
-
-// Agent tool integration
-case 'knowledge_search': {
-  const ragMatches = localRag.search(query, parameters?.category, maxResults);
-  ...
-}
-
-// Automatic RAG grounding in local LLM chat
-const ragGrounding = localRag.getGroundingContext(rawLatestUser, 400);
-if (ragGrounding) { ... }
-```
-**Summary**: Integrated LocalRagEngine with Express server endpoints, autonomous agent `knowledge_search` tool, and automatic grounding in `/api/llm/chat`.
-
-### 3. Target File Path: `/src/components/LocalRagKnowledgePanel.tsx` & `/src/components/LocalLlmStudio.tsx`
-```typescript
-// Collapsible developer tools & zero-VRAM knowledge workbench
-export const LocalRagKnowledgePanel: React.FC<Props> = ({ onAddLog, defaultExpanded = false }) => { ... };
-
-// Embedded inside LocalLlmStudio advanced settings
-<div className="mt-3">
-  <LocalRagKnowledgePanel onAddLog={(lvl, msg) => onAddLog(lvl === 'error' ? 'WARN' : 'INFO', msg)} defaultExpanded={false} />
-</div>
-```
-**Summary**: Created responsive, collapsible Local RAG Knowledge Panel with search testing, category filtering, keyword badges, and re-indexing controls, embedded neatly in the advanced settings area.
-
-### 4. Target File Path: `/src/components/MilestoneChecklist.tsx` & `/metadata.json`
-```typescript
-// Pinned restore point RESTORE_08_V1.17.2_LOCAL_RAG and updated Lifecycle Phases 11 & 12
-{ phase: 11, name: 'LOCAL RAG KNOWLEDGE BASE & VECTOR ENGINE', status: 'COMPLETED', details: 'Zero-VRAM hybrid BM25 + Vector in-memory retrieval, instant semantic grounding for LLM & agent' },
-{ phase: 12, name: 'REAL-TIME COMFYUI NODE GRAPH SYNC', status: 'IN_PROGRESS', details: 'Live workflow graph inspector, node parameter synchronization, and visual connection mapper' }
-```
-**Summary**: Synchronized milestone progress with Phase 11 complete and Phase 12 in progress, tagged save point `RESTORE_08_V1.17.2_LOCAL_RAG`.
-
----
-
-# v1.17.11 — Segment Range Extension (1–200), Adaptive Segment Gaps & Dynamic Linear Segment Scaling
-
-### 1. Target File Path: `/src/components/aida64/Aida64StateGaugeGenerator.tsx`
-```typescript
-// Section 3: Extended Segment Slider and Direct Numeric Input (1-200) for both Circular and Linear styles
-<input
-  type="number"
-  min="1"
-  max="200"
-  value={config.segmentCount}
-  onChange={(e) => setConfig({ ...config, segmentCount: Math.max(1, Math.min(200, Number(e.target.value) || 1)) })}
-  className="w-14 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-right font-mono text-[11px] text-emerald-400 focus:border-emerald-500 outline-none"
-/>
-<input
-  type="range"
-  min="1"
-  max="200"
-  value={config.segmentCount}
-  onChange={(e) => setConfig({ ...config, segmentCount: Number(e.target.value) })}
-  className="w-full h-1.5 bg-slate-800 rounded cursor-pointer accent-emerald-500"
-/>
-
-// Dynamic segment gap scaling to avoid negative or collapsed segment geometry with high segment counts
-const segCount = Math.max(1, cfg.segmentCount || 24);
-const segmentSpanRad = totalSpanRad / segCount;
-const maxGapRad = segmentSpanRad * 0.45;
-const gapRad = Math.min(maxGapRad, Math.max(0, (cfg.segmentGapDeg * Math.PI) / 180));
-```
-**Summary**: Raised the segment upper boundary to 200 across all UI controls, added a direct number input box, and clamped segment gaps proportionally to prevent segment inversion or overlap at high counts.
-
----
-
-# v1.17.10 — Telemetry 1000ms Default, Gauge Factory LCD Digital Glow, Solid Value Color, Radiant Needle Glow & Outside Segment Numbering
-
-### 1. Target File Path: `/src/hooks/useAida64Telemetry.ts`, `/server/aida64/Aida64TelemetryBridge.ts`, `/scripts/aida64_shared_memory.ps1`, `/src/components/Aida64Studio.tsx`, `/src/components/aida64/Aida64TelemetryPanel.tsx`, `/src/components/aida64/Aida64StateGaugeGenerator.tsx`
-```typescript
-// Standardized default polling interval to 1000ms across frontend and backend
-export function useAida64Telemetry(intervalMs = 1000) { ... }
-const clampInterval = (val?: number) => Math.max(100, Math.min(val ?? 1000, 10000));
-param([int]$IntervalMs = 1000)
-```
-**Summary**: Switched default telemetry polling interval from 250ms to 1000ms across all components, server bridge, and PowerShell script to eliminate polling contention and ensure reliable telemetry readings.
-
-### 2. Target File Path: `/src/types.ts` & `/src/data/aida64Presets.ts`
-```typescript
-// Extended gauge sequence configuration interface with LCD glow, needle glow, and segment numbering
-export interface Aida64GaugeSequenceConfig {
-  ...
-  centerValueColorMode?: 'state' | 'custom';
-  centerValueGlowEnabled?: boolean;
-  centerValueGlowColor?: string;
-  centerValueGlowRadius?: number;
-  centerValueFontFamily?: 'digital' | 'monospace' | 'sans-serif';
-  centerValueLcdGhost?: boolean;
-  metricLabelGlowEnabled?: boolean;
-  metricLabelGlowColor?: string;
-  metricLabelGlowRadius?: number;
-  metricLabelFontFamily?: 'sans-serif' | 'digital' | 'monospace';
-  needleGlowEnabled?: boolean;
-  needleGlowColorMode?: 'needle' | 'state' | 'custom';
-  needleGlowColor?: string;
-  needleGlowRadius?: number;
-  showSegmentNumbers?: boolean;
-  segmentNumbersScale?: number;
-  segmentNumbersOffset?: number;
-  segmentNumbersFormat?: '0-100' | '1-100' | 'step-10' | 'step-20' | 'step-25' | 'segments';
-  segmentNumbersColorMode?: 'state' | 'custom' | 'track';
-  segmentNumbersColor?: string;
-  segmentNumbersGlow?: boolean;
-  segmentNumbersGlowColor?: string;
-}
-```
-**Summary**: Added comprehensive type definitions and preset defaults for digital LCD glow effects, solid center value color modes, radiant needle glow, and external segment numbering.
-
-### 3. Target File Path: `/src/components/aida64/Aida64StateGaugeGenerator.tsx`
-```typescript
-// Multi-pass radiant needle glow rendering
-if (needleGlowOn && needleGlowRad > 0) {
-  ctx.save();
-  ctx.shadowColor = needleGlowCol;
-  ctx.shadowBlur = needleGlowRad * 1.5;
-  ctx.strokeStyle = needleGlowCol;
-  ctx.lineWidth = 3.5;
-  ctx.beginPath();
-  ctx.moveTo(-6, 0);
-  ctx.lineTo(cfg.outerRadius, 0);
-  ctx.stroke();
-  ctx.restore();
-}
-
-// Outside segment numbering scaled by segment size and radial offset
-if (cfg.showSegmentNumbers) {
-  const numScale = Math.max(0.2, Math.min(3, cfg.segmentNumbersScale ?? 1));
-  const segmentThickness = Math.max(4, (cfg.outerRadius - cfg.innerRadius));
-  const fontSize = Math.max(6, Math.round(Math.min(16, Math.max(7, segmentThickness * 0.55)) * numScale));
-  ...
-}
-
-// Center Value and Metric Label LCD digital glow with dual bloom passes and 888 ghost background
-if (valGlowOn && valGlowRad > 0) {
-  ctx.shadowColor = valGlowCol;
-  ctx.shadowBlur = valGlowRad;
-  ctx.fillText(valueStr, valueX, valueY);
-  ctx.shadowBlur = valGlowRad * 2;
-}
-```
-**Summary**: Implemented high-fidelity Canvas2D rendering and complete UI controls for LCD digital glow on Center Value & Metric Label, customizable solid value colors with font family selectors, radiant multi-layer needle glow, and external 1-100 segment numbering scaled dynamically by segment size.
-
-# v1.17.9 — AIDA64 XML Parser Fix & System Category / Registry Bridge Hardening
-
-### 1. Target File Path: `/scripts/aida64_shared_memory.ps1`
-```powershell
-# Strips outer container wrappers and safely matches leaf XML sensor tags including <sys> elements
-$itemMatches = [regex]::Matches($cleanXml, '(?si)<(?<kind>[A-Za-z0-9_:-]+)>(?<inner>[\s\S]*?)</\k<kind>>')
-# Native [System.Net.WebUtility]::HtmlDecode without external assembly dependency
-```
-**Summary**: Resolved an issue where outer `<sys>` wrappers or system-category sensors (Date, Time, UpTime) were skipped, and replaced assembly-dependent HTML decoding with native .NET web utilities to prevent PowerShell runtime exit code 1.
-
-### 2. Target File Path: `/server/aida64/Aida64TelemetryBridge.ts`
-```typescript
-// Proactive zero-delay registry check on startup and auto-fallback on process recovery
-this.readWindowsRegistryDirect().then(regSensors => { ... });
-```
-**Summary**: Added immediate registry probing on bridge startup and seamless fallback if the background stream resets, ensuring live sensor availability under all permission modes.
-
-### 3. Target File Path: `/src/components/aida64/Aida64TelemetryPanel.tsx`
-```typescript
-// Added SYSTEM category detection with Clock icon and live value badge rendering
-if (text.includes('date') || text.includes('time') || text.includes('year') || text.includes('month') || text.includes('day') || text.includes('uptime') || sensor.kind === 'sys') return 'SYSTEM';
-```
-**Summary**: Added explicit SYSTEM category grouping and UI icon mapping for all system/date/time sensors enabled in AIDA64 External Applications.
-
-# v1.17.8 — AIDA64 Multi-Tier Telemetry Diagnostic, Direct Registry Scanner & Hardware Enumeration
-
-### 1. Target File Path: `/scripts/aida64_shared_memory.ps1`
-```powershell
-// Multi-source telemetry reader: Shared Memory + Registry (HKCU & HKLM) + WMI CIM fallback
-$xmlish = Read-Aida64SharedMemory
-if (-not $xmlish) { $xmlish = Read-Aida64Registry }
-if (-not $xmlish) { $xmlish = Read-Aida64Wmi }
-// Resilient numeric and unit parsing across all standard and custom AIDA64 sensor formats
-```
-**Summary**: Resolved telemetry detection failures by providing multi-tier fallbacks (Shared Memory, Registry, and WMI) with HTML decoding and unit-stripping numeric parser.
-
-### 2. Target File Path: `/server/aida64/Aida64TelemetryBridge.ts`
-```typescript
-// Added direct Windows Registry reader fallback and hardware device grouping
-export function groupSensorsIntoHardware(sensors: Aida64SensorReading[]): Aida64HardwareDevice[] { ... }
-async scanSensors(): Promise<{ snapshot: Aida64TelemetrySnapshot; hardware: Aida64HardwareDevice[] }> { ... }
-```
-**Summary**: Added `scanSensors()` method with direct `reg.exe` reading and automatic hardware device categorization (GPU, CPU, Memory, Cooling, Storage, Motherboard, Network, System).
-
-### 3. Target File Path: `/server.ts`
-```typescript
-// Added /api/aida64/telemetry/scan and /refresh endpoints with hardware enumeration
-app.post(['/api/aida64/telemetry/scan', '/api/aida64/telemetry/refresh'], async (_req, res) => {
-  const result = await aida64Telemetry.scanSensors();
-  res.json({ ok: true, snapshot: result.snapshot, hardware: result.hardware, sensorCount: result.snapshot.sensorCount });
-});
-```
-**Summary**: Created server endpoints to trigger instantaneous re-enumeration of connected AIDA64 sensors and hardware components.
-
-### 4. Target File Path: `/src/hooks/useAida64Telemetry.ts`
-```typescript
-// Added scanAndRefresh utility and isScanning status state
-export function useAida64Telemetry(intervalMs = 250) {
-  const [isScanning, setIsScanning] = useState(false);
-  const scanAndRefresh = useCallback(async () => { ... }, []);
-  return { snapshot, sensors: snapshot.sensors, hardware, byId, isScanning, scanAndRefresh };
-}
-```
-**Summary**: Exposed `scanAndRefresh` and `hardware` list through the telemetry hook for reactive component re-renders.
-
-### 5. Target File Path: `/src/components/Aida64Studio.tsx` and `/src/components/aida64/Aida64TelemetryPanel.tsx`
-```typescript
-// Added "Scan & Refresh" button and detected hardware summary bar
-<button onClick={handleScanAndRefresh} disabled={isScanning}>
-  <RefreshCw className={isScanning ? 'animate-spin' : ''} />
-  {isScanning ? 'Scanning Hardware…' : 'Scan & Refresh'}
-</button>
-// Rendered interactive category filter cards for each detected hardware component
-```
-**Summary**: Added the requested "Scan & Refresh" utility in `Aida64Studio` and `Aida64TelemetryPanel` with live status indicators, detected hardware group cards, and sensor filtering.
-
-# v1.17.7 — GitHub Import Migration & Environment Normalization
-
-### 1. Target File Path: `/bun.lock`
-```
-Deleted redundant bun.lock file to ensure strict npm package manager normalization.
-```
-**Summary**: Purged legacy non-npm lockfiles in accordance with AI Studio web runtime migration protocol while preserving all existing dependencies, Windows port 3200 / container port 3000 listeners, and local architecture.
-
-# v1.17.6 — Native .NET MemoryMappedFile AIDA64 Reader & Registry Dual-Source Telemetry Engine
-
-### 1. Target File Path: `/scripts/aida64_shared_memory.ps1`
-```powershell
-// Replaced dynamic C# runtime Add-Type compilation with native .NET 4.0+ MemoryMappedFile
-$mmf = [System.IO.MemoryMappedFiles.MemoryMappedFile]::OpenExisting($n, [System.IO.MemoryMappedFiles.MemoryMappedFileRights]::Read)
-$stream = $mmf.CreateViewStream(0, 0, [System.IO.MemoryMappedFiles.MemoryMappedFileAccess]::Read)
-$reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::Default)
-$raw = $reader.ReadToEnd()
-// Added Registry HKCU:\Software\FinalWire\AIDA64\SensorValues dual-source fallback
-```
-
-### 2. Target File Path: `/server/aida64/Aida64TelemetryBridge.ts`
-```typescript
-// Added -NonInteractive flag and auto-recovery so PowerShell never exits or blocks on Windows
-this.child = spawn('powershell.exe', [
-  '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script,
-  '-IntervalMs', String(this.config.intervalMs)
-], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-```
-**Summary**: Resolved `AIDA64 reader stopped (code 1)` by removing brittle runtime `Add-Type` compilation in favor of built-in .NET `MemoryMappedFile` and added Registry reading fallback.
-
-# v1.17.5 — Full 360° 6 O'Clock Dial Orientation Presets, Visual Effects Layering & Telemetry Auto-Binding
-
-### 1. Target File Path: `/src/components/aida64/Aida64StateGaugeGenerator.tsx`
-```typescript
-// Added 6 o'clock to 6 o'clock and comprehensive angle presets in Section 4 (Geometry & Dial Orientation):
-<button onClick={() => setConfig({ ...config, startAngleDeg: 90, endAngleDeg: 450, rotationDeg: 0, gapRotationDeg: 0 })}>
-  🔄 6 o'clock → 6 o'clock (Full 360° bottom start)
-</button>
-<button onClick={() => setConfig({ ...config, startAngleDeg: -90, endAngleDeg: 270, rotationDeg: 0, gapRotationDeg: 0 })}>
-  ⏱️ 12 o'clock → 12 o'clock (Full 360° top start)
-</button>
-// Dedicated sliders for Start Angle (-180°..360°), End Angle (-90°..540°), and Dial Rotation Offset (-180°..180°)
-// Cleaned up effect pipeline render ordering so all visual effects (bloom, lighting, depth, CRT, glass, HUD grid, scanlines, etc.) composite cleanly without overlapping backdrops
-// Added auto-binding effect for incoming live telemetry sensors
-```
-**Summary**: Added 6 o'clock → 6 o'clock (90° → 450°) full 360° rotation preset along with 12 o'clock, 270° open, and 180° dome orientations, plus Start/End Angle and Rotation sliders. Fixed effect layering and auto-bound live telemetry sensors.
-
-# v1.17.4 — Gauge Segments & Ticks Repair, Live Sensor Continuous Auto-Sync, and System Telemetry Fallback
-
-### 1. Target File Path: `/src/components/aida64/Aida64StateGaugeGenerator.tsx`
-```typescript
-// Fixed mechanical_dial, needle_gauge, speedometer_classic, half_arc, and corner_gauge segment & tick responsiveness
-const ticks = Math.max(4, cfg.segmentCount || 28);
-const step = ticks > 24 ? 5 : (ticks > 12 ? 2 : 1);
-for (let i = 0; i <= ticks; i++) {
-  const rad = startRad + (i / ticks) * totalSpanRad;
-  const tickPercent = (i / ticks) * 100;
-  const isMajor = i % step === 0;
-  const inR = isMajor ? cfg.innerRadius : (cfg.innerRadius + (cfg.outerRadius - cfg.innerRadius) * 0.4);
-  const outR = cfg.outerRadius;
-  ...
-}
-
-// Added continuous live sensor telemetry sync effect
-useEffect(() => {
-  if (!selectedLiveSensorId || isPlaying) return;
-  const sensor = liveTelemetry.sensors.find(s => s.id === selectedLiveSensorId);
-  if (sensor && typeof sensor.value === 'number') {
-    if (sensor.unit === '%' || config.metricUnit === '%') {
-      setCurrentValue(Math.round(Math.max(0, Math.min(100, sensor.value)) * 10) / 10);
-    } else {
-      const max = sensor.unit === '°C' ? 100 : (sensor.unit === 'RPM' ? 3000 : (sensor.unit === 'W' ? 350 : 100));
-      const pct = Math.max(0, Math.min(100, (sensor.value / max) * 100));
-      setCurrentValue(Math.round(pct * 10) / 10);
-    }
-  }
-}, [selectedLiveSensorId, liveTelemetry.sensors, isPlaying, config.metricUnit]);
-```
-**Summary**: Resolved issue where gauge segments / ticks failed to adjust dynamically with the segmentCount and inner/outer radius sliders across automotive, mechanical dial, and half-arc styles. Added live continuous sensor sync and intelligent metric-to-sensor auto-matching.
-
-### 2. Target File Path: `/scripts/aida64_shared_memory.ps1`
-```powershell
-[DllImport("kernel32.dll", EntryPoint="OpenFileMappingW", SetLastError=true, CharSet=CharSet.Unicode)]
-public static extern IntPtr OpenFileMappingW(uint dwDesiredAccess, bool bInheritHandle, string lpName);
-[DllImport("kernel32.dll", EntryPoint="OpenFileMappingA", SetLastError=true, CharSet=CharSet.Ansi)]
-public static extern IntPtr OpenFileMappingA(uint dwDesiredAccess, bool bInheritHandle, string lpName);
-...
-$names = @('AIDA64_SensorValues', 'Global\AIDA64_SensorValues', 'Local\AIDA64_SensorValues', 'Session\1\AIDA64_SensorValues', 'Session\0\AIDA64_SensorValues')
-```
-**Summary**: Added dual ANSI/Unicode P/Invoke mapping methods and session namespace probes for AIDA64 shared memory reader, with resilient XML container regex parser.
-
-### 3. Target File Path: `/server.ts`
-```typescript
-app.get('/api/aida64/telemetry', async (_req, res) => {
-  const snapshot = aida64Telemetry.getSnapshot();
-  if (snapshot.connected && snapshot.sensors.length > 0) {
-    return res.json(snapshot);
-  }
-  // Hardware telemetry fallback to ensure UI gauges always have live system data
-  ...
-});
-```
-**Summary**: Implemented dynamic system hardware sensor fallback (GPU core %, GPU temp, VRAM, CPU, RAM) into `/api/aida64/telemetry` so live telemetry is always active and responsive in the UI.
-
-# v1.17.3 — AIDA64 Telemetry Restart Endpoint Exception Hardening
-
-### 1. Target File Path: `/server.ts`
-```typescript
-app.post('/api/aida64/telemetry/restart', (_req, res) => {
-  try {
-    aida64Telemetry.restart();
-    res.json({ ok: true, message: 'AIDA64 telemetry bridge restarted', snapshot: aida64Telemetry.getSnapshot() });
-  } catch (err: any) {
-    res.json({ ok: false, error: err?.message || String(err), snapshot: aida64Telemetry.getSnapshot() });
-  }
-});
-```
-**Summary**: Wrapped `/api/aida64/telemetry/restart` handler in explicit try/catch block to prevent uncaught exceptions from returning HTTP 500 errors.
-
-### 2. Target File Path: `/server/aida64/Aida64TelemetryBridge.ts`
-```typescript
-const candidatePaths = [
-  path.join(process.cwd(), 'scripts', 'aida64_shared_memory.ps1'),
-  path.resolve(__dirname, '..', '..', 'scripts', 'aida64_shared_memory.ps1'),
-  path.resolve(__dirname, 'scripts', 'aida64_shared_memory.ps1'),
-  'C:\\Gina_AI\\scripts\\aida64_shared_memory.ps1'
-];
-const script = candidatePaths.find(p => fs.existsSync(p)) || candidatePaths[0];
-```
-**Summary**: Added safe script resolution across bundled directory layouts and wrapped spawn lifecycle in try/catch to safely trap any process initiation exceptions.
-
-# v1.17.2 — AIDA64 Telemetry Reader Resilience & Multi-Namespace Fallbacks
-
-### 1. Target File Path: `/scripts/aida64_shared_memory.ps1`
-```powershell
-function Read-Aida64SharedMemory {
-    $names = @('AIDA64_SensorValues', 'Global\AIDA64_SensorValues', 'Local\AIDA64_SensorValues')
-    $handle = [IntPtr]::Zero
-    foreach ($n in $names) {
-        $handle = [Aida64SharedMemory]::OpenFileMapping($FILE_MAP_READ, $false, $n)
-        if ($handle -ne [IntPtr]::Zero) { break }
-    }
-    if ($handle -eq [IntPtr]::Zero) { return $null }
-    ...
-}
-```
-**Summary**: Added `Global\AIDA64_SensorValues` and `Local\AIDA64_SensorValues` namespace resolution to handle scenarios where AIDA64 is launched with elevated administrator permissions or across session boundaries.
-
-### 2. Target File Path: `/server/aida64/Aida64TelemetryBridge.ts`
-```typescript
-let stderrAcc = '';
-this.child.stderr.on('data', (chunk: string) => {
-  stderrAcc += chunk;
-  const message = stderrAcc.trim();
-  if (message) this.snapshot = { ...this.snapshot, error: message };
-});
-this.child.on('close', (code) => {
-  this.child = null;
-  if (this.config.enabled) {
-    const detail = stderrAcc.trim() ? `: ${stderrAcc.trim()}` : '';
-    this.snapshot = {
-      ...this.snapshot,
-      connected: false,
-      source: 'none',
-      error: `AIDA64 reader stopped (code ${code ?? 'unknown'})${detail}. Ensure AIDA64 is running with Preferences → External Applications → Shared Memory enabled.`
-    };
-    if (!this.retryTimer && process.platform === 'win32') {
-      this.retryTimer = setTimeout(() => { ... }, 4000);
-    }
-  }
-});
-```
-**Summary**: Retained detailed `stderr` error logging upon child process exit, provided automatic reconnection backoff retries, and added explicit Windows requirement reporting.
-
-### 3. Target File Path: `/server.ts`
-```typescript
-app.post('/api/aida64/telemetry/restart', (_req, res) => {
-  aida64Telemetry.restart();
-  res.json({ ok: true, message: 'AIDA64 telemetry bridge restarted', snapshot: aida64Telemetry.getSnapshot() });
-});
-```
-**Summary**: Added explicit `/api/aida64/telemetry/restart` POST endpoint to allow frontend and user to re-trigger the telemetry bridge on demand.
-
-### 4. Target File Path: `/src/components/aida64/Aida64TelemetryPanel.tsx`
-```tsx
-<button onClick={restartBridge} disabled={restarting} ...>
-  <RefreshCw className={`w-3.5 h-3.5 ${restarting ? 'animate-spin' : ''}`} />
-  {restarting ? 'Restarting…' : 'Restart Bridge'}
-</button>
-```
-**Summary**: Added interactive "Restart Bridge" button and inline step-by-step instructions for enabling Shared Memory in AIDA64 Preferences.
-
-# v1.9.4 — AIDA64 Full Gauge Effects Engine
-
-- Wired the extended effects controls into the AIDA64 100-state renderer.
-- Added state-aware 3D depth, bevels, inner shadows, reflections, parallax, directional and multi-source lighting, dynamic shadowing, specular highlights, liquid/bubble/turbulence effects, digital display overlays, CRT treatment, heat, electrical arcs, motion/ghost effects, sweep, dithering, glare/lens flare, edge glow, ambient occlusion, procedural backgrounds, gradients and noise controls.
-- Added effect quality and master intensity controls plus nine effect presets.
-- Effects are deterministic per state so 0–100 exports remain reproducible.
-
-# v1.9.2 — AIDA64 100-State Effects Suite
-
-- Added deterministic material passes: glass, acrylic, brushed metal, chrome, carbon fibre, anodised, frosted, holographic, CRT, LED and liquid.
-- Added warning/critical zones, peak/minimum markers, needle trail/shadow and state response curves.
-- Added HUD grid, scanlines, particles, sparks, energy arcs, rotating rings, chromatic aberration, glitch, grain and vignette effects.
-- Added state-following or custom lighting colour and configurable lighting progression.
-- All procedural effects are deterministic per state and are included in PNG/ZIP exports.
-
-# v1.9.1 — AIDA64 100-State Emissive Lighting
-
-- Added a dedicated Emissive Lighting / Bloom system to the AIDA64 100-state gauge generator.
-- Added Neon LED, High Bloom, Sci-Fi/Holographic, and Industrial/Subtle lighting modes.
-- Added independent lighting intensity, bloom blur, light radius, centre bloom, core intensity, and deterministic state-pulse controls.
-- Lighting follows the active gauge state colour and progressively increases across the 0–100 sequence.
-- Bloom is rendered before the metric text layer so the centre value and metric label remain crisp.
-- Exported PNG sequences receive the same deterministic lighting treatment as the live preview.
-
-# v1.8.14 — Expanded Gauge Library
-
-- Added 12 new Gauge Factory styles, expanding the library from 17 to 29.
-- Added radial, donut, speedometer, compass, HUD, dual-metric, battery, VU, progress, industrial, vertical VU and graduated thermometer variants.
-- Preserved the existing 17 styles and their controls.
-
-# Release 1.8.13 — Remove Obsolete Kornia Repair Payload
-
-- Removed the obsolete `fix_kornia.bat`, `fix_kornia.ps1`, and `fix_kornia.py` repair utilities from the distributable package.
-- Removed the obsolete `/api/diagnostics/fix-kornia` backend endpoint.
-- Updated the LTX diagnostic recommendation so it no longer tells users to reinstall/downgrade Kornia.
-- Kornia remains an installed runtime dependency where required by the existing local ComfyUI/LTX environment; this release simply stops shipping old repair scripts that are no longer needed.
-
-# v1.8.12 — AIDA64 Metric Label State Colours
-
-- Restored dynamic metric-label colouring so labels follow the gauge Value Styling colour mode/state again.
-- Added `Match Value State` / `Custom Solid Color` label behaviour.
-- Existing custom label colour remains available when `Custom Solid Color` is selected.
-- Metric label state colouring now uses the same percentage/threshold calculation as the active gauge value.
-
-# v1.8.11 — AIDA64 Gauge Text + Track Controls
-
-- Added independent Show/Hide controls for the center value and metric label.
-- Added independent value/label colours.
-- Added independent value/label size controls.
-- Added independent X/Y pixel positioning for the center value and metric label.
-- Extended text placement to circular gauge styles including half/corner/radar variants.
-- Fixed Background Track visibility/opacity handling across gauge families.
-- Applied Track Thickness consistently to arc, ring, segmented, LED and linear gauge styles where the geometry supports it.
-- Applied Active Opacity to rendered active gauge elements.
-- Radar track rings/crosshairs now respect the Background Track toggle.
-
-## v1.8.4 — Microsoft Jenny voice selection
-
-- Prefer Microsoft Jenny for browser and Windows voice discovery when available.
-- Merge Windows SAPI and browser voices into the Gina voice selector.
-- Persist the selected voice locally.
-- If Jenny is a browser voice but not a Windows SAPI voice, use browser speech instead of silently falling back to another SAPI voice.
-- Prefer female Microsoft voices (Jenny, Aria, Zira) before generic English voices.
-
-# v1.7.5 — Agent Quick Actions, Context Guard & Real PDF Output
-
-- Capability Map and AIDA64 quick actions now execute directly through the local broker instead of sending large prompts through Gemma.
-- Agent LLM requests no longer replay project context/capability dumps; prompt payloads are tightly bounded for the 4096-token Gemma context.
-- Local Gina Chat compacts ordinary chat history before llama.cpp calls.
-- Requests to save/export a prior Gina response as a PDF now create a real PDF locally under `C:\Gina_AI` and report the actual path.
-- Added the `write_pdf` local agent tool and audit logging.
-
-
-## v1.7.3 — Local Agent JSON Response Hardening
-- Fixed Gina Agent frontend handling of empty/non-JSON backend responses so the dashboard no longer throws `Response.json()` parsing errors.
-- Added clear diagnostics for empty or invalid responses.
-- Hardened the local llama-server client against empty/invalid JSON responses.
-- Added explicit JSON content type and more useful diagnostics for invalid Gemma agent plans.
-## v1.7.0 — Local Gina Agent Brain
-
-- Added Gemma-powered local orchestration panel.
-- Added safe local system/capability inspection tools.
-- Added AIDA64 blank-template planning with 20 core sensors.
-- Added 100-state utilisation semantics and 50% warning / 90% critical defaults.
-- Generation actions require confirmation.
-
-# Gina AI Factory — Project Changelog & Verification Matrix
-
-> **Note**: This file contains the chronological changelog, feature updates, and verification code snippets for Gina AI Factory. All update information is maintained and parsed here.
-
----
-
-## Code Change Log & Verification Matrix
-
-### Log Entry #1: Server Host Binding Fix
-- **Target File**: `/server.ts`
-- **Description**: Bind Express listener to `0.0.0.0` on port 3000 for cloud/container support while allowing local `http://127.0.0.1:3000/`.
-- **Exact Code Snippet**:
+- **Target File Path:** `/src/components/StreamInjectStudio.tsx`
+- **Exact Code Change:**
   ```typescript
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Gina AI Factory Server running on http://0.0.0.0:${PORT}`);
-  });
-  ```
-
-### Log Entry #2: WebSocket Error & Reconnect Resilience
-- **Target File 1**: `/server/comfy/ComfyWebSocket.ts`
-- **Description**: Catch WebSocket connection errors gracefully, emit `comfy_error`, and schedule automatic reconnection without crashing node process.
-- **Exact Code Snippet**:
-  ```typescript
-  try {
-    this.socket = new WebSocket(url);
-  } catch (error) {
-    this.emit('comfy_error', error);
-    this.scheduleReconnect();
-    return;
-  }
-  this.socket.addEventListener('open', () => {
-    this.connected = true;
-    this.emit('status', { connected: true, clientId: this.clientId });
-  });
-  this.socket.addEventListener('close', () => {
-    this.connected = false;
-    this.emit('status', { connected: false, clientId: this.clientId });
-    this.scheduleReconnect();
-  });
-  this.socket.addEventListener('error', (event) => {
-    this.emit('comfy_error', event);
-  });
-  ```
-
-- **Target File 2**: `/server.ts`
-- **Description**: Add event listeners on `comfyWebSocket` for `error` and `comfy_error` events to prevent uncaught exception crashes.
-- **Exact Code Snippet**:
-  ```typescript
-  comfyWebSocket.on("error", (err) => {
-    console.warn("[ComfyWebSocket] Error event:", err?.message || err);
-  });
-  comfyWebSocket.on("comfy_error", () => {
-    // ComfyUI is unavailable locally in this container environment - logged silently
-  });
-  ```
-
-### Log Entry #3: Local Creator Matrix Capability Flags
-- **Target File**: `/metadata.json`
-- **Description**: Configured strictly local ComfyUI capabilities.
-- **Exact Code Snippet**:
-  ```json
-  "majorCapabilities": [
-    "LOCAL_ONLY_COMFYUI_EXECUTION",
-    "DYNAMIC_WORKFLOW_PARSING",
-    "ASYNC_JOB_TRACKING",
-    "RTX_3070_TI_8GB_AWARE",
-    "CREATOR_NAVIGATION",
-    "SHORTS_FACTORY_FOUNDATION",
-    "LOCAL_ASSET_AND_JOB_VIEWS"
-  ]
-  ```
-
-### Log Entry #4: Video Navigation & LTX-2.3 Studio UI Integration
-- **Target File 1**: `/src/components/VideoStudio.tsx`
-- **Description**: Created dedicated Video Studio component with controls for duration (1s–5s / 25–121 frames), motion scale (0.2x–2.5x), LTX-2.3 FP8 model parameters, 8GB VRAM safety bounds, and video preview player.
-- **Exact Code Snippet**:
-  ```typescript
-  export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog }) => {
-    const { projectState, setSavedAssets } = useProjectState();
-    const { job, output, outputLoading, submitting: loading, startJob } = useGenerationJob();
-    const [selectedDuration, setSelectedDuration] = useState(3);
-    const [customFrames, setCustomFrames] = useState(73);
-    const [motionScale, setMotionScale] = useState(1.0);
-    // ...
-  ```
-
-- **Target File 2**: `/src/types.ts`
-- **Description**: Updated `AiStudioConfig` interface to include `'video'` tab type.
-- **Exact Code Snippet**:
-  ```typescript
-  export interface AiStudioConfig {
-    activeTab: 'creator'|'video'|'jobs'|'shorts'|'assets';
-    workflowId: string;
-    videoWorkflowId: string;
-    defaultAspectRatio: '1:1'|'16:9'|'9:16';
-  }
-  ```
-
-- **Target File 3**: `/src/App.tsx`
-- **Description**: Added `VIDEO` item with `Video` icon to main navigation bar and added `VideoStudio` view rendering.
-- **Exact Code Snippet**:
-  ```typescript
-  const [activeView, setActiveView] = useState<'create'|'video'|'shorts'|'assets'|'jobs'|'system'>('create');
-
-  const navItems = [
-    { id: 'create' as const, label: 'CREATE', icon: Image },
-    { id: 'video' as const, label: 'VIDEO', icon: Video },
-    { id: 'shorts' as const, label: 'SHORTS', icon: Film },
-    { id: 'assets' as const, label: 'ASSETS', icon: FolderOpen },
-    { id: 'jobs' as const, label: 'JOBS', icon: ListChecks },
-    { id: 'system' as const, label: 'SYSTEM', icon: Settings2 },
-  ];
-  ```
-
-### Log Entry #5: LTX-2.3 & ComfyUI Diagnostic Tool
-- **Target File 1**: `/scripts/check_ltx23.ts`
-- **Description**: Diagnostic script that checks for model `ltx-2.3-22b-distilled-fp8.safetensors` on disk and pings ComfyUI at `http://127.0.0.1:8188` (`/system_stats` and `/object_info`).
-- **Exact Code Snippet**:
-  ```typescript
-  export async function runLtxDiagnostic(): Promise<LtxDiagnosticResult> {
-    const comfyUrl = process.env.COMFY_URL || 'http://127.0.0.1:8188';
-    // Checks candidate model paths & ComfyUI endpoints
-    // ...
-  ```
-
-- **Target File 2**: `/server.ts`
-- **Description**: Added `/api/diagnostics/ltx23` route to execute `runLtxDiagnostic()` and return real-time diagnostic reports.
-- **Exact Code Snippet**:
-  ```typescript
-  app.get("/api/diagnostics/ltx23", async (_req, res) => {
-    try {
-      const result = await runLtxDiagnostic();
-      res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to execute LTX-2.3 diagnostic" });
-    }
-  });
-  ```
-
-- **Target File 3**: `/src/components/VideoStudio.tsx`
-- **Description**: Added "Run LTX & Comfy Audit" button and interactive diagnostic report card in Video Studio UI.
-- **Exact Code Snippet**:
-  ```typescript
-  const runDiagnostic = async () => {
-    setDiagLoading(true);
-    const res = await fetch('/api/diagnostics/ltx23');
-    const data = await res.json();
-    setDiagResult(data);
-  };
-  ```
-
-### Log Entry #6: LTX Diagnostic Component & Model Filesystem Check Endpoint
-- **Target File 1**: `/src/components/LTXDiagnostic.tsx`
-- **Description**: Diagnostic component that attempts a fetch to `http://127.0.0.1:8188` to verify ComfyUI connectivity and queries `/api/diagnostics/check-model` for filesystem confirmation.
-- **Exact Code Snippet**:
-  ```typescript
-  export const LTXDiagnostic: React.FC = () => {
-    // ...
-    const res = await fetch('http://127.0.0.1:8188/system_stats', { signal: controller.signal });
-    const fileRes = await fetch('/api/diagnostics/check-model');
-    // ...
-  ```
-
-- **Target File 2**: `/server.ts`
-- **Description**: Added `/api/diagnostics/check-model` route to verify exact disk path `C:\Gina_AI\ComfyUI_windows_portable\ComfyUI\models\checkpoints\ltx-2.3-22b-distilled-fp8.safetensors`.
-- **Exact Code Snippet**:
-  ```typescript
-  app.get("/api/diagnostics/check-model", async (_req, res) => {
-    const targetPath = "C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\checkpoints\\ltx-2.3-22b-distilled-fp8.safetensors";
-    try {
-      const stat = await fs.stat(targetPath);
-      res.json({ path: targetPath, exists: true, sizeBytes: stat.size, sizeGB: Number((stat.size / (1024 ** 3)).toFixed(2)) });
-    } catch (err: any) {
-      res.json({ path: targetPath, exists: false, error: err?.message || "File not found on disk" });
-    }
-  });
-  ```
-
-- **Target File 3**: `/src/App.tsx`
-- **Description**: Rendered `<LTXDiagnostic />` component inside the 'System' view.
-- **Exact Code Snippet**:
-  ```typescript
-  {activeView === 'system' && (
-    <main className="space-y-5">
-      {/* ... */}
-      <LocalProjectStateBar />
-      <LTXDiagnostic />
-      <LocalCapabilityPanel onAddLog={addLog} />
-  ```
-
-### Log Entry #7: LTX-2.3 Workflow Generator Architect UI & Workflow Save Endpoint
-- **Target File 1**: `/src/components/LTXWorkflowGenerator.tsx`
-- **Description**: Interactive workflow architect UI that constructs valid ComfyUI API-format workflow JSON matching LTX-2.3 architecture nodes (CheckpointLoader/LTXVLoader, CLIPTextEncode, EmptyLatentImage/LTXVEmptyLatent, KSampler/LTXVideoSampler, VAEDecode, SaveAnimatedWEBP). Supports copy to clipboard, download `.json`, and direct workflow installation.
-- **Exact Code Snippet**:
-  ```typescript
-  export const LTXWorkflowGenerator: React.FC<LTXWorkflowGeneratorProps> = ({ onAddLog }) => {
-    // Configurable Workflow Parameters: prompt, negativePrompt, modelCheckpoint, width, height, frames, steps, cfg...
-    // Generates ComfyUI API-format JSON structure for LTX-2.3 model execution
-  ```
-
-- **Target File 2**: `/server.ts`
-- **Description**: Added `/api/workflows/save` POST route to save generated workflow JSON directly into `workflows/ltx_video.json` on disk and reload the registry.
-- **Exact Code Snippet**:
-  ```typescript
-  app.post("/api/workflows/save", async (req, res) => {
-    try {
-      const filename = req.body.filename || "custom_workflow.json";
-      const safeFilename = path.basename(filename);
-      const targetPath = path.join(WORKFLOW_DIR, safeFilename);
-      await fs.mkdir(WORKFLOW_DIR, { recursive: true });
-      await fs.writeFile(targetPath, JSON.stringify(req.body.workflow, null, 2), "utf-8");
-      await workflowRegistry.reload();
-      res.json({ success: true, path: targetPath, filename: safeFilename });
-    } catch (error: any) {
-      res.status(500).json({ error: error?.message || "Failed to save workflow file" });
-    }
-  });
-  ```
-
-- **Target File 3**: `/src/components/VideoStudio.tsx`
-- **Description**: Integrated `LTXWorkflowGenerator` into `VideoStudio.tsx` with a "Workflow Architect" toggle button in the top toolbar.
-- **Exact Code Snippet**:
-  ```typescript
-  {/* LTX Workflow Generator Architect Section */}
-  {showArchitect && (
-    <LTXWorkflowGenerator onAddLog={onAddLog} />
-  )}
-  ```
-
-### Log Entry #8: Persistent ComfyUI Status Indicator next to Video Tab
-- **Target File 1**: `/src/components/LTXDiagnostic.tsx`
-- **Description**: Exported `ComfyUIStatusIndicator` component that performs real-time periodic polling (every 8s) to `http://127.0.0.1:8188/system_stats` (with `/api/comfy/health` fallback) and renders a persistent pinging green/red status badge.
-- **Exact Code Snippet**:
-  ```typescript
-  export const ComfyUIStatusIndicator: React.FC<{ activeView?: string }> = ({ activeView }) => {
-    const [online, setOnline] = useState<boolean | null>(null);
-    const [checking, setChecking] = useState(false);
-    // ...
-    return (
-      <span className="inline-flex items-center gap-1.5 ml-1">
-        <span className="relative flex h-2 w-2">
-          {online && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
-          <span className={`relative inline-flex rounded-full h-2 w-2 ${online ? 'bg-emerald-400' : 'bg-rose-500'}`} />
-        </span>
-        <span className="...">
-          {online ? 'ONLINE' : 'OFFLINE'}
-        </span>
-      </span>
-    );
-  };
-  ```
-
-- **Target File 2**: `/src/App.tsx`
-- **Description**: Integrated `<ComfyUIStatusIndicator />` directly inside the `VIDEO` navigation button.
-- **Exact Code Snippet**:
-  ```typescript
-  {navItems.map(({ id, label, icon: Icon }) => (
-    <button key={id} onClick={() => setActiveView(id)}>
-      <Icon className="w-3.5 h-3.5" />
-      {label}
-      {id === 'video' && <ComfyUIStatusIndicator activeView={activeView} />}
-    </button>
-  ))}
-  ```
-
-### Log Entry #9: LTX-2.3 Parameter Presets in VideoStudio.tsx
-- **Target File**: `/src/components/VideoStudio.tsx`
-- **Description**: Added predefined LTX-2.3 parameter presets (`ltxParameterPresets` array with Cinematic, Motion-heavy, Realistic, Vertical Shorts, and Compact Fast configurations) and an interactive preset selector UI card that auto-configures motion scale, duration, frames, FPS, sampler steps, CFG scale, resolution, and camera motion.
-- **Exact Code Snippet**:
-  ```typescript
-  const ltxParameterPresets: LtxPreset[] = [
-    { id: 'cinematic', name: 'Cinematic Sweep', badge: '16:9 · 3s · 0.8x Motion', motionScale: 0.8, durationSec: 3, frames: 73, fps: 24, steps: 28, cfgScale: 3.5, resolutionLabel: '768 × 512 · 16:9 Landscape', width: 768, height: 512, cameraMotion: 'Pan Right & Slow Zoom' },
-    { id: 'motion_heavy', name: 'Motion-Heavy Action', badge: '16:9 · 4s · 2.0x Motion', motionScale: 2.0, durationSec: 4, frames: 97, fps: 30, steps: 25, cfgScale: 2.8, resolutionLabel: '768 × 512 · 16:9 Landscape', width: 768, height: 512, cameraMotion: 'Dynamic Tracking Pan' },
-    { id: 'realistic', name: 'Photorealistic Detail', badge: '16:9 · 2s · 32 Steps', motionScale: 1.0, durationSec: 2, frames: 49, fps: 25, steps: 32, cfgScale: 3.0, resolutionLabel: '768 × 512 · 16:9 Landscape', width: 768, height: 512, cameraMotion: 'Static Locked Focus' },
-    { id: 'vertical_shorts', name: 'Shorts / Vertical Reel', badge: '9:16 · 3s · 1.2x Motion', motionScale: 1.2, durationSec: 3, frames: 73, fps: 25, steps: 25, cfgScale: 3.2, resolutionLabel: '512 × 768 · 9:16 Shorts / Vertical', width: 512, height: 768, cameraMotion: 'Slow Dolly Push In' },
-    { id: 'compact_fast', name: 'Fast Iteration / Square', badge: '1:1 · 1s · Fast 18 Steps', motionScale: 1.0, durationSec: 1, frames: 25, fps: 25, steps: 18, cfgScale: 3.0, resolutionLabel: '512 × 512 · 1:1 Compact Square', width: 512, height: 512, cameraMotion: 'None / Static Camera' }
-  ];
-  ```
-
-### Log Entry #10: LTX-2.3 Workflow Contract (`/workflows/ltx_video.json`) Registration
-- **Target File 1**: `/workflows/ltx_video.json`
-- **Description**: Created base ComfyUI API-format JSON workflow file for `ltx_video` matching CheckpointLoader, CLIPTextEncode, EmptyLatentImage, KSampler, VAEDecode, and SaveAnimatedWEBP node IDs.
-- **Exact Code Snippet**:
-  ```json
   {
-    "1": { "class_type": "CheckpointLoaderSimple", "inputs": { "ckpt_name": "ltx-2.3-22b-distilled-fp8.safetensors" } },
-    "2": { "class_type": "CLIPTextEncode", "inputs": { "text": "A majestic black dragon breathing fiery embers..." } },
-    "3": { "class_type": "CLIPTextEncode", "inputs": { "text": "blurry, static, distorted motion..." } },
-    "4": { "class_type": "EmptyLatentImage", "inputs": { "width": 768, "height": 512, "batch_size": 73 } },
-    "5": { "class_type": "KSampler", "inputs": { "model": ["1", 0], "positive": ["2", 0], "negative": ["3", 0], "latent_image": ["4", 0], "seed": 123456789, "steps": 25, "cfg": 3.0, "sampler_name": "euler", "scheduler": "normal", "denoise": 1.0 } },
-    "6": { "class_type": "VAEDecode", "inputs": { "samples": ["5", 0], "vae": ["1", 2] } },
-    "7": { "class_type": "SaveAnimatedWEBP", "inputs": { "filename_prefix": "GinaAI_LTX23_Video", "fps": 25, "lossless": false, "quality": 85, "method": "default", "images": ["6", 0] } }
+    id: "the_whippet_cinematic_intro",
+    name: "The Whippet — Cinematic Spotlight Intro (16:9)",
+    description: "Signature cinematic studio title card featuring deep midnight indigo spotlight vignette, electric cyan neon-glow typography, wide-tracked subtitle, and smooth luminous fade-in.",
+    aspectRatio: "16:9",
+    category: "classic",
+    config: {
+      width: 1920,
+      height: 1080,
+      duration: 15.0,
+      fps: 30.0,
+      background: {
+        type: "spotlight",
+        max_red: 25,
+        center_color: "#261c42",
+        edge_color: "#07060a",
+        show_grid: false
+      },
+      text_layers: [
+        {
+          text: "THE WHIPPET",
+          size: 92,
+          color: "#FFFFFF",
+          glow_color: "#00E5FF",
+          glow_blur: 28,
+          stroke_color: "#00E5FF",
+          stroke_width: 3.5,
+          animation: "cinematic_fade",
+          x: 960,
+          y: 495
+        },
+        {
+          text: "A WHIPPET PRODUCTION",
+          size: 26,
+          color: "#FFFFFF",
+          glow_color: "#00E5FF",
+          glow_blur: 8,
+          letter_spacing: 6,
+          animation: "cinematic_fade",
+          x: 960,
+          y: 575
+        }
+      ],
+      video_boxes: [],
+      profile_circles: [],
+      physics_layers: [
+        {
+          id: "phys_whippet_spotlight",
+          type: "volumetric_glow",
+          name: "Deep Indigo Vignette Spotlight",
+          enabled: true,
+          params: { cx: 960, cy: 540, radius: 460, zoom_speed: 0.5, intensity: 0.85, glow_color: "#302254" }
+        }
+      ],
+      vfx: { enable_glitch: false, enable_shake: false, enable_bloom: true, enable_chroma: false }
+    }
   }
   ```
+- **Why:** Delivers the exact 16:9 cinematic studio production intro layout preset requested by the user, matching "THE WHIPPET / A WHIPPET PRODUCTION" with central indigo spotlight vignette, neon electric cyan outer stroke, wide tracking subtitle, and smooth luminous fade-in.
 
-- **Target File 2**: `/server/comfy/WorkflowParser.ts`
-- **Description**: Updated `classifyNode` function to recognize `saveanimated` as a valid video output capability node.
-- **Exact Code Snippet**:
+- **Target File Path:** `/server/streaminject/StreamInjectService.ts`
+- **Exact Code Change:**
+  Registered `the_whippet_cinematic_intro` as the leading featured preset in `StreamInjectService.getPresets()`.
+- **Why:** Ensure `/api/streaminject/presets` serves the preset to both the frontend studio and persistent preset state.
+
+- **Target File Path:** `/scripts/stream_inject.py`
+- **Exact Code Change:**
+  Added native support for `spotlight` indigo vignette background rendering, `cinematic_fade` smooth luminance ramp, and Pillow stroke/stroke_fill rendering for neon text outlines.
+- **Why:** Allow the preset to be rendered directly through the backend Python export pipeline to MP4.
+
+# v1.20.7 — StreamInject Vectorized Motion Physics Engine & UI Inspector Suite
+
+- **Target File Path:** `/scripts/gina_motion_physics_engine.py`
+- **Exact Code Change:**
+  Created production vectorized physics and geometric effects module `GMPE` implementing `Vector2D`, `SquashStretchTransform`, `ElasticSpring`, `KineticDispersion`, `radial_shockwave_blast`, `rolling_sine_wave_horizon`, `localized_twirl_vortex`, `page_curl_3d`, `crt_scanlines_aberration`, `datamosh_block_glitch`, `optical_liquid_flow_warp`, and `volumetric_pulsing_aura` utilizing pure NumPy broadcasting and OpenCV remap matrices without Python pixel loops.
+- **Why:** Delivers hardware-efficient, zero-loop native video motion physics and optical distortion effects.
+
+- **Target File Path:** `/scripts/stream_inject.py`
+- **Exact Code Change:**
+  Integrated `gmpe` motion physics into the frame rendering loop under `physics_layers` config with multi-pass compositing.
+- **Why:** Allow video layouts baked by StreamInject Studio to render native physics effects onto video frames in production.
+
+- **Target File Path:** `/src/components/StreamInjectStudio.tsx`
+- **Exact Code Change:**
   ```typescript
-  if (cls.includes('videocombine') || cls.includes('videooutput') || cls.includes('vhs_') || cls.includes('saveanimated')) caps.push('video-output');
+  {/* Motion & Geometric FX Layers (Physics Engine) Inspector */}
+  <div className="p-5 rounded-2xl bg-slate-900/70 border border-cyan-500/30 shadow-xl shadow-cyan-950/20 backdrop-blur-md flex flex-col gap-3 relative">
+    <div className="flex items-center justify-between flex-wrap gap-2">
+      <h2 className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+        <Waves className="w-4 h-4 text-cyan-400 animate-pulse" /> Motion & Geometric FX Layers ({physicsLayers.length})
+      </h2>
+      <button onClick={() => setShowAddPhysicsMenu(!showAddPhysicsMenu)}>Add Physics FX</button>
+    </div>
+    ...
+  </div>
   ```
+  Added dynamic dropdown for adding native physics layers (Shockwave, Sine Wave Horizon, Twirl Vortex, 3D Page Curl, CRT Scanlines, Datamosh Glitch, Liquid Flow, Volumetric Glow), interactive parameter sliders/color pickers, drag reordering, duplicate/delete actions, and quick preset filters ("Physics FX" and "Classic").
+- **Why:** Ensure users can directly discover, add, configure, and preview motion physics layers directly in the StreamInject Studio dashboard under layers and presets.
 
-### Log Entry #11: LTX-2.3 Workflow Graph Fix & Parameter Binding Alignment
-- **Target File 1**: `/workflows/ltx_video.json`
-- **Description**: Added missing `"clip": ["1", 1]` input connection to `CLIPTextEncode` nodes (#2 and #3) required by ComfyUI prompt validation engine.
-- **Exact Code Snippet**:
+- **Target File Path:** `/src/components/aida64/Aida64StateGaugeGenerator.tsx`
+- **Exact Code Change:**
+  ```typescript
+  const arcR = Math.max(1, radius + (seeded(i + 141) - 0.5) * 16);
+  ctx.arc(centerX, centerY, arcR, a0, a0 + span);
+  const r = Math.max(1, cfg.outerRadius + 10 + i * 7);
+  ctx.arc(centerX, centerY, r, off, off + Math.PI * (.25 + .12 * i));
+  ```
+- **Why:** Fixed `Uncaught IndexSizeError: Failed to execute 'arc' on 'CanvasRenderingContext2D': The radius provided (-0.276) is negative.` caused by pseudo-random variance dropping below zero when `cfg.energyArcEnabled` is active on small gauge radii.
+
+- **Target File Path:** `/src/components/StreamInjectStudio.tsx`
+- **Exact Code Change:**
+  ```typescript
+  const maxR = Math.max(1, (pl.params.radius ?? 300) * scaleX);
+  const curR = Math.max(0.1, maxR * (progress / 1.5));
+  ctx.arc(pcx, pcy, Math.max(0.1, curR), 0, Math.PI * 2);
+  ctx.arc(pcx, pcy, Math.max(0.1, curR - waveWidth * 0.5), 0, Math.PI * 2);
+  ```
+- **Why:** Safeguarded all physics layer and canvas preview `ctx.arc` calls with positive lower bounds (`Math.max(0.1, ...)`).
+
+# v1.20.5 — FLUX.1 Lite High-Precision T5 Text Encoder Reconciliation
+
+- **Target File Path:** `/workflows/flux_lite_image.json`
+- **Exact Code Change:**
   ```json
-  "2": {
-    "class_type": "CLIPTextEncode",
-    "inputs": {
-      "clip": ["1", 1],
-      "text": "A majestic black dragon..."
-    }
-  }
+  "2": {"class_type":"DualCLIPLoader","inputs":{"clip_name1":"clip_l.safetensors","clip_name2":"t5xxl_fp8_e4m3fn.safetensors","type":"flux","device":"default"}},
   ```
+- **Why:** Reconciled `DualCLIPLoader` `clip_name2` from `umt5_xxl_fp8_e4m3fn_scaled.safetensors` (Wan 2.1 video tokenizer with vocab 256,384) to `t5xxl_fp8_e4m3fn.safetensors` (FLUX tokenizer with vocab 32,128). This completely eliminates the `RuntimeError: Error(s) in loading state_dict for T5: size mismatch for shared.weight: copying a param with shape torch.Size([256384, 4096]) from checkpoint, the shape in current model is torch.Size([32128, 4096])`.
 
-- **Target File 2**: `/server/comfy/WorkflowParser.ts`
-- **Description**: Added `model` alias rule and extended `batchSize` alias to support `frames`, `frame_count`, and `num_frames`.
-- **Exact Code Snippet**:
+- **Target File Path:** `/server.ts`
+- **Exact Code Change:**
   ```typescript
-  batchSize: [{ key: 'batch_size', inputs: ['batch_size', 'frames', 'frame_count', 'num_frames'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyLatentVideo', 'LTXVEmptyLatentVideo'] }],
-  model: [{ key: 'model', inputs: ['ckpt_name'], classes: ['CheckpointLoaderSimple', 'CheckpointLoader'] }],
+  const FLUX_T5 = process.env.FLUX_T5 || "t5xxl_fp8_e4m3fn.safetensors";
   ```
-
-- **Target File 3**: `/server.ts`
-- **Description**: Expanded `/api/jobs/:id/output` handler to extract output media URLs from all output keys (images, gifs, videos, animated, webp).
-- **Exact Code Snippet**:
-  ```typescript
-  for (const [key, value] of Object.entries(nodeOutput || {}) as any) {
-    if (!Array.isArray(value)) continue;
-    for (const file of value) {
-      if (file && typeof file === 'object' && file.filename) {
-        outputs.push({ nodeId, kind: key, file, url: `${COMFY_URL}/view?...` });
-      }
-    }
-  }
-  ```
-
-### Log Entry #12: LTX-Video Model Loader Fix (`LTXVLoader` Custom Node Integration)
-- **Target File 1**: `/workflows/ltx_video.json`
-- **Description**: Replaced standard `CheckpointLoaderSimple` (which expects SD/Flux embedded text encoders and fails with `RuntimeError: clip input is invalid: None` on LTX-Video safetensors) with `LTXVLoader` from `ComfyUI-LTXVideo` custom nodes package to properly parse and output the LTX text encoder object.
-- **Exact Code Snippet**:
-  ```json
-  "1": {
-    "class_type": "LTXVLoader",
-    "inputs": {
-      "ckpt_name": "ltx-2.3-22b-distilled-fp8.safetensors"
-    }
-  }
-  ```
-
-- **Target File 2**: `/server/comfy/WorkflowParser.ts`
-- **Description**: Updated alias classes for `model`, `seed`, `steps`, `cfg`, `sampler`, `scheduler`, `width`, and `height` to recognize `LTXVLoader`, `LTXVideoLoader`, `LTXVideoModelLoader`, `LTXVideoSampler`, `LTXVSampler`, and `LTXVEmptyLatentVideo`.
-- **Exact Code Snippet**:
-  ```typescript
-  model: [{ key: 'model', inputs: ['ckpt_name'], classes: ['CheckpointLoaderSimple', 'CheckpointLoader', 'LTXVLoader', 'LTXVideoLoader', 'LTXVideoModelLoader'] }],
-  ```
-
-### Log Entry #13: Multi-Directory Workflow Discovery, Cross-Tab Isolation & Failure State Propagation
-- **Target File 1**: `/server/comfy/WorkflowRegistry.ts`
-- **Description**: Updated `WorkflowRegistry` to accept and scan multiple directories (`./workflows` inside project root as well as `GINA_WORKFLOW_DIR`).
-- **Exact Code Snippet**:
-  ```typescript
-  export class WorkflowRegistry {
-    private workflows = new Map<string, ParsedWorkflow>();
-    private readonly directories: string[];
-
-    constructor(...directories: string[]) {
-      this.directories = directories.filter(Boolean);
-    }
-  ```
-
-- **Target File 2**: `/server.ts`
-- **Description**: Configured `workflowRegistry` with `LOCAL_WORKFLOW_DIR` and `GINA_WORKFLOW_DIR`, and added automatic workflow re-scan/reload on `POST /api/jobs` if requested `workflowId` is not in memory.
-- **Exact Code Snippet**:
-  ```typescript
-  const LOCAL_WORKFLOW_DIR = path.join(process.cwd(), "workflows");
-  const GINA_WORKFLOW_DIR = process.env.GINA_WORKFLOW_DIR || "C:\\Gina_AI\\workflows";
-  const workflowRegistry = new WorkflowRegistry(LOCAL_WORKFLOW_DIR, GINA_WORKFLOW_DIR);
-
-  app.post("/api/jobs", async (req, res) => {
-    let definition = workflowRegistry.get(workflowId);
-    if (!definition) {
-      await workflowRegistry.reload();
-      definition = workflowRegistry.get(workflowId);
-    }
-  ```
-
-- **Target File 3**: `/src/context/GenerationJobContext.tsx`
-- **Description**: Updated `startJob` to explicitly update `job` state to `status: 'FAILED'` with the exact error string when queueing fails (HTTP 404, 503, 502, 400 or network errors) so the UI displays the failure reason.
-- **Exact Code Snippet**:
-  ```typescript
-  if (!response.ok) {
-    const errorMsg = typeof data.error === 'string' ? data.error : (data.error?.message || `Queue submission failed (HTTP ${response.status})`);
-    const failedJob: GinaJob = {
-      id: data.jobId || `fail-${Date.now()}`,
-      workflowId,
-      status: 'FAILED',
-      progress: 0,
-      createdAt: new Date().toISOString(),
-      error: errorMsg,
-      outputs: [],
-      parameters
-    };
-    activeJobIdRef.current = failedJob.id;
-    setJob(failedJob);
-    return failedJob;
-  }
-  ```
-
-- **Target File 4**: `/src/components/VideoStudio.tsx` & `/src/components/PromptStudio.tsx`
-- **Description**: Isolated outputs across workspace views so Video Studio only renders video media (`ltx_video` / `.mp4` / `.webp` / `.gif`) and Prompt Studio only renders image media (`flux_image` / `.png` / `.jpg`).
-- **Exact Code Snippet**:
-  ```typescript
-  const isVideoJob = job?.workflowId === 'ltx_video' || output?.job?.workflowId === 'ltx_video';
-  const rawUrl = output?.outputs?.[0]?.url;
-  const isMediaVideo = rawUrl && (isVideoJob || rawUrl.toLowerCase().includes('.mp4') || rawUrl.toLowerCase().includes('.webp') || rawUrl.toLowerCase().includes('.gif'));
-  const videoUrl = isMediaVideo ? rawUrl : undefined;
-  ```
-
-### Log Entry #14: LTX-2.3 Node Schema & Session Parameter Mapping Validation Step
-- **Target File**: `/src/components/LTXWorkflowGenerator.tsx`
-- **Description**: Added interactive `handleValidateSchema()` validation step that extracts expected Node IDs (`#1` Loader, `#2` Pos CLIP, `#3` Neg CLIP, `#4` Latent Canvas, `#5` Sampler, `#6` VAE, `#7` Video Output) and compares them against active ComfyUI session schema (`/api/workflows/ltx_video`) to verify parameter input mapping pathways.
-- **Exact Code Snippet**:
-  ```typescript
-  const handleValidateSchema = async () => {
-    setValidating(true);
-    // ...
-    const expectedNodes: ValidationResultNode[] = [
-      { nodeId: '1', role: 'Model Checkpoint Loader', expectedClass: samplerArchitecture === 'standard_ksampler' ? 'CheckpointLoaderSimple' : 'LTXVLoader', ... },
-      { nodeId: '2', role: 'Positive Prompt CLIP Encoder', expectedClass: 'CLIPTextEncode', ... },
-      { nodeId: '3', role: 'Negative Prompt CLIP Encoder', expectedClass: 'CLIPTextEncode', ... },
-      { nodeId: '4', role: 'Latent Canvas Generator', expectedClass: samplerArchitecture === 'standard_ksampler' ? 'EmptyLatentImage' : 'LTXVEmptyLatentVideo', ... },
-      { nodeId: '5', role: 'Video Sampler Engine', expectedClass: samplerArchitecture === 'standard_ksampler' ? 'KSampler' : 'LTXVideoSampler', ... },
-      { nodeId: '6', role: 'VAE Latent Decoder', expectedClass: samplerArchitecture === 'standard_ksampler' ? 'VAEDecode' : 'LTXVVAEDecode', ... },
-      { nodeId: '7', role: 'Animated WEBP / Video Output', expectedClass: 'SaveAnimatedWEBP', ... }
-    ];
-    // Compares sessionData.workflow and sessionData.bindings against expectedNodes
-  ```
-
-### Log Entry #15: Backend CORS Health Proxy & Standard ComfyUI Loader Fallback
-- **Target File 1**: `/src/components/LTXDiagnostic.tsx`
-- **Description**: Replaced direct browser fetch calls (`http://127.0.0.1:8188/system_stats`) with backend proxy endpoint `/api/comfy/health` to eliminate `403 Host/Origin mismatch` warnings from ComfyUI.
-- **Exact Code Snippet**:
-  ```typescript
-  const checkConnectivity = async () => {
-    setChecking(true);
-    try {
-      const proxyRes = await fetch('/api/comfy/health');
-      if (proxyRes.ok) {
-        const data = await proxyRes.json();
-        setOnline(!!data.online);
-      }
-    } catch {
-      setOnline(false);
-    } finally {
-      setChecking(false);
-    }
-  };
-  ```
-
-- **Target File 2**: `/workflows/ltx_video.json` & `/src/components/LTXWorkflowGenerator.tsx`
-- **Description**: Configured default workflow Node #1 and workflow generator architecture to `LTXVLoader` matching ComfyUI-LTXVideo custom node setup.
-- **Exact Code Snippet**:
-  ```json
-  "1": {
-    "class_type": "LTXVLoader",
-    "inputs": {
-      "ckpt_name": "ltx-2.3-22b-distilled-fp8.safetensors"
-    }
-  }
-  ```
-
-### Log Entry #16: Kornia Dependency Repair Script & Automated Diagnostic Route
-- **Target File 1**: `/fix_kornia.bat`, `/fix_kornia.ps1`, `/fix_kornia.py`
-- **Description**: Created Windows batch, PowerShell, and Python repair scripts that activate `C:\Gina_AI\g_env`, install/upgrade `kornia` via pip, patch `pyramid_blending.py` import statement, and verify Kornia import.
-- **Exact Code Snippet**:
-  ```python
-  # fix_kornia.py
-  subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "kornia"])
-  ```
-
-- **Target File 2**: `/server.ts`
-- **Description**: Added `/api/diagnostics/fix-kornia` endpoint to programmatically patch `pyramid_blending.py` in `ComfyUI-LTXVideo` and check `g_env` executable paths.
-- **Exact Code Snippet**:
-  ```typescript
-  app.get("/api/diagnostics/fix-kornia", async (_req, res) => {
-    // Patches pyramid_blending.py if obsolete pad import exists
-  });
-  ```
-
-### Log Entry #17: Dynamic Workflow Node Class Auto-Adaptation (`adaptWorkflowForComfySession`)
-- **Target File**: `/server.ts`
-- **Description**: Added `adaptWorkflowForComfySession(workflow)` helper in backend job queueing pipeline to check ComfyUI session's registered node types (`/object_info`). If custom nodes like `LTXVLoader` are missing from the active ComfyUI instance, it automatically converts node class types (`LTXVLoader` -> `CheckpointLoaderSimple`, `LTXVEmptyLatentVideo` -> `EmptyLatentImage`, `LTXVideoSampler` -> `KSampler`), preventing `missing_node_type` errors.
-- **Exact Code Snippet**:
   ```typescript
   async function adaptWorkflowForComfySession(workflow: any) {
     try {
       const objectInfo = await getComfyObjectInfo();
-      const hasLTXVLoader = !!objectInfo["LTXVLoader"];
-      if (!hasLTXVLoader) {
-        const adapted = JSON.parse(JSON.stringify(workflow));
-        for (const [_nodeId, node] of Object.entries(adapted) as any) {
-          if (node.class_type === "LTXVLoader") node.class_type = "CheckpointLoaderSimple";
-          if (node.class_type === "LTXVEmptyLatentVideo") {
-            node.class_type = "EmptyLatentImage";
-            if (node.inputs?.frame_count && !node.inputs?.batch_size) {
-              node.inputs.batch_size = node.inputs.frame_count;
-              delete node.inputs.frame_count;
-            }
-          }
-          if (node.class_type === "LTXVideoSampler") {
-            node.class_type = "KSampler";
-            if (node.inputs?.latent && !node.inputs?.latent_image) {
-              node.inputs.latent_image = node.inputs.latent;
-              delete node.inputs.latent;
+      const availableClips: string[] = [
+        ...(objectInfo?.DualCLIPLoader?.input?.required?.clip_name2?.[0] || []),
+        ...(objectInfo?.CLIPLoader?.input?.required?.clip_name?.[0] || [])
+      ];
+
+      for (const node of Object.values(workflow || {}) as any[]) {
+        if (node?.class_type === 'DualCLIPLoader' && (node?.inputs?.type === 'flux' || !node?.inputs?.type)) {
+          const currentT5 = String(node?.inputs?.clip_name2 || '');
+          const isUmt5 = /umt5/i.test(currentT5);
+          const currentExists = availableClips.includes(currentT5);
+
+          if (isUmt5 || (!currentExists && availableClips.length > 0)) {
+            const preferredCandidates = [
+              't5xxl_fp8_e4m3fn.safetensors',
+              't5xxl_fp8_e4m3fn_scaled.safetensors',
+              't5xxl_fp16.safetensors',
+              't5-v1_1-xxl.safetensors'
+            ];
+            const matched = preferredCandidates.find(c => availableClips.includes(c)) ||
+              availableClips.find(c => /^t5.*xxl.*\.safetensors$/i.test(c) && !/umt5/i.test(c));
+
+            if (matched) {
+              console.log(`[Workflow Adapter] Routing FLUX DualCLIPLoader clip_name2 from '${currentT5}' to discovered '${matched}'`);
+              node.inputs.clip_name2 = matched;
+            } else if (isUmt5) {
+              node.inputs.clip_name2 = FLUX_T5 || 't5xxl_fp8_e4m3fn.safetensors';
             }
           }
         }
-        return adapted;
       }
     } catch {
       // Return original if object_info query is unavailable
@@ -2221,1339 +228,1572 @@ app.post('/api/aida64/telemetry/restart', (_req, res) => {
     return workflow;
   }
   ```
-
-### Log Entry #18: Video Navigation & LTX-2.3 Studio UI Integration
-- **Target File**: `/src/components/VideoStudio.tsx`
-- **Description**: Implemented prompt inputs, preset selectors, motion scaling, duration selectors, and generation handlers for LTX-Video.
-
-### Log Entry #19: Complete Workflow & Node Schema Alignment Synchronization
-- **Target File 1**: `/workflows/ltx_video.json`
-- **Description**: Replaced Node `#1` class with standard `CheckpointLoaderSimple` (`ckpt_name: ltx-2.3-22b-distilled-fp8.safetensors`), Node `#4` with `EmptyLatentImage` (`batch_size`), Node `#5` with `KSampler`, Node `#6` with `VAEDecode`, and Node `#7` with `SaveAnimatedWEBP`.
-- **Target File 2**: `/server.ts`
-- **Description**: Updated `adaptWorkflowForComfySession` to seamlessly convert missing custom nodes into built-in native ComfyUI nodes (`CheckpointLoaderSimple`, `EmptyLatentImage`, `KSampler`, `VAEDecode`).
-- **Target File 3**: `/src/components/LTXWorkflowGenerator.tsx`
-- **Description**: Aligned LTX workflow architect & schema validator to default to standard ComfyUI nodes, producing 100% `ALIGNED` validation status.
-
-### Log Entry #20: DualCLIPLoader Integration for Modular CLIP Models
-- **Target File**: `/workflows/ltx_video.json`
-- **Description**: Added Node `#8` (`DualCLIPLoader`) configured to load `clip_l.safetensors` and `t5xxl_fp8_e4m3fn.safetensors` from `models/clip/`, and routed output `["8", 0]` into Node `#2` and `#3` (`CLIPTextEncode`).
-- **Exact Code Snippet**:
-  ```json
-  "8": {
-    "class_type": "DualCLIPLoader",
-    "inputs": {
-      "clip_name1": "clip_l.safetensors",
-      "clip_name2": "t5xxl_fp8_e4m3fn.safetensors",
-      "type": "ltxv"
-    }
-  }
-  ```
-
-### Log Entry #21: DualCLIPLoader Type Alignment to Flux/T5 Engine
-- **Target File**: `/workflows/ltx_video.json`
-- **Description**: Updated Node `#8` (`DualCLIPLoader`) `type` parameter from `"ltxv"` (which expects Gemma3 tokenizer) to `"flux"` (which correctly initializes `clip_l.safetensors` + `t5xxl_fp8_e4m3fn.safetensors`).
-- **Exact Code Snippet**:
-  ```json
-  "8": {
-    "class_type": "DualCLIPLoader",
-    "inputs": {
-      "clip_name1": "clip_l.safetensors",
-      "clip_name2": "t5xxl_fp8_e4m3fn.safetensors",
-      "type": "flux"
-    }
-  }
-  ```
-
-### Log Entry #22: Dynamic Workflow Registry Disk Reload in Queue Endpoints
-- **Target File**: `/server.ts`
-- **Description**: Added explicit `await workflowRegistry.reload()` inside `POST /api/jobs` and `POST /api/comfy/queue` to prevent in-memory caching of stale workflow definitions when `/workflows/*.json` files on disk are edited.
-- **Exact Code Snippet**:
   ```typescript
-  app.post("/api/jobs", async (req, res) => {
-    const { workflowId, parameters = {} } = req.body || {};
-    if (!workflowId) return res.status(400).json({ error: "workflowId is required" });
-    await workflowRegistry.reload();
-    let definition = workflowRegistry.get(workflowId);
-    // ...
-  ```
-
-### Log Entry #23: Single CLIPLoader T5XXL FP8 VRAM Optimization
-- **Target File**: `/workflows/ltx_video.json`
-- **Description**: Replaced `DualCLIPLoader` with single `CLIPLoader` (`t5xxl_fp8_e4m3fn.safetensors`, `"type": "sd3"`), saving ~2.2GB VRAM on RTX 3070 Ti 8GB GPU, and set default initial latent frame count to 25 frames.
-- **Exact Code Snippet**:
-  ```json
-  "8": {
-    "class_type": "CLIPLoader",
-    "inputs": {
-      "clip_name": "t5xxl_fp8_e4m3fn.safetensors",
-      "type": "sd3"
-    }
-  }
-  ```
-
-### Log Entry #24: Standard Checkpoint + KSampler Universal Default Selection
-- **Target File**: `/src/components/LTXWorkflowGenerator.tsx`
-- **Description**: Updated `LTXWorkflowGenerator` state to default to `Standard Checkpoint + KSampler (Universal)` (`standard_ksampler`) and connected Node `#8` (`CLIPLoader` with `t5xxl_fp8_e4m3fn.safetensors`, `"type": "sd3"`) for 100% stock ComfyUI node compatibility.
-- **Exact Code Snippet**:
-  ```typescript
-  const [samplerArchitecture, setSamplerArchitecture] = useState<'standard_ksampler' | 'ltx_custom'>('standard_ksampler');
-  ```
-
-### Log Entry #25: 512x512 Compact Square Default for 8GB VRAM Safety
-- **Target File 1**: `/workflows/ltx_video.json`
-- **Description**: Updated default resolution in `EmptyLatentImage` node #4 to `512 x 512` at 25 frames (1 second) to prevent 3D attention tensor CUDA OOM on 8GB GPU (NVIDIA RTX 3070 Ti).
-- **Exact Code Snippet**:
-  ```json
-  "4": {
-    "class_type": "EmptyLatentImage",
-    "inputs": {
-      "width": 512,
-      "height": 512,
-      "batch_size": 25
-    }
-  }
-  ```
-
-- **Target File 2**: `/src/components/VideoStudio.tsx`
-- **Description**: Configured default `VideoStudio` state to `compact_fast` (`512 × 512 · 1:1 Compact Square`, 25 frames, 18 steps) for safe one-click generation on 8GB VRAM.
-- **Exact Code Snippet**:
-  ```typescript
-  const [selectedDuration, setSelectedDuration] = useState(1);
-  const [customFrames, setCustomFrames] = useState(25);
-  const [resolution, setResolution] = useState('512 × 512 · 1:1 Compact Square');
-  const [width, setWidth] = useState(512);
-  const [height, setHeight] = useState(512);
-  const [activePresetId, setActivePresetId] = useState<string>('compact_fast');
-  ```
-
-### Log Entry #26: VRAM Pressure Warning Toast & Persistent Video Error Handling
-- **Target File 1**: `/src/components/VRAMPressureToast.tsx`
-- **Description**: Created a non-blocking toast notification in the top-right corner that polls `/api/telemetry` for live GPU VRAM usage. When VRAM allocation exceeds 7.0 GB (>7168 MB on 8GB RTX 3070 Ti), it triggers a non-blocking toast alert with visual memory meter, real-time GB readout, OOM safety guidance, and a one-click safe preset button without blocking generation.
-- **Exact Code Snippet**:
-  ```typescript
-  export const VRAMPressureToast: React.FC<VRAMPressureToastProps> = ({ thresholdGB = 7.0, onApplySafePreset }) => {
-    // Polls /api/telemetry every 2.5s and renders a persistent, non-blocking toast when vramUsedGB >= thresholdGB
-  ```
-
-- **Target File 2**: `/src/components/VideoStudio.tsx`
-- **Description**: Integrated `<VRAMPressureToast />` in Video Studio and added persistent error state (`videoError` and `lastSuccessfulVideoUrl`) so CUDA Out of Memory (OOM) and execution errors stay visible with full stack trace / diagnostic advice and a manual `[Dismiss Error]` button, without clearing or breaking any previously generated video output.
-- **Exact Code Snippet**:
-  ```typescript
-  const [lastSuccessfulVideoUrl, setLastSuccessfulVideoUrl] = useState<string | null>(null);
-  const [videoError, setVideoError] = useState<{ message: string; timestamp: string; isOOM?: boolean; jobId?: string } | null>(null);
-  ```
-
-### Log Entry #27: Metadata Capability Cleanup
-- **Target File**: `/metadata.json`
-- **Description**: Removed Gemini API capability flag from `majorCapabilities` since the application runs strictly with local ComfyUI execution.
-- **Exact Code Snippet**:
-  ```json
-  "majorCapabilities": [
-    "LOCAL_ONLY_COMFYUI_EXECUTION",
-    "DYNAMIC_WORKFLOW_PARSING",
-    "ASYNC_JOB_TRACKING",
-    "RTX_3070_TI_8GB_AWARE",
-    "CREATOR_NAVIGATION",
-    "SHORTS_FACTORY_FOUNDATION",
-    "LOCAL_ASSET_AND_JOB_VIEWS"
-  ]
-  ```
-
-### Log Entry #28: VRAMWarningToast with AnimatePresence Subscribed in App.tsx
-- **Target File 1**: `/src/components/VRAMWarningToast.tsx`
-- **Description**: Created `VRAMWarningToast` component utilizing `AnimatePresence` and `motion` from `motion/react` to render smooth non-blocking entry and exit transitions at the top-right whenever `vramUsedMB` exceeds 7168 MB. Features visual telemetry progress meter, GPU temperature, and OOM prevention guidelines.
-- **Exact Code Snippet**:
-  ```typescript
-  export const VRAMWarningToast: React.FC<VRAMWarningToastProps> = ({
-    telemetry,
-    thresholdMB = 7168,
-    onDismiss
-  }) => {
-    // Subscribes to telemetry and uses AnimatePresence for smooth non-blocking notification
-  ```
-
-- **Target File 2**: `/src/App.tsx`
-- **Description**: Subscribed `VRAMWarningToast` to the central `telemetry` state in `App.tsx` and mounted it at the root layout with threshold `7168` MB.
-- **Exact Code Snippet**:
-  ```typescript
-  import { VRAMWarningToast } from './components/VRAMWarningToast';
-  // ...
-  <VRAMWarningToast telemetry={telemetry} thresholdMB={7168} />
-  ```
-
-### Log Entry #29: VRAM History Graph (30-Second Stage Telemetry) in System View
-- **Target File 1**: `/src/components/VRAMHistoryGraph.tsx`
-- **Description**: Created 1Hz high-resolution D3.js VRAM History Graph tracking GPU memory over a rolling 30-second window. Identifies memory spikes (>600MB jumps or >7168MB allocations) and attributes them directly to active ComfyUI node execution stages (e.g. KSampler diffusion pass, VAEDecode frame expansion, CheckpointLoader). Features interactive point inspection, peak/avg memory badges, threshold safety guidelines, and 7.0GB/7.37GB warning overlays.
-- **Exact Code Snippet**:
-  ```typescript
-  export const VRAMHistoryGraph: React.FC<VRAMHistoryGraphProps> = ({ telemetry, onAddLog }) => {
-    // 1Hz rolling 30-second window with D3 curve rendering and node stage memory attribution
-  ```
-
-- **Target File 2**: `/src/App.tsx`
-- **Description**: Rendered `<VRAMHistoryGraph />` component inside the 'System' workspace view.
-- **Exact Code Snippet**:
-  ```typescript
-  import { VRAMHistoryGraph } from './components/VRAMHistoryGraph';
-  // ...
-  {activeView === 'system' && (
-    <main className="space-y-5">
-      {/* ... */}
-      <LocalProjectStateBar />
-      <LTXDiagnostic />
-      <VRAMHistoryGraph telemetry={telemetry} onAddLog={addLog} />
-      <LocalCapabilityPanel onAddLog={addLog} />
-  ```
-
-### Log Entry #30: Proactive OOM Prevention & ComfyUI Clear Cache API (/free) Integration
-- **Target File 1**: `/server.ts`
-- **Description**: Added `POST /api/comfy/clear-cache` endpoint proxying `POST /free` to ComfyUI backend (`{ unload_models: false, free_memory: true }`) to release PyTorch CUDA tensors and latent cache buffers.
-- **Exact Code Snippet**:
-  ```typescript
-  app.post("/api/comfy/clear-cache", async (req, res) => {
-    try {
-      const unloadModels = req.body?.unload_models ?? true;
-      const freeMemory = req.body?.free_memory ?? true;
-      const response = await fetch(`${COMFY_URL}/free`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ unload_models: unloadModels, free_memory: freeMemory }),
-        signal: AbortSignal.timeout(5000)
-      });
-      if (response.ok) {
-        res.json({ success: true, message: "ComfyUI memory cache cleared successfully" });
-      } else {
-        const text = await response.text();
-        res.status(response.status).json({ success: false, error: text || `HTTP ${response.status}` });
+  async function sanitizeLocalFluxLiteWorkflow() {
+    const dirs = [LOCAL_WORKFLOW_DIR, GINA_WORKFLOW_DIR].filter(Boolean);
+    for (const dir of dirs) {
+      const filePath = path.join(dir, 'flux_lite_image.json');
+      try {
+        if (fsSync.existsSync(filePath)) {
+          const content = await fs.readFile(filePath, 'utf8');
+          if (content.includes('umt5_xxl_fp8_e4m3fn_scaled.safetensors')) {
+            const sanitized = content.replace(/umt5_xxl_fp8_e4m3fn_scaled\.safetensors/g, 't5xxl_fp8_e4m3fn.safetensors');
+            await fs.writeFile(filePath, sanitized, 'utf8');
+            console.log(`[Workflow Healing] Reconciled FLUX DualCLIPLoader text encoder to t5xxl_fp8_e4m3fn.safetensors in ${filePath}`);
+          }
+        }
+      } catch (e: any) {
+        console.warn(`[Workflow Healing] Could not inspect ${filePath}: ${e?.message}`);
       }
-    } catch (error: any) {
-      res.status(503).json({ success: false, error: error?.message || "Failed to contact ComfyUI /free endpoint" });
     }
-  });
+  }
   ```
-
-- **Target File 2**: `/src/App.tsx`
-- **Description**: Added `handleClearCache` callback with 10s cooldown guard and automatic `useEffect` sentry trigger whenever live telemetry detects `telemetry.vramUsedMB > 7680` (7.5GB). Dispatches clear cache signal to ComfyUI and records `RULE` 011-020 system audit logs. Passed `onClearCache` handler to `VRAMWarningToast`, `VRAMHistoryGraph`, and `HardwareStack`.
-- **Exact Code Snippet**:
   ```typescript
-  const handleClearCache = useCallback(async (isAutoTrigger = false) => {
-    if (isClearingCacheRef.current) return;
-    const now = Date.now();
-    if (now - lastClearCacheRef.current < 10000) return;
-    lastClearCacheRef.current = now;
-    isClearingCacheRef.current = true;
-    if (isAutoTrigger) {
-      addLog('RULE', `Proactive OOM Prevention: Telemetry detected VRAM > 7.5GB (${telemetry.vramUsedMB} MB). Automatically dispatched 'clear cache' signal to ComfyUI /free API.`, '011-020');
-    }
-    try {
-      const res = await fetch('/api/comfy/clear-cache', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ unload_models: false, free_memory: true })
-      });
-      // ...
-    } finally {
-      isClearingCacheRef.current = false;
-    }
-  }, [telemetry.vramUsedMB]);
-
-  useEffect(() => {
-    if (telemetry.vramUsedMB > 7680) {
-      handleClearCache(true);
-    }
-  }, [telemetry.vramUsedMB, handleClearCache]);
+  // Check for incompatible UMT5 text encoder in FLUX DualCLIPLoader
+  const clipNode = Object.values(workflow).find((n: any) => n?.class_type === 'DualCLIPLoader') as any;
+  if (clipNode && /umt5/i.test(String(clipNode.inputs?.clip_name2 || ''))) {
+    throw new Error("FLUX.1 Lite high-precision text mode cannot use Wan 2.1's UMT5 model ('umt5_xxl_fp8_e4m3fn_scaled.safetensors', vocab size 256,384). A genuine FLUX T5-XXL text encoder (vocab size 32,128, e.g. 't5xxl_fp8_e4m3fn.safetensors' or 't5xxl_fp8_e4m3fn_scaled.safetensors') is required in ComfyUI/models/clip/.");
+  }
   ```
+- **Why:** Updated default configuration, added dynamic model adaptation to discover any installed T5-XXL model variant in ComfyUI, added startup self-healing of external workflows on disk, and added pre-flight blocking with clear diagnostics if an incompatible UMT5 model is provided.
 
-- **Target File 3**: `/src/components/VRAMWarningToast.tsx`, `/src/components/VRAMHistoryGraph.tsx`, `/src/components/HardwareStack.tsx`
-- **Description**: Added manual "Flush VRAM Cache (/free)" interactive buttons enabling one-click cache purging on demand across telemetry monitoring components.
-- **Exact Code Snippet**:
+- **Target File Path:** `/server/capabilities/CapabilityManager.ts`
+- **Exact Code Change:**
   ```typescript
-  {onClearCache && (
-    <button onClick={onClearCache} className="...">
-      <Trash2 className="w-3 h-3" /> Flush VRAM (/free)
-    </button>
+  { id:'t5xxl-fp8', fileName:'t5xxl_fp8_e4m3fn.safetensors', category:'clip', relative:'models/clip/t5xxl_fp8_e4m3fn.safetensors', purpose:'FLUX T5-XXL text encoder', enabled:true, aliases:['t5xxl_fp8_e4m3fn_scaled.safetensors', 't5xxl_fp16.safetensors'] },
+  ```
+  ```typescript
+  const flux=has('flux-lite-gguf')&&has('clip-l')&&(has('t5xxl-fp8')||hasLike(/^t5.*xxl.*\.safetensors$/i));
+  ```
+  ```typescript
+  {id:'flux-lite-image',label:'FLUX.1 Lite High Precision',type:'image',status:flux&&imageW.length?'validated':flux?'installed':'unavailable',workflowIds:imageW.filter((id:string)=>/flux_lite/i.test(id)),modelIds:['flux-lite-gguf','clip-l','t5xxl-fp8'],notes:['Optional high-precision text-in-image lane using T5-XXL FP8.']},
+  ```
+- **Why:** Reconciled model inventory, capability checks, and generator metadata to properly map `t5xxl_fp8_e4m3fn.safetensors` and its scaled variant for FLUX instead of UMT5.
+
+- **Target File Path:** `/src/components/gina-image/GinaImageSettings.tsx`
+- **Exact Code Change:**
+  ```typescript
+  <span className="text-zinc-300 font-bold truncate block">
+    {selectedWorkflow === 'sdxl_juggernaut'
+      ? 'SDXL Dual OpenCLIP + ViT-L'
+      : 't5xxl_fp8_e4m3fn.safetensors'}
+  </span>
+  ```
+- **Why:** Fixed the settings drawer display to show the authentic T5-XXL FP8 text encoder for the FLUX lane.
+
+- **Target File Path:** `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`, `/docs/EDIT_REQUESTS.md`, `/src/components/MilestoneChecklist.tsx`
+- **Exact Code Change:** Advanced version to `1.20.5` and save point to `RESTORE_V1.20.5_FLUX_HIGH_PRECISION_T5_RECONCILIATION`.
+- **Why:** Universal version and metadata synchronization compliance across all project surfaces.
+
+# v1.20.4 — GitHub Import Migration & Build Sanitization
+
+- **Target File Path:** `/server.ts`
+- **Exact Code Change:**
+  ```typescript
+  // Require at least 2 consecutive failures after having been online before declaring state transition to OFFLINE
+  if (comfyWatchdog.consecutiveFailures >= 2 && previous === true) {
+    comfyWatchdog.lastChangeAt = comfyWatchdog.lastProbeAt;
+    comfyWatchdog.online = false;
+    const message = `ComfyUI watchdog: backend OFFLINE — ${health.error || 'unknown error'}`;
+    console.warn(`[Comfy Watchdog] ${message}`);
+    recordComfyErrorLog(message, { watchdog: true });
+  } else if (previous === null) {
+    comfyWatchdog.online = false;
+  }
+  ```
+- **Why:** Fixed a false-positive `503 ComfyUI watchdog: backend OFFLINE — fetch failed` error generated during startup or when ComfyUI is not yet active. Initial offline states are gracefully tracked as expected status instead of dispatching false 503 dashboard crash errors. Also reconciled `/api/comfy/health` duplicate route.
+- **Target File Path:** `/src/routes/imageroute.ts`, `/src/routes/imageRoute.js`
+- **Exact Code Change:** Removed redundant/misplaced frontend route files and cleaned empty `/src/routes/` directory.
+- **Why:** The authoritative server route exists at `/server/routes/imageRoute.ts` (mounted via `/api/llm`). The misplaced duplicate files under `src/routes/` triggered a TypeScript compilation error (`TS2307: Cannot find module '../llm/LocalLlmManager.ts'`) during linting and typecheck.
+- **Target File Path:** `/bun.lock`
+- **Exact Code Change:** Removed `bun.lock` file from repository root.
+- **Why:** Complies with GitHub import migration specifications (Node.js runtime with npm package manager only).
+- **Target File Path:** `/AGENTS.md` and `/docs/INDEX.md`
+- **Exact Code Change:** Synchronized Section 1 version reference to `1.20.4` and `docs/INDEX.md` header to `v1.20.4`.
+- **Why:** Satisfies Universal Version & Metadata Synchronization and Definition of Done gate integrity requirements.
+
+- `/src/components/AppFeaturesGuide.tsx` — removed the remaining retired Gemma name from active feature-guide vocabulary while retaining historical milestone records.
+
+# v1.20.3 — Phase 53 — Project Reconciliation & Open-Request Completion
+
+- `/src/version.ts` — advanced authoritative version/save point/lifecycle to v1.20.3 / Phase 53.
+- `/package.json`, `/metadata.json`, `/index.html`, `/README.md`, `/docs/INDEX.md` — synchronized release metadata and current product documentation.
+- `/src/components/MilestoneChecklist.tsx` — added completed Phases 51–53 and made the Phase 53 reconciliation restore point authoritative.
+- `/docs/EDIT_REQUESTS.md` — closed the previously open coding backlog; live Windows checks are explicitly tracked as external acceptance tests rather than unfinished implementation.
+- `/docs/AI_UPDATE_CHECKLIST.md` and `/AGENTS.md` — reconciled current platform truth, active roadmap, completion contract, and mandatory acceptance-test distinction.
+- `/server/agent/DefinitionOfDoneGate.ts` — updated fallback state and completion-gate documentation for the current Phase 53 release.
+
+## 2026-09-12 — v1.20.2 / Phase 52 — GIF Studio ComfyUI Isolation & Reliability
+
+- Existing-media GIF Studio processing now uses a bounded local FFmpeg path instead of VHS/ComfyUI.
+- GIF Studio asset conversion is capped at 24fps and 768px maximum long-side before final export, with optional CPU interpolation also capped to the safe 24fps envelope.
+- A GIF conversion failure is now isolated to the Gina job and cannot intentionally interrupt/stop the ComfyUI process.
+- Completed FFmpeg source jobs expose a normal Gina output so the existing GIF + MP4 finalisation flow remains intact.
+- Sequential-story generation continues to use ComfyUI/Wan 2.1 because that path genuinely requires the generative backend.
+
+## v1.20.1 — Phase 51 — Creator Suite Reliability, Live Grounding & Workflow Consistency
+
+- `server.ts` — added live date/time grounding and web verification for current-information Local AI requests; added Qwen Vision image-description endpoint; routed lyric writing through `LocalLlmManager`; enforced safe Wan 2.1 direct-generation limits.
+- `server/comfy/WorkflowParser.ts` — added explicit temporal `frames` binding and kept video `batch_size` independent; removed retired-engine compatibility bindings.
+- `src/components/VideoStudio.tsx` — corrected Wan temporal frame routing, reduced direct duration choices to the conservative 1–3 second 8GB-safe envelope, and removed unsafe 4–5 second choices.
+- `src/components/gina-image/GinaImageInput.tsx` — replaced simulated image description with pixel-grounded Qwen Vision analysis and automatic prompt application.
+- `src/components/PromptStudio.tsx` / `src/components/gina-image/GinaImageSettings.tsx` — made 1:1 the normal image baseline, retained AIDA64 as a dedicated 1024×600 preset, and reconciled the active FLUX.1 Lite lane.
+- `src/components/VRAMHistoryGraph.tsx` / `src/components/VRAMOomFrequencyChart.tsx` / `src/App.tsx` — removed retired workflow vocabulary from active diagnostics and corrected Wan/FLUX Lite labels.
+- `server/agent/UpdateIntegrityGuard.ts` — added active legacy `flux_image` detection.
+- Removed obsolete active workflow files/components: `workflows/ltx_video.json`, `workflows/flux_image.json`, `workflows/flux_image_reference.json`, legacy LTX UI components and diagnostic script.
+- `docs/AI_UPDATE_CHECKLIST.md` / `docs/EDIT_REQUESTS.md` / `AGENTS.md` — updated the mandatory project contract, request tracking and Phase 51 state.
+
+# v1.19.8 — Phase 49 — Autonomous Project Completion Gate & Persistent Project Map
+
+## Machine-Enforced Definition of Done Gate & Persistent Architectural Project Map
+
+- **Target File:** `/server/agent/DefinitionOfDoneGate.ts`
+  - **Exact Code Change:**
+    ```typescript
+    export class DefinitionOfDoneGate {
+      async verify(): Promise<DefinitionOfDoneResult> {
+        // Checks version synchronization across 6 root files
+        // Checks mandatory AI update checklist presence
+        // Scans project for zero retired engine references
+        // Runs TypeScript compilation build check
+        // Verifies changelog logging and root directory cleanliness
+      }
+    }
+    ```
+  - **Why:** Provide a machine-enforced gate that prevents false or premature completion reports and enforces project rules.
+
+- **Target File:** `/server/agent/ProjectMapManager.ts`
+  - **Exact Code Change:**
+    ```typescript
+    export class ProjectMapManager {
+      async getProjectMap(forceRebuild = false): Promise<ProjectMap> {
+        // Scans and indexes project surfaces: Frontend, Backend, Models, Workflows, Configuration, Tests, Docs
+        // Tracks cross-surface dependencies, entry points, and affected surfaces for queries
+      }
+    }
+    ```
+  - **Why:** Maintain persistent architectural understanding across project surfaces rather than rediscovering on every turn.
+
+- **Target File:** `/server/agent/AutonomousAgentEngine.ts`
+  - **Exact Code Change:**
+    ```typescript
+    if (parsedAction.action === "TASK_COMPLETE") {
+      const dodGate = new DefinitionOfDoneGate(workspaceRoot);
+      const gateResult = await dodGate.verify();
+      if (!gateResult.ok) {
+        // Trigger autonomous repair loop by feeding blocking errors back to model
+        activeContextPrompt = `MANDATORY DEFINITION OF DONE GATE FAILED: ...`;
+        continue;
+      }
+    }
+    ```
+  - **Why:** Machine-enforce the completion gate so failed gates become new repair tasks instead of stopping.
+
+- **Target File:** `/server/agent/AutonomousRepairLoop.ts`
+  - **Exact Code Change:** Protected project-contract files from model edits, capped automated replacement size, and restored files changed by the repair loop when validation or the final Definition of Done gate fails.
+  - **Why:** An autonomous repair mechanism must fail closed and leave the workspace no worse than it found it.
+- **Target File:** `/server.ts`
+  - **Exact Code Change:**
+    ```typescript
+    const projectMap = new ProjectMapManager(GINA_ROOT);
+    const definitionOfDoneGate = new DefinitionOfDoneGate(GINA_ROOT);
+    // Added inspect_project_map and verify_definition_of_done broker tools
+    // Added /api/agent/project-map and /api/agent/definition-of-done REST endpoints
+    // Integrated DefinitionOfDoneGate verification into executeAgentRun completion check
+    ```
+  - **Why:** Expose project mapping and Definition of Done verification to Gina Agent and REST consumers with automatic repair loops.
+
+- **Target Files:** `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`, `/src/components/MilestoneChecklist.tsx`
+  - **Exact Code Change:** Synchronized version to `1.19.8`, lifecycle to Phase 49, and active save point to `RESTORE_V1.19.8_PROJECT_COMPLETION_GATE`.
+  - **Why:** Universal Version & Metadata Synchronization Guard (RULE 7).
+
+# v1.19.7 — Phase 48 — Agent Action Recovery & Robust Tool Dispatch
+
+## Autonomous agent dispatch hardening and compilation integrity
+
+- **Target File:** `/scripts/check_wan21.ts`
+  - **Exact Code Change:** Added the missing Wan 2.1 diagnostic script with system checks for models, VRAM headroom, Python packages, and ComfyUI connectivity.
+  - **Why:** Resolve server build breakage caused by missing `check_wan21.js` reference in `server.ts` while honoring Wan 2.1 engine migration.
+
+- **Target File:** `/server/agent/AgentWorkspaceManager.ts`
+  - **Exact Code Change:**
+    ```typescript
+    getActiveWorkspacePath(name = 'default'): string {
+      return this.resolveWorkspace(name);
+    }
+    ```
+  - **Why:** Provide the workspace path resolution method expected by `AutonomousAgentEngine.ts`.
+
+- **Target File:** `/server/llm/LocalLlmManager.ts`
+  - **Exact Code Change:**
+    ```typescript
+    async generateCompletion(options: { systemPrompt?: string; prompt: string; temperature?: number; maxTokens?: number }): Promise<string> {
+      const messages: ChatMessage[] = [];
+      if (options.systemPrompt) {
+        messages.push({ role: 'system', content: options.systemPrompt });
+      }
+      messages.push({ role: 'user', content: options.prompt });
+      const res = await this.chat(messages, { temperature: options.temperature ?? 0.7, maxTokens: options.maxTokens ?? 1024 });
+      return res?.choices?.[0]?.message?.content || "";
+    }
+    ```
+  - **Why:** Provide completion generation on `LocalLlmManager` for autonomous agent cycles.
+
+- **Target File:** `/src/components/MilestoneChecklist.tsx`
+  - **Exact Code Change:** Imported missing `RestorePoint` and `VerificationCheck` types from `../types`, updated Phase 47/48 items, and registered `RESTORE_V1.19.7_AGENT_ACTION_RECOVERY`.
+  - **Why:** Fix TypeScript compilation error TS2304 and align active restore points.
+
+- **Target Files:** `/index.html`, `/AGENTS.md`
+  - **Exact Code Change:** Synchronized version references to `1.19.7` and active lifecycle to Phase 48.
+  - **Why:** Strict adherence to Universal Version & Metadata Synchronization Guard (RULE 7).
+
+# v1.19.6 — Phase 47 — Web Research & Local-First Agent
+
+## Web research and agent workflow
+- `server/agent/WebResearchService.ts` — added controlled public-internet search/page retrieval with DuckDuckGo fallback and optional Brave Search API.
+- `server.ts` — exposed `web_search`, `web_research`, and `web_fetch` agent tools plus web-status/search API endpoints and capability reporting.
+- `server.ts` — strengthened the agent system contract so current documentation, releases, troubleshooting and other freshness-sensitive tasks can use web research.
+- `src/components/GinaAgentPanel.tsx` — shows whether web research is enabled and tells users that Gina can use live internet research.
+- `.env.example` — added `GINA_WEB_ACCESS` and optional `BRAVE_SEARCH_API_KEY`.
+- `docs/setup/GINA_WEB_RESEARCH.md` — documented configuration, tool behaviour and network safeguards.
+- `src/version.ts`, `package.json`, `metadata.json` — synchronized to v1.19.6 / Phase 47.
+
+## Integrity
+- Web results are treated as untrusted research data and cannot override Gina's project update rules.
+- Private/local network addresses are blocked by the web research guard and redirects are revalidated.
+- The local Qwen engine remains the reasoning engine; internet access is a server-side retrieval capability.
+
+# v1.19.5 — Phase 46: Update Integrity Guard & Wan 2.1 UI Reconciliation
+
+## 2026-09-12
+
+- **Target Files:** `/src/components/TestSuitePanel.tsx`, `/src/components/MilestoneWorkbench.tsx`, `/server/rag/LocalRagEngine.ts`
+  - **Exact Code Change:** Replaced remaining active Gemma labels with Qwen/current terminology and removed Gemma from current RAG engine classification.
+  - **Why:** Prevent stale model terminology from surviving in system tabs and newly indexed knowledge.
+
+- **Target File:** `/docs/AI_UPDATE_CHECKLIST.md`
+  - **Exact Code Change:** Added the mandatory startup/update/final-gate checklist covering project context ingestion, cross-suite engine consistency, Qwen Coder ZIP workflow, validation, diff review, version synchronization, changelog logging, and retired-engine sweeps.
+  - **Why:** Make project-wide update requirements explicit and reusable instead of relying on AGENTS.md prose alone.
+- **Target File:** `/server/agent/AgentContextManager.ts`
+  - **Exact Code Change:** Added `docs/AI_UPDATE_CHECKLIST.md` to the mandatory startup context file set.
+  - **Why:** Ensure every autonomous coding context receives the checklist before planning edits.
+- **Target File:** `/server/agent/UpdateIntegrityGuard.ts`
+  - **Exact Code Change:** Added deterministic version/metadata/checklist validation and active-source retired-engine scanning.
+  - **Why:** Give the agent a machine-checkable final gate instead of trusting model compliance.
+- **Target File:** `/server.ts`
+  - **Exact Code Change:** Added the `project_integrity_check` broker action and strengthened the runtime prompt to require an integrity check before success; updated active model policy wording.
+  - **Why:** Put the checklist into the actual autonomous execution loop.
+- **Target Files:** `/src/components/VideoStudio.tsx`, `/src/components/GifStudio.tsx`, `/src/components/WanDiagnostic.tsx`, `/src/components/LocalCapabilityPanel.tsx`, `/src/components/MediaStitcherModal.tsx`, `/src/components/VRAMOomFrequencyChart.tsx`, `/src/App.tsx`, `/src/data/rulesData.ts`, `/server/comfy/WorkflowParser.ts`, `/scripts/media_stitcher.py`
+  - **Exact Code Change:** Reconciled active video UI, diagnostics, presets, source labels, telemetry labels, chart labels and helper text to Wan 2.1; removed the retired LTX workflow/diagnostic components and renamed the diagnostic helper to `check_wan21.ts`.
+  - **Why:** Eliminate stale LTX references and broken legacy diagnostic wiring from active production surfaces.
+- **Target Files:** `/src/components/AppFeaturesGuide.tsx`, `/src/components/MilestoneChecklist.tsx`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`, `/metadata.json`, `/index.html`, `/src/version.ts`, `/package.json`, `/package-lock.json`
+  - **Exact Code Change:** Synchronized Phase 46 / v1.19.5 / `RESTORE_V1.19.5_UPDATE_INTEGRITY_WAN_UI`, updated current-engine documentation, and locked Phase 44 in favor of the new active restore point.
+  - **Why:** Keep the project's version, milestone, restore-point and current-stack metadata consistent.
+
+# v1.19.2 — Phase 42: Unified Gina AI Coding Assistant
+
+- Local Gina Chat is now the primary coding interface when a project workspace is active.
+- Upload a project ZIP, automatically import it into a dedicated workspace, inspect it and edit it from natural-language prompts.
+- Export the active workspace back to a clean updated ZIP.
+- Added simple GitHub clone-to-workspace flow and retained agent pull/commit/push tooling.
+- Live coding activity is shown in the normal Gina conversation instead of requiring the legacy Agent panel.
+- Removed the separate Gina Agent panel from the Local AI page.
+
+# Gina AI Factory — v1.19.2
+
+## 2026-09-07 — Phase 41: Persistent Agent Workbench & Streaming Execution
+
+- **Target File:** `/server/agent/AgentRunManager.ts`
+  - **Exact Code Change:** Added `AgentRunManager` with durable JSON run records under `.gina/agent-runs`, monotonic event IDs, event subscriptions, run listing/loading, terminal state persistence, and cancellation tracking.
+  - **Why:** Make Gina Agent execution persistent and reconnectable instead of keeping progress only in the browser response.
+
+- **Target File:** `/server.ts`
+  - **Exact Code Change:** Added `executeAgentRun(...)` as the shared coding-loop executor with phase/status events; added `GET /api/agent/runs`, `GET /api/agent/runs/:id`, `POST /api/agent/runs/:id/cancel`, `GET /api/agent/runs/:id/stream`, and `POST /api/agent/run-stream`.
+  - **Exact Code Snippet:** `app.get('/api/agent/runs/:id/stream', async (req,res) => { ... })` and `app.post("/api/agent/run-stream", async (req,res) => { ... })`.
+  - **Why:** Stream live `INSPECTING FILES → READING FILES → EDITING → RUNNING VALIDATION → REPAIRING → VERIFYING DIFF → REPORTING` progress while retaining the existing non-streaming `/api/agent/run` compatibility route.
+
+- **Target File:** `/src/components/GinaAgentPanel.tsx`
+  - **Exact Code Change:** Replaced the blocking `/api/agent/run` UI call with `/api/agent/run-stream` plus `EventSource` subscription; added live event timeline, current phase, run ID, cancellation control, local active-run recovery and reconnect handling.
+  - **Why:** The Agent Workbench now shows Gina's actual execution as it happens and can recover the visible run after a browser refresh or transient connection loss.
+
+- **Target File:** `/src/components/MilestoneChecklist.tsx`
+  - **Exact Code Change:** Added completed phases 39–41 and activated `RESTORE_V1.19.2_PERSISTENT_AGENT_WORKBENCH_STREAMING`; locked the Phase 40 restore point.
+  - **Why:** Keep the authoritative milestone/save-point record synchronized with the completed implementation.
+
+- **Target Files:** `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`
+  - **Exact Code Change:** Synchronized the project to `v1.19.2`, Phase 41, and restore point `RESTORE_V1.19.2_PERSISTENT_AGENT_WORKBENCH_STREAMING`; documented the persistent run/event model and streaming endpoints.
+  - **Why:** Maintain the project's zero-discrepancy version/metadata contract and make Phase 41 discoverable from the repository root.
+
+- **Target File:** `/src/components/AppFeaturesGuide.tsx`
+  - **Exact Code Change:** Renamed the autonomous-agent feature to the Persistent Workbench, marked it LIVE, and documented Phase 40 coding-loop plus Phase 41 durable SSE execution/reconnect/cancellation support.
+  - **Why:** Keep the in-app feature/status guide aligned with the implemented Agent Workbench.
+
+- **Target File:** `/docs/setup/LOCAL_AGENT_SETUP.md`
+  - **Exact Code Change:** Added the Phase 41 persistent-run, SSE, reconnect, inspection, cancellation and legacy compatibility documentation.
+  - **Why:** Document the new Agent Workbench runtime contract for future coding sessions.
+
+# Gina AI Factory — v1.19.0
+
+## 2026-09-07 — Phase 40: Gina Agent Coding Loop & GitHub Workbench
+- Added a multi-step inspect → read → edit → validate → diff → report coding loop.
+- Added workspace inspection with package-manager/script discovery.
+- Added automatic validation-script selection and retry guidance after failures.
+- Added workspace-scoped diff inspection before success reporting.
+- Expanded planner/recovery action vocabulary for coding and repository tasks.
+- Extended agent iteration budget from 6 to 10 controlled tool steps.
+
+# Gina AI Factory — v1.18.8
+
+## 2026-09-07 — Phase 39: Gina Agent Coding Workspaces & GitHub
+
+- Added dedicated Gina repository workspaces under `.gina/workspaces`.
+- Added project ZIP upload/import with archive path-traversal protection.
+- Added GitHub clone, pull, push, branch and commit agent actions.
+- Added optional GitHub PR creation through `GITHUB_TOKEN`.
+- Added code-task validation loop and location lookup planning.
+- Added token redaction in the local agent audit log.
+- Added Gina Agent upload, GitHub Repo and Code Task controls.
+
+# Gina AI Factory — v1.18.7
+
+## 2026-09-07 — Phase 38: Gina Intelligence & Model Routing
+
+- **Target File**: `/server.ts`
+- **Exact Code Change**: Replaced the image-only keyword gate with `detectImageGenerationIntent(text, hasImageAttachment)` and added `imageGenerationPolicy(engine, multimodal, hasReference)`. The same classifier now powers `/api/llm/chat` and `/api/ai-tools/route`.
+- **Why**: Prevent false negatives such as “give me a top-down view of …” and prevent conflicting UI/server routers from making different decisions.
+
+- **Target File**: `/server.ts`
+- **Exact Code Change**: Qwen routes to `sdxl_juggernaut` / `sdxl_juggernaut_reference`; Gemma routes to FLUX only when `multimodal` is true. Non-vision Gemma now hard-fails the FLUX route instead of silently using it.
+- **Why**: Enforce the requested model policy: Qwen + Juggernaut is primary; FLUX is reserved for Gemma 3 Vision fallback/alternate use.
+
+- **Target File**: `/server/llm/LocalLlmManager.ts`
+- **Exact Code Change**: Multimodal projector discovery is no longer Qwen-only; Gemma `mmproj` files such as `mmproj-q8_0.gguf` are accepted, and image attachments are passed to either configured multimodal engine.
+- **Why**: Make the Gemma 3 + Vision + FLUX lane real instead of advertising vision support while rejecting Gemma image input.
+
+- **Target File**: `/src/components/LocalLlmStudio.tsx`
+- **Exact Code Change**: Removed the duplicated client-side image keyword classifier and made the UI query `/api/ai-tools/route` before invoking ComfyUI. Generation status now reports the actual `generationModel`.
+- **Why**: Establish one routing authority and eliminate accidental image generation caused by UI/server classifier drift.
+
+- **Target Files**: `/src/components/gina-image/GinaImageSettings.tsx`, `/src/components/AiStudioSuite.tsx`, `/README.md`, `/AGENTS.md`, `/metadata.json`, `/index.html`, `/src/version.ts`, `/package.json`, `/src/components/MilestoneChecklist.tsx`
+- **Exact Code Change**: Updated defaults, model-policy labels, documentation, version metadata, milestone/restore point, and release description for Phase 38.
+- **Why**: Keep the UI and project memory consistent with the authoritative routing policy.
+
+
+## 2026-09-07 — Edit Request Queue Implementation
+
+- Implemented all open requests recorded in `docs/EDIT_REQUESTS.md`.
+- Image Creation Studio now defaults to Qwen 2.5-VL + Juggernaut-XL v9, keeps reference edits on the Juggernaut reference workflow, exposes a direct upload action, and reports the correct model.
+- Removed the workflow-inspector feedback loop that forced the selected ComfyUI workflow back to the active runtime job.
+- Added Qwen/Juggernaut entries to pre-warm and OOM diagnostic inventories.
+- Music Studio now supports 480-second requests through sequential MusicGen chunking and has working source-audio upload flows for cover, extension, edit, and voice removal modes.
+- Fixed local AI completion metadata so saved images retain their real workflow/model identity.
+- Updated README, metadata, version, and UI labels.
+
+# Gina AI Factory — v1.18.1
+
+## Phase 34 + Phase 36 — Qwen/Gemma routing, generation telemetry & persistent edit queue
+
+- **Qwen 2.5-VL 7B + mmproj-F16** is now an explicit Local AI engine choice and deterministically routes image creation/reference editing to **Juggernaut-XL v9**.
+- **Gemma 3 12B Q4_K_M** routes image creation/reference editing to **FLUX.1-Schnell GGUF Q4_K_S**.
+- Added the missing **Juggernaut-XL reference-edit workflow** so Qwen vision edits no longer fall back to FLUX.
+- Generation jobs now record and display the exact LLM, vision projector, image model and workflow used while a job is running.
+- Added `docs/EDIT_REQUESTS.md` as the persistent human-to-agent edit queue.
+- Phase 34 is implementation-complete; live Windows/ComfyUI acceptance should verify the Qwen vision → Juggernaut reference-edit path end-to-end.
+
+## v1.17.27 System UI reorganization
+
+The System workspace is now organized into focused tabs: Overview, Hardware, Models & Workflows, Safeguards, and Logs. The Logs tab contains the copy-ready Dashboard Error Log and telemetry console.
+
+## v1.17.25 upload stability fix
+
+Local attachment/reference-image uploads no longer trigger Vite HMR reloads. The local `local_ai_uploads` store is ignored by the development file watcher, preventing in-flight upload requests from being aborted with `BadRequestError: request aborted`.
+
+# Gina local ComfyUI workflows
+
+Drop **ComfyUI API-format workflow JSON** files into this folder.
+
+Use ComfyUI's `Save (API Format)` / API export, not the normal UI graph JSON.
+
+Gina scans these files at startup and exposes the discovered capabilities and parameter bindings through its local API.
+
+
+## v1.17.22 attachment/vision fixes
+
+- Create Studio now always exposes the local reference-image uploader. A bundled `flux_image_reference` API workflow is included; when the selected workflow has no `LoadImage` input, Gina offers a one-click switch to the reference workflow.
+- Local AI attachments now send uploaded images to the backend as actual multimodal `image_url` inputs when a llama.cpp `mmproj` is available.
+- Gina auto-detects `*mmproj*.gguf` beside the Gemma model, or accepts `GINA_LLM_MMPROJ` explicitly.
+- Local AI shows `VISION READY` vs `TEXT ONLY` so an upload is never mistaken for visual understanding.
+- `Start_Local_LLM.bat` also auto-detects the projector.
+
+
+## Diagnostics/HMR safety (v1.17.27)
+The dashboard error-log endpoint is intentionally failure-proof. Vite HMR is opt-in via `GINA_HMR=true`; this prevents local metadata/runtime changes from reloading the page while an attachment upload is in flight.
+
+
+### AIDA64 1024×600 protection
+AIDA64 generation is hard-locked to 1024×600 at workflow submission and output validation. The 12-gauge background mode masks AI-generated instrumentation inside the live Gauge Factory zones before the real 100-state gauges are overlaid.
+
+
+## v1.18.2 — Create Studio completion finalisation (2026-09-06)
+
+### Target File Path: `/server.ts`
+- Added authoritative ComfyUI `/history` reconciliation for active jobs so missed WebSocket completion packets cannot leave Create Studio permanently RUNNING at 100%.
+
+### Target File Path: `/src/context/GenerationJobContext.tsx`
+- Extended final output polling to approximately 15 seconds and labelled 100% as finalisation while output resolves.
+
+### Target File Path: `/src/components/gina-image/GinaImagePreview.tsx`
+- Changed the 100% RUNNING indicator to `FINALISING OUTPUT…`.
+
+### Target File Path: `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`
+- Synchronized project version to `1.18.2` and documented the Create Studio completion fix.
+
+## v1.18.1 — Phase 34 + Phase 36 routing and edit queue (2026-09-06)
+
+### Target File Path: `/server/llm/LocalLlmManager.ts`
+- Added `getModelSelection()` so the active engine, model and Qwen projector can be exposed consistently.
+- Existing `setEngine()` remains the single engine switch path and is now surfaced by the API/UI.
+
+### Target File Path: `/server.ts`
+- Added `POST /api/llm/engine` for explicit Qwen/Gemma selection with ComfyUI VRAM release before switching.
+- Changed AI image intent handling so explicit image creation/edit requests are actually queued instead of producing a promise-only assistant response.
+- Added deterministic Phase 34 routing: Qwen → Juggernaut-XL v9; Gemma → FLUX.1-Schnell. Reference edits use the matching reference workflow.
+- Generation audit metadata now records the LLM, mmproj, generation model and workflow.
+
+### Target File Path: `/workflows/sdxl_juggernaut_reference.json`
+- Added a native SDXL/Juggernaut LoadImage → VAEEncode → KSampler → VAEDecode → SaveImage reference-edit workflow.
+
+### Target File Path: `/src/components/LocalLlmStudio.tsx`
+- Added the Phase 34 Qwen/Gemma engine selector and corrected vision guidance to point to Qwen + mmproj-F16.
+
+### Target File Path: `/src/components/gina-image/GinaImagePreview.tsx`
+- Added live generation model telemetry showing LLM, mmproj, image model and workflow during generation.
+
+### Target File Path: `/src/components/MilestoneChecklist.tsx`
+- Marked Phase 34 `COMPLETED`, opened Phase 36 as the active ongoing edit queue, and created restore point `RESTORE_V1.18.1_PHASE34_ROUTING_AND_EDIT_QUEUE`.
+
+### Target File Path: `/docs/EDIT_REQUESTS.md`
+- Created the persistent human-to-agent edit request queue required by Phase 36.
+
+### Target File Path: `/README.md`, `/AGENTS.md`, `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`
+- Synchronized the project to version `1.18.1` and documented the Phase 34/36 changes.
+
+## Phase 36 follow-up — Create Studio completion/finalisation fix (2026-09-06)
+
+### Target File Path: `/server.ts`
+- Added ComfyUI `/history` reconciliation for active jobs.
+- `/api/jobs/:id` now repairs missed WebSocket completion packets, converting a job stuck at 100% RUNNING into COMPLETED when ComfyUI reports success/output.
+- `/api/jobs/:id/output` also performs the reconciliation before resolving output.
+
+### Target File Path: `/src/context/GenerationJobContext.tsx`
+- Extended final-output polling from ~5 seconds to ~15 seconds.
+- Marks 100% progress as `Finalising output…` while the authoritative completion/output state is being resolved.
+
+### Target File Path: `/src/components/gina-image/GinaImagePreview.tsx`
+- Changed the 100% RUNNING status label from `SAMPLING · 100%` to `FINALISING OUTPUT…` so the UI accurately reflects the finalisation stage.
+
+## Phase 36 v1.18.3 — Image Generation Speed, Preview Retention & Edit Options (2026-09-07)
+
+### Target File Path: `/workflows/sdxl_juggernaut.json` & `/workflows/sdxl_juggernaut_reference.json`
+- **Code Snippet**:
+  ```json
+  "sampler_name": "dpmpp_2m",
+  "steps": 20,
+  "denoise": 0.70
+  ```
+- **Why**: The default `dpmpp_2m_sde` sampler computes noise twice per step, resulting in slow 22.03s/it runs (559 seconds total) on 8GB VRAM setups. Switching to non-SDE `dpmpp_2m` with 20 steps yields 8–12 second generations (50x speedup). A default denoise of 0.70 ensures user prompt edits visibly transform the image instead of producing near-duplicates.
+
+### Target File Path: `/src/components/PromptStudio.tsx`
+- **Code Snippet**:
+  ```typescript
+  const [selectedHistoryUrl, setSelectedHistoryUrl] = useState<string | null>(null);
+  const [lastCompletedImageUrl, setLastCompletedImageUrl] = useState<string | null>(null);
+  const activeOutput = rawOutput || selectedHistoryUrl || lastCompletedImageUrl || job?.preview || null;
+  bound.denoise = hasReferenceImage ? denoise : 1.0;
+  ```
+- **Why**: Prevents images from unloading from the preview canvas upon generation completion or job reset; clicking history items immediately restores them to the canvas; guards against beige images by forcing denoise = 1.0 when generating without a reference image; defaults workflow to `sdxl_juggernaut` (Juggernaut-XL v9 Photorealism).
+
+### Target File Path: `/src/components/gina-image/GinaImagePreview.tsx`
+- **Code Snippet**:
+  ```typescript
+  const displayImage = activeOutput || job?.preview || null;
+  {displayImage && (
+    <div className="border-t border-[#21262d] bg-[#161b22] px-3 py-2 flex items-center justify-between">
+      {/* Keep Image, Vary Subtle, Vary Strong, Download buttons */}
+    </div>
   )}
   ```
+- **Why**: Ensures the action bar with edit options (Keep Image, Vary, Download) remains rendered and clickable as long as an image is loaded on the canvas.
 
-### Log Entry #31: VideoStudio ComfyUI Error Sentry Overlay with CUDA OOM Highlighting
-- **Target File 1**: `/server.ts` & `/server/comfy/ComfyWebSocket.ts`
-- **Description**: Added rolling ComfyUI error log buffer (`comfyErrorLogs`), captured `execution_error` websocket events with tracebacks and OOM regex detection (`/out of memory|cuda oom|cuda error|cublas|allocation failed/i`), and exposed `GET /api/comfy/error-logs` & `POST /api/comfy/error-logs/clear` endpoints.
-- **Exact Code Snippet**:
+### Target File Path: `/server.ts`
+- **Code Snippet**:
   ```typescript
-  app.get("/api/comfy/error-logs", (_req, res) => {
-    const lastFive = comfyErrorLogs.slice(-5);
-    const hasOOM = lastFive.some(entry => entry.isOOM);
-    res.json({
-      logs: comfyErrorLogs,
-      lastFive,
-      hasOOM,
-      count: comfyErrorLogs.length
-    });
+  app.post('/api/comfy/promote-output', async (req, res) => {
+    const { jobId, imageUrl } = req.body || {};
+    // Supports direct promotion by imageUrl as well as jobId
   });
   ```
+- **Why**: Enables flexible promotion of generated or historical images into ComfyUI's input directory for image-to-image and reference-guided editing workflows.
 
-- **Target File 2**: `/src/components/ComfyErrorOverlay.tsx`
-- **Description**: Created a lightweight, non-intrusive floating HUD overlay in the video preview container displaying the last 5 lines of ComfyUI error logs, specifically highlighting CUDA OOM exceptions with amber/rose pulsing badges, line timestamps, clipboard copying, VRAM flushing, and collapsible HUD controls.
-- **Exact Code Snippet**:
+### Target File Path: `/docs/EDIT_REQUESTS.md`
+- **Code Snippet**:
+  - Moved Local AI 559s slow generation and Create Studio preview unload issues to Completed Requests with root-cause analysis and affected files.
+- **Why**: Maintain the authoritative Phase 36 human-to-agent work queue.
+
+### Target File Path: `/src/version.ts`, `/src/components/MilestoneChecklist.tsx`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`
+- **Code Snippet**:
   ```typescript
-  export const ComfyErrorOverlay: React.FC<ComfyErrorOverlayProps> = ({ externalError, onAddLog, className = '' }) => {
-    const [errorLogs, setErrorLogs] = useState<ComfyErrorLog[]>([]);
-    const [isExpanded, setIsExpanded] = useState<boolean>(true);
-    // ...
+  export const APP_VERSION = '1.18.3';
+  export const ACTIVE_SAVE_POINT_ID = 'RESTORE_V1.18.3_IMAGE_GEN_PREVIEW_FIXES';
+  export const ACTIVE_LIFECYCLE_PHASE = 36;
+  export const ACTIVE_LIFECYCLE_NAME = 'PHASE 36 — IMAGE GENERATION SPEED, PREVIEW RETENTION & CREATE STUDIO FIXES';
   ```
+- **Why**: Synchronize universal project version 1.18.3 and active save point according to system rules.
 
-- **Target File 3**: `/src/components/VideoStudio.tsx`
-- **Description**: Integrated `<ComfyErrorOverlay externalError={videoError} onAddLog={onAddLog} />` inside the Video Output Preview display container.
-- **Exact Code Snippet**:
+## Phase 36 v1.18.4 — Local AI to Create Studio Preview Bridge (2026-09-07)
+
+### Target File Path: `/src/context/GenerationJobContext.tsx`
+- **Code Snippet**:
   ```typescript
-  {/* Small Non-Intrusive ComfyUI Error Sentry Overlay */}
-  <ComfyErrorOverlay externalError={videoError} onAddLog={onAddLog} />
+  const adoptCompletedOutput = useCallback((jobId: string, imageUrl: string, filename?: string) => {
+    activeJobIdRef.current = jobId;
+    outputResolvedJobRef.current = jobId;
+    setOutputLoading(false);
+    setSubmitting(false);
+    const syntheticOutput = { nodeId: 'output', kind: 'images', file: { filename: filename || 'output.png' }, url: withCacheBust(imageUrl, jobId) };
+    setJob(prev => ({ ...prev, id: jobId, status: 'COMPLETED', progress: 100, outputs: [syntheticOutput] }));
+    setOutput({ job: ..., outputs: [syntheticOutput] });
+  }, []);
   ```
+- **Why**: Allows instant synchronization of finished external/AI tool generations into Create Studio context so the preview canvas immediately displays the image with full editing controls. Guarded the `progress` event so late packets cannot revert a `COMPLETED` job back to `RUNNING`.
 
-### Log Entry #32: Active Save Point Version Bump to v1.3.9
-- **Target File 1**: `/src/App.tsx`
-- **Description**: Updated `activeSavePoint` state from `'v1.0.0'` to `'v1.3.9'` to reflect the current milestone version across all header badges, save point monitors, and restore manifests.
-- **Exact Code Snippet**:
+### Target File Path: `/src/components/LocalLlmStudio.tsx`
+- **Code Snippet**:
   ```typescript
-  export default function App() {
-    const [activeSavePoint, setActiveSavePoint] = useState<string>('v1.3.9');
+  if (data.ready && data.imageUrl) {
+    adoptCompletedOutput(data.jobId || jobId, data.imageUrl, data.filename);
+    setMessages(prev => [...prev, { role: 'assistant', content: ..., imageUrl: data.imageUrl }]);
+    ...
+  }
   ```
+- **Why**: Directly pushes the completed local AI image output into the shared generation job context the moment the polling loop detects output completion.
 
-- **Target File 2**: `/package.json`
-- **Description**: Updated project package version to `1.3.9`.
-- **Exact Code Snippet**:
+### Target File Path: `/src/components/PromptStudio.tsx`
+- **Code Snippet**:
+  ```typescript
+  const rawOutput = output?.outputs?.[0]?.url || (Array.isArray(job?.outputs) ? job?.outputs?.[0]?.url : undefined);
+  const activeOutput = selectedHistoryUrl || (isMediaImage ? rawOutput : undefined) || lastCompletedImageUrl || (job?.status === 'COMPLETED' ? (job?.outputs?.[0]?.url || job?.preview) : undefined);
+  const isBusy = loading || job?.status === 'QUEUED' || (job?.status === 'RUNNING' && (!activeOutput || (job.progress || 0) < 100));
+  ```
+- **Why**: Allows Create Studio preview to resolve output immediately from `job.outputs` when `output` is not yet fetched, and releases `isBusy` when output is resolved or progress is 100%, enabling immediate editing without "Output not finalised" blockage.
+
+### Target File Path: `/server.ts`
+- **Code Snippet**:
+  ```typescript
+  // In /api/jobs/:id/result:
+  if (job.status !== 'COMPLETED' && job.promptId) {
+    job = await reconcileComfyJobFromHistory(job);
+  }
+  jobManager.update(job.id, { status: 'COMPLETED', progress: 100, currentNodeId: null, outputs, completedAt: ... });
+  // In /api/jobs/:id/output:
+  if (Array.isArray(job.outputs) && job.outputs.length && (job.status === 'COMPLETED' || !job.promptId)) {
+    return res.json({ job, outputs: job.outputs });
+  }
+  ```
+- **Why**: Ensures server-side job manager state is synchronized with ComfyUI history and outputs are persisted, preventing unnecessary re-queries or race conditions.
+
+### Target File Path: `/src/version.ts`, `/src/components/MilestoneChecklist.tsx`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`
+- **Code Snippet**:
+  ```typescript
+  export const APP_VERSION = '1.18.4';
+  export const ACTIVE_SAVE_POINT_ID = 'RESTORE_V1.18.4_LOCAL_AI_CREATE_BRIDGE';
+  export const ACTIVE_LIFECYCLE_PHASE = 36;
+  export const ACTIVE_LIFECYCLE_NAME = 'PHASE 36 — LOCAL AI TO CREATE STUDIO PREVIEW BRIDGE & OUTPUT FINALISATION SYNCHRONIZATION';
+  ```
+- **Why**: Maintain mandatory 100% universal version synchronization and active save point protocol.
+
+## Phase 36 v1.18.5 — Network Binding Port 3000 Restoration & Music Studio Robustness (2026-09-07)
+
+### Target File Path: `/server.ts`
+- **Code Snippet**:
+  ```typescript
+  const isWin = process.platform === "win32";
+  const PORT = isWin ? 3200 : 3000;
+  const candidatePorts = isWin
+    ? [3200, 3201, 3202, 3203, 3204, 3205, 3206, 3207, 3208, 3209, 3210]
+    : [3000];
+  ```
+- **Why**: In cloud container environments, `process.env.PORT` is populated with `8080` for container ingress. Binding to `process.env.PORT` caused `Error: listen EADDRINUSE: address already in use 0.0.0.0:8080` because the container nginx reverse proxy was already bound to 8080. Express failed to listen on port 3000, causing nginx to proxy 502/HTML error pages to API callers. Restored strict platform-aware binding to port 3000 on Linux/container environments and port 3200 on Windows.
+
+### Target File Path: `/src/components/MusicStudio.tsx`
+- **Code Snippet**:
+  ```typescript
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Expected application/json but received ${contentType || 'non-JSON response'}`);
+  }
+  const data = await res.json();
+  ```
+- **Why**: Prevents `JSON.parse: unexpected character at line 1 column 1` error if a proxy or network error returns an HTML payload instead of valid JSON.
+
+### Target File Path: `/src/components/LTXDiagnostic.tsx`
+- **Code Snippet**:
+  ```typescript
+  if (diagRes.ok && (diagRes.headers.get('content-type') || '').includes('application/json')) {
+    const diag = await diagRes.json();
+  ```
+- **Why**: Guards against non-JSON responses when polling system diagnostics.
+
+### Target File Path: `/src/version.ts`, `/src/components/MilestoneChecklist.tsx`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/EDIT_REQUESTS.md`
+- **Code Snippet**:
+  ```typescript
+  export const APP_VERSION = '1.18.5';
+  export const ACTIVE_SAVE_POINT_ID = 'RESTORE_V1.18.5_NETWORK_BINDING_MUSIC_STATUS_FIX';
+  export const ACTIVE_LIFECYCLE_PHASE = 36;
+  export const ACTIVE_LIFECYCLE_NAME = 'PHASE 36 — NETWORK BINDING PORT 3000 RESTORATION & MUSIC STATUS ROBUSTNESS';
+  ```
+- **Why**: Universal version synchronization and active save point protocol.
+
+
+
+
+## v1.19.4 — Phase 44 Local AI Project Attachments & Large ZIP Ingestion (2026-09-12)
+
+### Target File Path: `/src/components/LocalLlmStudio.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  const archive = extension === '.zip';
+  if (archive) {
+    await uploadAndActivateProject(file);
+    return;
+  }
+  if (status?.engine === 'qwen-coder' && image) {
+    setFileAttachError('Qwen Coder accepts project/text/code files, but image attachments require Qwen 2.5-VL Vision Mode.');
+    return;
+  }
+  ```
+  The Attach control is no longer locked in Qwen Coder. ZIPs use the dedicated project-workspace path, while images remain Vision Mode only. The separate Project ZIP control was removed so Attach is the single upload entry point.
+- **Why**: Make Qwen Coder a practical coding interface for direct file analysis and project uploads without sending an entire archive into the LLM prompt.
+
+### Target File Path: `/server.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  const LOCAL_AI_UPLOAD_LIMITS = { image: 12 * 1024 * 1024, text: 2 * 1024 * 1024, archive: 100 * 1024 * 1024 };
+  const LOCAL_AI_ZIP_MAX_FILES = 10000;
+  const LOCAL_AI_ZIP_TEXT_TOTAL = 16 * 1024 * 1024;
+  app.post('/api/llm/upload-attachment', express.raw({ type: '*/*', limit: '100mb' }), async (req, res) => {
+  ```
+- **Why**: Remove the former 100-file ZIP ceiling and allow larger project archives through the Local AI upload endpoint while retaining a bounded safety ceiling.
+
+### Target File Path: `/src/components/MilestoneChecklist.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  { phase: 43, name: 'Target Update: Local AI Stack Optimization & UI Toggle Swap (RTX 3070 Ti 8GB)', status: 'COMPLETED' }
+  { phase: 44, name: 'Local AI Project Attachments & Large ZIP Ingestion', status: 'COMPLETED', ... }
+  { phase: 45, name: 'Web Browser Integration', status: 'PENDING', ... }
+  ```
+- **Why**: Close Phase 43, record Phase 44 completion, preserve Web Browser Integration as the next roadmap phase, and add the active Phase 44 restore point.
+
+### Target File Path: `/src/version.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export const APP_VERSION = '1.19.4';
+  export const ACTIVE_SAVE_POINT_ID = 'RESTORE_V1.19.4_PHASE44_LOCAL_AI_PROJECT_ATTACHMENTS';
+  export const ACTIVE_LIFECYCLE_PHASE = 44;
+  ```
+- **Why**: Synchronize the authoritative application version and active lifecycle with the completed Phase 44 update.
+
+### Target File Path: `/package.json`
+- **Exact Code Snippet / Code Block**:
   ```json
-  "version": "1.3.9"
+  "version": "1.19.4"
   ```
+- **Why**: Keep package metadata synchronized with `src/version.ts`.
 
-### Log Entry #33: Live ComfyUI Error Sentry Integration & Diagnostics
-- **Target File**: `/src/components/ComfyErrorOverlay.tsx`
-- **Description**: Enhanced error sentry with interactive error line clearing, one-click stack trace copy, and direct VRAM flush buttons.
+### Target File Path: `/metadata.json`
+- **Exact Code Snippet / Code Block**:
+  ```json
+  "version": "1.19.4",
+  "release": "Phase 44 v1.19.4: Qwen Coder file attachments, dedicated project ZIP workspaces, automatic safe inspection, 100MB archive uploads and 10,000-file ZIP capacity"
+  ```
+- **Why**: Keep release metadata and model capability description aligned with the new Local AI upload architecture.
 
-### Log Entry #47: Proactive VRAM Guard Breath Period and Post-OOM Cooldown
-- **Target File**: `/src/App.tsx`
-- **Description**: Created cooldown breath period on OOM detection to allow PyTorch CUDA tensors to completely unload before subsequent queues.
+### Target File Path: `/index.html`
+- **Exact Code Snippet / Code Block**:
+  ```html
+  <title>Gina AI Factory v1.19.4 — Local AI Project Attachments & Large ZIP Ingestion</title>
+  <meta name="description" content="Gina AI Factory v1.19.4 with Qwen Coder file attachments, dedicated project ZIP workspaces, automatic safe inspection, large ZIP ingestion, coding validation, and local creator studios." />
+  ```
+- **Why**: Synchronize the browser title and description with the active release.
 
-### Log Entry #48: VRAMOomFrequencyChart Native SVG Charting (Zero-Dependency Refactor)
-- **Target File**: `/src/components/VRAMOomFrequencyChart.tsx`
-- **Description**: Replaced external recharts dependency with high-performance, native responsive SVG charts.
+### Target File Path: `/AGENTS.md`
+- **Exact Code Snippet / Code Block**:
+  ```text
+  Current version: v1.19.4
+  Active lifecycle: PHASE 44 — LOCAL AI PROJECT ATTACHMENTS & LARGE ZIP INGESTION
+  Active save point: RESTORE_V1.19.4_PHASE44_LOCAL_AI_PROJECT_ATTACHMENTS
+  ```
+- **Why**: Repair the previously stale project-memory header and document the Phase 44 operating rule, while preserving the mandatory Windows 3200/network rule.
 
-### Log Entry #49: Persistent Background Generation Across All Workspace Tabs
-- **Target File**: `/src/App.tsx`
-- **Description**: Refactored `App.tsx` to mount all main tabs concurrently in DOM with CSS visibility classes so tab switching never unmounts generation context.
-
-### Log Entry #50: LTX-Video CLIPLoader Tokenizer & attention_mask Fix
-- **Target File 1**: `/workflows/ltx_video.json`
-- **Description**: Fixed `TypeError: LTXBaseModel.forward() missing 1 required positional argument: 'attention_mask'` by setting Node #8 `CLIPLoader` type to `"ltxv"`.
-
-### Log Entry #51: LTX-Video VAE Latent Tensor Shape & EmptyLTXVLatentVideo Fix
-- **Target File 1**: `/workflows/ltx_video.json`
-- **Description**: Fixed `RuntimeError: shape '[10, 256, 1, 1, 1]' is invalid for input of size 256` by replacing 2D `EmptyLatentImage` with 3D `EmptyLTXVLatentVideo`.
-
-### Log Entry #52: MP4 Video Combine Output & Multi-Format Video/WebP Live Preview Support
-- **Target File 1**: `/workflows/ltx_video.json`
-- **Description**: Replaced Node #7 `SaveAnimatedWEBP` with `VHS_VideoCombine` (format `"video/h264-mp4"`) so local video jobs render standard H.264 MP4 videos directly.
-
-### Log Entry #53: ComfyUI Interrupt & Instant Job Stop Controls
-- **Target File 1**: `/server.ts`
-- **Description**: Added `/api/comfy/interrupt` POST route that calls ComfyUI's `/interrupt` endpoint, clears the queue via `/queue`, and marks active jobs as `CANCELLED`.
-
-### Log Entry #54: Auto-Flush Hook Before Queueing Video Workflows
-- **Target File 1**: `/server.ts`
-- **Description**: Added server-side auto-flush hook in `POST /api/jobs` that executes `/free` to purge cached PyTorch CUDA tensors whenever a video workflow is queued.
-
-### Log Entry #55: System Restore Point `v1.5.0` (LTX-Video MP4 & Auto-Flush Sentinel)
-- **Target File 1**: `/package.json`
-- **Description**: Bumped application project version to `1.5.0`.
-
-### Log Entry #56: AI Video Frame Interpolation (RIFE) & 8GB Safe Zone Presets
-- **Target File 1**: `/src/components/VideoStudio.tsx`
-- **Description**: Added dedicated RIFE frame interpolation selector (1x Off, 2x RIFE 50fps Smooth, 4x RIFE 60fps Slomo) paired with 25-frame diffusion.
-
-### Log Entry #57: NVML VRAM History Telemetry Relocation to Create & Video Interfaces
-- **Target File 1**: `/src/components/PromptStudio.tsx`
-- **Description**: Added `VRAMHistoryGraph` telemetry component to the Create image workspace right column with live GPU VRAM usage and stage attribution.
-- **Target File 2**: `/src/components/VideoStudio.tsx`
-- **Description**: Added `VRAMHistoryGraph` telemetry component to the Video Studio preview column for real-time monitoring of LTX-Video and frame interpolation VRAM footprints.
-- **Target File 3**: `/src/App.tsx`
-- **Description**: Passed `telemetry` and `onClearCache` props to `PromptStudio` and `VideoStudio`, and removed the duplicate graph from the System tab.
-
-### Log Entry #58: Roadmap Expansion — AIDA64 Sensor Panel Studio & Quantized Local AI Engine
-- **Target File 1**: `/AGENTS.md`
-- **Description**: Updated Section 4 and added Section 5 to document Milestone 7 (AIDA64 Sensor Panel Template Studio for custom PC stats displays: 1920x480, 1920x515, 1024x600, 800x480, 480x480 HUD templates with gauge cutouts) and Milestone 8 (Core Local AI Engine: GGUF/EXL2/AWQ quantized inference, FlashAttention-2, KV Cache Q4/Q8 quantization, prompt cache shifting, strategic local model registry with Llama-3-8B/Qwen2.5-7B/Llama-3.2-3B, local BGE embedding + Chroma/Faiss vector database RAG loop, and Rapid vs Developer software stack matrix).
-- **Exact Code Snippet**:
+### Target File Path: `/README.md`
+- **Exact Code Snippet / Code Block**:
   ```markdown
-  - [ ] **Milestone 7: AIDA64 Sensor Panel Template Studio**:
-    - Add specialized template creation features to Image Studio specifically designed for custom AIDA64 hardware sensor panels & PC stats mini-displays.
-    - Dedicated sensor panel aspect ratio presets: 1920×480 (8.8" Bar), 1920×515 (12.6" Ultrawide), 1024×600 (7" Mini), 800×480 (5" Compact), and 480×480 (Round / Square AIO cooler displays).
-  - [ ] **Milestone 8: Core Local AI Engine & Quantized LLM Pipeline**:
-    - 1. Quantized Inference Engine (8GB VRAM Optimized): GGUF / EXL2 / AWQ
-    - 2. Context Window & Memory Management: FlashAttention-2, KV Cache Quantization, Context Shifting
-    - 3. Strategic Local Model Registry: Llama-3-8B-Instruct, Qwen2.5-7B-Instruct, Llama-3.2-3B
-    - 4. Local Embedding & Vector Database: bge-large-en-v1.5 + Chroma / Faiss RAG
+  ## v1.19.4 — Local AI Project Attachments & Large ZIP Ingestion (2026-09-12)
   ```
+- **Why**: Document the user-facing Qwen Coder attachment workflow, automatic safe inspection, archive capacity, and restore point.
 
-- **Target File 2**: `/src/components/MilestoneChecklist.tsx`
-- **Description**: Added Phase 7 (AIDA64 Sensor Panel Template Studio) and Phase 8 (Quantized Local AI Engine & RAG Pipeline) to the interactive Project Milestones & Save Points UI.
-- **Exact Code Snippet**:
-  ```typescript
-  { phase: 7, name: 'AIDA64 SENSOR PANEL TEMPLATE STUDIO', status: 'PLANNED', details: 'Custom 1920x480/1920x515 HUD layouts, telemetry cutouts & PC stats templates' },
-  { phase: 8, name: 'QUANTIZED LOCAL AI ENGINE & RAG PIPELINE', status: 'PLANNED', details: 'GGUF/EXL2 runtime, FlashAttention-2, KV Cache Q4, Llama-3/Qwen2.5 & BGE RAG' },
+### Target File Path: `/docs/INDEX.md`
+- **Exact Code Snippet / Code Block**:
+  ```text
+  Gina AI Factory — Local Creator UI (v1.19.4)
+  Qwen 2.5-VL Vision / Qwen 2.5 Coder, llama-server CUDA, 28-layer pin config
   ```
+- **Why**: Remove stale top-level version/model documentation.
 
-### Log Entry #60: Phase 7 — AIDA64 Sensor Panel Template Studio Integration
-- **Target File 1**: `/src/types.ts`
-- **Description**: Added interfaces for `Aida64ScreenPreset`, `Aida64DialConfig`, `Aida64DialSlot`, `Aida64GaugeSequenceConfig`, and `Aida64PanelItem`.
-- **Exact Code Snippet**:
+### Target File Path: `/docs/architecture/SYSTEM_ARCHITECTURE.md`
+- **Exact Code Snippet / Code Block**:
+  ```text
+  Juggernaut-XL / FLUX.1 Lite & Wan 2.1 execution
+  Qwen 2.5-VL / Qwen 2.5 Coder (28 GPU layers, up to 16K ctx)
+  Before starting or restarting a local Qwen engine, Gina triggers
+  ```
+- **Why**: Align the architecture manifest with the active Qwen/Wan/FLUX Lite stack instead of stale Gemma/LTX runtime claims.
+
+### Target File Path: `/docs/EDIT_REQUESTS.md`
+- **Exact Code Snippet / Code Block**:
+  ```markdown
+  ## 🟩 Open Requests (Process sequentially)
+  - [ ] None
+  ## 🟨 In Progress
+  - *None*
+  ## 🟥 Completed Requests
+  - [x] 2026-09-12 — Phase 44: Local AI Project Attachments & Large ZIP Ingestion
+  ```
+- **Why**: Restore the standardized persistent request queue format and record the Phase 44 completion without deleting unresolved work.
+
+### Target File Path: `/CHANGELOG.md`
+- **Exact Code Snippet / Code Block**:
+  ```markdown
+  ## v1.19.4 — Phase 44 Local AI Project Attachments & Large ZIP Ingestion (2026-09-12)
+  ```
+- **Why**: Record this update using the repository's mandatory per-file target/snippet/reason format so future agents can verify exactly what changed.
+
+### Phase 44 compliance audit follow-up — 2026-09-12
+
+### Target File Path: `/src/components/LocalLlmStudio.tsx`
+- **Exact Code Snippet / Code Block**:
   ```typescript
-  export interface Aida64ScreenPreset {
-    id: string;
-    label: string;
-    width: number;
-    height: number;
-    diagonal: string;
-    category: 'bar' | 'mini' | 'aio' | 'standard';
-    description: string;
-  }
-  export interface Aida64GaugeSequenceConfig {
-    frameCount: number;
-    width: number;
-    height: number;
-    style: 'segmented_arc' | 'smooth_arc' | 'radial_ticks' | 'led_ladder';
-    startAngleDeg: number;
-    endAngleDeg: number;
-    innerRadius: number;
-    outerRadius: number;
-    segmentCount: number;
-    segmentGapDeg: number;
-    primaryColor: string;
-    warningColor: string;
-    criticalColor: string;
-    warningThreshold: number;
-    criticalThreshold: number;
-    trackColor: string;
-    showTrack: boolean;
-    glowIntensity: number;
+  const archive = extension === '.zip';
+  if (archive) {
+    await uploadAndActivateProject(file);
+    return;
   }
   ```
+- **Why**: Ensure ZIP project uploads bypass the normal five-attachment turn limit and always enter the dedicated workspace import/inspection path.
 
-- **Target File 2**: `/src/data/aida64Presets.ts`
-- **Description**: Defined screen presets (`1024x600`, `1920x480`, `1920x515`, `800x480`, `480x480` AIO), color palettes, and zero-text prompt recipes.
-
-- **Target File 3**: `/src/components/aida64/Aida64ChassisGenerator.tsx`
-- **Description**: Built zero-text background chassis generator with aspect ratio bounds guide, round AIO cooler overlay mask, and prompt bridge.
-
-- **Target File 4**: `/src/components/aida64/Aida64DialDesigner.tsx`
-- **Description**: Created modular custom 200px/300px/400px dial & pod builder with hero socket, banner, stacked pill slots (MHz, Fan 1 RPM, Fan 2 RPM), curved bottom tray, and transparent PNG exporter.
-
-- **Target File 5**: `/src/components/aida64/Aida64StateGaugeGenerator.tsx`
-- **Description**: Implemented 100-state real-time utilization gauge sequence generator with live sweep scrubber and 1-click `0.png` to `100.png` JSZip exporter.
-
-- **Target File 6**: `/src/components/aida64/Aida64LayoutMapper.tsx`
-- **Description**: Created interactive canvas assembler with live telemetry preview and AIDA64 pixel coordinate `(X, Y, W, H)` cheat sheet exporter.
-
-- **Target File 7**: `/src/components/Aida64Studio.tsx` & `/src/App.tsx`
-- **Description**: Integrated top-level `AIDA64` workspace navigation tab and connected prompt transfer pipeline to `PromptStudio`.
-
-### Log Entry #61: Zero-Dependency Pure TypeScript ZIP Generator Fix for Local Environment
-- **Target File 1**: `/src/utils/zipWriter.ts`
-- **Description**: Implemented a standalone, zero-dependency `SimpleZip` binary archive writer in pure TypeScript supporting standard ZIP local headers, data descriptors, CRC-32 checksum calculation, and central directory records. Completely removes any external npm dependency (`jszip`) to eliminate Vite import resolution errors on local machines without requiring manual `npm install`.
-- **Exact Code Snippet**:
-  ```typescript
-  export class SimpleZip {
-    private files: ZipFileEntry[] = [];
-    addFile(name: string, data: Uint8Array | string): void {
-      this.files.push({ name, data });
-    }
-    generateBlob(): Blob {
-      // Writes Local File Headers, CRC32, Data & Central Directory
-      return new Blob(parts, { type: 'application/zip' });
-    }
-  }
+### Target File Path: `/AGENTS.md`
+- **Exact Code Snippet / Code Block**:
+  ```text
+  Current version: v1.19.4
+  Active lifecycle: PHASE 44 — LOCAL AI PROJECT ATTACHMENTS & LARGE ZIP INGESTION
+  Active save point: RESTORE_V1.19.4_PHASE44_LOCAL_AI_PROJECT_ATTACHMENTS
+  Local Dashboard URL: http://127.0.0.1:3200/ on Windows; cloud containers use port 3000
   ```
+- **Why**: Complete the mandatory project-memory/version/network consistency audit after the Phase 44 implementation.
 
-- **Target File 2**: `/src/components/aida64/Aida64StateGaugeGenerator.tsx`
-- **Description**: Switched 100-state gauge frame sequence export from `jszip` to `SimpleZip`.
-- **Exact Code Snippet**:
-  ```typescript
-  import { SimpleZip } from '../../utils/zipWriter';
-  ...
-  const zip = new SimpleZip();
-  zip.addFile(`${folderPrefix}${i}.png`, bytes);
-  ```
+### Phase 44 UI consistency follow-up — 2026-09-12
 
-- **Target File 3**: `/package.json`
-- **Description**: Removed external `jszip` dependency.
-
-### Log Entry #62: Keep Image Iteration Workflow & Automated Seed Randomization Engine
-- **Target File 1**: `/src/components/PromptStudio.tsx`
-- **Description**: Added automatic seed randomization on every "Generate Locally" click so prompts produce distinct variations each time without requiring manual prompt editing. Added "Keep This Image & Work Off It" button to lock the active seed for iterative refinement, plus an unlock toggle to resume exploring new concepts. Added automated prompt sanitization to strip negative trigger phrases and replace them with positive hollow socket terminology.
-
-### Log Entry #63: AIDA64 Interactive Canvas Assembler with Draggable & Scalable Controls
-- **Target File 1**: `/src/components/aida64/Aida64LayoutMapper.tsx`
-- **Description**: Implemented a fully interactive visual assembler allowing users to drag elements anywhere on the canvas, resize them using corner handles or a proportional scaler slider, and configure exact pixel dimensions (X, Y, Width, Height) in real-time. Added keyboard nudging (Arrow keys & Shift+Arrow), grid snapping, duplicate/delete/lock controls, layer ordering, and JSON import/export.
-- **Exact Code Snippet**:
-  ```typescript
-  // Interactive pointer drag and resize handling with scaling ratio and snapping
-  const handlePointerDownElement = (e: React.PointerEvent, item: Aida64PanelItem) => {
-    e.stopPropagation();
-    setSelectedItemId(item.id);
-    if (item.locked) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const mouseCanvasX = (e.clientX - rect.left) / zoomScale;
-    const mouseCanvasY = (e.clientY - rect.top) / zoomScale;
-    setIsDragging(true);
-    setDragOffset({ x: mouseCanvasX - item.x, y: mouseCanvasY - item.y });
-  };
-  ```
-
-- **Target File 2**: `/src/types.ts`
-- **Description**: Extended `Aida64PanelItem` with `scale`, `locked`, `fontSize`, `textAlign`, `bgColor`, `borderColor`, `opacity`, and `zIndex` properties.
-
-### Log Entry #64: Cloud & AI Studio Execution Compatibility Verification
-- **Target File 1**: `/metadata.json`
-- **Description**: Verified environment configuration and metadata descriptors for AI Studio cloud container migration. Added `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API` capability identifier while maintaining full local execution compatibility.
-- **Exact Code Snippet**:
-  ```json
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API",
-    "LOCAL_ONLY_COMFYUI_EXECUTION"
-  ]
-  ```
-
-### Log Entry #65: AIDA64 Studio Pro — 17-Style Gauge Factory, 7-Value Telemetry Pods & Assembler Pro
-- **Target File 1**: `/src/types.ts`
-- **Description**: Extended `Aida64GaugeStyle` with 17 circular, horizontal, and vertical styles (`segmented_arc`, `smooth_arc`, `radial_ticks`, `led_ladder`, `dual_ring`, `progress_ring`, `digital_arc`, `needle_gauge`, `half_arc`, `corner_gauge`, `radar_tactical`, `led_bar_h`, `segment_bar_h`, `thermal_bar_h`, `industrial_bar_h`, `segment_ladder_v`, `thermal_bar_v`). Added `Aida64TelemetryPodConfig`, `Aida64TelemetrySlot`, and canvas positioning properties.
-- **Exact Code Snippet**:
-  ```typescript
-  export type Aida64GaugeStyle =
-    | 'segmented_arc'
-    | 'smooth_arc'
-    | 'radial_ticks'
-    | 'led_ladder'
-    | 'dual_ring'
-    | 'progress_ring'
-    | 'digital_arc'
-    | 'needle_gauge'
-    | 'half_arc'
-    | 'corner_gauge'
-    | 'radar_tactical'
-    | 'led_bar_h'
-    | 'segment_bar_h'
-    | 'thermal_bar_h'
-    | 'industrial_bar_h'
-    | 'segment_ladder_v'
-    | 'thermal_bar_v';
-  ```
-
-- **Target File 2**: `/src/components/aida64/Aida64StateGaugeGenerator.tsx`
-- **Description**: Implemented expanded Utilisation Gauge Factory supporting all 17 gauge styles, universal scaling presets (25% to 200%), exact pixel dimension controls, live interactive 0-100% scrubber with auto-sweep, direct 1-click "Add to Canvas Assembler" injection, single PNG snapshot export, and 101-frame state ZIP sequence export (`0.png` to `100.png`) using `SimpleZip`.
-- **Exact Code Snippet**:
-  ```typescript
-  const handleAddToAssembler = () => {
-    const item: Aida64PanelItem = {
-      id: `gauge_${Date.now()}`,
-      name: `${config.metricLabel || 'Utilisation'} (${meta?.name || config.style})`,
-      type: config.style.includes('_bar') ? 'linear_bar' : 'dial',
-      x: 300,
-      y: 150,
-      width: config.width,
-      height: config.height,
-      sensorType: config.metricLabel || 'CPU %',
-      testValue: `${currentValue}`,
-      unit: config.metricUnit || '%',
-      color: config.primaryColor,
-      scale: config.scale || 1.0,
-      gaugePercent: currentValue,
-      gaugeStyle: config.style,
-      gaugeConfig: { ...config }
-    };
-    if (onAddToAssembler) onAddToAssembler(item);
-  };
-  ```
-
-- **Target File 3**: `/src/components/aida64/Aida64TelemetryPodDesigner.tsx`
-- **Description**: Created dedicated 7-Value Telemetry Pod Designer with pre-configured archetypes for CPU, GPU, Memory, Storage & Network, and Custom builders. Configures 7 independent sensor slots with icons, units, test values, and mini progress bars alongside hero gauges.
-- **Exact Code Snippet**:
-  ```typescript
-  export const Aida64TelemetryPodDesigner: React.FC<Aida64TelemetryPodDesignerProps> = ({
-    onAddToAssembler
-  }) => {
-    ...
-  };
-  ```
-
-- **Target File 4**: `/src/components/aida64/Aida64LayoutMapper.tsx`
-- **Description**: Upgraded Interactive Canvas Assembler to Assembler Pro with 8-point resize handles (`nw`, `n`, `ne`, `e`, `se`, `s`, `sw`, `w`), exact geometry numeric inputs (X, Y, W, H), proportional scaler slider, lock aspect ratio toggle, snap-to-grid (1px to 20px), keyboard controls (Arrows for nudge, Shift+Arrow for 10px, Delete, Ctrl+D duplicate, Ctrl+Z/Ctrl+Y undo/redo history stack), multi-select with alignment/distribution tools, left drawer with templates/library/layers, and full AIDA64 sensor coordinate table and JSON layout exporter.
-- **Exact Code Snippet**:
-  ```typescript
-  // 8-Point Resize Handle Tracking
-  const handleResizeHandleMouseDown = (e: React.MouseEvent, handle: string) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setActiveResizeHandle(handle);
-    ...
-  };
-  ```
-
-- **Target File 5**: `/src/data/aida64Presets.ts`
-- **Description**: Added `GAUGE_STYLES_REGISTRY`, `PRESET_TELEMETRY_PODS`, and `AIDA64_PANEL_TEMPLATES` (Gaming Station 1024x600, Ultrawide Bar 1920x480, AIO Cooler 480x480).
-
-- **Target File 6**: `/src/components/Aida64Studio.tsx`
-- **Description**: Integrated all 5 sub-studios (Chassis Backplates, Gauge Factory, 7-Value Pods, Modular Dials, Assembler Pro) with cross-tab item injection.
-### Log Entry #68: Nested Value Boxes in Dials, Custom Geometric Box Shapes & Layout-to-AI Mask Enhancements
-- **Target File 1**: `/src/types.ts`
-- **Description**: Added new `Aida64ShapeType` entries (`dial_with_boxes`, `box_rectangle`, `box_chamfer`, `box_hexagon`, `box_pill`, `box_bracket`, `box_cut_corner`) and added `boxShape` and `renderMode` properties to `Aida64PanelItem`.
-- **Exact Code Snippet**:
-  ```typescript
-  export type Aida64ShapeType =
-    | 'dial_circle'
-    | 'dial_with_boxes'
-    | 'temp_wing_angled'
-    | 'voltage_wattage_banner'
-    | 'ram_stick_module'
-    | 'box_rectangle'
-    | 'box_chamfer'
-    | 'box_hexagon'
-    | 'box_pill'
-    | 'box_bracket'
-    | 'box_cut_corner'
-    | 'telemetry_slot_3'
-    | 'network_transfer_pod'
-    | 'disk_activity_pod'
-    | 'fps_counter_badge'
-    | 'battery_indicator_pod'
-    | 'avatar_stage_cutout'
-    | 'linear_sensor_bar'
-    | 'custom_hud_frame';
-  ```
-
-- **Target File 2**: `/src/data/aida64Presets.ts`
-- **Description**: Registered the new value box shapes into `AIDA64_SHAPES_CATALOG` under category `'boxes'` with factory initializers.
-
-- **Target File 3**: `/src/utils/aida64LayoutCompiler.ts`
-- **Description**: Upgraded spatial prompt compiler and HTML5 control mask canvas generator to recognize nested value boxes placed inside dials/gauges, individual geometric contour box shapes (chamfered, hexagonal, cut-corner, pill, and reticle brackets), and enforce empty cavity zero-text prompt construction.
-- **Exact Code Snippet**:
-  ```typescript
-  // Identify dials and any value boxes inside or near them
-  const dialsWithInnerBoxes = items.filter(i => (i.type === 'dial' || i.shapeType === 'dial_circle' || i.shapeType === 'dial_with_boxes'));
-  
-  dialsWithInnerBoxes.forEach((dial, idx) => {
-    const dialRadius = Math.min(dial.width, dial.height) / 2;
-    const dialCenterX = dial.x + dial.width / 2;
-    const dialCenterY = dial.y + dial.height / 2;
-
-    const innerBoxes = items.filter(other => {
-      if (other.id === dial.id) return false;
-      const otherCenterX = other.x + other.width / 2;
-      const otherCenterY = other.y + other.height / 2;
-      const dist = Math.hypot(otherCenterX - dialCenterX, otherCenterY - dialCenterY);
-      return dist < dialRadius * 0.85;
-    });
-    // ...
-  });
-  ```
-
-- **Target File 4**: `/src/components/aida64/Aida64LayoutMapper.tsx`
-- **Description**: Added dedicated "3. Value Boxes (8 Shapes)" sub-tab with 1-click generators, direct "+ Nest Value Box inside Dial" actions in the Element Inspector, custom CSS clip-paths/borders for each box shape, and enhanced canvas drag/resize controls.
-
----
-
-### Log Entry #26: Clean Blueprint Layout Mapping Mode & Zero-Text Bezel Architecture
-- **Target File 1**: `/src/data/aida64Presets.ts`
-- **Description**: Added `template_clean_blank_1024_600` (100% clean blank canvas preset) and `template_clean_dual_dials_map` (pre-mapped clean circular dial bezels with nested geometric value boxes and zero numbers). Set the blank layout as the first default preset.
-- **Exact Code Snippet**:
-  ```typescript
-  {
-    id: 'template_clean_blank_1024_600',
-    name: 'Clean Blank Canvas (1024×600)',
-    description: 'Empty clean slate. Add clean circle bezels and nested geometric value boxes to map your chassis placeholders.',
-    screenPresetId: 'screen_1024_600',
-    aspectRatio: '16:9',
-    backgroundTheme: 'dark_carbon',
-    items: []
-  }
-  ```
-
-- **Target File 2**: `/src/components/aida64/Aida64LayoutMapper.tsx`
-- **Description**: Stripped all mock numbers, telemetry data, fake percentage readouts, and needles from the layout mapper canvas. Dials now render as clean circular bezel rings with subtle concentric guide marks, and value boxes render as clean dark glass geometric sockets displaying only socket name and dimensions. Added 1-click `Clear Map` button and empty canvas blueprint state.
-- **Exact Code Snippet**:
-  ```typescript
-  {/* Render Clean Circular Dial Bezel */}
-  {isDial ? (
-    <div className="w-full h-full rounded-full border-2 border-slate-600/90 bg-slate-950/80 shadow-2xl relative flex items-center justify-center overflow-hidden backdrop-blur-xs">
-      <div className="absolute inset-1.5 rounded-full border border-slate-700/60 pointer-events-none" />
-      <div className="absolute inset-4 rounded-full border border-dashed border-slate-800/60 pointer-events-none" />
-      <div className="absolute top-2.5 px-2.5 py-0.5 rounded-full bg-slate-900/90 border border-slate-700/80 text-[8px] font-mono text-slate-300 font-bold uppercase tracking-wider shadow-sm pointer-events-none flex items-center gap-1">
-        <span>{item.name || 'CIRCLE BEZEL'}</span>
-        {item.locked && <Lock className="w-2.5 h-2.5 text-amber-400 shrink-0" />}
-      </div>
-      <div className="absolute bottom-2.5 px-1.5 py-0.5 rounded bg-slate-900/80 text-[7px] font-mono text-slate-500 pointer-events-none">
-        {item.width}×{item.height}px
-      </div>
-    </div>
-  ) : ( ... )}
-  ```
-
----
-
-### Log Entry #27: 100% Exact Layout Coordinate Chassis Engine & AI Create Fusion
-- **Target File 1**: `/src/types.ts`
-- **Description**: Added `ActiveAida64LayoutData` and integrated it into `FullProjectState` so the active layout map and coordinates persist across views.
-- **Exact Code Snippet**:
-  ```typescript
-  export interface ActiveAida64LayoutData {
-    screen: { width: number; height: number; label: string };
-    items: Aida64PanelItem[];
-    themeId: string;
-    timestamp: string;
-  }
-  ```
-
-- **Target File 2**: `/src/utils/aida64LayoutCompiler.ts`
-- **Description**: Implemented `renderLayoutChassisArtworkCanvas` and `compositeLayoutOntoImage` high-precision HTML5 Canvas renderers. Draws exact CNC titanium bezel rings, illuminated neon conduits, recessed dark optical glass sockets, and carbon-fiber backplate based on exact pixel coordinates of placed items, without any text or fake numbers.
-- **Exact Code Snippet**:
-  ```typescript
-  export function renderLayoutChassisArtworkCanvas(
-    canvas: HTMLCanvasElement,
-    screen: { width: number; height: number },
-    items: Aida64PanelItem[],
-    themeId: string = 'cyberpunk_red'
-  ): void {
-    // Renders 100% exact CNC chassis backplate at target screen resolution
-  }
-
-  export async function compositeLayoutOntoImage(
-    baseImageUrl: string,
-    screen: { width: number; height: number },
-    items: Aida64PanelItem[],
-    themeId: string = 'cyberpunk_red'
-  ): Promise<string> {
-    // Composites chassis bezel artwork seamlessly over generated AI artwork
-  }
-  ```
-
-- **Target File 3**: `/src/context/ProjectStateContext.tsx`
-- **Description**: Added `setActiveAida64Layout` to context and provider state management.
-
-- **Target File 4**: `/src/components/aida64/Aida64LayoutMapper.tsx`
-- **Description**: Added live visual chassis artwork preview canvas in the AI Generator modal, direct `⚡ Render Exact Chassis` quick action toolbar button, `⚡ Bake & Apply Exact Chassis PNG (100% Exact Coordinates)` button, and `✨ Option: Fuse Template Layout Onto Saved AI Image` picker.
-
-- **Target File 5**: `/src/components/PromptStudio.tsx`
-- **Description**: Added active AIDA64 layout indicator banner and `✨ FUSE TEMPLATE LAYOUT BEZELS ONTO THIS IMAGE` 1-click action in the generation output panel, enabling seamless overlay of template dials at exact coordinates on newly generated AI backgrounds.
-
----
-
-### Log Entry #28: Template Coordinate & Dimension Reading in Prompt Synthesis and Advanced AI Layout Fusion
-- **Target File 1**: `/src/utils/aida64LayoutCompiler.ts`
-- **Description**: Upgraded `compileLayoutToSpatialPrompt` to read every single item's exact coordinate `(X, Y)`, diameter/dimensions `(Width, Height)`, and horizontal/vertical percentage bounds (`X: 11% to 42%`, `Y: 23% to 76%`). Added strict item count locks and negative space constraints (e.g. enforcing dual-gauge layout and zero center dial hallucination). Upgraded `compositeLayoutOntoImage` with customizable options for `dimBaseImage`, `showConduits`, `showHexBolts`, and `showTickMarks`.
-- **Exact Code Snippet**:
-  ```typescript
-  coordinateBlueprintEntries.push(
-    `DIAL #${idx + 1} [${posLabel} ZONE]: Circular bezel centered at X=${dialCenterX}px, Y=${dialCenterY}px (Diameter ${dial.width}px, spanning horizontal bounds ${xPctStart}%-${xPctEnd}% and vertical bounds ${yPctStart}%-${yPctEnd}%)${innerBoxText}`
-  );
-  if (dials.length === 2 && centerDials.length === 0) {
-    compositionRules.push(
-      `STRICT COMPOSITION CONSTRAINT: Symmetrical dual-dial layout format. Exactly TWO circular gauges (one on left side, one on right side). The middle center corridor (X=${Math.round(w * 0.38)}px to X=${Math.round(w * 0.62)}px) MUST REMAIN COMPLETELY EMPTY OF DIALS. The center is a smooth dark brushed titanium conduit bridge.`
-    );
-  }
-  ```
-
-- **Target File 2**: `/src/components/aida64/Aida64LayoutMapper.tsx`
-- **Description**: Added coordinate chips breakdown inspector into the AI Layout Generator modal so users can view every item's exact pixel dimensions and placement before sending to Create Studio.
-- **Exact Code Snippet**:
+### Target File Path: `/src/App.tsx`
+- **Exact Code Snippet / Code Block**:
   ```tsx
-  <div className="pt-1 border-t border-slate-900 grid grid-cols-1 md:grid-cols-2 gap-1.5">
-    {items.slice(0, 6).map((item, idx) => (
-      <div key={item.id || idx} className="bg-slate-900/80 border border-slate-800/80 rounded px-2 py-1 text-[9.5px] font-mono flex items-center justify-between text-slate-300">
-        <span className="truncate max-w-[140px] font-bold text-sky-300">#{idx + 1} {item.name || item.shapeType || item.type}</span>
-        <span className="text-emerald-400 shrink-0">X:{item.x} Y:{item.y} ({item.width}×{item.height}px)</span>
-      </div>
-    ))}
-  </div>
+  <p className="text-xs text-slate-500 mt-1">Qwen 2.5-VL Vision / Qwen 2.5 Coder served locally by llama.cpp CUDA.</p>
   ```
+- **Why**: Remove the stale Gemma label from the Local AI workspace header so the primary UI matches the active Qwen model stack.
 
-- **Target File 3**: `/src/components/PromptStudio.tsx`
-- **Description**: Added coordinate item badges and live fusion customization drawer (Dimming range slider, Neon conduits toggle, Machined hex bolts & tick marks toggle) to the Active AIDA64 Layout banner.
-- **Exact Code Snippet**:
-  ```tsx
-  {/* Exact Coordinate Chips */}
-  <div className="pt-1.5 border-t border-slate-900 grid grid-cols-2 md:grid-cols-3 gap-1.5">
-    {activeLayout.items.map((item, idx) => (
-      <div key={item.id || idx} className="bg-slate-900/90 border border-slate-800 rounded px-2 py-1 text-[9px] font-mono flex items-center justify-between text-slate-300">
-        <span className="text-sky-300 truncate max-w-[100px] font-bold">#{idx + 1} {item.name || item.shapeType}</span>
-        <span className="text-emerald-400 shrink-0">X:{item.x} Y:{item.y}</span>
-      </div>
-    ))}
-  </div>
-  ```
-
-
----
-
-### Log Entry #29: Gemma 3 12B Local CUDA LLM Integration
-- **Target File 1**: `/server/llm/LocalLlmManager.ts`
-- **Description**: Added a persistent local llama.cpp process manager for the verified Gemma 3 12B IT Q4_K_M GGUF. It uses the user's tested CUDA configuration (28 GPU layers, 4096 context, 6 CPU threads), exposes readiness/status, captures diagnostic output, supports start/stop/restart, and proxies OpenAI-compatible chat completions without a cloud provider.
-- **Exact Code Snippet**:
+### Target File Path: `/src/components/LocalCapabilityPanel.tsx`
+- **Exact Code Snippet / Code Block**:
   ```typescript
-  const args = [
-    "--model", this.config.modelPath,
-    "--host", this.config.host,
-    "--port", String(this.config.port),
-    "--n-gpu-layers", String(this.config.gpuLayers),
-    "--ctx-size", String(this.config.contextSize),
-    "--threads", String(this.config.threads),
-    "--jinja",
-  ];
+  data.runtime?.wanReady
+  data.runtime?.qwenCoderReady
+  ['Wan Video', data.runtime?.wanReady, Video]
+  ['Qwen Coder', data.runtime?.qwenCoderReady, Brain]
   ```
+- **Why**: Make the live capability inventory report the active Wan 2.1 video and Qwen Coder runtimes instead of retired LTX/Gemma status fields.
 
-- **Target File 2**: `/server.ts`
-- **Description**: Added `/api/llm/status`, `/api/llm/start`, `/api/llm/stop`, `/api/llm/restart`, and `/api/llm/chat`. Starting/restarting the local LLM first asks ComfyUI to release cached models so the 8GB RTX 3070 Ti is not left holding stale diffusion weights. Added best-effort LLM shutdown on server termination.
-- **Exact Code Snippet**:
+### Phase 44 active-stack documentation consistency — 2026-09-12
+
+### Target File Path: `/src/AppFeaturesGuide.tsx`
+- **Exact Code Snippet / Code Block**:
   ```typescript
-  app.post("/api/llm/start", async (_req, res) => {
-    await fetch(`${COMFY_URL}/free`, { method: "POST", ... }).catch(() => null);
-    const status = await localLlm.start();
-    res.json({ success: true, status });
-  });
+  title: 'Wan 2.1 & RIFE Motion Studio'
+  badge: 'Wan 2.1 + RIFE'
   ```
+- **Why**: Align the feature guide with the Phase 43 native Wan 2.1 video migration.
 
-- **Target File 3**: `/src/components/LocalLlmStudio.tsx`
-- **Description**: Added the Local AI workspace with Gemma status, CUDA/GPU-layer/context/CPU-thread diagnostics, start/stop/restart controls, local chat, and llama-server diagnostics. The UI does not auto-start the model, preventing unexpected VRAM consumption during ComfyUI work.
-- **Exact Code Snippet**:
+### Target File Path: `/src/components/GinaAgentPanel.tsx`
+- **Exact Code Snippet / Code Block**:
   ```tsx
-  <button onClick={() => runAction('start')} disabled={loading || !status?.configured || !!status?.running}>
-    <Play className="w-3.5 h-3.5" /> Start
+  control ComfyUI and manage the active Qwen local AI engines.
+  ```
+- **Why**: Remove stale Gemma wording from the active agent UI.
+
+### Target File Path: `/src/components/gina-image/GinaImageSettings.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```tsx
+  FLUX.1 Lite high-precision text lane
+  ```
+- **Why**: Reflect the Phase 43 FLUX.1 Lite high-precision route instead of the retired Gemma Vision fallback label.
+
+### Target File Path: `/src/components/LocalRagKnowledgePanel.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```tsx
+  Zero-VRAM local RAG alongside Qwen/ComfyUI
+  Search local knowledge (e.g. 'VRAM cage', 'Qwen 28 layers', 'AIDA64 68 sensors')...
+  ```
+- **Why**: Keep the active RAG UI terminology consistent with the Qwen stack.
+
+### Target File Path: `/src/components/MusicStudio.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```tsx
+  AI Lyrics Writer (Local Qwen / Built-in songwriter)
+  AI Songwriter & Lyricist (Local Qwen)
+  ```
+- **Why**: The lyricist uses the active local LLM endpoint, so its UI must no longer identify the retired Gemma engine.
+
+### Target File Path: `/server/rag/LocalRagEngine.ts`
+- **Exact Code Snippet / Code Block**:
+  ```text
+  Gina releases ComfyUI cached models before starting/restarting the active Qwen engine.
+  Video Workflow: Wan 2.1 1.3B BF16 with H.264 MP4 export and RIFE frame interpolation.
+  ```
+- **Why**: Prevent local RAG grounding from reintroducing retired Gemma/LTX runtime descriptions.
+
+### Phase 44 root-cleanliness compliance — 2026-09-12
+
+### Target File Path: `/flux_image.json`, `/flux_image_reference.json`, `/ltx_video.json`
+- **Exact Code Snippet / Code Block**:
+  ```text
+  Deleted obsolete root-level workflow JSON files.
+  ```
+- **Why**: Enforce AGENTS.md Rule 5/8: workflow JSON belongs under `/workflows/`, and these root-level legacy files were no longer referenced by the active Phase 43/44 runtime. Removing them prevents stale LTX/FLUX workflow discovery outside the authoritative workflow directory.
+
+## Phase 50 — Autonomous Research Engine, Repair Loop & GitHub Lifecycle — 2026-09-12
+
+### Target File Path: `/server/agent/AutonomousResearchEngine.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export class AutonomousResearchEngine {
+    async research(query: string, options: { deep?: boolean; maxResults?: number } = {}): Promise<ResearchResult> { ... }
+    async verifyCompatibility(packageName: string, targetVersion?: string): Promise<{ compatible: boolean; details: string }> { ... }
+  }
+  ```
+- **Why**: Provide automated documentation and library research by combining local zero-VRAM RAG retrieval with external web search (DuckDuckGo integration when GINA_WEB_ACCESS=true) and API signature caching.
+
+### Target File Path: `/server/agent/AutonomousRepairLoop.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export class AutonomousRepairLoop {
+    async executeRepairPipeline(request: RepairRequest, onProgress?: (step: string, details?: any) => void): Promise<RepairResult> { ... }
+  }
+  ```
+- **Why**: Provide a 10-stage autonomous cycle (REQUEST → UNDERSTAND → PLAN → INSPECT → RESEARCH → EDIT → VALIDATE → REPAIR → SCAN → DIFF → COMMIT) with automated retries (up to 3 passes) driven by compiler diagnostics and DefinitionOfDoneGate checks.
+
+### Target File Path: `/server/agent/GitHubLifecycleManager.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export class GitHubLifecycleManager {
+    async getGitStatus(): Promise<GitStatusResult> { ... }
+    async stageAndCommit(message: string, files?: string[]): Promise<{ commitSha: string; filesCommitted: string[] }> { ... }
+    async createPullRequest(params: CreatePullRequestParams): Promise<PullRequestResult> { ... }
+  }
+  ```
+- **Why**: Provide Git lifecycle automation (branching, staging, committing, diffing, and PR creation via GitHub REST API) using safe token resolution.
+
+### Target File Path: `/server.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  const researchEngine = new AutonomousResearchEngine(agentWorkspaceManager.getSandboxRoot(), localRagEngine);
+  const githubLifecycleManager = new GitHubLifecycleManager(agentWorkspaceManager.getSandboxRoot());
+  const repairLoop = new AutonomousRepairLoop(agentWorkspaceManager.getSandboxRoot(), researchEngine, dodGate, githubLifecycleManager);
+  app.post("/api/agent/repair-loop", async (req, res) => { ... });
+  app.post("/api/agent/research", async (req, res) => { ... });
+  app.post("/api/agent/git/commit", async (req, res) => { ... });
+  app.post("/api/agent/git/pr", async (req, res) => { ... });
+  ```
+- **Why**: Expose the autonomous repair loop, research engine, and GitHub lifecycle manager as tool actions and REST API endpoints.
+
+### Target File Path: `/src/components/GinaAgentPanel.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```tsx
+  <button onClick={() => runAgentAction('run_repair_loop', { task: 'Autonomous codebase health repair' })} ...>
+    Run Repair Loop
   </button>
   ```
+- **Why**: Expose UI triggers for Definition of Done verification, Project Map inspection, and Autonomous Repair Loop execution.
 
-- **Target File 4**: `/src/App.tsx`
-- **Description**: Added a dedicated `LOCAL AI` navigation view backed by `LocalLlmStudio` and updated the application footer version to v1.6.9.
-- **Exact Code Snippet**:
-  ```tsx
-  { id: 'llm' as const, label: 'LOCAL AI', icon: Bot, isGenerating: false },
+### Target File Path: `/src/version.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export const APP_VERSION = '1.20.0';
+  export const ACTIVE_SAVE_POINT_ID = 'RESTORE_V1.20.0_AUTONOMOUS_RESEARCH_REPAIR_GITHUB';
+  export const ACTIVE_LIFECYCLE_PHASE = 50;
+  export const ACTIVE_LIFECYCLE_NAME = 'PHASE 50 — AUTONOMOUS RESEARCH ENGINE, REPAIR LOOP & GITHUB LIFECYCLE';
   ```
+- **Why**: Version bump and milestone save point synchronization for Phase 50.
 
-- **Target File 5**: `/.env.example`
-- **Description**: Added optional local LLM path and runtime settings so a future machine-specific install can override the defaults without changing source code.
-- **Exact Code Snippet**:
+### Target File Path: `/src/components/MilestoneChecklist.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  { phase: 50, name: 'Autonomous Research Engine, Repair Loop & GitHub Lifecycle', status: 'COMPLETED', details: 'Multi-stage autonomous repair loop, local RAG + DuckDuckGo research engine, Git branch/commit/diff/PR lifecycle automation, and Definition of Done gate integration.' }
+  { id: 'RESTORE_V1.20.0_AUTONOMOUS_RESEARCH_REPAIR_GITHUB', label: 'Autonomous Research Engine, Repair Loop & GitHub Lifecycle', description: 'Production-ready AutonomousResearchEngine, multi-stage AutonomousRepairLoop pipeline, GitHubLifecycleManager, DefinitionOfDoneGate verification, and complete REST/SSE broker routes', timestamp: '2026-09-12 07:30', status: 'ACTIVE' }
+  ```
+- **Why**: Update active lifecycle phases and save points to reflect Phase 50 completion.
+
+### Target File Path: `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`, `/docs/AI_UPDATE_CHECKLIST.md`
+- **Exact Code Snippet / Code Block**:
   ```text
-  GINA_LLM_ROOT="C:\\Gina_AI\\models\\llm"
-  GINA_LLAMA_ROOT="C:\\Gina_AI\\tools\\llama.cpp"
-  GINA_LLM_MODEL="C:\\Gina_AI\\models\\llm\\gemma-3-12b-it-Q4_K_M.gguf"
-  GINA_LLM_EXE="C:\\Gina_AI\\tools\\llama.cpp\\llama-server.exe"
-  GINA_LLM_HOST="127.0.0.1"
-  GINA_LLM_PORT="8080"
-  GINA_LLM_GPU_LAYERS="28"
-  GINA_LLM_CONTEXT="4096"
-  GINA_LLM_THREADS="6"
+  Synchronized version to 1.20.0, release references to Phase 50, and updated platform truth.
   ```
+- **Why**: Satisfy the Universal Version & Metadata Synchronization Guard and Definition of Done Gate.
 
-- **Target File 6**: `/src/components/MilestoneChecklist.tsx`
-- **Description**: Added `RESTORE_06_V1.6.9_LOCAL_GEMMA` as the active save point for the verified local Gemma engine.
-- **Exact Code Snippet**:
+
+## v1.20.4 — GIF Studio Frame-Sequence Export Fix (2026-09-13)
+
+Fixed the open GIF Studio bug from `docs/EDIT_REQUESTS.md`: batch-uploaded frame sets were never packed into a single animation, and the "Export GIF" action had no completed job to act on.
+
+### Target File Path: `/server.ts`
+- **Exact Code Snippet / Code Block**:
   ```typescript
-  { id: 'RESTORE_06_V1.6.9_LOCAL_GEMMA', label: 'Gemma 3 12B Local CUDA Engine', status: 'ACTIVE' }
-  ```
-
-- **Target File 7**: `/src/components/MilestoneChecklist.tsx`
-- **Description**: Marked Phase 8 as `IN_PROGRESS` to reflect that the quantized local AI engine is now implemented while the future RAG layer remains outstanding.
-- **Exact Code Snippet**:
-  ```typescript
-  { phase: 8, name: 'QUANTIZED LOCAL AI ENGINE & RAG PIPELINE', status: 'IN_PROGRESS', details: 'Gemma 3 12B Q4_K_M via llama.cpp CUDA integrated; RAG remains next' },
-  ```
-
-- **Target File 7**: `/AGENTS.md`
-- **Description**: Updated persistent project memory with the verified Gemma 3 12B GGUF path, llama.cpp CUDA path, benchmarked 28-layer configuration, and the shared 8GB VRAM operating rule.
-
-- **Target File 8**: `/README.md`
-- **Description**: Updated the project direction and local run documentation to include the new optional local Gemma service and its Windows paths.
-
-- **Target File 9**: `/metadata.json`
-- **Description**: Added the local quantized LLM capability and bumped the project metadata version to 1.6.9.
-
-- **Target File 10**: `/Start_Local_LLM.bat`
-- **Description**: Added a manual recovery launcher using the same verified 28-layer Gemma CUDA configuration as the Gina UI.
-- **Exact Code Snippet**:
-  ```bat
-  "%LLAMA_ROOT%\\llama-server.exe" --model "%MODEL%" --host 127.0.0.1 --port 8080 --n-gpu-layers 28 --ctx-size 4096 --threads 6 --jinja
-  ```
-
-- **Target File 11**: `/LOCAL_LLM_SETUP.md`
-- **Description**: Added the exact local paths, verified benchmark configuration, VRAM-sharing rule, UI workflow, and manual recovery instructions for the new local LLM layer.
-
-## v1.7.1 — Full Local Gina Agent Access
-
-### `/server.ts`
-- Added the full local agent capability broker and audit log.
-- Added `/api/agent/access` and `/api/agent/audit` endpoints.
-- Added local tools for capability inspection, directory listing, file read/write, Windows command execution, ComfyUI cache control, llama-server control, and AIDA64 specification generation.
-- Reworked `/api/agent/run` into a bounded multi-step tool loop so Gemma can inspect results and continue with the next local operation.
-
-### `/server/capabilities/CapabilityManager.ts`
-- Corrected Gemma discovery to use `C:\\Gina_AI\\models\\llm\\gemma-3-12b-it-Q4_K_M.gguf`.
-- Changed the Gemma capability status from a future placeholder to the installed local CUDA LLM capability.
-
-### `/src/components/GinaAgentPanel.tsx`
-- Replaced confirmation-only orchestration UI with a full local-access control panel.
-- Added enable/disable control, capability-oriented prompts, tool-step output, and local audit log display.
-
-### `/src/App.tsx`
-- Added `GinaAgentPanel` to the Local AI workspace so Gemma and the autonomous tool broker are available together.
-
-Reason: Gina now has the requested ability to understand her local environment and operate the Gina project/toolchain directly. File APIs are scoped to `C:\\Gina_AI`; command execution is local and audited.
-
-
-## 2026-08-18 — v1.7.2 — Autonomous Agent Context, Memory & Capability Awareness
-
-- **Target File Path:** `/server/agent/AgentContextManager.ts`
-  **Exact Code Snippet:** `buildSnapshot()` and `compact()`
-  **Summary:** Added automatic loading of AGENTS.md, milestones, changelog, README, package/metadata, local AI setup, agent setup and workflow inventory.
-- **Target File Path:** `/server/agent/AgentMemoryManager.ts`
-  **Exact Code Snippet:** `remember()`, `recall()` and `compactForPrompt()`
-  **Summary:** Added persistent local agent memory under `.gina/agent-memory.json`.
-- **Target File Path:** `/server.ts`
-  **Exact Code Snippet:** `inspect_project_context`, `read_project_bundle`, `search_files`, `git_status`, `remember`, `recall_memory`, `refresh_context`, `/api/agent/context`, `/api/agent/memory`, `/api/agent/self-test`, and startup context injection.
-  **Summary:** Gina now starts autonomous tasks with project context, memory and live capabilities; it can search source files, inspect Git state, self-test, refresh context and remember results. Command execution now returns real non-zero exit codes.
-- **Target File Path:** `/src/components/GinaAgentPanel.tsx`
-  **Exact Code Snippet:** `Load Context` and `Self Test` controls plus awareness cards.
-  **Summary:** Added visible controls for project awareness and agent health verification.
-- **Target File Path:** `/src/components/MilestoneChecklist.tsx`
-  **Exact Code Snippet:** Phase 9 `AUTONOMOUS LOCAL AGENT & PROJECT AWARENESS` with status `COMPLETED`.
-  **Summary:** Recorded completion of the autonomous-agent foundation.
-- **Target File Path:** `/AGENTS.md`
-  **Exact Code Snippet:** version 1.7.2 and Agent startup context/tool inventory.
-  **Summary:** Updated authoritative agent instructions for persistent context and capabilities.
-- **Target File Path:** `/LOCAL_AGENT_SETUP.md`
-  **Exact Code Snippet:** v1.7.2 autonomous-agent operating model and tool list.
-  **Summary:** Documented the new self-aware local-agent workflow.
-- **Target File Path:** `/metadata.json` and `/package.json`
-  **Exact Code Snippet:** version `1.7.2` and autonomous-agent capability flags.
-  **Summary:** Bumped project metadata for the new agent-awareness milestone.
-- **Target File Path:** `/.gitignore`
-  **Exact Code Snippet:** `.gina/`
-  **Summary:** Keeps local agent memory/runtime state out of source control.
-
-
-## 2026-08-18 — v1.7.2 follow-up — Agent Tooling Hardening
-
-- **Target File Path:** `/server.ts`
-  **Exact Code Snippet:** `knowledge_search`, `git_diff`, `git_log`, and automatic `.gina/backups` creation in `write_file`.
-  **Summary:** Expanded Gina's local awareness and development tooling and added automatic backups before agent overwrites project files.
-- **Target File Path:** `/AGENTS.md` and `/LOCAL_AGENT_SETUP.md`
-  **Exact Code Snippet:** Expanded tool inventory and backup-first operating rule.
-  **Summary:** Kept the authoritative agent documentation aligned with the final v1.7.2 toolset.
-
-## 2026-08-29 — v1.17.0 AIDA64 Live Telemetry & Assembler Refinement
-
-- **Target File Path:** `/server/aida64/Aida64TelemetryBridge.ts`
-  **Exact Code Snippet:** `Aida64TelemetryBridge`, including `start()`, `stop()`, `setConfig()`, `getSnapshot()` and `getConfig()`.
-  **Summary:** Added the local Windows telemetry bridge that launches the AIDA64 shared-memory reader and exposes a live sensor snapshot to Gina.
-- **Target File Path:** `/scripts/aida64_shared_memory.ps1`
-  **Exact Code Snippet:** `OpenFileMapping('AIDA64_SensorValues')`, `MapViewOfFile()` and the XML-tag sensor parser.
-  **Summary:** Added the local PowerShell reader for AIDA64's documented `AIDA64_SensorValues` shared-memory interface.
-- **Target File Path:** `/server.ts`
-  **Exact Code Snippet:** `aida64Telemetry` initialization, `/api/aida64/telemetry`, `/api/aida64/telemetry/config` and server lifecycle startup/shutdown calls.
-  **Summary:** Connected the telemetry bridge to Gina's local Express server.
-- **Target File Path:** `/src/hooks/useAida64Telemetry.ts`
-  **Exact Code Snippet:** `useAida64Telemetry()`, `Aida64SensorBinding`, `defaultAida64Binding()` and `normaliseAida64Value()`.
-  **Summary:** Added the frontend telemetry model, polling hook, binding structure and 0–100 normalisation helper.
-- **Target File Path:** `/src/components/aida64/Aida64TelemetryPanel.tsx`
-  **Exact Code Snippet:** Live connection card, sensor browser, binding editor and calibration controls.
-  **Summary:** Added the dedicated Live Telemetry workspace for discovering sensors and creating reusable bindings.
-- **Target File Path:** `/src/types.ts`
-  **Exact Code Snippet:** `Aida64SensorBinding` and `sensorBinding?: Aida64SensorBinding` on `Aida64PanelItem`.
-  **Summary:** Added persistent sensor-binding data to AIDA64 panel elements.
-- **Target File Path:** `/src/components/Aida64Studio.tsx`
-  **Exact Code Snippet:** `Live Telemetry` tab, `useAida64Telemetry()` and telemetry handoff to `Aida64CanvasAssembler`.
-  **Summary:** Added the telemetry workspace to the AIDA64 Studio and connected live readings to the assembler.
-- **Target File Path:** `/src/components/aida64/Aida64CanvasAssembler.tsx`
-  **Exact Code Snippet:** live sensor display, stale handling, smoothing, peak hold/decay, threshold colours, sensor binding selector, distribution, Match Size and Ctrl/Cmd copy/paste.
-  **Summary:** Refined the assembler into a more complete panel-design tool and made selected elements capable of consuming live AIDA64 telemetry.
-- **Target File Path:** `/AIDA64_TELEMETRY_IMPLEMENTATION_RECORD.md`
-  **Exact Code Snippet:** complete implementation record and restore point.
-  **Summary:** Created the persistent project record requested by the user so the current AIDA64 direction and implementation state can be recovered in a future session.
-- **Target File Path:** `/src/components/aida64/Aida64StateGaugeGenerator.tsx`
-  **Exact Code Snippet:** `useAida64Telemetry()`, `selectedLiveSensorId`, the `LIVE AIDA64 SENSOR` selector and `sensorBinding` on generated `Aida64PanelItem` objects.
-  **Summary:** Connected the dedicated Gauge Factory to the live sensor browser so generated gauges can enter the Assembler already bound to an AIDA64 sensor.
-- **Target File Path:** `/src/components/aida64/Aida64TelemetryPodDesigner.tsx`
-  **Exact Code Snippet:** live sensor selectors for `heroSensor` and each `slot.sensorKey`.
-  **Summary:** Added live AIDA64 sensor selection to the seven-value pod designer, including live sample values and units.
-
-## 2026-08-29 — v1.17.1 — AIDA64 Telemetry Bridge Repair
-
-- **Target File Path:** `/scripts/aida64_shared_memory.ps1`
-  **Exact Code Snippet:** `PtrToStringAnsi($ptr)` with Unicode fallback and tolerant `<kind><id><label><value>` fragment parsing.
-  **Summary:** Corrected shared-memory extraction to follow AIDA64's documented null-terminated PChar payload and made the parser robust to its XML-fragment wrapper tags.
-- **Target File Path:** `/src/hooks/useAida64Telemetry.ts`
-  **Exact Code Snippet:** HTTP/content-type validation before `response.json()`.
-  **Summary:** Replaced the misleading `Unexpected token '<'` failure with an actionable local-port/API diagnostic when an HTML page is returned.
-- **Target File Path:** `/vite.config.ts`
-  **Exact Code Snippet:** `server.proxy['/api'] -> http://127.0.0.1:3200`.
-  **Summary:** Allows a separately launched Vite development server to reach Gina's local Express API instead of returning the SPA HTML shell.
-- **Target File Path:** `/src/App.tsx`
-  **Exact Code Snippet:** active save point `v1.17.1` and footer `Gina AI Factory v1.17.1`.
-  **Summary:** Removed the visible save/footer version mismatch shown during live testing.
-- **Target File Path:** `/server.ts`
-  **Exact Code Snippet:** `/api/version` and `/api/health` version values `v1.17.1`.
-  **Summary:** Aligned server-reported version with the current checkpoint.
-- **Target File Path:** `/package.json`, `/metadata.json`, `/AGENTS.md`
-  **Exact Code Snippet:** project version `1.17.1`.
-  **Summary:** Established v1.17.1 as the current project checkpoint while leaving historical engine documents unchanged.
-- **Target File Path:** `/AIDA64_TELEMETRY_IMPLEMENTATION_RECORD.md`
-  **Exact Code Snippet:** Section 11, `v1.17.1 telemetry bridge repair checkpoint`.
-  **Summary:** Recorded the root cause, repair and next real-machine validation step so the project state is recoverable.
-
-## 2026-08-29 — v1.17.1 — AI Studio Cloud Import & Runtime Normalization
-
-- **Target File Path:** `/package.json`
-  **Exact Code Snippet:** `"@types/react": "^19.0.0"`, `"@types/react-dom": "^19.0.0"`.
-  **Summary:** Installed missing React and React-DOM TypeScript definitions to fix class component type definitions.
-- **Target File Path:** `/src/types.ts`
-  **Exact Code Snippet:** `negativePrompt?: string;` added to `PromptStudioConfig`.
-  **Summary:** Updated `PromptStudioConfig` interface with optional `negativePrompt` property used across PromptStudio component.
-- **Target File Path:** `/src/data/aida64GpuRenderer.ts`
-  **Exact Code Snippet:** `source as TexImageSource` in `gl.texImage2D`.
-  **Summary:** Resolved WebGL2 rendering type incompatibility between CanvasImageSource and TexImageSource.
-- **Target File Path:** `/src/components/aida64/Aida64TelemetryPanel.tsx`
-  **Exact Code Snippet:** Type-safe fallback in `onChange` handlers for numeric `binding` configuration fields.
-  **Summary:** Ensured numeric attributes on telemetry binding states conform strictly to TypeScript contract.
-- **Target File Path:** `/server.ts`
-  **Exact Code Snippet:** `PORT = 3000; HOST = process.env.HOST || "0.0.0.0"; candidatePorts = [3000, 3200, 3001, 3002];`
-  **Summary:** Bound Express server to default port 3000 and host 0.0.0.0 for container reverse proxy ingress.
-- **Target File Path:** `/vite.config.ts`
-  **Exact Code Snippet:** `server: { port: 3000, host: '0.0.0.0', allowedHosts: true, proxy: { '/api': { target: 'http://127.0.0.1:3000', changeOrigin: false } } }`
-  **Summary:** Configured Vite dev server and proxy to target port 3000 on host 0.0.0.0.
-- **Target File Path:** `/index.html`
-  **Exact Code Snippet:** `<title>Gina AI Factory — Local Creator UI</title>` and synchronized `<meta name="description">`.
-  **Summary:** Synchronized HTML entry point title and metadata description with metadata.json.
-
-## 2026-08-29 — Environment-Aware Multi-Platform Server Configuration
-
-- **Target File Path:** `/server.ts`
-  **Exact Code Snippet:** `const isWin = process.platform === "win32"; const PORT = process.env.PORT ? Number(process.env.PORT) : (isWin ? 3200 : 3000); const HOST = process.env.HOST || (isWin ? "127.0.0.1" : "0.0.0.0");`
-  **Summary:** Implemented platform awareness so the local Windows environment strictly binds to port 3200 (127.0.0.1) while container environments bind to port 3000 (0.0.0.0).
-- **Target File Path:** `/vite.config.ts`
-  **Exact Code Snippet:** `const isWin = process.platform === 'win32'; const targetPort = isWin ? 3200 : 3000; server: { port: targetPort, host: isWin ? '127.0.0.1' : '0.0.0.0', proxy: { '/api': { target: `http://127.0.0.1:${targetPort}` } } }`
-  **Summary:** Updated Vite dev configuration to automatically proxy to port 3200 on Windows and 3000 in cloud containers.
-- **Target File Path:** `/AGENTS.md`
-  **Exact Code Snippet:** Updated Rule 4 documentation.
-  **Summary:** Documented dual Windows (port 3200) and container (port 3000) operational preservation rule.
-
-
-
-
-
-# v1.17.19 — Local Creator Upload Pipeline
-
-### 1. Target File Path: `/server/comfy/WorkflowParser.ts`
-```typescript
-inputImage: [{ key: 'input_image', inputs: ['image', 'image_path', 'filename'], classes: ['LoadImage'] }]
-if (cls.includes('loadimage')) caps.push('image-input');
-```
-**Summary**: Workflow parsing now discovers LoadImage inputs so Gina can bind dashboard-uploaded reference images without hardcoding a specific ComfyUI graph.
-
-### 2. Target File Path: `/server.ts`
-```typescript
-app.post('/api/comfy/upload-image', ...)
-app.get('/api/comfy/input/:filename', ...)
-```
-**Summary**: Added a strictly local image upload/proxy layer. Supported images are written directly to the ComfyUI input directory with a 12 MB safety limit.
-
-### 3. Target File Path: `/flux_image_reference.json`
-```json
-"9": {"class_type":"LoadImage", ...},
-"10": {"class_type":"VAEEncode", ...}
-```
-**Summary**: Added a built-in FLUX reference-image workflow so image-to-image/reference generation can be operated entirely from Gina.
-
-### 4. Target File Path: `/src/components/PromptStudio.tsx`
-```typescript
-const [referenceImage, setReferenceImage] = useState(...)
-const handleReferenceImage = async (file?: File) => { ... }
-```
-**Summary**: Added dashboard-only reference image upload, preview, removal, workflow binding and generation gating.
-
-### 5. Target File Path: `/src/components/LocalLlmStudio.tsx`
-```typescript
-const [attachedFiles, setAttachedFiles] = useState(...)
-const handleAttachFile = async (file?: File) => { ... }
-```
-**Summary**: Added supported local text/code/config file attachments to Local AI chat, with 512 KB/file and three-file-per-turn limits.
-
-### 6. Target File Path: `/src/version.ts`
-```typescript
-export const APP_VERSION = '1.17.19';
-export const ACTIVE_SAVE_POINT_ID = 'RESTORE_10_V1.17.19_LOCAL_CREATOR_UPLOADS';
-export const ACTIVE_LIFECYCLE_PHASE = 18;
-```
-**Summary**: Created the v1.17.19 upload-pipeline checkpoint.
-
-### 7. Target File Path: `/src/components/MilestoneChecklist.tsx`
-```typescript
-{ phase: 18, name: 'LOCAL CREATOR UPLOAD PIPELINE', status: 'COMPLETED', ... }
-```
-**Summary**: Recorded completion of the dashboard upload layer as lifecycle Phase 18.
-
-
-## v1.17.21 — Syntax Hotfix
-- Fixed missing comma in `src/components/AppFeaturesGuide.tsx` that caused the Vite/Babel parse error at line 52.
-- Preserved v1.17.20 Local AI attachment limits: text/code/config 2 MB, images 12 MB, ZIP 25 MB, max 5 attachments per turn, max 100 ZIP entries, max 4 MB extracted text context.
-- Source of truth: v1.17.20 project ZIP; GitHub not used.
-
-
-## v1.17.32
-- Removed the same-process Vite `/api` self-proxy that caused EADDRINUSE and repeated HTTP 500 responses.
-- Launcher now stops only stale Gina Node processes from this install before starting the dashboard.
-- Launcher verifies the running Gina API version.
-- Dashboard health now reports the actual application version.
-
-### v1.17.35 — FLUX Text-to-Image Pipeline Validation
-- Added server-side validation for the bundled `flux_image` text-to-image graph before queueing.
-- Records the actual prompt node/input, steps, sampler, scheduler and dimensions used for each FLUX text-to-image job.
-- Blocks generation if the resolved positive prompt is empty or the graph is missing required text-to-image stages.
-- Added `/api/jobs/:id/debug` for concise generation diagnostics.
-- Create Studio now logs the exact FLUX prompt binding and effective generation mode before queueing.
-- Corrected launcher version verification to v1.17.35.
-
-## v1.17.40 — AI Tool image-generation routing
-- Added conversational AI Tool routing for explicit image creation and attached-image modification requests.
-- Routes text-to-image requests to `flux_image` and reference-image requests to `flux_image_reference`.
-- AI Tool chat now displays completed local generated images inline.
-- Added server-side image-generation job/result endpoints and generation audit metadata.
-- Local Gemma remains responsible for chat/vision understanding; FLUX/ComfyUI performs image synthesis.
-
-
-## 2026-08-30 — v1.17.42 — Milestones 14-17 Automation Batch
-
-- **Target File Path:** `/server.ts`
-  **Exact Code Snippet:** `POST /api/workflows/import`, PNG tEXt/iTXt metadata extraction, ComfyUI `/object_info` missing-node inspection.
-  **Summary:** Implemented one-click ComfyUI API JSON and metadata PNG ingestion, local workflow registration, capability parsing and missing-node diagnostics.
-- **Target File Path:** `/src/components/MilestoneWorkbench.tsx`
-  **Exact Code Snippet:** Workflow ingestion, HUD launcher, benchmark sweep, knowledge watcher controls.
-  **Summary:** Added a System > Automation workbench for lifecycle phases 14-17.
-- **Target File Path:** `/src/components/Aida64Hud.tsx`
-  **Exact Code Snippet:** DPI-aware telemetry HUD window using `useAida64Telemetry(500)`.
-  **Summary:** Added a dedicated browser HUD mode for secondary telemetry displays with high-density live metrics.
-- **Target File Path:** `/server.ts`
-  **Exact Code Snippet:** `POST /api/llm/benchmark` with controlled GPU-layer sweep and restoration of the original layer setting.
-  **Summary:** Added a managed multi-layer GGUF benchmark/tuner path that restarts the managed llama-server for each candidate and restores the prior configuration.
-- **Target File Path:** `/server.ts`
-  **Exact Code Snippet:** `fs.watch(GINA_ROOT, { recursive: true })` with excluded runtime/model directories and debounced `localRag.reindex`.
-  **Summary:** Added an opt-in filesystem knowledge watcher that automatically refreshes the zero-VRAM RAG index for documentation, source, scripts and workflow changes.
-- **Target File Path:** `/src/components/SystemHub.tsx`
-  **Exact Code Snippet:** `AUTOMATION` System tab.
-  **Summary:** Organized milestone tooling into a dedicated System automation surface rather than adding more stacked components.
-- **Target File Path:** `/src/components/MilestoneChecklist.tsx`
-  **Exact Code Snippet:** Phases 14-17 set to `COMPLETED`; `RESTORE_13_V1.17.42_MILESTONE_BATCH` active.
-  **Summary:** Recorded completion and created the v1.17.42 restore point.
-- **Target File Path:** `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`
-  **Exact Code Snippet:** Version `1.17.42`.
-  **Summary:** Synchronized release metadata across the project.
-
-- **Target File Path:** `/docs/architecture/MILESTONES_14_17.md`, `/docs/INDEX.md`
-  **Exact Code Snippet:** Milestones 14-17 architecture and operational notes.
-  **Summary:** Documented the new automation surfaces, safety limits and browser-native HUD behavior.
-
-## 2026-08-30 — v1.17.44 — Orchestration Core Milestones 18-27
-- Added a unified job monitor surface with progress and STOP & FLUSH controls.
-- Added local AI intent routing preview for chat, vision, image generation and reference modification.
-- Added workflow intelligence endpoint for bindings, capabilities, nodes and missing-node checks.
-- Added persistent local asset records under `.gina/assets.json`.
-- Added measured System Health and Full Diagnostics endpoints.
-- Added a shared cancel endpoint that interrupts ComfyUI, clears its queue and requests model/VRAM release.
-- Added the next milestone workbench to System > Automation.
-
-## v1.17.50 — AIDA64 12-Gauge Sensor Matrix Template
-- Added a new 1024×600 AIDA64 template matching the live SensorPanel composition: exactly 12 circular gauge sockets arranged as 2 hero gauges, 3 upper-centre gauges, 2 lower-left gauges, 2 lower-right gauges and 3 lower-centre gauges.
-- Each dial is explicitly configured as a 100-state Gauge Factory sequence (`frameCount: 100`) so the template preserves the intended gauge asset model rather than treating the dials as ordinary decorative shapes.
-- Updated the spatial chassis prompt compiler to preserve the 12-gauge composition and request a continuous dark industrial sensor-panel background with recessed mounting structure, subtle vents, conduit channels and restrained lighting.
-- Added negative constraints preventing extra/missing/merged gauges and plain-black-background output for the 12-gauge template.
-
-## v1.17.48 — Asset Library + Conversational Image Iteration
-- Added persistent Asset Library UI backed by the local asset store.
-- Added asset metadata, search, delete, preview and reuse actions.
-- Added “Use as Reference in AI Tools” with ComfyUI promotion and cross-component event handoff.
-- AI Tools now adopts an active asset reference for subsequent image generation/editing turns.
-- AI Tools generated images are automatically persisted to the asset store.
-- Creator “Save” now persists assets through the server API with local fallback.
-
-## v1.17.49
-- Fixed AI Tools image prompting so descriptive prompts such as "A photorealistic vintage black watch bezel..." route directly to the local ComfyUI/FLUX executor instead of being sent to Gemma as chat.
-- Preserved explicit vision/analysis prompts and attached-image modification routing.
-## v1.17.63 — Clean Root Packaging Audit
-
-- **Target File Path:** `/docs/updates/UPDATE_NOTES_v1.17.55.md`, `/docs/updates/UPDATE_NOTES_v1.17.56.md`, `/docs/updates/UPDATE_NOTES_v1.17.59.md`, `/docs/updates/UPDATE_NOTES_v1.17.60.md`, `/docs/updates/UPDATE_NOTES_v1.17.63.md`
-  **Exact Code Snippet:** Files moved from the project root into `/docs/updates/`.
-  **Summary:** Enforced the project's clean-root documentation rule.
-- **Target File Path:** `/docs/milestones/LOCAL_AI_ATTACHMENT_MILESTONE.md`
-  **Exact Code Snippet:** File moved from the project root into `/docs/milestones/`.
-  **Summary:** Keeps milestone/context records under the documented hierarchy.
-- **Target File Path:** `/docs/INDEX.md`
-  **Exact Code Snippet:** Added the Release Notes & Milestones section documenting `/docs/updates/`, `/docs/milestones/` and `/logs/`.
-  **Summary:** Makes the clean documentation/logging hierarchy discoverable.
-- **Target File Path:** `/logs/.gitkeep`
-  **Exact Code Snippet:** Empty directory marker.
-  **Summary:** Reserves the runtime audit-log directory without packaging runtime logs.
-## v1.17.67 — FFmpeg Frame Extraction & Job Workflow Route Fixes
-
-- **Target File Path:** `/server.ts`
-- **Description:** Fixed fatal FFmpeg error `[Parsed_format_0] Invalid pixel format 'png'` in `extractStoryFinalFrame` by removing the erroneous `-vf format=png` argument and adding automatic fallback seeking. Added missing `GET /api/jobs/:id/workflow` and `GET /api/jobs/:id/events/history` routes to satisfy runtime polling from `PromptStudio.tsx`, eliminating recurring 404 errors and story generation stops.
-- **Exact Code Snippet:**
-  ```typescript
-  async function extractStoryFinalFrame(sourcePath: string, destinationPath: string) {
-    await fs.mkdir(path.dirname(destinationPath), { recursive: true });
-    try {
-      await execFileAsync('ffmpeg', [
-        '-y', '-sseof', '-0.08', '-i', sourcePath,
-        '-frames:v', '1', destinationPath
-      ], { windowsHide: true, timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
-    } catch {
-      await execFileAsync('ffmpeg', [
-        '-y', '-i', sourcePath,
-        '-frames:v', '1', destinationPath
-      ], { windowsHide: true, timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
-    }
+  // listGifStudioAssets(): a same-batch folder of images is now surfaced as one
+  // grouped asset instead of N flattened single-frame entries.
+  if (files.length > 1 && subdirs.length === 0) {
+    const allImages = exts.every(ext => GIF_STUDIO_IMAGE_EXTENSIONS.has(ext));
+    if (allImages) { assets.push({ id:`gif_seq_${batchName}`, kind:'sequence', framePaths, frameCount, ... }); return; }
   }
 
-  app.get('/api/jobs/:id/events/history', (req,res) => {
-    const job = jobManager.get(req.params.id);
-    if (!job) return res.status(404).json({ok:false,error:'Job not found'});
-    res.json({ok:true,jobId:job.id,events:jobManager.eventHistory(job.id)});
-  });
+  // runGifAssetProcessingJob(): new sourceKind === 'sequence' branch packs the
+  // frame set into one clip via the FFmpeg concat demuxer instead of only ever
+  // looping a single static image.
+  if (sourceKind === 'sequence') {
+    const framePaths = parameters.framePaths.map(validateManaged);
+    // build concat list with duration-per-frame, encode to one mp4
+  }
 
-  app.get('/api/jobs/:id/workflow', (req,res) => {
-    const job = jobManager.get(req.params.id);
-    if (!job) return res.status(404).json({ok:false,error:'Job not found'});
-    const workflow = job.parameters?.__workflowSnapshot || workflowRegistry.get(job.workflowId)?.workflow || null;
-    res.json({ok:true,jobId:job.id,workflowId:job.workflowId,workflow});
-  });
+  // resolveStoredJobOutput(job, preferredFormat): now prefers the stored output
+  // matching the requested export format instead of blindly taking outputs[0].
   ```
+- **Why**: (1) Batch image uploads were grouped on disk but never reconstructed as one selectable asset, so a multi-frame source could never be queued as a single job — this is why Export appeared to do nothing. (2) The asset processor had no code path to combine multiple frames at all. (3) Sequential Story jobs store both a final `.mp4` and `.gif`; the export route was returning whichever was stored first regardless of the requested format.
 
-## v1.17.67 — ComfyUI Health & Capability Endpoint Resilience Fix
+### Target File Path: `/src/components/GifStudio.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  interface StudioAsset { ...; kind: 'video'|'image'|'sequence'; framePaths?: string[]; frameCount?: number; }
+  // submit(): pass framePaths through when activeAsset.kind === 'sequence'
+  // asset dropdown: 🎞️ icon for sequence assets
+  ```
+- **Why**: Wire the new grouped sequence asset into job submission and the UI.
+
+### Target Files: `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/src/components/MilestoneChecklist.tsx`
+- **Exact Change**: Synchronized version to `1.20.4`, active save point to `RESTORE_V1.20.4_GIF_STUDIO_FRAME_SEQUENCE_PACKING`, added `GIF_STUDIO_FRAME_SEQUENCE_PACKING` to `metadata.json` capabilities.
+- **Why**: Satisfy the Universal Version & Metadata Synchronization Guard (Rule 7).
+
+**Not yet acceptance-tested**: this was implemented and statically syntax-checked in a sandboxed environment without ComfyUI, FFmpeg, or a GPU available. Live Windows verification (upload a multi-frame batch, run the workflow, confirm a single packed GIF/MP4 exports) is still required before this can be marked externally verified, consistent with Phase 53's separation of implementation-complete vs. externally accepted work.
+
+## v1.20.5 — SDXL Juggernaut Inpaint Masking Canvas & Workflow Integration
+
+Added interactive masking canvas and dedicated SDXL inpaint workflow (`sdxl_juggernaut_inpaint`) enabling 1:1 subject recoloring and element replacement while preserving unmasked backgrounds bit-for-bit.
+
+### Target File Path: `/workflows/sdxl_juggernaut_inpaint.json`
+- **Exact Code Snippet / Code Block**:
+  ```json
+  {
+    "9": { "class_type": "LoadImageMask", "inputs": { "image": "mask.png", "channel": "red" } },
+    "10": { "class_type": "SetLatentNoiseMask", "inputs": { "samples": ["5", 0], "mask": ["9", 0] } }
+  }
+  ```
+- **Why**: Standard SDXL img2img changes the entire image when denoise is increased, or cannot cleanly recolor dark fur when denoise is lowered. `SetLatentNoiseMask` freezes unmasked latents completely while allowing full sampling denoise inside the masked dog area.
+
+### Target File Path: `/server/comfy/WorkflowParser.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  if (['LoadImageMask'].includes(className)) {
+    capabilities.add('mask-input');
+  }
+  // Added alias:
+  if (['mask_image', 'maskimage', 'mask_filename', 'mask_path'].includes(lower)) return 'maskImage';
+  ```
+- **Why**: Enable workflow intelligence to identify mask inputs and bind mask image paths automatically.
+
+### Target File Path: `/server.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  function imageGenerationPolicy(engine: 'qwen' | 'qwen-coder', multimodal: boolean, hasReference: boolean, highPrecision = false, hasMask = false) {
+    ...
+    return {
+      workflowId: hasMask ? 'sdxl_juggernaut_inpaint' : hasReference ? 'sdxl_juggernaut_reference' : 'sdxl_juggernaut',
+      generationModel: 'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (SDXL)',
+      lane: 'qwen-juggernaut' as const
+    };
+  }
+  ```
+- **Why**: Intelligently route masked requests to `sdxl_juggernaut_inpaint`.
+
+### Target File Path: `/src/components/gina-image/GinaInpaintCanvas.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export const GinaInpaintCanvas: React.FC<GinaInpaintCanvasProps> = ({ imageUrl, imageName, onMaskChange }) => { ... }
+  ```
+- **Why**: Provides an interactive HTML5 drawing canvas over the reference image with brush, eraser, adjustable radius, undo history, clear, invert, and binary mask generation.
+
+### Target File Path: `/src/components/gina-image/GinaImageInput.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  <GinaInpaintCanvas
+    imageUrl={referenceImage.previewUrl}
+    imageName={referenceImage.name}
+    onMaskChange={handleMaskChange}
+    disabled={uploadingMask}
+  />
+  // Quick presets including: 🐕 White Whippet Fur
+  // Direct inpaint action: 🎨 Generate Inpaint
+  ```
+- **Why**: Embed the masking canvas into Tab 3 ("Inpaint or Outpaint"), upload drawn masks directly to ComfyUI, and give instant feedback with quick fur recoloring presets.
+
+### Target File Path: `/src/components/PromptStudio.tsx`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  if (referenceImage && inpaintMask) {
+    targetWorkflow = 'sdxl_juggernaut_inpaint';
+    bound.input_image = referenceImage.filename;
+    bound.mask_image = inpaintMask.filename;
+    bound.denoise = 0.85;
+  }
+  ```
+- **Why**: Wire inpainting mask to the workflow bindings and trigger inpainting with optimal denoise inside the masked area.
+
+
+
+# v1.20.6 — Phase 54 — StreamInject Source Audio Stripping Engine
+
+## Infrastructure: Add StreamInject Source Audio Stripping Pass — Completed 2026-09-13
+
+- **Target File:** `/scripts/stream_inject.py`
+  - **Exact Code Change:** Registered `--strip-audio` with `action="store_true"`; added a pre-processing FFmpeg pass using `-vcodec copy -an` for `intro_path`, `main_gameplay_path`, `outro_path`, and `green_screen_overlay`; substituted the source variables with silent scratch outputs before slicing/processing; wired the CLI flag into `MasterRenderPipeline.execute`.
+  - **Why:** Remove unwanted embedded source audio before timeline assembly while preserving the original video bitstream and avoiding GPU/VRAM work.
+- **Target File:** `/server.ts`
+  - **Exact Code Change:** Added `stripAudio: options.stripAudio === true` to the `streaminject_render` job ledger metadata.
+  - **Why:** Persist the user's render choice with the queued job.
+- **Target File:** `/server/streaminject/StreamInjectService.ts`
+  - **Exact Code Change:** Added `stripAudio?: boolean` to `StreamInjectRenderOptions` and dynamically appends `--strip-audio` when enabled.
+  - **Why:** Propagate the dashboard/API option into the Python renderer.
+- **Target File:** `/src/components/StreamInjectStudio.tsx`
+  - **Exact Code Change:** Added `stripAudio` state, the Step 4 `stripAudioToggle` dashboard switch labelled `Mute Source Video Audio` with the requested description, and `stripAudio` in the `/api/streaminject/render` payload.
+  - **Why:** Give users an explicit source-audio mute control at the point where background audio/subtitles are configured.
+- **Target File:** `/src/version.ts`
+  - **Exact Code Change:** Advanced to `1.20.6`, save point `RESTORE_V1.20.6_STREAMINJECT_AUDIO_STRIPPING_ENGINE`, Phase 54, and lifecycle label `STREAMINJECT SOURCE AUDIO STRIPPING ENGINE`.
+  - **Why:** Establish the authoritative release/restore state for the completed infrastructure milestone.
+- **Target Files:** `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`
+  - **Exact Code Change:** Synchronized release references to `1.20.6`; updated current lifecycle/save-point documentation.
+  - **Why:** Satisfy the mandatory universal version and metadata synchronization gate.
+- **Target File:** `/src/components/MilestoneChecklist.tsx`
+  - **Exact Code Change:** Locked the previous active restore point and added completed Phase 54 with `RESTORE_V1.20.6_STREAMINJECT_AUDIO_STRIPPING_ENGINE`.
+  - **Why:** Keep the milestone registry aligned with the active restore point.
+- **Target File:** `/docs/EDIT_REQUESTS.md`
+  - **Exact Code Change:** Moved the StreamInject audio stripping request from Open Requests to Completed Requests with the 2026-09-13 completion record.
+  - **Why:** Reconcile the active backlog with implementation status.
+- **Target File:** `/docs/AI_UPDATE_CHECKLIST.md`
+  - **Exact Code Change:** Advanced current platform truth to v1.20.6 / Phase 54 and added a StreamInject cross-surface consistency gate.
+  - **Why:** Keep the autonomous update integrity contract synchronized with the active project state.
+
+
+# v1.20.7 — Phase 55 — Broader Code Review & Autonomy Hardening
+
+## Broader code review — Completed 2026-09-13
+- **Target File:** `/Start_Factory.bat`
+  - **Exact Code Change:** Removed the stale v1.18.0 startup-version comparison and retired Gemma wording; startup now reports the live dashboard version and current Qwen engine names.
+  - **Why:** Startup scripts are part of the active product surface and must not enforce or advertise obsolete release/model assumptions.
+- **Target File:** `/Start_Local_LLM.bat`
+  - **Exact Code Change:** Removed the retired Gemma selector/fallback and made Qwen 2.5-VL the sole active local launcher lane, with an explicit rejection of unsupported selectors.
+  - **Why:** Prevent the local inference launcher from silently reintroducing a retired engine.
+- **Target File:** `/AGENTS.md`
+  - **Exact Code Change:** Reconciled the Project Overview version to 1.20.7 and promoted the Phase 55 hardening entry to the current contract section.
+  - **Why:** Keep the mandatory AI startup context synchronized with the active release.
+- **Target File:** `/scripts/check_ltx23.ts`
+  - **Exact Code Change:** Deleted the retired LTX-2.3 diagnostic script from the active project package.
+  - **Why:** The diagnostic targeted a retired video engine and kept obsolete production vocabulary in the shipped source tree.
+- **Target File:** `/src/components/gina-image/GinaImageInput1.tsx`
+  - **Exact Code Change:** Deleted the unused duplicate Image Studio input component.
+  - **Why:** Prevent parallel abandoned implementations from drifting apart.
+- **Target File:** `/docs/AI_UPDATE_CHECKLIST.md`
+  - **Exact Code Change:** Added mandatory checks for the ACE-Step 8101 endpoint, workspace-bounded autonomous file access, and canonical ProjectMap target existence.
+  - **Why:** Turn the newly discovered failure patterns into permanent pre/post-edit safeguards for future AI sessions.
+- **Target File:** `/server/agent/DefinitionOfDoneGate.ts`
+  - **Exact Code Change:** Added `project_map_targets` to the machine gate and expanded its check category union.
+  - **Why:** The completion gate must detect stale canonical agent-context targets before accepting an update.
+- **Target File:** `/server/agent/UpdateIntegrityGuard.ts`
+  - **Exact Code Change:** Removed the deleted `scripts/check_ltx23.ts` entry from the historical exclusion set after the retired diagnostic was removed.
+  - **Why:** Keep the integrity guard's historical inventory synchronized with the actual tree.
+- **Target File:** `/server/agent/AutonomousAgentEngine.ts`
+  - **Exact Code Change:** Added `resolveWorkspaceFile()` and routed autonomous reads/writes through workspace-bounded path validation.
+  - **Why:** Prevent model-supplied absolute/traversal paths from escaping the assigned repair workspace.
+- **Target File:** `/src/context/GenerationJobContext.tsx`
+  - **Exact Code Change:** Changed cancellation to call the selected `/api/jobs/:id/cancel` endpoint and updated user-facing cancellation diagnostics.
+  - **Why:** Keep the UI aligned with job-scoped cancellation and avoid direct global engine interruption from the client.
+- **Target File:** `/src/components/gina-image/GinaImagePreview.tsx`
+  - **Exact Code Change:** Replaced the hard-coded FLUX.1 Lite progress message with active workflow-aware image engine copy.
+  - **Why:** Prevent misleading progress UI when Juggernaut/SDXL is the active image workflow.
+- **Target File:** `/server.ts`
+  - **Exact Code Change:** Corrected the selected-job cancellation completion flag and removed false-positive ComfyUI history completion from empty `outputs` objects; aligned the ACE-Step default port to 8101.
+  - **Why:** Keep job state truthful and make the backend default match the installed singing API launcher.
+- **Target File:** `/server/music/MusicService.ts`
+  - **Exact Code Change:** Aligned `getAceStepBaseUrl()` default to `127.0.0.1:8101` while retaining `ACESTEP_API_URL` override support.
+  - **Why:** Match the actual Windows ACE-Step launcher endpoint.
+- **Target File:** `/src/components/VideoStudio.tsx`
+  - **Exact Code Change:** Changed the submitted Wan 2.1 `batch_size` from the temporal frame count to `1`.
+  - **Why:** Preserve the 8GB safety contract: temporal frame count is not batch size.
+- **Target File:** `/server/agent/ProjectMapManager.ts`
+  - **Exact Code Change:** Replaced stale primary-file paths with the current Video, Image, AIDA64, StreamInject, Music and Local AI surfaces; the generated map now reads the active version and validates canonical targets before caching.
+  - **Why:** The autonomous context map itself had stale paths, so future agents could inspect the wrong file or miss the real implementation entirely.
+- **Target File:** `/server/agent/DefinitionOfDoneGate.ts`
+  - **Exact Code Change:** Added a machine-enforced Project Map Target Integrity check covering every canonical primary file.
+  - **Why:** A stale architecture map must block completion rather than silently becoming future agent context.
+- **Target File:** `/server/agent/AutonomousAgentEngine.ts`
+  - **Exact Code Change:** Added workspace-bounded path validation for autonomous read/write operations, rejecting absolute paths and traversal segments.
+  - **Why:** The self-modifying agent must not be able to escape its assigned workspace while repairing a project.
+- **Target File:** `/src/context/GenerationJobContext.tsx`
+  - **Exact Code Change:** Routed dashboard cancellation through `/api/jobs/:id/cancel` so cancellation uses the selected job's backend contract rather than a direct global ComfyUI interrupt.
+  - **Why:** Keep UI cancellation aligned with job-scoped server cancellation for ComfyUI and AudioCraft.
+- **Target Files:** `/server.ts`, `/server/music/MusicService.ts`
+  - **Exact Code Change:** Aligned the ACE-Step default endpoint to `127.0.0.1:8101`, matching the Windows launcher and documented local singing API.
+  - **Why:** The backend previously defaulted to port 8001 while the actual launcher listens on 8101, making a default singing setup appear offline.
+- **Target Files:** `/src/components/VideoStudio.tsx`, `/src/components/gina-image/GinaImagePreview.tsx`
+  - **Exact Code Change:** Forced Wan 2.1 UI requests to `batch_size: 1` and replaced the hard-coded FLUX-only image progress text with active-engine-aware copy.
+  - **Why:** Prevent stale UI assumptions from contradicting the Wan safety contract or misleading users about which image engine is running.
+
+
+- **Target File:** `/server/agent/AutonomousRepairLoop.ts`
+  - **Exact Code Change:** Replaced the no-op repair prompt construction with a constrained local-LLM repair request that returns one JSON existing-file replacement, validates the path stays inside the active workspace, writes the repair, and records the modified file before the next validation cycle.
+  - **Why:** The former “autonomous repair” stage never dispatched the prompt or changed the workspace, so repeated validation could never repair a failure.
+- **Target File:** `/server.ts`
+  - **Exact Code Change:** Reworked `/api/jobs/:id/cancel` to delete only the selected ComfyUI prompt, interrupt only when the selected job is running, and route AudioCraft cancellation through `musicService.cancelJob`; removed the global `{ clear:true }` queue operation.
+  - **Why:** Cancelling one job must never erase unrelated queued generation work.
+- **Target File:** `/server/music/MusicService.ts`
+  - **Exact Code Change:** Added per-job AudioCraft child-process tracking and `cancelJob(jobId)`; generation/stem close handlers now respect a prior `CANCELLED` state.
+  - **Why:** Give local AudioCraft subprocesses a real job-scoped cancellation path instead of leaving Python generation running after the dashboard marks a job cancelled.
+- **Target File:** `/server/comfy/WorkflowParser.ts`
+  - **Exact Code Change:** Removed retired LTX sampler/latent/loader class bindings from active workflow alias definitions.
+  - **Why:** Wan 2.1 is the active video lane and the active parser must not advertise retired production bindings.
+- **Target File:** `/src/components/gina-image/GinaImageInput1.tsx`
+  - **Exact Code Change:** Removed the unused duplicate `GinaImageInput` implementation after confirming the active application imports `GinaImageInput.tsx`.
+  - **Why:** Eliminate an abandoned parallel UI surface that could diverge from the active Image Studio implementation.
+- **Target File:** `/metadata.json`
+  - **Exact Code Change:** Reconciled stale Gemini/Gemma/LTX capability identifiers to current local-first/Qwen/Wan capability vocabulary.
+  - **Why:** Current metadata is part of the active product contract and must not advertise retired engines.
+- **Target File:** `/docs/updates/UPDATE_NOTES_v1.20.7_BROADER_CODE_REVIEW.md`
+  - **Exact Code Change:** Added the Phase 55 review record covering Music/ACE-Step, Agent, AIDA64, Image, Video, GIF, StreamInject, Assets, Jobs, and Local AI surfaces plus explicit acceptance boundaries.
+  - **Why:** Preserve the review findings and known follow-up limitations as auditable project documentation.
+- **Target Files:** `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`, `/docs/AI_UPDATE_CHECKLIST.md`, `/src/components/MilestoneChecklist.tsx`, `/docs/EDIT_REQUESTS.md`
+  - **Exact Code Change:** Advanced the synchronized release to v1.20.7 / Phase 55 with active restore point `RESTORE_V1.20.7_BROADER_CODE_REVIEW_HARDENING`.
+  - **Why:** Keep release identity, autonomous-agent contract, milestone state, and backlog truth synchronized after the hardening pass.
+
+
+## v1.20.7 / Phase 55 — StreamInject CPU Watermark Eraser Matrix
+
+- **Target File:** `/scripts/stream_inject.py`
+  - **Exact Code Change:** Added `--remove-watermark`, `--wm-x`, `--wm-y`, `--wm-w`, and `--wm-h`; added a CPU-only OpenCV `VideoCapture`/`VideoWriter` Telea inpainting pre-pass that generates H.264 scratch clips before slicing and timeline processing.
+  - **Why:** Remove static corner logos locally without CUDA/VRAM contention while keeping the existing hardcoded render pipeline intact.
+- **Target File:** `/server/streaminject/StreamInjectService.ts`
+  - **Exact Code Change:** Added watermark-erasure options to `StreamInjectRenderOptions` and forwarded normalized matrix values to the Python render CLI.
+  - **Why:** Keep the orchestration contract synchronized with the Python engine.
+- **Target File:** `/server.ts`
+  - **Exact Code Change:** Added safe integer normalization for `removeWatermark`, `wmX`, `wmY`, `wmW`, and `wmH` at `/api/streaminject/render`, persisted them to job metadata, and passed them explicitly to `renderMasterPipeline`.
+  - **Why:** Prevent malformed HTTP payloads from reaching the child-process boundary and keep job state auditable.
+- **Target File:** `/src/components/StreamInjectStudio.tsx`
+  - **Exact Code Change:** Added the Step 4 Watermark Eraser Matrix toggle, four percentage sliders, live boundary preview, and submission payload fields.
+  - **Why:** Give users direct visual control over the CPU inpainting region without exposing GPU-heavy processing.
+- **Target Files:** `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`, `/docs/AI_UPDATE_CHECKLIST.md`, `/src/components/MilestoneChecklist.tsx`
+  - **Exact Code Change:** Kept release version at v1.20.7 / Phase 55, moved the active restore point to `RESTORE_V1.20.7_STREAMINJECT_INPAINT_WATERMARK_ERASER`, synchronized product metadata, active checklist truth, documentation and milestone state.
+  - **Why:** Maintain the project-wide release/save-point contract for a same-version Phase 55 feature addition.
+
+## GitHub Import Migration & Build Stabilization
+
+- **Target File Path:** `/src/routes/imageroute.ts`, `/src/routes/imageRoute.js`
+- **Exact Code Change:** Deleted obsolete duplicate route files that caused `tsc --noEmit` failures due to missing `../llm/LocalLlmManager.ts` import path, and removed empty `/src/routes` directory.
+- **Why:** The authoritative server route is located at `/server/routes/imageRoute.ts` and mounted via `/api/llm`. The leftover duplicate files under `src/routes` caused TypeScript compilation errors during typecheck.
+- **Target File Path:** `/bun.lock`
+- **Exact Code Change:** Removed `bun.lock` lockfile from repository root.
+- **Why:** Complies with GitHub import migration specifications (Node.js runtime with npm package manager only).
+- **Target File Path:** `/src/components/gina-image/GinaImageInput1.tsx`, `/server/llm/LocalLlmManager1.ts`
+- **Exact Code Change:** Removed unreferenced orphaned duplicate source files.
+- **Why:** Eliminate abandoned duplicate files that diverge from active implementations and clean up workspace architecture.
+- **Target File Path:** `/metadata.json`
+- **Exact Code Change:** Added `"MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"` to `majorCapabilities` array.
+- **Why:** Complies with Google AI Studio required platform capabilities for server-side architecture.
+- **Target File Path:** `/scripts/check_ltx23.ts`
+- **Exact Code Change:** Deleted retired LTX diagnostic script from repository.
+- **Why:** Wan 2.1 1.3B BF16 is the active video engine and `scripts/check_wan21.ts` is the active diagnostic. Removing this retired script satisfies the `Zero Retired References & Production Integrity` gate in `DefinitionOfDoneGate` and `UpdateIntegrityGuard`.
+## Phase 55 — ACE-Step DiT Environment Whitespace Resolution & Local AI Capability Enforcement
+
+- **Target File Path:** `/metadata.json`
+- **Exact Code Change:**
+  ```json
+      "PROJECT_MAP_TARGET_INTEGRITY",
+      "JOB_SCOPED_CANCELLATION",
+      "ACE_STEP_8101_LOCAL_SINGING_API",
+      "STREAMINJECT_CPU_OPENCV_WATERMARK_INPAINTING"
+    ],
+  ```
+- **Why:** Removed `"MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"` per user mandate to strictly enforce local-only AI execution and eliminate unwanted external cloud AI metadata.
+
+- **Target File Path:** `/Start_Factory.bat`
+- **Exact Code Change:**
+  ```bat
+  echo [3/5] Starting ACE-Step singing API (only if installed)...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$c=Get-NetTCPConnection -LocalPort 8101 -State Listen -ErrorAction SilentlyContinue; if($c){exit 0}else{exit 1}"
+  if errorlevel 1 (
+    if exist "%GINA_ROOT%\scripts\Start_ACEStep_Singing_API.bat" (
+      start "ACE-Step 1.5 - Singing API" cmd /k call "%GINA_ROOT%\scripts\Start_ACEStep_Singing_API.bat"
+    ) else if exist "%GINA_ROOT%\third_party\ACE-Step-1.5\pyproject.toml" (
+      start "ACE-Step 1.5 - Singing API" cmd /k "cd /d \"%GINA_ROOT%\third_party\ACE-Step-1.5\" && set \"ACESTEP_API_HOST=127.0.0.1\" & set \"ACESTEP_API_PORT=8101\" & set \"ACESTEP_INIT_SERVICE=true\" & set \"ACESTEP_CONFIG_PATH=acestep-v15-turbo\" & set \"ACESTEP_LM_MODEL_PATH=acestep-5Hz-lm-0.6B\" & set \"ACESTEP_LM_BACKEND=pt\" & set \"ACESTEP_OFFLOAD_TO_CPU=true\" & set \"ACESTEP_OFFLOAD_DIT_TO_CPU=true\" & set \"ACESTEP_INIT_LLM=true\" & set \"ACESTEP_LM_OFFLOAD_TO_CPU=true\" & uv run --no-sync acestep-api --host 127.0.0.1 --port 8101 --init-llm --lm-model-path acestep-5Hz-lm-0.6B"
+    ) else (
+      echo    ACE-Step is not installed. Singing remains unavailable until setup is run.
+    )
+  ) else (
+    echo    ACE-Step API is already running; reusing it.
+  )
+  ```
+- **Why:** Fixed cmd.exe trailing whitespace bug where `set ACESTEP_CONFIG_PATH=acestep-v15-turbo &&` assigned `"acestep-v15-turbo "` with a trailing space, which caused ACE-Step to fail with `ERROR: Failed to download DiT model 'acestep-v15-turbo ': Unknown DiT model: acestep-v15-turbo `. Now routes to `scripts\Start_ACEStep_Singing_API.bat` using `cmd /k call "%GINA_ROOT%\scripts\Start_ACEStep_Singing_API.bat"` without escaped quotation marks that Windows cmd.exe misinterprets as literal paths. Also quoted `NODE_OPTIONS` on line 116.
+
+- **Target File Path:** `/scripts/Start_ACEStep_Singing_API.bat`
+- **Exact Code Change:**
+  ```bat
+  if /i "%~1"=="--restart" goto KILL_OLD
+  if /i "%~1"=="-restart" goto KILL_OLD
+  if /i "%~1"=="/restart" goto KILL_OLD
+  if /i "%~1"=="restart" goto KILL_OLD
+  goto CHECK_RUNNING
+
+  :KILL_OLD
+  echo Stopping existing ACE-Step processes on port 8101...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$conns = Get-NetTCPConnection -LocalPort 8101 -ErrorAction SilentlyContinue; foreach($c in $conns){ try { Stop-Process -Id $c.OwningProcess -Force -ErrorAction Stop } catch {} }"
+  timeout /t 1 /nobreak >nul
+  ```
+- **Why:** Added `--restart` flag to allow terminating stale ACE-Step processes occupying port 8101 that were launched with unquoted/trailing-space environment variables.
+
+- **Target File Path:** `/server/music/MusicService.ts`
+- **Exact Code Change:**
+  ```typescript
+          if (item.status === 2) {
+            let errorDetail = "ACE-Step generation failed";
+            if (typeof item.result === "string") {
+              try {
+                const parsed = JSON.parse(item.result);
+                const errObj = Array.isArray(parsed) ? parsed[0] : parsed;
+                errorDetail = errObj?.error || item.result;
+              } catch {
+                errorDetail = item.result;
+              }
+            } else if (item.result && typeof item.result === "object") {
+              const errObj = Array.isArray(item.result) ? item.result[0] : item.result;
+              errorDetail = errObj?.error || JSON.stringify(item.result);
+            }
+            if (/Unknown DiT model/i.test(errorDetail) || /acestep-v15-turbo\s+/i.test(errorDetail)) {
+              errorDetail += " — Note: A trailing space was detected in the ACE-Step DiT configuration. Restart ACE-Step using scripts\\Start_ACEStep_Singing_API.bat --restart (or Start_Factory.bat) to apply the corrected environment.";
+            }
+            throw new Error(errorDetail);
+          }
+  ```
+- **Why:** Unpack JSON error payloads from ACE-Step task status 2 and attach clear diagnostics if trailing whitespace or Unknown DiT model errors occur.
+
+## Phase 55 — StreamInjectStudio Watermark Eraser JSX Reconciliation
+
+- **Target File Path:** `/src/components/StreamInjectStudio.tsx`
+- **Exact Code Change:**
+  ```tsx
+  {/* Reconciled CPU Watermark Eraser Matrix control chassis and removed redundant duplicate JSX elements and closing tags */}
+  ```
+- **Why:** Fixed a JSX parsing syntax error (`Unexpected token, expected ","`) caused by duplicate closing tags and a repeated mask view container block during watermark control styling update.
+
+## Phase 55 — Motion Physics Engine & StreamInject Watermark Video Preview
+
+- **Target File Path:** `/scripts/gina_motion_physics_engine.py` & `/gina_motion_physics_engine.py`
+- **Exact Code Change:**
+  ```python
+  def squash_and_stretch_element(frame, text, font_path, size, cx, cy, t, duration=2.0) -> np.ndarray: ...
+  def apply_elastic_spring_track(target_pos, current_pos, velocity, dt, stiffness=180.0, damping=12.0) -> Tuple[Tuple[float, float], Tuple[float, float]]: ...
+  def reveal_typography_dispersion(frame, text, font_path, size, cx, cy, progress) -> np.ndarray: ...
+  def apply_rolling_wave_line(frame, t, amplitude=25.0, frequency=0.015, color=(0, 255, 255), thickness=3) -> np.ndarray: ...
+  def apply_radial_shockwave(frame, center, radius, amplitude=40.0, width=50.0) -> np.ndarray: ...
+  def apply_page_curl(frame, progress, roll_width_pct=0.15) -> np.ndarray: ...
+  def apply_vortex_twirl(frame, center, max_radius, max_angle_deg) -> np.ndarray: ...
+  def apply_crt_scanlines(frame, opacity=0.20, aberration_px=3) -> np.ndarray: ...
+  def apply_datamosh_glitch(frame, progress, block_size=16, probability=0.25) -> np.ndarray: ...
+  def apply_optical_liquid_flow(frame, t, viscosity=20.0) -> np.ndarray: ...
+  def render_volumetric_glow_layer(frame, cx, cy, t, config) -> np.ndarray: ...
+  ```
+- **Why:** Implemented the complete, 100% vectorized native Python motion design, geometric video distortion, and blending layer suite without heavy third-party media libraries using only NumPy, OpenCV, Pillow, and scikit-image with zero per-pixel loops.
 
 - **Target File Path:** `/server.ts`
-- **Description:** Added missing `GET /api/comfy/health` route returning local ComfyUI backend connectivity status and latency. Added graceful error handling for `getComfyObjectInfo()` in `GET /api/workflows/:id/controls` and `GET /api/gif-studio/capabilities` so endpoints return HTTP 200 with default workflow bindings and fallback capability booleans when ComfyUI is offline or starting up, eliminating 503 errors and dashboard error log spam.
-- **Exact Code Snippet:**
+- **Exact Code Change:**
   ```typescript
-  app.get("/api/comfy/health", async (_req, res) => {
-    const comfy = await getComfyHealth();
-    res.json({ ok: comfy.online, ...comfy });
-  });
-
-  app.get("/api/workflows/:id/controls", async (req, res) => {
-    const workflow = workflowRegistry.get(req.params.id);
-    if (!workflow) return res.status(404).json({ error: "Workflow not found" });
-    try {
-      let objectInfo: Record<string, any> = {};
-      try { objectInfo = await getComfyObjectInfo(); } catch {}
-      const controls = workflow.bindings.map(binding => {
-        const schema = objectInfo[binding.classType]?.input?.required?.[binding.input] || objectInfo[binding.classType]?.input?.optional?.[binding.input];
-        const rawOptions = Array.isArray(schema) && Array.isArray(schema[0]) ? schema[0] : undefined;
-        return {
-          key: binding.key,
-          nodeId: binding.nodeId,
-          input: binding.input,
-          classType: binding.classType,
-          confidence: binding.confidence,
-          currentValue: workflow.workflow[binding.nodeId]?.inputs?.[binding.input],
-          options: rawOptions?.filter((x:any) => typeof x === 'string' || typeof x === 'number') || undefined,
-          min: Array.isArray(schema) && typeof schema[1]?.min === 'number' ? schema[1].min : undefined,
-          max: Array.isArray(schema) && typeof schema[1]?.max === 'number' ? schema[1].max : undefined,
-          step: Array.isArray(schema) && typeof schema[1]?.step === 'number' ? schema[1].step : undefined
-        };
-      });
-      res.json({ workflowId: workflow.id, controls });
-    } catch (error:any) {
-      res.status(500).json({ error: error?.message || 'Unable to inspect ComfyUI node inputs' });
-    }
-  });
-
-  app.get('/api/gif-studio/capabilities', async (_req,res) => {
-    try {
-      let info: Record<string, any> = {};
-      try { info = await getComfyObjectInfo(); } catch {}
-      const gpu = await getNvidiaSmi();
-      const assets = await listGifStudioAssets();
-      const rifeSchema = info.RIFE_VFI?.input?.required?.ckpt_name;
-      const rifeModels = Array.isArray(rifeSchema) && Array.isArray(rifeSchema[0]) ? rifeSchema[0] : [];
-      res.json({
-        ok: true,
-        capabilities: {
-          videoLoader: !!info.VHS_LoadVideo,
-          imageSequenceLoader: !!info.VHS_LoadImagesPath,
-          videoCombine: !!info.VHS_VideoCombine,
-          rife: !!info.RIFE_VFI,
-          rifeModels,
-          ffmpeg: true,
-          gpu,
-          thermalTargetC: 60
-        },
-        assets
-      });
-    } catch (e:any) {
-      res.status(500).json({ ok: false, error: e?.message || 'Unable to inspect GIF Studio capabilities' });
-    }
+  app.get("/api/streaminject/video-preview", async (req, res) => {
+    // Serves requested video file with acceptRanges HTTP range streaming support
   });
   ```
+- **Why:** Enabled direct streaming and scrubbing of local video files (gameplay clips, ComfyUI outputs, user uploads) for frame-accurate UI previews.
 
----
+- **Target File Path:** `/src/components/StreamInjectStudio.tsx`
+- **Exact Code Change:**
+  ```tsx
+  {/* Mask Target Grid Area Layout Simulator with Live Video Preview */}
+  <video ref={wmVideoRef} src={...} ... />
+  {/* Inpainting Mask Bounding Box */}
+  <div style={{ left: `${wmX}%`, top: `${wmY}%`, width: `${wmW}%`, height: `${wmH}%` }} ... />
+  {/* Video Scrubber & Playback Controls */}
+  ```
+- **Why:** The Static Watermark Eraser Matrix now loads the actual video preview beneath the dashed inpainting mask with playback controls, frame scrubbing, time readout, and quick quadrant positioning presets.
 
-# v1.17.72 — AI Music Generator Suite, AudioCraft / MusicGen Integration & Stem Splitter
+- **Target File Path:** `/src/components/StreamInjectStudio.tsx`
+- **Exact Code Change:**
+  ```tsx
+  // Canvas Error Shielding & Safe Dimension Checking
+  try {
+    if (w <= 0 || h <= 0) return;
+    // ... safe render loop ...
+  } catch (err) {
+    console.error("[StreamInjectStudio] Canvas render error:", err);
+  }
 
-### 1. Target File Path: `/src/components/MusicStudio.tsx`
-```typescript
-// AI Music Generator Suite UI with 7 Feature Modes, Expert/Basic tiers, Style Dropdowns & Waveform Player
-export function MusicStudio({ telemetry, onAddLog, onClearCache, onSendToStreamInject }: MusicStudioProps) {
-  const [suiteMode, setSuiteMode] = useState<
-    'text_to_song' | 'song_cover' | 'extend' | 'edit' | 'lyrics_gen' | 'stem_remover' | 'library'
-  >('text_to_song');
-  const [generatorTier, setGeneratorTier] = useState<'expert' | 'basic'>('expert');
-  const [selectedModel, setSelectedModel] = useState<string>('facebook/musicgen-small');
-  // Interactive Style Tag Popovers: # Genre, # Moods, # Voices, # Tempos
-  // AI Lyrics Generator Modal powered by local Gemma 3 12B
-  // Real-time synthetic audio waveform visualizer and BGM transfer bridge
-}
-```
-**Summary**: Created the full-featured `MusicStudio` component matching the user's reference specification with Expert/Basic mode toggle, model dropdown, tag drawers, Gemma 3 12B songwriter integration, waveform player, and 1-click BGM transfer to StreamInject.
+  // Full Color Suite: Text layers, Video boxes, Profile circles & Canvas gradients
+  <input type="color" value={layer.color} ... />
+  <input type="color" value={layer.stroke_color} ... />
+  <input type="color" value={layer.glow_color} ... />
+  <input type="color" value={box.border_color} ... />
+  <input type="color" value={circ.glow_color} ... />
+  ```
+- **Why:** Resolved the canvas loop white screen with strict dimension validation and try/catch crash isolation, and provided comprehensive color pickers, text hex inputs, and quick palette swatches across background gradients, typography fills, stroke outlines, glow auras, and safe-zone boxes.
 
-### 2. Target File Path: `/server/music/MusicService.ts`
-```typescript
-// Music Service managing Python AudioCraft execution, track indexing, and stem isolation
-export class MusicService {
-  async scanTracks(): Promise<AudioTrackMeta[]> { ... }
-  async generateMusic(jobId: string, options: MusicGenOptions, jobManager: JobManager): Promise<{ outputFilename: string; outputUrl: string; duration: number }> { ... }
-  async separateStems(jobId: string, inputPath: string, jobManager: JobManager): Promise<{ vocalsUrl: string; instrumentalUrl: string }> { ... }
-}
-```
-**Summary**: Created `MusicService.ts` to bridge Express REST routes to `/scripts/music_generator.py` with multi-step job progress tracking and automatic audio track indexing.
+- **Target File Path:** `/scripts/stream_inject.py`
+- **Exact Code Change:**
+  ```python
+  bg_center_color = bg_cfg.get("center_color")
+  bg_edge_color = bg_cfg.get("edge_color")
+  bg_show_grid = bool(bg_cfg.get("show_grid", bg_type != "spotlight"))
+  # BGR gradient interpolation and cyber grid drawing in OpenCV
+  ```
+- **Why:** Synchronized the Python render engine to consume dynamic background colors, gradients, and grid toggles configured from the Studio dashboard.
 
-### 3. Target File Path: `/server.ts`
-```typescript
-// Music API Endpoints:
-app.use("/media/audio", express.static(musicService.getOutputDir()));
-app.get("/api/music/status", async (_req, res) => { ... });
-app.get("/api/music/tracks", async (_req, res) => { ... });
-app.post("/api/music/generate", async (req, res) => { ... });
-app.post("/api/music/write-lyrics", async (req, res) => { ... });
-app.post("/api/music/separate-stems", async (req, res) => { ... });
-app.delete("/api/music/tracks/:filename", async (req, res) => { ... });
-```
-**Summary**: Exposed music generation, local LLM lyric writing, stem separation, and track management endpoints in `server.ts`.
 
-### 4. Target File Path: `/src/App.tsx`
-```typescript
-// Added MUSIC SUITE nav item and main workspace container
-const navItems = [
-  ...
-  { id: 'music' as const, label: 'MUSIC SUITE', icon: Music, isGenerating: isJobActive && (job?.workflowId === 'music_studio' || job?.workflowId === 'stem_separation') },
-  ...
-];
-```
-**Summary**: Integrated `MusicStudio` into the top navigation bar with active job tracking and cross-studio BGM timeline handoff.
+# v1.20.7 — Phase 42 Capability Intelligence
 
-### 5. Target File Path: `/src/components/MilestoneChecklist.tsx`, `/src/version.ts`, `/metadata.json`, `/package.json`, `/index.html`, `/AGENTS.md`
-**Summary**: Marked Phase 32 as `COMPLETED`, created active restore point `RESTORE_V1.17.72_MUSIC_GENERATOR_SUITE`, and synchronized version `1.17.72` across all project manifests per Rules 7 & 8.
+- Added `CapabilityRegistry` as the machine-verified source of truth for Gina's runtime abilities.
+- Added deterministic capability planning so operational requests prefer execution over generic instructions.
+- Added capability execution evidence journal at `.gina/capabilities/history.jsonl`.
+- Added `/api/agent/capabilities` and `/api/agent/capability-plan` endpoints.
+- Integrated capability intelligence into the agent system prompt and Local AI chat grounding.
+- Added global CAPABILITIES panel for live capability/resource visibility.
+- Fixed `LocalLlmStudio.tsx` duplicate `webIntent` declaration that caused the Vite React-Babel compilation failure at line 667.
+- Operational Local AI requests can hand off to Gina Agent automatically when an active workspace is present.
 
+
+# v1.20.7 — Phase 43 Persistent Knowledge & Validated Learning
+
+- Added a persistent local learning knowledge base at `.gina/knowledge/knowledge.jsonl`.
+- Added explicit knowledge kinds: facts, lessons, solutions, decisions, preferences and results.
+- Added confidence, verification, source, usage and archive metadata so Gina does not blindly trust everything she encounters.
+- Successful verified agent runs can automatically record reusable solution knowledge; failed runs are not promoted to verified solutions.
+- Added bounded relevance retrieval so only small, relevant learned context enters future prompts.
+- Kept web/current-news requests isolated from learned project knowledge to prevent context contamination such as the previous PCIe Paging response.
+- Extended `knowledge_search` to search learned knowledge alongside the zero-VRAM Local RAG engine.
+- Added `/api/knowledge/*` inspection, search, learning and archive endpoints.
+- Added global KNOWLEDGE panel for inspecting and managing what Gina has learned.
+- Added persistent-learning self-test coverage.
+
+## Phase 42.2 — Intent Context Firewall / Web Isolation
+- Fixed a critical context-contamination path where a new BBC/news request could inherit stale PCIe Paging/agent-skill content from earlier assistant/project context.
+- Added deterministic `ContextFirewall` isolation for web, network, capability, coding and file-operation routes.
+- Web/current requests now use only the current user request plus server-authoritative live web grounding; active skills and stale assistant responses are excluded.
+- Added regression test for `top news on bbc site` contamination.
+- Normalized legacy `docs/agent_skills/Media` to `Media.txt` in the release package.
+
+## Phase 43.3 — Compact Runtime Telemetry Placement
+- Updated `src/App.tsx` lines 251 and 256-263: on the Create/Image workspace, the live Runtime Telemetry panel now sits in a dedicated 320px right-hand column beside the preview workspace on XL desktop layouts, with a sticky top offset; non-Create suites retain the existing full-width telemetry placement.
+- Updated `src/components/RuntimeTelemetryPanel.tsx` lines 17-51: tightened the panel to fit the side column, including two-column metrics, reduced padding, compact VRAM/history areas and a reduced history viewport.
+
+
+## Phase 44 — Professional Autonomous Prompting & Execution Engine
+
+- **`server/agent/IntentRouter.ts` — lines 1-29**: Hardened deterministic routing for explicit edit/fix/create/write/modify requests and file-path targets while keeping instructional “how do I…” questions conversational.
+- **`server/capabilities/CapabilityRegistry.ts` — lines 1-121**: Added `patch_file` / `filesystem.patch` and expanded code-change planning so explicit paths and operational verbs trigger execution.
+- **`server/agent/AgentPromptPolicy.ts` — lines 1-35**: Added model-aware prompt policy for coder, vision, and general/future local models, explicit target extraction, action-vs-answer classification, and destructive-operation awareness.
+- **`server.ts` — lines 753-850, 1014-1305, 1615-1780, 2500-2575**: Added the server-side Answer-vs-Act gate, deterministic target preflight reads, focused `patch_file` broker action, root-project validation support, 16-step execution budget, and machine evidence requirements before completion.
+- **`src/components/LocalLlmStudio.tsx` — lines 539-570, 636-665**: Removed the requirement for an active UI workspace before handing an operational request to Gina Agent.
+- **`server/llm/LocalLlmManager.ts` — lines 131-145, 172-172**: Prevented automatic VL projector attachment to unrelated text-only model filenames and raised the structured chat output ceiling to 2048 tokens.
+- **`server/agent/AutonomousAgentEngine.ts` — lines 190-350**: Kept the legacy autonomous engineering loop aligned with the focused `PATCH_FILE` action and explicit “act, don’t tutorialise” contract.
+
+- **`AGENTS.md` — lines 291-334**: Added the Phase 44 engineering rules, target-file records, and mandatory execution behaviour.
+- **`CHANGELOG.md` — lines 1624-1638**: Added this Phase 44 release record with edited-file line references.
+
+### Engineering objective
+Gina must behave as an autonomous engineering engine, not a coding tutorial. Explicit operational requests are executed through verified local tools; instructional questions remain conversational. The architecture is deliberately model-agnostic so Qwen-VL, Qwen-Coder, or a future text-only Qwen model can use the same runtime execution contract.
+
+
+## Phase 45 — MCP-Compatible Local Filesystem Tooling
+
+Added a complete local filesystem tool contract matching the requested MCP-style operations: `read_text_file`, `read_media_file`, `read_multiple_files`, `write_file`, `edit_file`, `create_directory`, `list_directory`, `list_directory_with_sizes`, `move_file`, `search_files`, `directory_tree`, `get_file_info`, and `list_allowed_directories`. Added safe path-boundary enforcement, best-effort multi-file reads, dry-run structured edit diffs, indentation preservation, recursive discovery, metadata inspection, typed media MIME detection, and authoritative allowed-root reporting. Updated the autonomous engineering prompt to prefer `edit_file` with a dry-run before applying selective edits and to reserve `write_file` for deliberate full writes.
+
+**Edited/added files and exact line references in this update:**
+- `server.ts` — **lines 24, 754–763, 1017, 1081–1093, 1705**: registers and dispatches the canonical filesystem toolset and includes the tools in model recovery instructions.
+- `server/agent/FilesystemToolset.ts` — **new, lines 1–99**: complete MCP-compatible local filesystem implementation.
+- `server/agent/AgentPromptPolicy.ts` — **line 34**: expanded autonomous engineering contract with canonical filesystem tools and safe edit workflow.
+- `server/capabilities/CapabilityRegistry.ts` — **lines 31–45**: registered the new filesystem capabilities.
+- `AGENTS.md` — **lines 337–351**: Phase 45 filesystem capability contract.
+
+## Phase 46 — Fully executable filesystem tool broker
+- **server.ts** — added `/api/agent/tool` so every registered broker operation can be invoked and tested through the same real execution path used by the autonomous agent; canonicalised legacy `read_file`/`patch_file` actions onto `FilesystemToolset`.
+- **server/agent/FilesystemToolset.ts** — improved recursive `search_files` matching so basename patterns such as `*.ts` work across the configured Gina root.
+- **scripts/test-filesystem-tools.ts** — added an executable smoke test covering read/write/edit/dry-run/multi-read/search/list/move/tree/info/scope enforcement.
+- **package.json** — added `test:filesystem-tools` command.
+- **AGENTS.md** — documents that filesystem capabilities are executable operations, not prompt-only structures.
+
+## Phase 47 — Autonomous Request & Tool Routing / Benchmark Harness
+- **server/agent/AgentToolSelector.ts — new, lines 1–94**: deterministic relevance scoring and bounded action allowlists for local-model tool routing.
+- **server/agent/AgentLoopGuard.ts — new, lines 1–33**: hard autonomous step/tool budgets plus repeated-failure detection.
+- **server/agent/AgentBenchmarkSuite.ts — new, lines 1–27**: executable smoke benchmark for routing and real filesystem operations.
+- **scripts/test-agent-routing.ts — new, lines 1–21**: 7-case routing regression suite.
+- **server.ts — lines 25–27, 1691–1707, 1737, 1790–1795, 1826, 1834–1838**: integrates deterministic tool selection, removes the full 54-tool list from the autonomous model prompt, blocks non-selected actions, enforces the loop guard, returns routing/loop telemetry, and exposes `GET /api/agent/benchmark`.
+- **AGENTS.md — lines 363–393**: Phase 47 execution/routing/benchmark rules and exact changed-file log.
+- **Validation**: routing regression **7/7 passed**. Targeted TypeScript inspection found no new server logic error; the environment still lacks the project's installed dependencies and Node typings, so a full project type-check must be run on the user's Windows installation after applying the delta.
+
+# v1.20.7 — Phase 48 Autonomous Platform Core
+
+- Added `server/agent/AgentToolCatalog.ts` — **lines 1–78**: executable definitions for all **54/54** broker actions, including parameter contracts, risk classes, approval policy and deterministic intent mapping.
+- Added `server/agent/AgentModelRouter.ts` — **lines 1–13**: deterministic request-to-model-role routing for general, coder, vision and research workloads while preserving LocalLlmManager as the actual model authority.
+- Added `server/agent/AgentTaskStore.ts` — **lines 1–17**: persistent `.gina/agent/tasks.jsonl` lifecycle store with queued/running/approval/completed/failed/cancelled states.
+- Added `server/agent/AgentApprovalManager.ts` — **lines 1–14**: persistent high-risk tool approval workflow; approval is never treated as execution evidence.
+- Added `server/agent/AgentScheduler.ts` — **lines 1–14**: persistent scheduled autonomous tasks using the same `executeAgentRun()` validation/execution path rather than a parallel agent implementation.
+- Extended `server.ts` — **lines 28–32, 98–100, 1363–1384, 1594–1602, 1868–1882, 2700**: tool catalog/model routing/task/approval/schedule APIs, direct high-risk tool approval, persistent scheduler startup and the 2048-token chat ceiling. Corrected the `approvalRequired` import to come from `AgentApprovalManager`, where the helper is actually exported.
+- Added `scripts/test-agent-platform.ts` — **lines 1–10** and expanded `server/agent/AgentBenchmarkSuite.ts` — **lines 1–36**: executable platform benchmark covering the catalog, model routing, task persistence, approval persistence, routing and real filesystem operations.
+- **Validation:** broker audit **54 declared / 54 handlers / 0 missing / 0 duplicates**; platform benchmark **11/11 passed**.
+
+# v1.20.7 — Phase 49 MCP-Native Tool Architecture
+
+- Added `server/agent/McpServerAdapter.ts` — **lines 1–140**: local MCP-compatible JSON-RPC adapter over Gina's existing broker, including `initialize`, `ping`, `tools/list`, `tools/call`, generated input schemas, MCP annotations, argument validation, approval bridging, bounded structured results and actionable execution errors.
+- Added `server/agent/AgentMcpEvaluationSuite.ts` — **lines 1–23**: 10 deterministic, realistic tool-routing evaluation cases covering project inspection, file reads, search, editing, validation, web research, network diagnostics, knowledge retrieval, Git diff and capability inspection.
+- Updated `server/agent/AgentApprovalManager.ts` — **lines 1–15**: approval requirements are now derived directly from `AgentToolCatalog.ts`, eliminating the duplicated hard-coded approval list.
+- Updated `server/agent/AgentBenchmarkSuite.ts` — **lines 1–40**: added MCP adapter/schema/annotation/approval validation and the 10-case MCP evaluation suite.
+- Updated `server.ts` — **lines 33, 102–109, 1598–1606**: registers the MCP adapter, routes execution through the existing `runAgentTool()` broker, exposes `/mcp`, and bridges persistent Gina approvals without creating a second execution path.
+- Updated `AGENTS.md` — **lines 404–415**: added the Phase 49 MCP-native operating contract and validation requirements.
+
+## Phase 49 Validation
+- Changed MCP modules compiled successfully with TypeScript using isolated Node-module shims; the project container does not contain the full Windows application's dependency tree or Node typings, so full project type-check remains a Windows-side validation step.
+- MCP adapter smoke test: **54 tools exposed**, schema validation returned `-32602` for missing required arguments, high-risk approval was enforced, and an approved retry executed through the supplied broker callback.
+- MCP routing evaluation suite: **10/10 passed**.
+- Approval policy consistency: derived from the authoritative tool catalog rather than a second hard-coded action list.
+
+## Phase 50 Continuation — Autonomous Verification & Consistency Hardening — 2026-09-15
+
+### Target File Path: `/server/agent/AgentConsistencyScanner.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export class AgentConsistencyScanner {
+    async scan(options: { changedPaths?: string[]; includeWarnings?: boolean } = {}) { ... }
+  }
+  ```
+- **Why**: Deterministically scan changed active-source files for retired LTX vocabulary and package/version drift before autonomous completion is accepted.
+
+### Target File Path: `/server/agent/AutonomousVerificationEngine.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export class AutonomousVerificationEngine {
+    async verify(input: VerificationInput): Promise<VerificationResult> { ... }
+  }
+  ```
+- **Why**: Add machine-enforced verification evidence for changes, successful validation, diff/integrity inspection, `git diff --check`, and consistency scanning.
+
+### Target File Path: `/server.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  const autonomousVerification = new AutonomousVerificationEngine(GINA_ROOT);
+  app.post('/api/agent/verify-run', async (req, res) => { ... });
+  verification = await autonomousVerification.verify({ workspaceRoot: GINA_ROOT, changedPaths: changed, steps, requireValidation: true, requireDiff: true });
+  ```
+- **Why**: Integrate verification into the actual autonomous execution path and expose it through a server-side verification endpoint. A final report now carries the machine verification result.
+
+### Target File Path: `/scripts/test-autonomous-verification.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  const result = await engine.verify({ workspaceRoot: root, changedPaths: ['src/example.ts'], steps: [...] });
+  if (!result.ok) throw new Error(JSON.stringify(result, null, 2));
+  ```
+- **Why**: Provide an executable smoke test for the verification gate.
+
+### Validation Notes
+- TypeScript syntax/type parsing was exercised with the system TypeScript compiler. Full project type checking remains a Windows-side validation because this build environment does not contain the project's complete Node dependency/type tree.
+- The verification design intentionally requires actual validation and diff/integrity evidence for autonomous code tasks; it does not trust model-generated claims of completion.
+
+### Target File Path: `/server/agent/AgentBenchmarkSuite.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  await check('autonomous_verification', async()=>{ ... });
+  ```
+- **Why**: Add the autonomous verification gate to Gina's executable benchmark suite so regressions are caught with the existing 54-tool/MCP/routing checks.
+
+### Phase 50 Continuation — Exact Edited File Line References
+- `/server/agent/AgentConsistencyScanner.ts` — **lines 1–62**.
+- `/server/agent/AutonomousVerificationEngine.ts` — **lines 1–49**.
+- `/server/agent/AgentBenchmarkSuite.ts` — **line 11 import and line 34 verification benchmark**.
+- `/server.ts` — **line 47 import, line 97 instance, line 1539 verification endpoint, lines 1900–1914 runtime verification/result integration**.
+- `/scripts/test-autonomous-verification.ts` — **lines 1–31**.
+- `/AGENTS.md` — **lines 417–464 plus the exact-line-reference block appended after the Phase 50 continuation entry**.
+- `/CHANGELOG.md` — **lines 1694–1740 plus this exact-line-reference block**.
+
+## Phase 51 — Persistent Autonomous Execution & Resume — 2026-09-15
+
+- Added `server/agent/AgentExecutionCheckpointStore.ts` — **lines 1–46**: persistent `.gina/agent/checkpoints.jsonl` store for resumable autonomous execution checkpoints.
+- Updated `server.ts` — **exact line references recorded below**: integrates checkpoint persistence into the real agent loop, saves progress after autonomous steps, exposes checkpoint inspection, creates persistent interactive task records, updates scheduler/interactive task state, and adds `POST /api/agent/tasks/:id/resume` to continue from a saved checkpoint.
+- Added `scripts/test-agent-resume.ts` — **lines 1–26**: executable checkpoint persistence smoke test covering save, restore, update, list and clear.
+
+### Phase 51 Design Rules
+- A checkpoint is execution state, not proof of success. Final completion still requires the Phase 50 autonomous verification gate.
+- Resume reconstructs the autonomous task from the original prompt plus persisted completed steps; it does not trust the model to invent previous tool results.
+- Checkpoints are local JSONL under `.gina/agent` and do not require network access or additional model/VRAM resources.
+- Failed verification leaves a resumable checkpoint instead of marking the task as successfully completed.
+
+### Phase 51 Exact Edited File Line References
+- `/server.ts` — **lines 48, 99, 1102, 1391–1392, 1742, 1777, 1854, 1892, 1922, 2041–2052, 2068, plus task-state updates immediately following interactive run completion/failure**.
+
+## Phase 52 — Persistent Self-Repair Evidence & Failure Guard — 2026-09-15
+
+### Changed / Added Files
+
+- Added `/server/agent/RepairEvidenceStore.ts` — **lines 1–65**.
+  - Persists repair lifecycle evidence to `.gina/agent/repair-history.jsonl`.
+  - Uses an atomic temp-file replacement strategy and serializes writes to avoid concurrent corruption.
+  - Supports task-scoped history and latest-record lookup.
+
+- Added `/server/agent/AutonomousRepairOrchestrator.ts` — **lines 1–100**.
+  - Adds a deterministic three-cycle repair budget.
+  - Records diagnosis, repair, validation, rollback and completion evidence.
+  - Computes a normalized failure signature and blocks repeated identical failures instead of looping indefinitely.
+  - Rejects unsafe absolute/path-traversal repair evidence targets.
+
+- Added `/scripts/test-phase52-repair-evidence.ts` — **lines 1–24**.
+  - Executable smoke test covering persistent evidence, repair/validation records, repeat-failure blocking, rollback and terminal failure recording.
+
+- Updated `/AGENTS.md` — **Phase 52 block appended after the Phase 51 operating contract**.
+  - Documents the new repair evidence contract, safety rules and exact line references.
+
+### Phase 52 Validation
+
+- TypeScript parsing/transpilation: **PASS** for all three Phase 52 files.
+- Direct Node smoke test: **PASS — persistent repair evidence + repeat-failure guard**.
+- Smoke scenario produced and reloaded six ordered evidence records, including diagnosis, repair, validation failure, repeated-failure diagnosis, rollback and terminal failure.
+- No network access, model download or GPU resources were required for the smoke test.
+
+### Phase 52 Exact Edited File Line References
+- `/server/agent/RepairEvidenceStore.ts` — **lines 1–65**.
+- `/server/agent/AutonomousRepairOrchestrator.ts` — **lines 1–100**.
+- `/scripts/test-phase52-repair-evidence.ts` — **lines 1–24**.
+- `/AGENTS.md` — **Phase 52 block appended after the Phase 51 entry**.
+- `/CHANGELOG.md` — **this Phase 52 block appended at the end**.

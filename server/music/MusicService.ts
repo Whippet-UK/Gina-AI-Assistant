@@ -23,6 +23,7 @@ export interface MusicGenOptions {
   temperature?: number;
   audioRef?: string;
   splitStart?: number;
+  editEnd?: number;
   vocalLanguage?: string;
   engine?: string;
 }
@@ -50,6 +51,7 @@ export class MusicService {
   // This lane serializes downloads and generations so a second heavy audio model
   // cannot start while another one is resident.
   private audioLane: Promise<void> = Promise.resolve();
+  private activeProcesses = new Map<string, ReturnType<typeof spawn>>();
 
   constructor(workspaceRoot: string) {
     this.outputDir = path.join(workspaceRoot, "local_ai_uploads", "audio");
@@ -414,7 +416,7 @@ export class MusicService {
   }
 
   private getAceStepBaseUrl(): string {
-    return process.env.ACESTEP_API_URL || "http://127.0.0.1:8001";
+    return process.env.ACESTEP_API_URL || "http://127.0.0.1:8101";
   }
 
   private async fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
@@ -505,7 +507,9 @@ export class MusicService {
         vocal_language: vocalLanguage,
         audio_format: "wav",
         audio_duration: duration,
-        model: "acestep-v15-turbo",
+        // The ACE-Step API uses the server's configured primary DiT model.
+        // Do not send a hard-coded model name here: older/newer API builds can
+        // reject it as an unknown model even when the configured service is valid.
         inference_steps: 8,
         guidance_scale: 7.0,
         batch_size: 1,
@@ -562,7 +566,23 @@ export class MusicService {
           continue;
         }
         if (item.status === 2) {
-          throw new Error(typeof item.result === "string" ? item.result : "ACE-Step generation failed");
+          let errorDetail = "ACE-Step generation failed";
+          if (typeof item.result === "string") {
+            try {
+              const parsed = JSON.parse(item.result);
+              const errObj = Array.isArray(parsed) ? parsed[0] : parsed;
+              errorDetail = errObj?.error || item.result;
+            } catch {
+              errorDetail = item.result;
+            }
+          } else if (item.result && typeof item.result === "object") {
+            const errObj = Array.isArray(item.result) ? item.result[0] : item.result;
+            errorDetail = errObj?.error || JSON.stringify(item.result);
+          }
+          if (/Unknown DiT model/i.test(errorDetail) || /acestep-v15-turbo\s+/i.test(errorDetail)) {
+            errorDetail += " — Note: A trailing space was detected in the ACE-Step DiT configuration. Restart ACE-Step using scripts\\Start_ACEStep_Singing_API.bat --restart (or Start_Factory.bat) to apply the corrected environment.";
+          }
+          throw new Error(errorDetail);
         }
         if (item.status === 1) {
           let parsed: any[] = [];
@@ -618,9 +638,12 @@ export class MusicService {
     const outputFilename = `music_${timestamp}_${cleanTitle}.wav`;
     const outputPath = path.join(this.outputDir, outputFilename);
 
-    const requestedModel = options.model || "facebook/musicgen-small";
+    const requestedModel = String(options.model || "facebook/musicgen-small").trim();
     const wantsSinging = !!options.lyrics?.trim() && options.noVocals !== true && requestedModel !== "facebook/audiogen-medium";
-    const useAceStep = requestedModel === "ace-step-1.5" || requestedModel === "auto" || wantsSinging;
+    const isSongwritingMode = options.mode === "text_to_song" || options.mode === "lyrics_to_song" || !options.mode;
+    // ACE-Step is reserved for actual singing requests. Cover/extend/edit modes
+    // require the MusicGen lane so their uploaded audio reference is honoured.
+    const useAceStep = isSongwritingMode && (requestedModel === "ace-step-1.5" || wantsSinging);
 
     if (useAceStep) {
       return this.generateAceStepSong(jobId, { ...options, engine: "ace-step-1.5" }, outputPath, outputFilename, jobManager, releaseLane);
@@ -656,8 +679,8 @@ export class MusicService {
     const args = [
       this.scriptPath,
       "generate",
-      "--mode", options.mode || "text_to_song",
-      "--duration", String(options.duration || 15.0),
+      "--mode", ["text_to_song", "lyrics_to_song", "song_cover", "extend", "edit"].includes(options.mode) ? options.mode : "text_to_song",
+      "--duration", String(Math.max(5, Math.min(480, Number(options.duration) || 15))),
       "--output_path", outputPath,
       "--model", modelName,
       "--model_path", modelPath,
@@ -674,8 +697,16 @@ export class MusicService {
     if (options.negativeStyle) args.push("--negative_style", options.negativeStyle);
     if (options.vocalType) args.push("--vocal_type", options.vocalType);
     if (options.noVocals) args.push("--no_vocals");
-    if (options.audioRef) args.push("--audio_ref", options.audioRef);
-    if (options.splitStart) args.push("--split_start", String(options.splitStart));
+    if (options.audioRef) {
+      const candidate = path.resolve(options.audioRef);
+      const allowedRoot = path.resolve(this.outputDir) + path.sep;
+      if (!candidate.startsWith(allowedRoot)) throw new Error("Audio reference must be a local Gina Audio Library file.");
+      const stat = await fs.stat(candidate);
+      if (!stat.isFile()) throw new Error("Audio reference is not a file.");
+      args.push("--audio_ref", candidate);
+    }
+    if (options.splitStart !== undefined) args.push("--split_start", String(options.splitStart));
+    if ((options as any).editEnd !== undefined) args.push("--edit_end", String((options as any).editEnd));
 
     return new Promise((resolve, reject) => {
       console.log(`[MusicService] Executing Python: ${this.pythonPath} ${args.join(" ")}`);
@@ -683,6 +714,7 @@ export class MusicService {
         cwd: process.cwd(),
         env: { ...process.env, PYTHONUNBUFFERED: "1" }
       });
+      this.activeProcesses.set(jobId, child);
 
       let jsonResult: any = null;
 
@@ -718,6 +750,7 @@ export class MusicService {
       child.stderr.on("data", (data) => handleEngineLog(data.toString()));
 
       child.on("error", (error) => {
+        this.activeProcesses.delete(jobId);
         const message = `AudioCraft generation process error: ${error.message}`;
         jobManager.update(jobId, { status: "FAILED", error: message, completedAt: new Date().toISOString() });
         releaseLane();
@@ -725,6 +758,13 @@ export class MusicService {
       });
 
       child.on("close", (code) => {
+        this.activeProcesses.delete(jobId);
+        const currentJob = jobManager.get(jobId);
+        if (currentJob?.status === "CANCELLED") {
+          releaseLane();
+          reject(new Error("AudioCraft generation cancelled."));
+          return;
+        }
         if (code === 0 || fsSync.existsSync(outputPath)) {
           jobManager.update(jobId, {
             status: "COMPLETED",
@@ -756,6 +796,18 @@ export class MusicService {
     });
   }
 
+  cancelJob(jobId: string): boolean {
+    const child = this.activeProcesses.get(jobId);
+    if (!child || child.killed) return false;
+    try {
+      child.kill();
+      this.activeProcesses.delete(jobId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async separateStems(jobId: string, inputPath: string, jobManager: JobManager): Promise<{ vocalsUrl: string; instrumentalUrl: string }> {
     jobManager.update(jobId, {
       status: "RUNNING",
@@ -777,6 +829,7 @@ export class MusicService {
         cwd: process.cwd(),
         env: { ...process.env, PYTHONUNBUFFERED: "1" }
       });
+      this.activeProcesses.set(jobId, child);
 
       let jsonResult: any = null;
 
@@ -795,6 +848,12 @@ export class MusicService {
       });
 
       child.on("close", (code) => {
+        this.activeProcesses.delete(jobId);
+        const currentJob = jobManager.get(jobId);
+        if (currentJob?.status === "CANCELLED") {
+          reject(new Error("Stem separation cancelled."));
+          return;
+        }
         if (code === 0 && jsonResult) {
           const vocalsFile = path.basename(jsonResult.vocals_path);
           const instFile = path.basename(jsonResult.instrumental_path);
