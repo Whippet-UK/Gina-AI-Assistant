@@ -1838,3 +1838,30 @@ Added a complete local filesystem tool contract matching the requested MCP-style
 - `/scripts/test-agent-routing.ts` — **lines 1–69**.
 - `/AGENTS.md` — **Phase 53 block appended at the end of the file**.
 - `/CHANGELOG.md` — **Phase 53 block appended at the end of the file**.
+
+## Phase 54 — Live News Intent Arbitration Repair — 2026-09-15
+
+### Changed / Added Files
+
+- Updated `/server/agent/IntentRouter.ts` — **lines 1–74**.
+  - Replaced the narrow BBC/source-dependent live-news regex with explicit web-action, recency, news-topic, news-question and public-source intent signals.
+  - `most recent news headline`, `latest news`, current headline requests and generic website checks now enter the real `web-research` route.
+  - Keeps specialised execution gated by intent combinations rather than isolated keywords.
+
+- Updated `/scripts/test-agent-routing.ts` — **lines 18–75**.
+  - Added regressions for generic current-news/headline requests and unnamed website checks.
+
+- Updated `/AGENTS.md` — **Phase 54 block appended at the end**.
+  - Documents the live-news arbitration contract.
+
+### Phase 54 Validation
+
+- TypeScript transpilation: **PASS** for `IntentRouter.ts` and `test-agent-routing.ts`.
+- Deterministic routing cases include generic `most recent news headline` and current headline requests and are expected to resolve to `web-research`.
+- Web requests remain excluded from the autonomous coding execution gate.
+
+### Phase 54 Exact Edited File Line References
+- `/server/agent/IntentRouter.ts` — **lines 1–74**.
+- `/scripts/test-agent-routing.ts` — **lines 18–75**.
+- `/AGENTS.md` — **Phase 54 block appended at the end of the file**.
+- `/CHANGELOG.md` — **Phase 54 block appended at the end of the file**.

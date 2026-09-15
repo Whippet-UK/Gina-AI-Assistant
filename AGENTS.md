@@ -562,3 +562,11 @@ Rules:
 - `/src/components/LocalLlmStudio.tsx` — **lines 552–554, 644–645, 667–679, 706–707, 931–934** for agent lifecycle reset, engineering-only agent entry, explicit video handoff, ordinary-chat reset, and coding-workspace visibility.
 - `/src/components/VideoStudio.tsx` — **lines 339–350** for the Local AI video-request event bridge.
 - `/scripts/test-agent-routing.ts` — **media/intent regression cases around lines 18–61**.
+
+## Phase 54 — Live News Intent Arbitration Repair — 2026-09-15
+
+- News/headline requests are now classified by intent combinations rather than a narrow source-specific regex.
+- Phrases such as `most recent news headline`, `latest news`, `current top story`, and `what are the latest headlines` must route to `web-research`.
+- Explicit web actions such as `check the website for the latest news` must route to `web-research` even when the site is not named.
+- A bare media noun remains non-generative; specialised executors require explicit action intent.
+- Web research remains mutually exclusive with autonomous coding/file execution at the server action gate.

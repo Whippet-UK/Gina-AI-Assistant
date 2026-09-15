@@ -18,6 +18,11 @@ let failed = 0;
 const intentCases = [
   ['check the bbc website for top news story', 'web-research'],
   ['what are the latest BBC headlines?', 'web-research'],
+  ['most recent news headline', 'web-research'],
+  ['what are the most recent news headlines?', 'web-research'],
+  ['latest news', 'web-research'],
+  ['what is the current top story?', 'web-research'],
+  ['check the website for the latest news', 'web-research'],
   ['make a video of a dragon flying over London', 'general-chat'],
   ['I made a video yesterday and it looks blurry', 'general-chat'],
   ['make an image of a futuristic London street', 'general-chat'],
