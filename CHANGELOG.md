@@ -1,3 +1,55 @@
+# v1.20.7 — Phase 42.1 Intent Routing, Context Firewall & Performance Telemetry
+
+- Added deterministic `server/agent/IntentRouter.ts` so current-web/news, network diagnostics, code/file operations, capability questions and ordinary chat are classified before local inference.
+- Added a context firewall: normal web/general requests no longer receive the full capability registry, RAG project context, or authoritative agent skills unless the route requires them.
+- Explicit web requests such as “top new on bbc news site” now route as `web-research` and use live web grounding without project/skills contamination.
+- Local LLM skill injection is now opt-out for lightweight chat and remains enabled for coding/agent workflows.
+- Extended runtime telemetry with context-source breakdown, prompt/completion tokens per second, duration, iteration/tool-call fields and session timing totals.
+- Extended the global telemetry panel with tokens/sec, context, average request time and tool-call metrics.
+- Added release-blocking regression rules for the BBC-news/PCIe-Paging contamination bug and the 12k-token context explosion.
+
+# v1.20.7 — Network Capability Truth & Diagnostics
+
+- Added machine-audited `network_test` broker capability for controlled public HTTPS connectivity diagnostics.
+- Added `/api/agent/network-test` and live Local AI network-diagnostic grounding for explicit connectivity/ping questions.
+- Runtime capability contract now distinguishes local LLM inference from server-brokered outbound internet access.
+- Gina must not claim that a local model means the Gina runtime has no internet access when the brokered web capability is enabled.
+- Network diagnostics test multiple public HTTPS endpoints and report confirmed success/failure with latency and HTTP status.
+
+# v1.20.7 — Runtime Capability Self-Audit, Prompt/Web Telemetry, VRAM Stage History & Theme-Locked Lyrics
+
+- Added runtime broker self-audit: the capability contract now derives its registered tool list from the active `runAgentTool` dispatcher and reports missing declared handlers/duplicate handlers instead of trusting a stale hand-maintained list.
+- Added `server/telemetry/RuntimeTelemetry.ts` and `/api/runtime/telemetry` for in-memory prompt telemetry across local LLM callers, including prompt/completion/total tokens, suite, source, duration, context size and web-search state. Exact llama.cpp usage is preferred; a conservative character-based estimate is used only when the backend omits usage metadata.
+- Local AI chat now distinguishes local inference from local+web grounded requests. Requests such as “search the web”, “look this up”, “latest”, “current”, etc. trigger live web grounding and expose the actual provider/result state.
+- Added a global `TELEMETRY` panel available from every suite, showing current inference source, prompt tokens, total tokens, web-search state, session totals and a live 30-second VRAM/stage graph.
+- Removed fabricated/random startup VRAM history from `VRAMHistoryGraph`; the graph now begins from real observations and maintains a rolling 30-second live window.
+- Added suite labels to major local LLM callers so prompt telemetry can be attributed to Local AI, Image Studio, Music Suite, Gina Agent and Gina Repair Loop.
+- Hardened Music Suite lyric generation with a theme lock, story-progression requirements, theme keyword anchors, a targeted compliance repair pass when the first draft drifts off-topic, and a theme-compliance result in the API response.
+
+# v1.20.7 — Runtime Capability Contract Hardening
+
+- Added a machine-generated runtime capability contract to `server.ts` for Gina Agent.
+- The contract explicitly exposes verified local filesystem read/write access, command execution, validation, Git, research, and the active broker tool registry when Full Local Access is enabled.
+- Added strict capability truth rules so Gina distinguishes unavailable capabilities from failed tool executions and cannot truthfully deny registered local file editing/reading capabilities.
+- Wired the same contract into the agent system prompt, `/api/agent/access`, and the capability snapshot so capability discovery and execution use the same declared registry.
+- Preserved workspace/path-traversal boundaries and the existing validation + Definition of Done completion gates.
+
+# v1.20.7 — Autonomous Agent Skill Runtime Loader & Completion Integrity Hardening
+
+- **Target File Path:** `/server/agent/AgentSkillLoader.ts`
+- **Exact Code Change:** Added a dependency-free recursive loader for `.gina/docs/agent_skills/**/skill.md`, YAML front-matter extraction, deterministic `activeAgentSkillsContext` buffering, expected five-skill detection, and machine-readable system-prompt compilation. The loader supports the existing `docs/agent_skills` location only as a legacy fallback.
+- **Why:** Makes the five local `skill.md` rule sets available to the autonomous agent at runtime instead of relying on the model to discover them itself.
+
+- **Target File Path:** `/server/llm/LocalLlmManager.ts`
+- **Exact Code Change:** Loads the active skill bundle during manager initialization and injects the compiled `ACTIVE AGENT SKILLS` context into every local LLM chat/completion turn unless that exact context is already present.
+- **Why:** Ensures every local execution turn receives the authoritative workspace skill rules, including callers outside `AutonomousAgentEngine`.
+
+- **Target File Path:** `/server/agent/AutonomousAgentEngine.ts`
+- **Exact Code Change:** Loads the skill bundle before orchestration, injects it into the core system prompt, tracks successful tool execution and validation state, records compilation/processing diagnostics, rejects empty tool parameters, blocks `TASK_COMPLETE` until a successful tool execution plus validation pass exists, and feeds failure diagnostics back into the bounded corrective loop.
+- **Why:** Prevents false completion reports and converts parse/tool/validation failures into explicit repair-loop work instead of allowing the model to claim success.
+
+- **Validation:** TypeScript parsing reached project dependency-resolution errors after the new files parsed without syntax errors. The uploaded archive does not contain `node_modules`, so a clean project-wide `npx tsc --noEmit` could not be completed in this environment.
+
 # v1.20.7 — The Whippet Cinematic Spotlight Intro Preset & Neon Glow Typography Suite
 
 - **Target File Path:** `/src/components/StreamInjectStudio.tsx`
@@ -1530,3 +1582,218 @@ Added interactive masking canvas and dedicated SDXL inpaint workflow (`sdxl_jugg
   # BGR gradient interpolation and cyber grid drawing in OpenCV
   ```
 - **Why:** Synchronized the Python render engine to consume dynamic background colors, gradients, and grid toggles configured from the Studio dashboard.
+
+
+# v1.20.7 — Phase 42 Capability Intelligence
+
+- Added `CapabilityRegistry` as the machine-verified source of truth for Gina's runtime abilities.
+- Added deterministic capability planning so operational requests prefer execution over generic instructions.
+- Added capability execution evidence journal at `.gina/capabilities/history.jsonl`.
+- Added `/api/agent/capabilities` and `/api/agent/capability-plan` endpoints.
+- Integrated capability intelligence into the agent system prompt and Local AI chat grounding.
+- Added global CAPABILITIES panel for live capability/resource visibility.
+- Fixed `LocalLlmStudio.tsx` duplicate `webIntent` declaration that caused the Vite React-Babel compilation failure at line 667.
+- Operational Local AI requests can hand off to Gina Agent automatically when an active workspace is present.
+
+
+# v1.20.7 — Phase 43 Persistent Knowledge & Validated Learning
+
+- Added a persistent local learning knowledge base at `.gina/knowledge/knowledge.jsonl`.
+- Added explicit knowledge kinds: facts, lessons, solutions, decisions, preferences and results.
+- Added confidence, verification, source, usage and archive metadata so Gina does not blindly trust everything she encounters.
+- Successful verified agent runs can automatically record reusable solution knowledge; failed runs are not promoted to verified solutions.
+- Added bounded relevance retrieval so only small, relevant learned context enters future prompts.
+- Kept web/current-news requests isolated from learned project knowledge to prevent context contamination such as the previous PCIe Paging response.
+- Extended `knowledge_search` to search learned knowledge alongside the zero-VRAM Local RAG engine.
+- Added `/api/knowledge/*` inspection, search, learning and archive endpoints.
+- Added global KNOWLEDGE panel for inspecting and managing what Gina has learned.
+- Added persistent-learning self-test coverage.
+
+## Phase 42.2 — Intent Context Firewall / Web Isolation
+- Fixed a critical context-contamination path where a new BBC/news request could inherit stale PCIe Paging/agent-skill content from earlier assistant/project context.
+- Added deterministic `ContextFirewall` isolation for web, network, capability, coding and file-operation routes.
+- Web/current requests now use only the current user request plus server-authoritative live web grounding; active skills and stale assistant responses are excluded.
+- Added regression test for `top news on bbc site` contamination.
+- Normalized legacy `docs/agent_skills/Media` to `Media.txt` in the release package.
+
+## Phase 43.3 — Compact Runtime Telemetry Placement
+- Updated `src/App.tsx` lines 251 and 256-263: on the Create/Image workspace, the live Runtime Telemetry panel now sits in a dedicated 320px right-hand column beside the preview workspace on XL desktop layouts, with a sticky top offset; non-Create suites retain the existing full-width telemetry placement.
+- Updated `src/components/RuntimeTelemetryPanel.tsx` lines 17-51: tightened the panel to fit the side column, including two-column metrics, reduced padding, compact VRAM/history areas and a reduced history viewport.
+
+
+## Phase 44 — Professional Autonomous Prompting & Execution Engine
+
+- **`server/agent/IntentRouter.ts` — lines 1-29**: Hardened deterministic routing for explicit edit/fix/create/write/modify requests and file-path targets while keeping instructional “how do I…” questions conversational.
+- **`server/capabilities/CapabilityRegistry.ts` — lines 1-121**: Added `patch_file` / `filesystem.patch` and expanded code-change planning so explicit paths and operational verbs trigger execution.
+- **`server/agent/AgentPromptPolicy.ts` — lines 1-35**: Added model-aware prompt policy for coder, vision, and general/future local models, explicit target extraction, action-vs-answer classification, and destructive-operation awareness.
+- **`server.ts` — lines 753-850, 1014-1305, 1615-1780, 2500-2575**: Added the server-side Answer-vs-Act gate, deterministic target preflight reads, focused `patch_file` broker action, root-project validation support, 16-step execution budget, and machine evidence requirements before completion.
+- **`src/components/LocalLlmStudio.tsx` — lines 539-570, 636-665**: Removed the requirement for an active UI workspace before handing an operational request to Gina Agent.
+- **`server/llm/LocalLlmManager.ts` — lines 131-145, 172-172**: Prevented automatic VL projector attachment to unrelated text-only model filenames and raised the structured chat output ceiling to 2048 tokens.
+- **`server/agent/AutonomousAgentEngine.ts` — lines 190-350**: Kept the legacy autonomous engineering loop aligned with the focused `PATCH_FILE` action and explicit “act, don’t tutorialise” contract.
+
+- **`AGENTS.md` — lines 291-334**: Added the Phase 44 engineering rules, target-file records, and mandatory execution behaviour.
+- **`CHANGELOG.md` — lines 1624-1638**: Added this Phase 44 release record with edited-file line references.
+
+### Engineering objective
+Gina must behave as an autonomous engineering engine, not a coding tutorial. Explicit operational requests are executed through verified local tools; instructional questions remain conversational. The architecture is deliberately model-agnostic so Qwen-VL, Qwen-Coder, or a future text-only Qwen model can use the same runtime execution contract.
+
+
+## Phase 45 — MCP-Compatible Local Filesystem Tooling
+
+Added a complete local filesystem tool contract matching the requested MCP-style operations: `read_text_file`, `read_media_file`, `read_multiple_files`, `write_file`, `edit_file`, `create_directory`, `list_directory`, `list_directory_with_sizes`, `move_file`, `search_files`, `directory_tree`, `get_file_info`, and `list_allowed_directories`. Added safe path-boundary enforcement, best-effort multi-file reads, dry-run structured edit diffs, indentation preservation, recursive discovery, metadata inspection, typed media MIME detection, and authoritative allowed-root reporting. Updated the autonomous engineering prompt to prefer `edit_file` with a dry-run before applying selective edits and to reserve `write_file` for deliberate full writes.
+
+**Edited/added files and exact line references in this update:**
+- `server.ts` — **lines 24, 754–763, 1017, 1081–1093, 1705**: registers and dispatches the canonical filesystem toolset and includes the tools in model recovery instructions.
+- `server/agent/FilesystemToolset.ts` — **new, lines 1–99**: complete MCP-compatible local filesystem implementation.
+- `server/agent/AgentPromptPolicy.ts` — **line 34**: expanded autonomous engineering contract with canonical filesystem tools and safe edit workflow.
+- `server/capabilities/CapabilityRegistry.ts` — **lines 31–45**: registered the new filesystem capabilities.
+- `AGENTS.md` — **lines 337–351**: Phase 45 filesystem capability contract.
+
+## Phase 46 — Fully executable filesystem tool broker
+- **server.ts** — added `/api/agent/tool` so every registered broker operation can be invoked and tested through the same real execution path used by the autonomous agent; canonicalised legacy `read_file`/`patch_file` actions onto `FilesystemToolset`.
+- **server/agent/FilesystemToolset.ts** — improved recursive `search_files` matching so basename patterns such as `*.ts` work across the configured Gina root.
+- **scripts/test-filesystem-tools.ts** — added an executable smoke test covering read/write/edit/dry-run/multi-read/search/list/move/tree/info/scope enforcement.
+- **package.json** — added `test:filesystem-tools` command.
+- **AGENTS.md** — documents that filesystem capabilities are executable operations, not prompt-only structures.
+
+## Phase 47 — Autonomous Request & Tool Routing / Benchmark Harness
+- **server/agent/AgentToolSelector.ts — new, lines 1–94**: deterministic relevance scoring and bounded action allowlists for local-model tool routing.
+- **server/agent/AgentLoopGuard.ts — new, lines 1–33**: hard autonomous step/tool budgets plus repeated-failure detection.
+- **server/agent/AgentBenchmarkSuite.ts — new, lines 1–27**: executable smoke benchmark for routing and real filesystem operations.
+- **scripts/test-agent-routing.ts — new, lines 1–21**: 7-case routing regression suite.
+- **server.ts — lines 25–27, 1691–1707, 1737, 1790–1795, 1826, 1834–1838**: integrates deterministic tool selection, removes the full 54-tool list from the autonomous model prompt, blocks non-selected actions, enforces the loop guard, returns routing/loop telemetry, and exposes `GET /api/agent/benchmark`.
+- **AGENTS.md — lines 363–393**: Phase 47 execution/routing/benchmark rules and exact changed-file log.
+- **Validation**: routing regression **7/7 passed**. Targeted TypeScript inspection found no new server logic error; the environment still lacks the project's installed dependencies and Node typings, so a full project type-check must be run on the user's Windows installation after applying the delta.
+
+# v1.20.7 — Phase 48 Autonomous Platform Core
+
+- Added `server/agent/AgentToolCatalog.ts` — **lines 1–78**: executable definitions for all **54/54** broker actions, including parameter contracts, risk classes, approval policy and deterministic intent mapping.
+- Added `server/agent/AgentModelRouter.ts` — **lines 1–13**: deterministic request-to-model-role routing for general, coder, vision and research workloads while preserving LocalLlmManager as the actual model authority.
+- Added `server/agent/AgentTaskStore.ts` — **lines 1–17**: persistent `.gina/agent/tasks.jsonl` lifecycle store with queued/running/approval/completed/failed/cancelled states.
+- Added `server/agent/AgentApprovalManager.ts` — **lines 1–14**: persistent high-risk tool approval workflow; approval is never treated as execution evidence.
+- Added `server/agent/AgentScheduler.ts` — **lines 1–14**: persistent scheduled autonomous tasks using the same `executeAgentRun()` validation/execution path rather than a parallel agent implementation.
+- Extended `server.ts` — **lines 28–32, 98–100, 1363–1384, 1594–1602, 1868–1882, 2700**: tool catalog/model routing/task/approval/schedule APIs, direct high-risk tool approval, persistent scheduler startup and the 2048-token chat ceiling. Corrected the `approvalRequired` import to come from `AgentApprovalManager`, where the helper is actually exported.
+- Added `scripts/test-agent-platform.ts` — **lines 1–10** and expanded `server/agent/AgentBenchmarkSuite.ts` — **lines 1–36**: executable platform benchmark covering the catalog, model routing, task persistence, approval persistence, routing and real filesystem operations.
+- **Validation:** broker audit **54 declared / 54 handlers / 0 missing / 0 duplicates**; platform benchmark **11/11 passed**.
+
+# v1.20.7 — Phase 49 MCP-Native Tool Architecture
+
+- Added `server/agent/McpServerAdapter.ts` — **lines 1–140**: local MCP-compatible JSON-RPC adapter over Gina's existing broker, including `initialize`, `ping`, `tools/list`, `tools/call`, generated input schemas, MCP annotations, argument validation, approval bridging, bounded structured results and actionable execution errors.
+- Added `server/agent/AgentMcpEvaluationSuite.ts` — **lines 1–23**: 10 deterministic, realistic tool-routing evaluation cases covering project inspection, file reads, search, editing, validation, web research, network diagnostics, knowledge retrieval, Git diff and capability inspection.
+- Updated `server/agent/AgentApprovalManager.ts` — **lines 1–15**: approval requirements are now derived directly from `AgentToolCatalog.ts`, eliminating the duplicated hard-coded approval list.
+- Updated `server/agent/AgentBenchmarkSuite.ts` — **lines 1–40**: added MCP adapter/schema/annotation/approval validation and the 10-case MCP evaluation suite.
+- Updated `server.ts` — **lines 33, 102–109, 1598–1606**: registers the MCP adapter, routes execution through the existing `runAgentTool()` broker, exposes `/mcp`, and bridges persistent Gina approvals without creating a second execution path.
+- Updated `AGENTS.md` — **lines 404–415**: added the Phase 49 MCP-native operating contract and validation requirements.
+
+## Phase 49 Validation
+- Changed MCP modules compiled successfully with TypeScript using isolated Node-module shims; the project container does not contain the full Windows application's dependency tree or Node typings, so full project type-check remains a Windows-side validation step.
+- MCP adapter smoke test: **54 tools exposed**, schema validation returned `-32602` for missing required arguments, high-risk approval was enforced, and an approved retry executed through the supplied broker callback.
+- MCP routing evaluation suite: **10/10 passed**.
+- Approval policy consistency: derived from the authoritative tool catalog rather than a second hard-coded action list.
+
+## Phase 50 Continuation — Autonomous Verification & Consistency Hardening — 2026-09-15
+
+### Target File Path: `/server/agent/AgentConsistencyScanner.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export class AgentConsistencyScanner {
+    async scan(options: { changedPaths?: string[]; includeWarnings?: boolean } = {}) { ... }
+  }
+  ```
+- **Why**: Deterministically scan changed active-source files for retired LTX vocabulary and package/version drift before autonomous completion is accepted.
+
+### Target File Path: `/server/agent/AutonomousVerificationEngine.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  export class AutonomousVerificationEngine {
+    async verify(input: VerificationInput): Promise<VerificationResult> { ... }
+  }
+  ```
+- **Why**: Add machine-enforced verification evidence for changes, successful validation, diff/integrity inspection, `git diff --check`, and consistency scanning.
+
+### Target File Path: `/server.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  const autonomousVerification = new AutonomousVerificationEngine(GINA_ROOT);
+  app.post('/api/agent/verify-run', async (req, res) => { ... });
+  verification = await autonomousVerification.verify({ workspaceRoot: GINA_ROOT, changedPaths: changed, steps, requireValidation: true, requireDiff: true });
+  ```
+- **Why**: Integrate verification into the actual autonomous execution path and expose it through a server-side verification endpoint. A final report now carries the machine verification result.
+
+### Target File Path: `/scripts/test-autonomous-verification.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  const result = await engine.verify({ workspaceRoot: root, changedPaths: ['src/example.ts'], steps: [...] });
+  if (!result.ok) throw new Error(JSON.stringify(result, null, 2));
+  ```
+- **Why**: Provide an executable smoke test for the verification gate.
+
+### Validation Notes
+- TypeScript syntax/type parsing was exercised with the system TypeScript compiler. Full project type checking remains a Windows-side validation because this build environment does not contain the project's complete Node dependency/type tree.
+- The verification design intentionally requires actual validation and diff/integrity evidence for autonomous code tasks; it does not trust model-generated claims of completion.
+
+### Target File Path: `/server/agent/AgentBenchmarkSuite.ts`
+- **Exact Code Snippet / Code Block**:
+  ```typescript
+  await check('autonomous_verification', async()=>{ ... });
+  ```
+- **Why**: Add the autonomous verification gate to Gina's executable benchmark suite so regressions are caught with the existing 54-tool/MCP/routing checks.
+
+### Phase 50 Continuation — Exact Edited File Line References
+- `/server/agent/AgentConsistencyScanner.ts` — **lines 1–62**.
+- `/server/agent/AutonomousVerificationEngine.ts` — **lines 1–49**.
+- `/server/agent/AgentBenchmarkSuite.ts` — **line 11 import and line 34 verification benchmark**.
+- `/server.ts` — **line 47 import, line 97 instance, line 1539 verification endpoint, lines 1900–1914 runtime verification/result integration**.
+- `/scripts/test-autonomous-verification.ts` — **lines 1–31**.
+- `/AGENTS.md` — **lines 417–464 plus the exact-line-reference block appended after the Phase 50 continuation entry**.
+- `/CHANGELOG.md` — **lines 1694–1740 plus this exact-line-reference block**.
+
+## Phase 51 — Persistent Autonomous Execution & Resume — 2026-09-15
+
+- Added `server/agent/AgentExecutionCheckpointStore.ts` — **lines 1–46**: persistent `.gina/agent/checkpoints.jsonl` store for resumable autonomous execution checkpoints.
+- Updated `server.ts` — **exact line references recorded below**: integrates checkpoint persistence into the real agent loop, saves progress after autonomous steps, exposes checkpoint inspection, creates persistent interactive task records, updates scheduler/interactive task state, and adds `POST /api/agent/tasks/:id/resume` to continue from a saved checkpoint.
+- Added `scripts/test-agent-resume.ts` — **lines 1–26**: executable checkpoint persistence smoke test covering save, restore, update, list and clear.
+
+### Phase 51 Design Rules
+- A checkpoint is execution state, not proof of success. Final completion still requires the Phase 50 autonomous verification gate.
+- Resume reconstructs the autonomous task from the original prompt plus persisted completed steps; it does not trust the model to invent previous tool results.
+- Checkpoints are local JSONL under `.gina/agent` and do not require network access or additional model/VRAM resources.
+- Failed verification leaves a resumable checkpoint instead of marking the task as successfully completed.
+
+### Phase 51 Exact Edited File Line References
+- `/server.ts` — **lines 48, 99, 1102, 1391–1392, 1742, 1777, 1854, 1892, 1922, 2041–2052, 2068, plus task-state updates immediately following interactive run completion/failure**.
+
+## Phase 52 — Persistent Self-Repair Evidence & Failure Guard — 2026-09-15
+
+### Changed / Added Files
+
+- Added `/server/agent/RepairEvidenceStore.ts` — **lines 1–65**.
+  - Persists repair lifecycle evidence to `.gina/agent/repair-history.jsonl`.
+  - Uses an atomic temp-file replacement strategy and serializes writes to avoid concurrent corruption.
+  - Supports task-scoped history and latest-record lookup.
+
+- Added `/server/agent/AutonomousRepairOrchestrator.ts` — **lines 1–100**.
+  - Adds a deterministic three-cycle repair budget.
+  - Records diagnosis, repair, validation, rollback and completion evidence.
+  - Computes a normalized failure signature and blocks repeated identical failures instead of looping indefinitely.
+  - Rejects unsafe absolute/path-traversal repair evidence targets.
+
+- Added `/scripts/test-phase52-repair-evidence.ts` — **lines 1–24**.
+  - Executable smoke test covering persistent evidence, repair/validation records, repeat-failure blocking, rollback and terminal failure recording.
+
+- Updated `/AGENTS.md` — **Phase 52 block appended after the Phase 51 operating contract**.
+  - Documents the new repair evidence contract, safety rules and exact line references.
+
+### Phase 52 Validation
+
+- TypeScript parsing/transpilation: **PASS** for all three Phase 52 files.
+- Direct Node smoke test: **PASS — persistent repair evidence + repeat-failure guard**.
+- Smoke scenario produced and reloaded six ordered evidence records, including diagnosis, repair, validation failure, repeated-failure diagnosis, rollback and terminal failure.
+- No network access, model download or GPU resources were required for the smoke test.
+
+### Phase 52 Exact Edited File Line References
+- `/server/agent/RepairEvidenceStore.ts` — **lines 1–65**.
+- `/server/agent/AutonomousRepairOrchestrator.ts` — **lines 1–100**.
+- `/scripts/test-phase52-repair-evidence.ts` — **lines 1–24**.
+- `/AGENTS.md` — **Phase 52 block appended after the Phase 51 entry**.
+- `/CHANGELOG.md` — **this Phase 52 block appended at the end**.
