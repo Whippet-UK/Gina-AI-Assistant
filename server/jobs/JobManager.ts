@@ -20,6 +20,7 @@ export interface GinaJob {
   error?: string;
   outputs: any[];
   parameters: Record<string, any>;
+  preview?: string;
 }
 
 export class JobManager extends EventEmitter {

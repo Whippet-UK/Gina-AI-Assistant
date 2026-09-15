@@ -43,15 +43,15 @@ const PRE_SEEDED_KNOWLEDGE: Omit<RagChunk, 'id'>[] = [
   },
   {
     category: 'LLM',
-    title: 'Gemma 3 12B IT Quantized Local CUDA Configuration',
+    title: 'Qwen Local CUDA Configuration',
     sourceFile: 'LOCAL_LLM_SETUP.md / AGENTS.md',
-    keywords: ['gemma', '12b', 'llama.cpp', 'llama-server', 'cuda', '28 layers', '8080', 'context', '4096', 'q4_k_m', 'vram'],
+    keywords: ['qwen', 'coder', 'vision', 'llama.cpp', 'llama-server', 'cuda', '28 layers', '8080', 'context', '4096', 'q4_k_m', 'vram'],
     content: `Local LLM Engine Architecture:
-- Model: Gemma 3 12B IT (Q4_K_M GGUF) at C:\\Gina_AI\\models\\llm\\gemma-3-12b-it-Q4_K_M.gguf.
+- Vision Model: Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf + mmproj-F16. Optional Coder Model: qwen2.5-coder-7b-instruct-q5_k_m.gguf.
 - Runtime: llama-server.exe Windows x64 CUDA backend listening on http://127.0.0.1:8080.
 - Pinned Layer Allocation: 28 GPU layers (achieves ~9.2-10.7 tokens/sec generation without OOM).
 - Performance Cliff Note: 36 layers drops speed to 1.3 tok/sec due to VRAM paging; 28 layers is strictly pinned.
-- VRAM Mutual Exclusion: Gina releases ComfyUI cached models before starting/restarting Gemma. Never run heavy diffusion generation concurrently with the 12B LLM on 8GB VRAM.`
+- VRAM Mutual Exclusion: Gina releases ComfyUI cached models before starting/restarting the active Qwen engine. Never run heavy diffusion generation concurrently with the 12B LLM on 8GB VRAM.`
   },
   {
     category: 'AIDA64',
@@ -77,12 +77,12 @@ const PRE_SEEDED_KNOWLEDGE: Omit<RagChunk, 'id'>[] = [
   {
     category: 'WORKFLOWS',
     title: 'ComfyUI Local Diffusion & Video Workflows',
-    sourceFile: 'flux_image.json / ltx_video.json',
-    keywords: ['comfyui', 'flux', 'ltx-video', '8188', 'fp8', 'schnell', 'mp4', 'clear cache', 'free'],
+    sourceFile: 'sdxl_juggernaut.json / wan_video.json',
+    keywords: ['comfyui', 'flux', 'wan2.1', '8188', 'fp8', 'schnell', 'mp4', 'clear cache', 'free'],
     content: `Local Workflows & Generation Pipelines:
 - ComfyUI Loopback: Bound to http://127.0.0.1:8188 with flags --lowvram --fp8_e4m3fn-text-enc.
 - Image Workflow: FLUX.1 Schnell GGUF Q4_K_S (4-step ultra-fast latent diffusion).
-- Video Workflow: LTX-Video 2.5 (installed variant) with H.264 MP4 export and RIFE frame interpolation.
+- Video Workflow: Wan 2.1 1.3B BF16 with H.264 MP4 export and RIFE frame interpolation.
 - Memory Sentinel: Automatically calls POST /free on ComfyUI before and after intensive generation passes.`
   },
   {
@@ -190,7 +190,7 @@ export class LocalRagEngine {
 
             // Only scan relevant documentation/config files
             const isDoc = ext === '.md' || ext === '.txt';
-            const isKeyConfig = ['package.json', 'metadata.json', 'flux_image.json', 'ltx_video.json', 'AGENTS.md', 'CHANGELOG.md', 'README.md'].includes(entry.name);
+            const isKeyConfig = ['package.json', 'metadata.json', 'sdxl_juggernaut.json', 'wan_video.json', 'AGENTS.md', 'CHANGELOG.md', 'README.md'].includes(entry.name);
             const isSource = fullPath.includes('src') || fullPath.includes('server');
 
             if (!isDoc && !isKeyConfig && !isSource) continue;
@@ -211,9 +211,9 @@ export class LocalRagEngine {
               paragraphs.slice(0, 10).forEach((para, idx) => {
                 const category: RagChunk['category'] =
                   relativePath.includes('aida64') || para.toLowerCase().includes('aida64') || para.toLowerCase().includes('gauge') ? 'AIDA64' :
-                  para.toLowerCase().includes('gemma') || para.toLowerCase().includes('llama') || para.toLowerCase().includes('llm') ? 'LLM' :
+                  para.toLowerCase().includes('qwen') || para.toLowerCase().includes('llama') || para.toLowerCase().includes('llm') ? 'LLM' :
                   para.toLowerCase().includes('vram') || para.toLowerCase().includes('gpu') || para.toLowerCase().includes('3070') ? 'HARDWARE' :
-                  para.toLowerCase().includes('workflow') || para.toLowerCase().includes('flux') || para.toLowerCase().includes('ltx') ? 'WORKFLOWS' :
+                  para.toLowerCase().includes('workflow') || para.toLowerCase().includes('flux') || para.toLowerCase().includes('wan2.1') ? 'WORKFLOWS' :
                   para.toLowerCase().includes('agent') || para.toLowerCase().includes('tool') ? 'AGENT' : 'ARCHITECTURE';
 
                 const firstLine = para.split('\n')[0].replace(/^[#*-]\s*/, '').slice(0, 60);

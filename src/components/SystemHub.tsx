@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Activity, FileText, Gauge, HardDrive, ScrollText, ShieldCheck, Workflow, Wrench } from 'lucide-react';
 import { LocalProjectStateBar } from './LocalProjectStateBar';
-import { LTXDiagnostic } from './LTXDiagnostic';
 import { ModelPreWarmPanel } from './ModelPreWarmPanel';
 import { VRAMOomFrequencyChart } from './VRAMOomFrequencyChart';
 import { LocalCapabilityPanel } from './LocalCapabilityPanel';
@@ -102,8 +101,7 @@ export const SystemHub: React.FC<SystemHubProps> = ({
 
         {activeTab === 'models' && (
           <div className="space-y-5">
-            <LTXDiagnostic />
-            <ModelPreWarmPanel onAddLog={logWithOomCheck} onClearCache={() => handleClearCache(false, true)} />
+                <ModelPreWarmPanel onAddLog={logWithOomCheck} onClearCache={() => handleClearCache(false, true)} />
             <ComfyUINodeGraph onAddLog={logWithOomCheck} />
           </div>
         )}

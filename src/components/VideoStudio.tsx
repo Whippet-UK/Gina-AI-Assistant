@@ -3,11 +3,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Video, Play, Sparkles, SlidersHorizontal, RefreshCw, Zap,
   Download, Film, ShieldCheck, Cpu, ChevronDown, Save,
-  RotateCcw, Info, Layers, Clock, Activity, Gauge, FileJson, AlertCircle, AlertTriangle, X, Trash2, Check
+  RotateCcw, Info, Layers, Clock, Activity, Gauge, AlertCircle, AlertTriangle, X, Trash2, Check
 } from 'lucide-react';
 import { useProjectState } from '../context/ProjectStateContext';
 import { useGenerationJob } from '../context/GenerationJobContext';
-import { LTXWorkflowGenerator } from './LTXWorkflowGenerator';
 import { ComfyErrorOverlay } from './ComfyErrorOverlay';
 import { VRAMHistoryGraph } from './VRAMHistoryGraph';
 import { MediaStitcherModal } from './MediaStitcherModal';
@@ -21,18 +20,17 @@ interface VideoStudioProps {
   onClearCache?: () => void;
 }
 
+// Wan 2.1 1.3B is running on an 8GB RTX 3070 Ti. Keep the UI inside the
+// tested conservative envelope: one temporal sequence, <=73 frames and <=393,216 pixels.
 const durationOptions = [
-  { seconds: 1, frames: 25, label: '1.0s (25 frames)', vram: '2.8 GB VRAM' },
-  { seconds: 2, frames: 49, label: '2.0s (49 frames)', vram: '4.2 GB VRAM' },
-  { seconds: 3, frames: 73, label: '3.0s (73 frames)', vram: '5.6 GB VRAM — Recommended' },
-  { seconds: 4, frames: 97, label: '4.0s (97 frames)', vram: '6.9 GB VRAM — 8GB Max Cap' },
-  { seconds: 5, frames: 121, label: '5.0s (121 frames)', vram: '7.8 GB VRAM — High Swapping Risk' },
+  { seconds: 1, frames: 25, label: '1.0s · 25 frames', vram: 'Safest · 512×512' },
+  { seconds: 2, frames: 49, label: '2.0s · 49 frames', vram: 'Safe · 512×512' },
+  { seconds: 3, frames: 73, label: '3.0s · 73 frames', vram: 'Safe ceiling · 512×512 / 512×768' },
 ];
 
 const videoResolutionPresets = [
-  { label: '768 × 512 · 16:9 Landscape', width: 768, height: 512, ratio: '16:9', vram: 'STANDARD (8GB Safe)' },
-  { label: '512 × 768 · 9:16 Shorts / Vertical', width: 512, height: 768, ratio: '9:16', vram: 'STANDARD (8GB Safe)' },
-  { label: '512 × 512 · 1:1 Compact Square', width: 512, height: 512, ratio: '1:1', vram: 'LOW (Fastest)' },
+  { label: '512 × 512 · 1:1 Safest', width: 512, height: 512, ratio: '1:1', vram: 'LOWEST VRAM' },
+  { label: '512 × 768 · 9:16 Vertical', width: 512, height: 768, ratio: '9:16', vram: 'HIGHER VRAM · 3s max' },
 ];
 
 const motionScalePresets = [
@@ -42,7 +40,7 @@ const motionScalePresets = [
   { label: 'High Action / Fast Motion', val: 2.2 },
 ];
 
-interface LtxPreset {
+interface VideoPreset {
   id: string;
   name: string;
   badge: string;
@@ -62,20 +60,20 @@ interface LtxPreset {
   interpolationMultiplier?: 1 | 2 | 4;
 }
 
-const ltxParameterPresets: LtxPreset[] = [
+const videoParameterPresets: VideoPreset[] = [
   {
-    id: 'compact_fast',
-    name: '8GB Safe · Fast 1.0s',
-    badge: '1:1 · 1s · 25 frames · 100% 8GB Safe',
-    description: 'Compact 512x512 resolution with 1.0s (25 frames @ 25fps) for instant, completely crash-free generation under 8GB VRAM.',
+    id: 'safe_1s_square',
+    name: 'Safe · 1.0s',
+    badge: '512×512 · 25 frames · Lowest VRAM',
+    description: 'Fastest conservative Wan 2.1 1.3B option for the 8GB RTX 3070 Ti. One temporal sequence at 24fps.',
     icon: '🚀',
-    motionScale: 1.0,
+    motionScale: 0.8,
     durationSec: 1,
     frames: 25,
-    fps: 25,
+    fps: 24,
     steps: 18,
     cfgScale: 3.0,
-    resolutionLabel: '512 × 512 · 1:1 Compact Square',
+    resolutionLabel: '512 × 512 · 1:1 Safest',
     width: 512,
     height: 512,
     cameraMotion: 'None / Static Camera',
@@ -83,79 +81,41 @@ const ltxParameterPresets: LtxPreset[] = [
     interpolationMultiplier: 1
   },
   {
-    id: 'rife_2x_smooth',
-    name: '8GB Safe · 2× RIFE 50fps',
-    badge: '1:1 · 25 frames → 50fps · Smooth 2.0s',
-    description: 'Generates 25 safe keyframes and applies 2× RIFE frame interpolation for ultra-smooth 50fps motion without VRAM penalty.',
+    id: 'safe_2s_square',
+    name: 'Safe · 2.0s',
+    badge: '512×512 · 49 frames · Balanced',
+    description: 'Balanced short clip with 49 temporal frames and batch size 1. Recommended general-purpose starting point.',
     icon: '✨',
     motionScale: 1.0,
-    durationSec: 1,
-    frames: 25,
-    fps: 50,
-    steps: 20,
+    durationSec: 2,
+    frames: 49,
+    fps: 24,
+    steps: 18,
     cfgScale: 3.0,
-    resolutionLabel: '512 × 512 · 1:1 Compact Square',
+    resolutionLabel: '512 × 512 · 1:1 Safest',
     width: 512,
     height: 512,
     cameraMotion: 'Slow Cinematic Pan',
     isSafe8GB: true,
-    interpolationMultiplier: 2
-  },
-  {
-    id: 'rife_4x_slomo',
-    name: '8GB Safe · 4× RIFE 60fps Slomo',
-    badge: '1:1 · 25 frames → 100fps · 4s Slomo',
-    description: 'Generates 25 safe keyframes and applies 4× RIFE frame interpolation for silky 60fps slow-motion cinematic video on 8GB VRAM.',
-    icon: '📽️',
-    motionScale: 1.2,
-    durationSec: 1,
-    frames: 25,
-    fps: 60,
-    steps: 22,
-    cfgScale: 3.2,
-    resolutionLabel: '512 × 512 · 1:1 Compact Square',
-    width: 512,
-    height: 512,
-    cameraMotion: 'Slow Dolly Push In',
-    isSafe8GB: true,
-    interpolationMultiplier: 4
-  },
-  {
-    id: 'cinematic',
-    name: 'Cinematic Sweep (12GB+ GPU)',
-    badge: '16:9 · 3s · 73 frames · 12GB+ Req',
-    description: 'Filmic 768x512 sweep, 3.0s duration (73 frames). Note: Exceeds 8GB VRAM — requires 12GB+ GPU to prevent OOM.',
-    icon: '🎬',
-    motionScale: 0.8,
-    durationSec: 3,
-    frames: 73,
-    fps: 24,
-    steps: 28,
-    cfgScale: 3.5,
-    resolutionLabel: '768 × 512 · 16:9 Landscape',
-    width: 768,
-    height: 512,
-    cameraMotion: 'Pan Right & Slow Zoom',
-    isSafe8GB: false,
     interpolationMultiplier: 1
   },
   {
-    id: 'vertical_shorts',
-    name: 'Shorts Reel (12GB+ GPU)',
-    badge: '9:16 · 3s · 73 frames · 12GB+ Req',
-    description: 'Vertical 512x768 aspect ratio for Shorts/Reels, 3.0s duration. Note: Exceeds 8GB VRAM — requires 12GB+ GPU to prevent OOM.',
+    id: 'safe_3s_vertical',
+    name: 'Safe Ceiling · 3.0s',
+    badge: '512×768 · 73 frames · 24fps',
+    description: 'Longest direct Wan 2.1 1.3B option in Gina\'s conservative 8GB envelope. Best choice for Shorts/Reels.',
     icon: '📱',
-    motionScale: 1.2,
+    motionScale: 1.0,
     durationSec: 3,
     frames: 73,
-    fps: 25,
-    steps: 25,
-    cfgScale: 3.2,
-    resolutionLabel: '512 × 768 · 9:16 Shorts / Vertical',
+    fps: 24,
+    steps: 18,
+    cfgScale: 3.0,
+    resolutionLabel: '512 × 768 · 9:16 Vertical',
     width: 512,
     height: 768,
     cameraMotion: 'Slow Dolly Push In',
-    isSafe8GB: false,
+    isSafe8GB: true,
     interpolationMultiplier: 1
   }
 ];
@@ -211,9 +171,9 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
   const [prompt, setPrompt] = useState('A majestic black dragon breathing fiery embers in an obsidian cavern, slow cinematic camera pan, 8k resolution');
   const [negativePrompt, setNegativePrompt] = useState('blurry, static, distorted motion, flickering, low resolution, bad anatomy');
   const [showNegative, setShowNegative] = useState(false);
-  const [selectedDuration, setSelectedDuration] = useState(1); // 1 second = 25 frames
+  const [selectedDuration, setSelectedDuration] = useState(1); // Wan temporal length uses 24 intervals/sec + first frame
   const [customFrames, setCustomFrames] = useState(25);
-  const [fps, setFps] = useState(25);
+  const [fps, setFps] = useState(24);
   const [motionScale, setMotionScale] = useState(1.0);
   const [resolution, setResolution] = useState('512 × 512 · 1:1 Compact Square');
   const [width, setWidth] = useState(512);
@@ -227,7 +187,6 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
   const [savingAsset, setSavingAsset] = useState(false);
   const [diagLoading, setDiagLoading] = useState(false);
   const [diagResult, setDiagResult] = useState<any>(null);
-  const [showArchitect, setShowArchitect] = useState(false);
   const [activePresetId, setActivePresetId] = useState<string>('compact_fast');
   const [interpolationMultiplier, setInterpolationMultiplier] = useState<1 | 2 | 4>(1);
   const [showStitchModal, setShowStitchModal] = useState(false);
@@ -264,7 +223,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
     }
   };
 
-  const applyPreset = (preset: LtxPreset) => {
+  const applyPreset = (preset: VideoPreset) => {
     setActivePresetId(preset.id);
     setMotionScale(preset.motionScale);
     setSelectedDuration(preset.durationSec);
@@ -279,20 +238,25 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
     if (preset.interpolationMultiplier) {
       setInterpolationMultiplier(preset.interpolationMultiplier);
     }
-    onAddLog('INFO', `Loaded LTX-2.3 Preset: "${preset.name}" (${preset.badge})`);
+    onAddLog('INFO', `Loaded Wan 2.1 preset: "${preset.name}" (${preset.badge})`);
   };
 
   const runDiagnostic = async () => {
     setDiagLoading(true);
-    onAddLog('INFO', 'Running LTX-2.3 & ComfyUI diagnostic audit...');
+    onAddLog('INFO', 'Running Wan 2.1 & ComfyUI capability audit...');
     try {
-      const res = await fetch('/api/diagnostics/ltx23');
+      const res = await fetch('/api/capabilities', { cache: 'no-store' });
       const data = await res.json();
-      setDiagResult(data);
-      if (data.comfyResponsive && data.modelFound) {
-        onAddLog('INFO', `Diagnostic PASSED: ComfyUI responsive (${data.comfyLatencyMs}ms), LTX-2.3 model found.`);
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      const videoCapability = (data.capabilities || data).capabilities?.find?.((c:any) => c.id === 'wan-video') || (data.capabilities || []).find?.((c:any) => c.id === 'wan-video');
+      const models = Array.isArray(data.models) ? data.models : [];
+      const wanModel = models.find((m:any) => /wan2\.1.*1\.3b/i.test(String(m.fileName || m.name || '')));
+      const report = { comfyResponsive: Boolean(data.comfy?.connected ?? data.runtime?.comfyConnected ?? data.comfyConnected ?? true), modelFound: Boolean(wanModel || videoCapability), modelFile: wanModel?.fileName || 'wan2.1_t2v_1.3B_bf16.safetensors', capability: videoCapability, recommendations: [] };
+      setDiagResult(report);
+      if (report.comfyResponsive && report.modelFound) {
+        onAddLog('INFO', 'Diagnostic PASSED: ComfyUI is responsive and the active Wan 2.1 video capability is available.');
       } else {
-        onAddLog('WARN', `Diagnostic WARN: ComfyUI responsive: ${data.comfyResponsive}, Model found: ${data.modelFound}`);
+        onAddLog('WARN', `Diagnostic WARN: ComfyUI responsive: ${report.comfyResponsive}, Wan 2.1 available: ${report.modelFound}`);
       }
     } catch (err: any) {
       onAddLog('WARN', `Diagnostic failed: ${err?.message || err}`);
@@ -331,7 +295,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
     const currentSeed = isRandomSeed ? Math.floor(Math.random() * 1000000000) : seed;
     if (isRandomSeed) setSeed(currentSeed);
 
-    // Auto-Flush Hook: ensure GPU memory is cleared before loading LTX-Video tensors
+    // Auto-Flush Hook: ensure GPU memory is cleared before loading Wan 2.1 tensors
     onAddLog('INFO', 'Auto-Flush Hook: Pre-clearing ComfyUI VRAM cache (/free) before loading video model...');
     await fetch('/api/comfy/clear-cache', {
       method: 'POST',
@@ -339,14 +303,14 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
       body: JSON.stringify({ unload_models: false, free_memory: true })
     }).catch(() => null);
 
-    onAddLog('INFO', `Submitting LTX-2.3 Video Job: "${prompt.slice(0, 45)}..." (${customFrames} frames @ ${fps}fps, motion scale ${motionScale})`);
+    onAddLog('INFO', `Submitting Wan 2.1 Video Job: "${prompt.slice(0, 45)}..." (${customFrames} frames @ ${fps}fps, motion scale ${motionScale})`);
 
-    const resultJob = await startJob('ltx_video', {
+    const resultJob = await startJob('wan_video', {
       prompt,
       negative_prompt: negativePrompt,
       duration_sec: selectedDuration,
       frames: customFrames,
-      batch_size: customFrames,
+      batch_size: 1,
       fps,
       motion_scale: motionScale,
       width,
@@ -355,7 +319,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
       steps,
       cfg: cfgScale,
       camera_motion: cameraMotion,
-      model: 'ltxv-2b-0.9.8-distilled-fp8.safetensors'
+      model: 'wan2.1_t2v_1.3B_bf16.safetensors'
     });
 
     if (!resultJob) {
@@ -377,13 +341,13 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
     setSavingAsset(true);
     const newAsset = {
       id: Math.random().toString(36).substring(2, 9),
-      title: `LTX-2.3 Video: ${prompt.slice(0, 30)}...`,
+      title: `Wan 2.1 Video: ${prompt.slice(0, 30)}...`,
       type: 'video' as const,
       url: targetUrl,
       fileFormat: 'mp4',
       timestamp: new Date().toISOString(),
       promptUsed: prompt,
-      workflowId: 'ltx_video',
+      workflowId: 'wan_video',
       seed
     };
     setSavedAssets(prev => [newAsset, ...prev]);
@@ -391,8 +355,8 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
     setTimeout(() => setSavingAsset(false), 600);
   };
 
-  const isVideoJob = job?.workflowId === 'ltx_video' || output?.job?.workflowId === 'ltx_video';
-  const isBusy = (loading && (job?.workflowId === 'ltx_video' || !job)) || (job?.workflowId === 'ltx_video' && (job?.status === 'QUEUED' || job?.status === 'RUNNING'));
+  const isVideoJob = job?.workflowId === 'wan_video' || output?.job?.workflowId === 'wan_video';
+  const isBusy = (loading && (job?.workflowId === 'wan_video' || !job)) || (job?.workflowId === 'wan_video' && (job?.status === 'QUEUED' || job?.status === 'RUNNING'));
   const rawUrl = output?.outputs?.[0]?.url;
   const isMediaVideo = rawUrl && (isVideoJob || rawUrl.toLowerCase().includes('format=mp4') || rawUrl.toLowerCase().includes('.mp4') || rawUrl.toLowerCase().includes('.webp') || rawUrl.toLowerCase().includes('.gif'));
   const activeVideoUrl = (isMediaVideo ? rawUrl : undefined) || lastSuccessfulVideoUrl;
@@ -406,7 +370,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
 
   // Persist failure state so error remains visible until dismissed or new success
   useEffect(() => {
-    if (job?.workflowId === 'ltx_video' && job?.status === 'FAILED' && job?.error) {
+    if (job?.workflowId === 'wan_video' && job?.status === 'FAILED' && job?.error) {
       const isOOM = /out of memory|cuda oom|cuda error/i.test(job.error);
       setVideoError({
         message: job.error,
@@ -414,7 +378,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
         isOOM,
         jobId: job.id
       });
-    } else if (job?.workflowId === 'ltx_video' && job?.status === 'COMPLETED') {
+    } else if (job?.workflowId === 'wan_video' && job?.status === 'COMPLETED') {
       setVideoError(null);
     }
   }, [job?.id, job?.status, job?.error, job?.workflowId]);
@@ -436,9 +400,9 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">LTX-2.3 Video Generator</h2>
+              <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">Wan 2.1 Video Generator</h2>
               <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                22B Distilled FP8
+                1.3B BF16 · 8GB
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
@@ -448,18 +412,6 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
         </div>
 
         <div className="flex items-center gap-3 text-[10px] font-mono">
-          <button
-            type="button"
-            onClick={() => setShowArchitect(!showArchitect)}
-            className={`px-3 py-1.5 rounded flex items-center gap-1.5 transition-colors cursor-pointer font-sans text-xs font-bold border ${
-              showArchitect
-                ? 'bg-emerald-500 text-slate-950 border-emerald-400'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-            }`}
-          >
-            <FileJson className="w-3.5 h-3.5" />
-            {showArchitect ? 'Hide Architect' : 'Workflow Architect'}
-          </button>
           <button
             type="button"
             onClick={handleFlushVramHeader}
@@ -477,7 +429,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
             className="bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 px-3 py-1.5 rounded flex items-center gap-1.5 transition-colors cursor-pointer font-sans text-xs font-bold"
           >
             <Gauge className={`w-3.5 h-3.5 ${diagLoading ? 'animate-spin' : ''}`} />
-            {diagLoading ? 'Checking...' : 'Run LTX & Comfy Audit'}
+            {diagLoading ? 'Checking...' : 'Run Wan & Comfy Audit'}
           </button>
           <div className="bg-slate-950 px-3 py-1.5 rounded border border-slate-800 flex items-center gap-2">
             <Zap className="w-3.5 h-3.5 text-amber-400" />
@@ -498,7 +450,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <div className="flex items-center gap-2 font-bold text-slate-200">
               <Gauge className="w-4 h-4 text-emerald-400" />
-              LTX-2.3 & COMFYUI DIAGNOSTIC REPORT
+              WAN 2.1 & COMFYUI DIAGNOSTIC REPORT
             </div>
             <button
               type="button"
@@ -517,7 +469,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
             </div>
 
             <div className={`p-2.5 rounded border ${diagResult.modelFound ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
-              <div className="text-[10px] text-slate-400">LTX-2.3 MODEL FILE</div>
+              <div className="text-[10px] text-slate-400">WAN 2.1 MODEL FILE</div>
               <div className="font-bold">{diagResult.modelFound ? '✅ FOUND ON DISK' : '⚠️ NOT DETECTED'}</div>
               <div className="text-[9px] text-slate-400 mt-1">
                 {diagResult.modelPathsChecked?.find((p: any) => p.exists)?.sizeGB ? `${diagResult.modelPathsChecked.find((p: any) => p.exists).sizeGB} GB` : 'Check checkpoints folder'}
@@ -542,26 +494,21 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
         </div>
       )}
 
-      {/* LTX Workflow Generator Architect Section */}
-      {showArchitect && (
-        <LTXWorkflowGenerator onAddLog={onAddLog} />
-      )}
-
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Video Parameter Controls (7 Cols) */}
         <div className="lg:col-span-7 space-y-5">
-          {/* LTX-2.3 Preset Selector */}
+          {/* Wan 2.1 Preset Selector */}
           <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
                 <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400" />
-                LTX-2.3 Parameter Presets
+                Wan 2.1 Parameter Presets
               </label>
               <span className="text-[10px] font-mono text-slate-500">Auto-configures Motion, Duration & Sampling</span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-              {ltxParameterPresets.map((preset) => (
+              {videoParameterPresets.map((preset) => (
                 <button
                   key={preset.id}
                   type="button"
@@ -586,8 +533,8 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
             {/* Active Preset Description Banner */}
             {activePresetId && (
               <div className="bg-slate-950/80 p-2.5 rounded border border-slate-800 text-[11px] text-slate-400">
-                <strong className="text-emerald-400">{ltxParameterPresets.find(p => p.id === activePresetId)?.name}: </strong>
-                {ltxParameterPresets.find(p => p.id === activePresetId)?.description}
+                <strong className="text-emerald-400">{videoParameterPresets.find(p => p.id === activePresetId)?.name}: </strong>
+                {videoParameterPresets.find(p => p.id === activePresetId)?.description}
               </div>
             )}
           </div>
@@ -778,7 +725,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
             >
               <span className="flex items-center gap-2">
                 <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
-                Advanced Generation Controls (LTX Sampler, Steps, Seed)
+                Advanced Generation Controls (Wan Sampler, Steps, Seed)
               </span>
               <ChevronDown className={`w-4 h-4 transition-transform ${advancedOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -884,7 +831,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
               ) : (
                 <>
                   <Play className="w-4 h-4 fill-slate-950" />
-                  Generate LTX-2.3 Video Locally
+                  Generate Wan 2.1 Video Locally
                 </>
               )}
             </button>
@@ -959,7 +906,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
                 <div className="text-center p-6 space-y-3">
                   <div className="w-10 h-10 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
                   <div className="space-y-1">
-                    <div className="text-xs font-bold text-slate-200">Processing LTX-2.3 Frames</div>
+                    <div className="text-xs font-bold text-slate-200">Processing Wan 2.1 Frames</div>
                     <div className="text-[10px] font-mono text-emerald-400">
                       {job?.status === 'QUEUED' ? 'Queued in local ComfyUI...' : `Rendering ${customFrames} frames (${job?.progress || 0}%)`}
                     </div>
@@ -979,7 +926,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
                   <div className="relative w-full h-full flex items-center justify-center bg-black">
                     <img
                       src={activeVideoUrl}
-                      alt="Generated LTX-2.3 Video Preview"
+                      alt="Generated Wan 2.1 Video Preview"
                       className="w-full h-full object-contain"
                     />
                     <div className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded text-[9px] font-mono bg-slate-950/80 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 shadow-lg">
@@ -1022,7 +969,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
                   <Film className="w-10 h-10 mx-auto opacity-40" />
                   <div className="text-xs font-medium">No video generated yet</div>
                   <div className="text-[10px] text-slate-600 max-w-xs">
-                    Set your duration, motion scale, and prompt then click "Generate LTX-2.3 Video Locally".
+                    Set your duration, motion scale, and prompt then click "Generate Wan 2.1 Video Locally".
                   </div>
                 </div>
               )}
@@ -1103,7 +1050,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
                 <div className="flex items-center gap-2">
                   <a
                     href={activeVideoUrl}
-                    download={`ltx_video_${seed}.${isAnimatedWebPOrGif ? 'webp' : 'mp4'}`}
+                    download={`wan21_video_${seed}.${isAnimatedWebPOrGif ? 'webp' : 'mp4'}`}
                     className="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5"
                   >
                     <Download className="w-3.5 h-3.5" />
@@ -1164,7 +1111,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
         isOpen={showStitchModal}
         onClose={() => setShowStitchModal(false)}
         videoSourceUrl={activeVideoUrl || undefined}
-        videoSourceName={prompt ? `LTX: ${prompt.slice(0, 30)}...` : 'LTX-Video Render'}
+        videoSourceName={prompt ? `Wan: ${prompt.slice(0, 30)}...` : 'Wan-Video Render'}
         onAddLog={onAddLog}
       />
     </div>

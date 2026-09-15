@@ -49,26 +49,30 @@ export const VRAMHistoryGraph: React.FC<VRAMHistoryGraphProps> = ({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Map active ComfyUI node ID/workflow to descriptive stage
+  // Map active production ComfyUI node IDs to descriptive stages.
   const getNodeStageName = (nodeId?: string | null, workflowId?: string): string => {
     if (!nodeId) return 'Idle / Standby';
     const numId = String(nodeId);
-    if (workflowId === 'ltx_video') {
-      if (numId === '1') return 'Node 1: LTXVLoader (Checkpoint Load)';
-      if (numId === '2' || numId === '3') return 'Node 2/3: CLIPTextEncode (Prompt Embedding)';
-      if (numId === '4') return 'Node 4: EmptyLatentImage (Canvas Allocation)';
-      if (numId === '5') return 'Node 5: KSampler (3D Attention Diffusion)';
-      if (numId === '6') return 'Node 6: VAEDecode (Video Frames Tensors)';
-      if (numId === '7') return 'Node 7: SaveAnimatedWEBP (Encoding Media)';
-    } else {
-      if (numId === '1') return 'Node 1: DualCLIPLoader (Flux Text Encoders)';
-      if (numId === '2') return 'Node 2: UNETLoader (Flux.1 Schnell Weights)';
-      if (numId === '3') return 'Node 3: CLIPTextEncode (Positive Conditioning)';
-      if (numId === '4') return 'Node 4: EmptyLatentImage (Latent Canvas)';
-      if (numId === '5') return 'Node 5: KSamplerSelect (Euler Fast Pass)';
-      if (numId === '6') return 'Node 6: SamplerCustomAdvanced (Denoising)';
-      if (numId === '7') return 'Node 7: VAELoader / Decode';
-      if (numId === '8') return 'Node 8: SaveImage (PNG Tensor Write)';
+    if (workflowId === 'wan_video') {
+      const wanStages: Record<string,string> = {
+        '1':'Node 1: Wan 2.1 UNET Load', '2':'Node 2: UMT5 Text Encoder',
+        '3':'Node 3: Wan VAE Load', '4':'Node 4: Positive Conditioning',
+        '5':'Node 5: Negative Conditioning', '6':'Node 6: Temporal Latent Allocation',
+        '7':'Node 7: KSampler Diffusion', '8':'Node 8: VAE Decode',
+        '9':'Node 9: MP4 Video Combine'
+      };
+      return wanStages[numId] || `Node ${nodeId}: Wan 2.1 Processing`;
+    }
+    if (workflowId === 'flux_lite_image') {
+      const fluxStages: Record<string,string> = {
+        '1':'Node 1: FLUX Lite UNET Load', '2':'Node 2: Text Encoders',
+        '3':'Node 3: VAE Load', '4':'Node 4: Positive Conditioning',
+        '5':'Node 5: Guidance', '6':'Node 6: Noise',
+        '7':'Node 7: Sampler', '8':'Node 8: Scheduler',
+        '9':'Node 9: Latent Canvas', '10':'Node 10: Advanced Sampling',
+        '11':'Node 11: VAE Decode', '12':'Node 12: PNG Output'
+      };
+      return fluxStages[numId] || `Node ${nodeId}: FLUX Lite Processing`;
     }
     return `Node ${nodeId}: Active Processing`;
   };

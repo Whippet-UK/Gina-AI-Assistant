@@ -15,9 +15,8 @@ import { SystemHub } from './components/SystemHub';
 import { RestoreManifestModal } from './components/RestoreManifestModal';
 import { VRAMWarningToast } from './components/VRAMWarningToast';
 import { LocalLlmStudio } from './components/LocalLlmStudio';
-import { GinaAgentPanel } from './components/GinaAgentPanel';
 import { WorkspaceErrorBoundary } from './components/WorkspaceErrorBoundary';
-import { ComfyUIStatusIndicator } from './components/LTXDiagnostic';
+import { ComfyUIStatusIndicator } from './components/WanDiagnostic';
 import { LogEntry, SystemTelemetry } from './types';
 import { Aida64Hud } from './components/Aida64Hud';
 import { APP_VERSION, ACTIVE_SAVE_POINT_ID } from './version';
@@ -60,22 +59,31 @@ export default function App() {
     if (now - lastClearCacheRef.current < 3000) return;
     lastClearCacheRef.current = now;
     isClearingCacheRef.current = true;
-    addLog(isAutoTrigger ? 'RULE' : 'INFO', isAutoTrigger
-      ? `Proactive OOM Prevention: VRAM ${telemetry.vramUsedMB} MB exceeded the safety threshold; dispatched cache purge.`
-      : 'Dispatching manual purge signal to ComfyUI /free API.');
+    if (!isAutoTrigger) {
+      addLog('INFO', 'Dispatching manual purge signal to ComfyUI /free API.');
+    }
     try {
-      const res = await fetch('/api/comfy/clear-cache', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ unload_models: unloadModels, free_memory: true }) });
+      const res = await fetch('/api/comfy/clear-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unload_models: unloadModels, free_memory: true, is_auto_trigger: isAutoTrigger })
+      });
       const data = await res.json();
-      if (res.ok && data.success) addLog('SEC', 'ComfyUI memory purge completed.');
-      else addLog('WARN', `Clear cache signal result: ${data.error || 'ComfyUI not responding'}`);
+      if (data.skipped) {
+        // Generation is actively running; purge was safely skipped to prevent execution lockup
+        return;
+      }
+      if (res.ok && data.success) {
+        addLog('SEC', 'ComfyUI memory purge completed.');
+      } else {
+        addLog('WARN', `Clear cache signal result: ${data.error || 'ComfyUI not responding'}`);
+      }
     } catch (err: any) {
       addLog('WARN', `Failed to send clear cache signal: ${err?.message || 'Network error'}`);
-    } finally { isClearingCacheRef.current = false; }
-  }, [telemetry.vramUsedMB, addLog]);
-
-  useEffect(() => {
-    if (telemetry.vramUsedMB > 7680) handleClearCache(true, true);
-  }, [telemetry.vramUsedMB, handleClearCache]);
+    } finally {
+      isClearingCacheRef.current = false;
+    }
+  }, [addLog]);
 
   const [isCooldownActive, setIsCooldownActive] = useState(false);
   const [cooldownRemainingSec, setCooldownRemainingSec] = useState(0);
@@ -180,11 +188,11 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
   const { updatePromptStudio } = useProjectState();
   const [stagedAida64Reference, setStagedAida64Reference] = useState<{ filename: string; name: string; bytes: number; previewUrl: string } | null>(null);
   const isJobActive = job?.status === 'RUNNING' || job?.status === 'QUEUED' || outputLoading;
-  const isVideoJob = job?.workflowId === 'ltx_video' || (job?.workflowId && job.workflowId.includes('video'));
-  const isImageJob = !job?.workflowId || job?.workflowId === 'flux_image' || job?.workflowId.includes('flux') || job?.workflowId.includes('image');
+  const isVideoJob = job?.workflowId === 'wan_video' || (job?.workflowId && job.workflowId.includes('video'));
+  const isImageJob = !job?.workflowId || job?.workflowId.includes('flux') || job?.workflowId.includes('image');
 
   const navItems = [
-    { id: 'create' as const, label: 'CREATE', icon: Image, isGenerating: isJobActive && isImageJob },
+    { id: 'create' as const, label: 'IMAGE CREATION STUDIO', icon: Image, isGenerating: isJobActive && isImageJob },
     { id: 'video' as const, label: 'VIDEO', icon: Video, isGenerating: isJobActive && isVideoJob },
     { id: 'gif' as const, label: 'GIF STUDIO', icon: Film, isGenerating: isJobActive && job?.workflowId === 'gif_studio' },
     { id: 'streaminject' as const, label: 'STREAMINJECT', icon: Film, isGenerating: isJobActive && (job?.workflowId === 'streaminject_studio' || job?.workflowId === 'streaminject_render') },
@@ -226,18 +234,18 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
                 {id === 'video' && <ComfyUIStatusIndicator activeView={activeView} />}
               </button>
             ))}
-            {isJobActive && <div className="ml-2 hidden lg:flex items-center gap-2 px-2.5 py-1 rounded bg-slate-900 border border-emerald-500/30 text-[9px] font-mono text-emerald-300"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" /><span className="font-bold uppercase tracking-wider">{job?.workflowId === 'ltx_video' ? 'Video Gen' : 'Image Gen'}: {job?.progress || 0}%</span>{job?.currentStep && <span className="text-slate-500">({job.currentStep}/{job.totalSteps || '?'})</span>}</div>}
-            <div className="ml-auto hidden md:flex items-center gap-2 text-[9px] font-mono text-slate-600"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> LOCAL CREATOR ENGINE</div>
+            {isJobActive && <div className="ml-2 hidden lg:flex items-center gap-2 px-2.5 py-1 rounded bg-slate-900 border border-emerald-500/30 text-[9px] font-mono text-emerald-300"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" /><span className="font-bold uppercase tracking-wider">{job?.workflowId?.includes('video') ? 'Video Gen' : 'Image Gen'}: {job?.progress || 0}%</span>{job?.currentStep && <span className="text-slate-500">({job.currentStep}/{job.totalSteps || '?'})</span>}</div>}
+            <div className="ml-auto hidden md:flex items-center gap-2 text-[9px] font-mono text-slate-600"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> LOCAL-FIRST CREATOR ENGINE</div>
           </nav>
         </div>
 
         <main className={`space-y-5 ${activeView === 'create' ? 'block' : 'hidden'}`}>
-          <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Creator workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Create</h1><p className="text-xs text-slate-500 mt-1">Generate locally through your validated ComfyUI workflows.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">IMAGE · LOCAL · FLUX</div></div>
+          <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Creator workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Image Creation Studio</h1><p className="text-xs text-slate-500 mt-1">Generate locally through your validated ComfyUI workflows.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">IMAGE · LOCAL · QWEN + JUGGERNAUT-XL V9</div></div>
           <WorkspaceErrorBoundary name="Create Studio"><PromptStudio onAddLog={logWithOomCheck} onClearCache={() => handleClearCache(false, true)} telemetry={telemetry} stagedReferenceImage={stagedAida64Reference} /></WorkspaceErrorBoundary>
         </main>
 
         <main className={`space-y-5 ${activeView === 'video' ? 'block' : 'hidden'}`}>
-          <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Video workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Video Studio</h1><p className="text-xs text-slate-500 mt-1">Interface with LTX-2.3 22B Distilled FP8 workflow parameters for local text-to-video.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">VIDEO · LTX-2.3 · 8GB VRAM</div></div>
+          <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Video workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Video Studio</h1><p className="text-xs text-slate-500 mt-1">Native Wan 2.1 1.3B workflow controls for local text-to-video.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">VIDEO · WAN 2.1 · 8GB VRAM</div></div>
           <WorkspaceErrorBoundary name="Video Studio"><VideoStudio onAddLog={logWithOomCheck} logs={logs} telemetry={telemetry} onClearCache={() => handleClearCache(false, true)} /></WorkspaceErrorBoundary>
         </main>
 
@@ -275,13 +283,13 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
         <main className={`space-y-5 ${activeView === 'assets' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Local library</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Assets</h1><p className="text-xs text-slate-500 mt-1">Generated files and their local generation records.</p></div><WorkspaceErrorBoundary name="Assets"><AiStudioSuite onAddLog={logWithOomCheck} view="assets" /></WorkspaceErrorBoundary></main>
         <main className={`space-y-5 ${activeView === 'jobs' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Execution monitor</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Jobs</h1><p className="text-xs text-slate-500 mt-1">Track local ComfyUI work without opening ComfyUI itself.</p></div><WorkspaceErrorBoundary name="Jobs"><AiStudioSuite onAddLog={logWithOomCheck} view="jobs" /></WorkspaceErrorBoundary></main>
 
-        <main className={`space-y-5 ${activeView === 'llm' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Quantized local AI engine</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Local AI</h1><p className="text-xs text-slate-500 mt-1">Gemma 3 12B Q4_K_M served locally by llama.cpp CUDA.</p></div><WorkspaceErrorBoundary name="Local AI"><LocalLlmStudio onAddLog={logWithOomCheck} /><GinaAgentPanel /></WorkspaceErrorBoundary></main>
+        <main className={`space-y-5 ${activeView === 'llm' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Quantized local AI engine</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Local AI</h1><p className="text-xs text-slate-500 mt-1">Qwen 2.5-VL Vision / Qwen 2.5 Coder served locally by llama.cpp CUDA.</p></div><WorkspaceErrorBoundary name="Local AI"><LocalLlmStudio onAddLog={logWithOomCheck} /></WorkspaceErrorBoundary></main>
 
         <main className={`space-y-5 ${activeView === 'system' ? 'block' : 'hidden'}`}>
           <WorkspaceErrorBoundary name="System"><SystemHub telemetry={telemetry} logs={logs} activeSavePoint={activeSavePoint} logWithOomCheck={logWithOomCheck} handleClearCache={handleClearCache} onClearLogs={() => setLogs([])} /></WorkspaceErrorBoundary>
         </main>
 
-        <footer className="border-t border-slate-800 mt-8 pt-4 pb-6 text-center text-[10px] text-slate-600">Gina AI Factory v{APP_VERSION} · Strictly Local · ComfyUI + llama.cpp execution backends · C:\Gina_AI\</footer>
+        <footer className="border-t border-slate-800 mt-8 pt-4 pb-6 text-center text-[10px] text-slate-600">Gina AI Factory v{APP_VERSION} · Local-first · ComfyUI + llama.cpp execution backends · C:\Gina_AI\</footer>
       </div>
       <RestoreManifestModal isOpen={isManifestOpen} onClose={() => setIsManifestOpen(false)} activeSavePoint={activeSavePoint} />
     </div>

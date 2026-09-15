@@ -28,7 +28,6 @@ interface TimelinePoint {
   time: string;
   timestamp: string;
   fluxSchnell: number;
-  ltxVideo2b: number;
   wanVideo: number;
   hunyuan: number;
   other: number;
@@ -120,6 +119,20 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
     setSimulating(true);
     try {
       const modelMap: Record<string, { name: string; workflow: string; vram: number; node: string; err: string }> = {
+        juggernaut_xl_v9: {
+          name: 'Juggernaut-XL v9 Photorealism',
+          workflow: 'sdxl_juggernaut',
+          vram: 6800,
+          node: 'CheckpointLoader (Node #1)',
+          err: 'VRAM pressure spike during Juggernaut-XL v9 checkpoint allocation'
+        },
+        qwen_25_vl_7b: {
+          name: 'Qwen 2.5-VL 7B + mmproj-F16',
+          workflow: 'local_llm_qwen',
+          vram: 4700,
+          node: 'llama.cpp CUDA offload',
+          err: 'VRAM pressure spike while Qwen 2.5-VL vision projector is resident'
+        },
         hunyuan_video: {
           name: 'Hunyuan Video',
           workflow: 'hunyuan_video',
@@ -127,19 +140,19 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
           node: 'KSampler (Node #5)',
           err: 'CUDA out of memory in Hunyuan 3D cross-attention pass (exceeded 7372 MB limit)'
         },
-        ltx_video_2b: {
-          name: 'LTX-Video 2B FP8',
-          workflow: 'ltx_video',
-          vram: 7550,
-          node: 'VAEDecode (Node #6)',
-          err: 'Out of memory in VAEDecode spatial frames reconstruction buffer'
+        wan_video_21: {
+          name: 'Wan 2.1 1.3B BF16',
+          workflow: 'wan_video',
+          vram: 5200,
+          node: 'VAEDecode (Node #8)',
+          err: 'VRAM pressure during temporal decode'
         },
-        flux_schnell: {
-          name: 'FLUX.1-Schnell GGUF Q4_K_S',
-          workflow: 'flux_image',
-          vram: 7420,
-          node: 'UNET/CheckpointLoader (Node #1/#2)',
-          err: 'VRAM overlap spike: prior weights not evicted before UNET allocation'
+        flux_lite: {
+          name: 'FLUX.1 Lite GGUF',
+          workflow: 'flux_lite_image',
+          vram: 6200,
+          node: 'SamplerCustomAdvanced (Node #10)',
+          err: 'VRAM pressure during optional high-precision image generation'
         }
       };
 
@@ -447,8 +460,7 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
 
                 // Stacking heights
                 const hHunyuan = (d.hunyuan / maxOomCount) * innerHeight;
-                const hLtx = (d.ltxVideo2b / maxOomCount) * innerHeight;
-                const hFlux = (d.fluxSchnell / maxOomCount) * innerHeight;
+                                const hFlux = (d.fluxSchnell / maxOomCount) * innerHeight;
                 const hWan = (d.wanVideo / maxOomCount) * innerHeight;
                 const hOther = (d.other / maxOomCount) * innerHeight;
 
@@ -485,18 +497,7 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
                         rx={1}
                       />
                     )}
-                    {/* LTX (Sky) */}
-                    {hLtx > 0 && (
-                      <rect
-                        x={x}
-                        y={currentY -= hLtx}
-                        width={barWidth}
-                        height={hLtx}
-                        fill="#38bdf8"
-                        rx={1}
-                      />
-                    )}
-                    {/* Flux (Emerald) */}
+                    {/* Flux Lite (Emerald) */}
                     {hFlux > 0 && (
                       <rect
                         x={x}
@@ -596,8 +597,8 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
                   </span>
                   <span className="text-[#f43f5e]">Hunyuan OOM:</span>
                   <span className="text-slate-200">{timelineData[hoveredIndex].hunyuan}</span>
-                  <span className="text-[#38bdf8]">LTX-Video OOM:</span>
-                  <span className="text-slate-200">{timelineData[hoveredIndex].ltxVideo2b}</span>
+                  <span className="text-[#38bdf8]">Wan 2.1 OOM:</span>
+                  <span className="text-slate-200">{timelineData[hoveredIndex].wanVideo}</span>
                   <span className="text-[#10b981]">Flux.1 OOM:</span>
                   <span className="text-slate-200">{timelineData[hoveredIndex].fluxSchnell}</span>
                   <span className="text-[#a855f7]">Wan 2.1 OOM:</span>
@@ -614,7 +615,7 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded bg-[#38bdf8]" />
-                <span>LTX-Video 2B</span>
+                <span>Wan 2.1 1.3B</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded bg-[#10b981]" />
@@ -875,6 +876,22 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
             <button
               type="button"
               disabled={simulating}
+              onClick={() => handleSimulateOOM('juggernaut_xl_v9')}
+              className="px-2.5 py-1.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20 text-[10px] font-mono"
+            >
+              + Log Juggernaut OOM Spike
+            </button>
+            <button
+              type="button"
+              disabled={simulating}
+              onClick={() => handleSimulateOOM('qwen_25_vl_7b')}
+              className="px-2.5 py-1.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 text-[10px] font-mono"
+            >
+              + Log Qwen VRAM Spike
+            </button>
+            <button
+              type="button"
+              disabled={simulating}
               onClick={() => handleSimulateOOM('hunyuan_video')}
               className="px-2.5 py-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[10px] font-bold uppercase transition-colors cursor-pointer"
             >
@@ -883,15 +900,15 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
             <button
               type="button"
               disabled={simulating}
-              onClick={() => handleSimulateOOM('ltx_video_2b')}
+              onClick={() => handleSimulateOOM('wan_video_21')}
               className="px-2.5 py-1.5 rounded bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 text-[10px] font-bold uppercase transition-colors cursor-pointer"
             >
-              + Log LTX-2B VAE Spike
+              + Log Wan 2.1 VRAM Spike
             </button>
             <button
               type="button"
               disabled={simulating}
-              onClick={() => handleSimulateOOM('flux_schnell')}
+              onClick={() => handleSimulateOOM('flux_lite')}
               className="px-2.5 py-1.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold uppercase transition-colors cursor-pointer"
             >
               + Log Flux Overlap

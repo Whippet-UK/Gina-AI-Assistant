@@ -56,7 +56,7 @@ export const ComfyUIStatusIndicator: React.FC<{ activeView?: string }> = ({ acti
   );
 };
 
-export const LTXDiagnostic: React.FC = () => {
+export const WanDiagnostic: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [comfyDirectStatus, setComfyDirectStatus] = useState<{ checked: boolean; success: boolean; latencyMs?: number; error?: string }>({ checked: false, success: false });
   const [modelFileStatus, setModelFileStatus] = useState<{ checked: boolean; exists: boolean; path?: string; sizeGB?: number; fileName?: string; error?: string }>({ checked: false, exists: false });
@@ -100,19 +100,22 @@ export const LTXDiagnostic: React.FC = () => {
 
     try {
       const diagRes = await fetch('/api/comfy/diagnostics', { cache: 'no-store' });
-      if (diagRes.ok) {
+      if (diagRes.ok && (diagRes.headers.get('content-type') || '').includes('application/json')) {
         const diag = await diagRes.json();
         setWatchdog(diag.watchdog || null);
       }
     } catch {}
 
-    // 2. Live capability/model discovery. Do not pin this panel to an obsolete LTX filename.
+    // 2. Live capability/model discovery. Do not pin this panel to an obsolete Wan 2.1 filename.
     try {
       const capRes = await fetch('/api/capabilities', { cache: 'no-store' });
       if (!capRes.ok) throw new Error(`HTTP ${capRes.status} reading capability inventory`);
+      if (!(capRes.headers.get('content-type') || '').includes('application/json')) {
+        throw new Error('Non-JSON response reading capability inventory');
+      }
       const cap = await capRes.json();
-      const ltx = (cap.models || []).find((m:any) => m.exists && /ltx/i.test(m.fileName));
-      setModelFileStatus({ checked:true, exists:!!ltx, path:ltx?.path, sizeGB:ltx?.sizeGB, fileName:ltx?.fileName, error:ltx ? undefined : 'No LTX model discovered in the local ComfyUI model tree.' });
+      const wan = (cap.models || []).find((m:any) => m.exists && /wan/i.test(m.fileName));
+      setModelFileStatus({ checked:true, exists:!!wan, path:wan?.path, sizeGB:wan?.sizeGB, fileName:wan?.fileName, error:wan ? undefined : 'No Wan 2.1 model discovered in the local ComfyUI model tree.' });
     } catch (fileErr:any) {
       setModelFileStatus({ checked:true, exists:false, error:fileErr?.message || 'Failed to query live model inventory' });
     }
@@ -134,10 +137,10 @@ export const LTXDiagnostic: React.FC = () => {
           </div>
           <div>
             <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider flex items-center gap-2">
-              LTX-Video & ComfyUI Connectivity Diagnostic
+              Wan 2.1-Video & ComfyUI Connectivity Diagnostic
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Direct verification of local ComfyUI plus live LTX model discovery from the current model inventory.
+              Direct verification of local ComfyUI plus live Wan 2.1 model discovery from the current model inventory.
             </p>
           </div>
         </div>
@@ -210,12 +213,12 @@ export const LTXDiagnostic: React.FC = () => {
           </div>
         </div>
 
-        {/* Current LTX Model Discovery */}
+        {/* Current Wan 2.1 Model Discovery */}
         <div className="bg-slate-950 border border-slate-800/80 rounded-lg p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
               <HardDrive className="w-4 h-4 text-emerald-400" />
-              LTX Model Inventory Check
+              Wan 2.1 Model Inventory Check
             </span>
             <span className="text-[10px] font-mono text-slate-500">models/checkpoints/</span>
           </div>
@@ -240,7 +243,7 @@ export const LTXDiagnostic: React.FC = () => {
               <div className="text-[10px] font-mono text-slate-400 truncate max-w-xs" title={modelFileStatus.path}>
                 {modelFileStatus.exists
                   ? `Size: ${modelFileStatus.sizeGB || 'N/A'} GB`
-                  : modelFileStatus.error || 'No LTX model discovered'}
+                  : modelFileStatus.error || 'No Wan 2.1 model discovered'}
               </div>
             </div>
 

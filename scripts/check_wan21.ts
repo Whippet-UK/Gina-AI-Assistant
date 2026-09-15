@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-export interface LtxDiagnosticResult {
+export interface WanDiagnosticResult {
   timestamp: string;
   comfyUrl: string;
   comfyResponsive: boolean;
@@ -12,19 +12,19 @@ export interface LtxDiagnosticResult {
   modelInComfyObjectInfo: boolean;
   comfyCheckpointsList?: string[];
   clipModelsList?: string[];
-  ltxNodesFound?: string[];
+  wanNodesFound?: string[];
   recommendations: string[];
 }
 
-export async function runLtxDiagnostic(): Promise<LtxDiagnosticResult> {
+export async function runWanDiagnostic(): Promise<WanDiagnosticResult> {
   const comfyUrl = process.env.COMFY_URL || 'http://127.0.0.1:8188';
   const comfyRoot = process.env.COMFY_ROOT || 'C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI';
-  const modelSubpath = path.join('models', 'checkpoints', 'ltxv-2b-0.9.8-distilled-fp8.safetensors');
   const candidatePaths = [
-    path.join(comfyRoot, modelSubpath),
-    'C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\checkpoints\\ltxv-2b-0.9.8-distilled-fp8.safetensors',
-    'C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\checkpoints\\ltx-video-2.0.safetensors',
-    'C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\diffusion_models\\ltxv-2b-0.9.8-distilled-fp8.safetensors',
+    path.join(comfyRoot, 'models', 'diffusion_models', 'wan2.1_t2v_1.3B_bf16.safetensors'),
+    path.join(comfyRoot, 'models', 'checkpoints', 'wan2.1_t2v_1.3B_bf16.safetensors'),
+    'C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\diffusion_models\\wan2.1_t2v_1.3B_bf16.safetensors',
+    'C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\checkpoints\\wan2.1_t2v_1.3B_bf16.safetensors',
+    'C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\checkpoints\\wan2.1-1.3b.safetensors',
   ];
 
   const modelPathsChecked: { path: string; exists: boolean; sizeGB?: number }[] = [];
@@ -58,11 +58,11 @@ export async function runLtxDiagnostic(): Promise<LtxDiagnosticResult> {
     comfyLatencyMs = Date.now() - start;
   }
 
-  // 2. Check ComfyUI /object_info for checkpoint, CLIP models, and LTX nodes
+  // 2. Check ComfyUI /object_info for checkpoint, CLIP models, and Wan nodes
   let modelInComfyObjectInfo = false;
   let comfyCheckpointsList: string[] | undefined;
   let clipModelsList: string[] | undefined;
-  let ltxNodesFound: string[] = [];
+  let wanNodesFound: string[] = [];
 
   if (comfyResponsive) {
     try {
@@ -73,14 +73,14 @@ export async function runLtxDiagnostic(): Promise<LtxDiagnosticResult> {
         if (Array.isArray(ckptList)) {
           comfyCheckpointsList = ckptList;
           modelInComfyObjectInfo = ckptList.some((name: string) =>
-            name.toLowerCase().includes('ltx-2.3') || name.toLowerCase().includes('ltx')
+            name.toLowerCase().includes('wan')
           );
         }
         const clipList = objData?.CLIPLoader?.input?.required?.clip_name?.[0];
         if (Array.isArray(clipList)) {
           clipModelsList = clipList;
         }
-        ltxNodesFound = Object.keys(objData).filter(key => key.toLowerCase().includes('ltx'));
+        wanNodesFound = Object.keys(objData).filter(key => key.toLowerCase().includes('wan'));
       }
     } catch {
       // object_info check failed silently
@@ -96,15 +96,15 @@ export async function runLtxDiagnostic(): Promise<LtxDiagnosticResult> {
   }
 
   if (!modelFound) {
-    recommendations.push(`LTX-Video 2B model file not found on disk. Place ltxv-2b-0.9.8-distilled-fp8.safetensors into C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\checkpoints\\.`);
+    recommendations.push(`Wan 2.1 1.3B model file not found on disk. Place wan2.1_t2v_1.3B_bf16.safetensors into C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\diffusion_models\\ or models\\checkpoints\\.`);
   } else {
-    recommendations.push(`LTX-Video 2B model (ltxv-2b-0.9.8-distilled-fp8.safetensors) verified on disk.`);
+    recommendations.push(`Wan 2.1 1.3B model (wan2.1_t2v_1.3B_bf16.safetensors) verified on disk.`);
   }
 
-  if (comfyResponsive && ltxNodesFound.length === 0) {
-    recommendations.push(`No custom LTX nodes loaded in ComfyUI. Check the ComfyUI diagnostic log and verify the LTX-Video custom node installation.`);
-  } else if (comfyResponsive && ltxNodesFound.length > 0) {
-    recommendations.push(`Loaded ${ltxNodesFound.length} LTX custom node(s) in ComfyUI.`);
+  if (comfyResponsive && wanNodesFound.length === 0) {
+    recommendations.push(`No custom Wan nodes loaded in ComfyUI. Check the ComfyUI diagnostic log and verify Wan 2.1 custom node installation.`);
+  } else if (comfyResponsive && wanNodesFound.length > 0) {
+    recommendations.push(`Loaded ${wanNodesFound.length} Wan custom node(s) in ComfyUI.`);
   }
 
   return {
@@ -118,21 +118,20 @@ export async function runLtxDiagnostic(): Promise<LtxDiagnosticResult> {
     modelInComfyObjectInfo,
     comfyCheckpointsList,
     clipModelsList,
-    ltxNodesFound,
+    wanNodesFound,
     recommendations
   };
 }
 
-// Allow direct CLI execution: npx tsx scripts/check_ltx23.ts
-if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('check_ltx23.ts')) {
-  runLtxDiagnostic().then((res) => {
+if (process.argv[1]?.endsWith('check_wan21.ts') || process.argv[1]?.endsWith('check_wan21.js')) {
+  runWanDiagnostic().then((res) => {
     console.log('====================================================');
-    console.log(' GINA AI FACTORY — LTX-2.3 & COMFYUI DIAGNOSTIC');
+    console.log(' GINA AI FACTORY — WAN 2.1 & COMFYUI DIAGNOSTIC');
     console.log('====================================================');
     console.log(`Timestamp:            ${res.timestamp}`);
     console.log(`ComfyUI URL:          ${res.comfyUrl}`);
     console.log(`ComfyUI Responsive:   ${res.comfyResponsive ? '✅ PASS' : '❌ FAIL'} (${res.comfyLatencyMs}ms)`);
-    console.log(`LTX-2.3 Model File:   ${res.modelFound ? '✅ FOUND' : '❌ NOT FOUND'}`);
+    console.log(`Wan 2.1 Model File:   ${res.modelFound ? '✅ FOUND' : '❌ NOT FOUND'}`);
     console.log(`ComfyUI Recognized:   ${res.modelInComfyObjectInfo ? '✅ YES' : '⚠️ NOT IN CKPT LIST'}`);
     console.log('\nModel Paths Checked:');
     res.modelPathsChecked.forEach((p) => {

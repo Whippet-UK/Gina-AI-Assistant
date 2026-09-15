@@ -194,7 +194,7 @@ export const MediaStitcherModal: React.FC<MediaStitcherModalProps> = ({
                   </span>
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Fuse LTX-Video clips & GIF animations with generated AudioCraft songs & soundtracks
+                  Fuse Wan 2.1 clips & GIF animations with generated AudioCraft songs & soundtracks
                 </p>
               </div>
             </div>

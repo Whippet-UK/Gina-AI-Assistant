@@ -19,6 +19,7 @@ export interface GinaJob {
   error?: string;
   outputs: any[];
   parameters: Record<string, any>;
+  preview?: string;
 }
 
 export interface QueuedJobRequest {
@@ -42,6 +43,7 @@ interface GenerationJobContextValue {
   startJob: (workflowId: string, parameters: Record<string, any>) => Promise<GinaJob | null>;
   cancelJob: () => Promise<void>;
   adoptJob: (jobId: string) => Promise<GinaJob | null>;
+  adoptCompletedOutput: (jobId: string, imageUrl: string, filename?: string, workflowId?: string, parameters?: Record<string, any>) => void;
   refreshJob: () => Promise<void>;
   clearCurrentOutput: () => void;
 }
@@ -113,7 +115,7 @@ export const GenerationJobProvider: React.FC<{
     if (outputResolvedJobRef.current === jobId || outputLoadingJobRef.current === jobId) return;
     outputLoadingJobRef.current = jobId;
     setOutputLoading(true);
-    for (let attempt = 0; attempt < 15; attempt += 1) {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
       if (activeJobIdRef.current !== jobId) return;
       try {
         const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/output?attempt=${attempt + 1}&_=${Date.now()}`, { cache: 'no-store' });
@@ -132,7 +134,7 @@ export const GenerationJobProvider: React.FC<{
       } catch {
         // Keep polling; ComfyUI may expose history a moment after execution completes.
       }
-      await new Promise(resolve => setTimeout(resolve, 350));
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
     if (activeJobIdRef.current === jobId) setOutputLoading(false);
     if (outputLoadingJobRef.current === jobId) outputLoadingJobRef.current = null;
@@ -153,7 +155,11 @@ export const GenerationJobProvider: React.FC<{
     source.addEventListener('job', (event) => {
       if (activeJobIdRef.current !== jobId) return;
       const next = JSON.parse((event as MessageEvent).data) as GinaJob;
-      setJob(next);
+      setJob(prev => ({
+        ...prev,
+        ...next,
+        preview: next.preview || prev?.preview
+      }));
       if (next.status === 'COMPLETED') {
         if (outputResolvedJobRef.current !== jobId) loadOutput(jobId);
         onAddLogRef.current?.('INFO', `Local ComfyUI job ${jobId.slice(0, 8)} completed. Finalising output...`);
@@ -168,10 +174,11 @@ export const GenerationJobProvider: React.FC<{
       const data = JSON.parse((event as MessageEvent).data);
       setJob(prev => prev && prev.id === jobId ? {
         ...prev,
-        status: 'RUNNING',
+        status: prev.status === 'COMPLETED' ? 'COMPLETED' : (prev.status === 'FAILED' ? 'FAILED' : 'RUNNING'),
         progress: data.max ? Math.min(100, Math.round((data.value / data.max) * 100)) : prev.progress,
         currentStep: data.value,
-        totalSteps: data.max
+        totalSteps: data.max,
+        step: data.max && data.value >= data.max ? 'Finalising output…' : prev.step
       } : prev);
     });
 
@@ -179,6 +186,18 @@ export const GenerationJobProvider: React.FC<{
       if (activeJobIdRef.current !== jobId) return;
       const data = JSON.parse((event as MessageEvent).data);
       setJob(prev => prev && prev.id === jobId ? { ...prev, currentNodeId: data.node } : prev);
+    });
+
+    source.addEventListener('preview', (event) => {
+      if (activeJobIdRef.current !== jobId) return;
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        if (data?.preview) {
+          setJob(prev => prev && prev.id === jobId ? { ...prev, preview: data.preview } : prev);
+        }
+      } catch {
+        // Ignore unparseable preview frame
+      }
     });
 
     source.onerror = () => {
@@ -348,16 +367,72 @@ export const GenerationJobProvider: React.FC<{
       if (!response.ok) return null;
       const adopted = await response.json() as GinaJob;
       activeJobIdRef.current = adopted.id;
-      outputResolvedJobRef.current = null;
-      outputLoadingJobRef.current = null;
-      setOutput(null);
       setJob(adopted);
       setSubmitting(adopted.status === 'QUEUED' || adopted.status === 'RUNNING');
+      if (adopted.status === 'COMPLETED') {
+        if (adopted.outputs?.length) {
+          const freshOutputs = adopted.outputs.map((item: any) => ({ ...item, url: withCacheBust(item.url, adopted.id) }));
+          setOutput({ job: adopted, outputs: freshOutputs });
+          outputResolvedJobRef.current = adopted.id;
+          outputLoadingJobRef.current = null;
+          setOutputLoading(false);
+          setSubmitting(false);
+        } else {
+          outputResolvedJobRef.current = null;
+          outputLoadingJobRef.current = null;
+          void loadOutput(adopted.id);
+        }
+      } else {
+        outputResolvedJobRef.current = null;
+        outputLoadingJobRef.current = null;
+        setOutput(null);
+      }
       return adopted;
     } catch (error: any) {
       onAddLogRef.current?.('WARN', `Unable to attach UI to generation job ${jobId.slice(0, 8)}: ${error?.message || 'request failed'}`);
       return null;
     }
+  }, [loadOutput]);
+
+  const adoptCompletedOutput = useCallback((jobId: string, imageUrl: string, filename?: string, workflowId?: string, parameters?: Record<string, any>) => {
+    activeJobIdRef.current = jobId;
+    outputResolvedJobRef.current = jobId;
+    outputLoadingJobRef.current = null;
+    setOutputLoading(false);
+    setSubmitting(false);
+
+    const syntheticOutput = {
+      nodeId: 'output',
+      kind: 'images',
+      file: { filename: filename || 'output.png' },
+      url: withCacheBust(imageUrl, jobId)
+    };
+
+    setJob(prev => ({
+      ...(prev || { id: jobId, workflowId: workflowId || 'sdxl_juggernaut', createdAt: new Date().toISOString(), parameters: parameters || {} }),
+      id: jobId,
+      workflowId: workflowId || prev?.workflowId || 'sdxl_juggernaut',
+      parameters: parameters || prev?.parameters || {},
+      status: 'COMPLETED',
+      progress: 100,
+      completedAt: new Date().toISOString(),
+      outputs: [syntheticOutput],
+      step: undefined
+    }));
+
+    setOutput({
+      job: {
+        id: jobId,
+        status: 'COMPLETED',
+        progress: 100,
+        workflowId: workflowId || 'sdxl_juggernaut',
+        createdAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        outputs: [syntheticOutput],
+        parameters: {}
+      },
+      outputs: [syntheticOutput]
+    });
   }, []);
 
   const cancelJob = useCallback(async () => {
@@ -366,11 +441,11 @@ export const GenerationJobProvider: React.FC<{
       requestQueueRef.current = [];
       setQueuedRequestsCount(0);
 
-      // Call server interrupt API to cancel ComfyUI execution
-      const response = await fetch('/api/comfy/interrupt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
+      // Cancel the selected server-side job so ComfyUI, AudioCraft and future
+      // non-Comfy jobs use the same job-scoped cancellation contract.
+      const response = job
+        ? await fetch(`/api/jobs/${encodeURIComponent(job.id)}/cancel`, { method: 'POST' })
+        : await fetch('/api/comfy/interrupt', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
       const data = await response.json().catch(() => ({}));
       if (!response.ok && !data.cancelled) {
         throw new Error(data?.error || `Cancel failed (HTTP ${response.status})`);
@@ -386,7 +461,7 @@ export const GenerationJobProvider: React.FC<{
           completedAt: new Date().toISOString()
         });
       }
-      onAddLogRef.current?.('WARN', data?.flushed === false ? 'Generation stopped and queue cleared, but VRAM flush did not complete.' : 'Generation stopped by user. ComfyUI interrupted, queue cleared, and VRAM flushed.');
+      onAddLogRef.current?.('WARN', data?.externalCancellationConfirmed === false ? 'Generation stopped locally, but the external engine did not confirm cancellation.' : 'Generation stopped by user. Only the selected job was cancelled.');
     } catch (err: any) {
       onAddLogRef.current?.('WARN', `Failed to cancel job: ${err?.message || err}`);
     }
@@ -415,6 +490,7 @@ export const GenerationJobProvider: React.FC<{
       startJob,
       cancelJob,
       adoptJob,
+      adoptCompletedOutput,
       refreshJob,
       clearCurrentOutput
     }}>

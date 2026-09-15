@@ -1,6 +1,6 @@
 # Gina AI Factory — Documentation Index & Architecture Manifest
 
-Welcome to the centralized documentation hub for **Gina AI Factory — Local Creator UI** (v1.17.68).
+Welcome to the centralized documentation hub for **Gina AI Factory — Local Creator UI** (v1.20.7).
 
 ---
 
@@ -8,6 +8,7 @@ Welcome to the centralized documentation hub for **Gina AI Factory — Local Cre
 
 ```
 /docs/
+├── AI_UPDATE_CHECKLIST.md                 <- Mandatory autonomous update integrity gate
 ├── INDEX.md                             <- Main documentation index & manifest (this file)
 ├── architecture/
 │   └── SYSTEM_ARCHITECTURE.md          <- End-to-end bare-metal system architecture & data flow
@@ -16,7 +17,7 @@ Welcome to the centralized documentation hub for **Gina AI Factory — Local Cre
 │   ├── AIDA64_COMPLETE_ENGINE.md        <- Gauge renderer engine & 100-state alpha generator
 │   └── AIDA64_FULL_EFFECTS.md           <- Digital glow, radial arcs, linear bars & neon shaders
 ├── setup/
-│   ├── LOCAL_LLM_SETUP.md               <- Gemma 3 12B IT, llama-server CUDA, 28-layer pin config
+│   ├── LOCAL_LLM_SETUP.md               <- Qwen 2.5-VL Vision / Qwen 2.5 Coder, llama-server CUDA, 28-layer pin config
 │   ├── LOCAL_AGENT_SETUP.md             <- Autonomous 19-tool broker, memory & context manager
 │   └── SETUP_V1.2.md                    <- Initial hardware setup & ComfyUI portable environment
 └── guides/
@@ -30,7 +31,7 @@ Welcome to the centralized documentation hub for **Gina AI Factory — Local Cre
 ## 🚀 Key System Subsystems
 
 1. **[System Architecture](architecture/SYSTEM_ARCHITECTURE.md)**: Hardware VRAM cage (7372 MB), thermal brake (80°C), Express API brokers, and loopback service bindings.
-2. **[Local LLM & CUDA Binding](setup/LOCAL_LLM_SETUP.md)**: Gemma 3 12B IT (Q4_K_M) served via llama.cpp CUDA backend at 28 GPU layers on port 8080.
+2. **[Local LLM & CUDA Binding](setup/LOCAL_LLM_SETUP.md)**: Qwen 2.5-VL 7B / Qwen Coder 7B served locally via llama.cpp CUDA at port 8080; the active coding lane is Qwen Coder 7B.
 3. **[Autonomous Local Agent](setup/LOCAL_AGENT_SETUP.md)**: 19-tool local broker, persistent memory at `C:\Gina_AI\.gina\agent-memory.json`, and project context loader.
 4. **[Zero-VRAM Local RAG Engine](architecture/SYSTEM_ARCHITECTURE.md#zero-vram-rag)**: In-memory BM25 + Vector semantic retrieval system for instant grounding.
 5. **[AIDA64 Sensor Panel & Gauge Factory](aida64/AIDA64_68_FEATURES.md)**: Real-time Win32 shared memory reader and 100-state true alpha PNG graphic export.
@@ -38,7 +39,15 @@ Welcome to the centralized documentation hub for **Gina AI Factory — Local Cre
 7. **[Advanced Voice Pipeline & Persistent Presets](architecture/SYSTEM_ARCHITECTURE.md#voice-pipeline)**: Google US English priority default, permanent preference storage, SAPI bridge, and speech pacing.
 ## 📝 Release Notes & Milestones
 
+- **v1.20.7 / Phase 55:** Broader code review hardening repaired autonomous validation recovery, job-scoped cancellation, duplicate image-input drift, and stale retired-engine capability/parser vocabulary. The active StreamInject save point also includes the CPU/OpenCV static watermark inpainting matrix.
+- **v1.20.6 / Phase 54:** StreamInject source video audio stripping is implemented end-to-end with a zero-GPU FFmpeg stream-copy pre-pass and synchronized UI/API/engine controls.
+
+- **v1.20.3 / Phase 53:** Project-wide reconciliation completed; request tracking, version metadata, active save point, and autonomous completion contract synchronized.
+
+
 - `/docs/updates/` — versioned update notes kept out of the project root.
 - `/docs/milestones/` — milestone/context records and save-point documentation.
 - `/logs/` — runtime audit logs, benchmark summaries and telemetry snapshots; runtime `.log` files are not packaged.
 
+
+- `docs/updates/UPDATE_NOTES_v1.19.6.md` — Web research and local-first agent capability.

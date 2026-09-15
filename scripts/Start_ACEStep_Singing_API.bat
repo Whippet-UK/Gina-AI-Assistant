@@ -34,9 +34,23 @@ set "ACESTEP_OFFLOAD_DIT_TO_CPU=true"
 set "ACESTEP_INIT_LLM=true"
 set "ACESTEP_LM_OFFLOAD_TO_CPU=true"
 
+if /i "%~1"=="--restart" goto KILL_OLD
+if /i "%~1"=="-restart" goto KILL_OLD
+if /i "%~1"=="/restart" goto KILL_OLD
+if /i "%~1"=="restart" goto KILL_OLD
+goto CHECK_RUNNING
+
+:KILL_OLD
+echo Stopping existing ACE-Step processes on port 8101...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$conns = Get-NetTCPConnection -LocalPort 8101 -ErrorAction SilentlyContinue; foreach($c in $conns){ try { Stop-Process -Id $c.OwningProcess -Force -ErrorAction Stop } catch {} }"
+timeout /t 1 /nobreak >nul
+
+:CHECK_RUNNING
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$c=Get-NetTCPConnection -LocalPort 8101 -State Listen -ErrorAction SilentlyContinue; if($c){exit 0}else{exit 1}"
 if not errorlevel 1 (
   echo ACE-Step API is already running.
+  echo If you need to restart it to reload environment variables, run:
+  echo   scripts\Start_ACEStep_Singing_API.bat --restart
   pause
   exit /b 0
 )

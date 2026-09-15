@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Cpu, FileDown, MessageSquare, Mic, MicOff, Play, RotateCw, Square, Trash2, Volume2, VolumeX, Zap, Sliders, ChevronDown, Paperclip, X, FileText, Image as ImageIcon, Archive, File as FileIcon } from 'lucide-react';
+import { Bot, Cpu, FileDown, MessageSquare, Mic, MicOff, Play, RotateCw, Square, Trash2, Volume2, VolumeX, Zap, Sliders, ChevronDown, Paperclip, X, FileText, Image as ImageIcon, Archive, File as FileIcon, Github } from 'lucide-react';
 import { LocalRagKnowledgePanel } from './LocalRagKnowledgePanel';
 import { useGenerationJob } from '../context/GenerationJobContext';
 
@@ -20,6 +20,7 @@ interface LocalLlmStatus {
   recentLog: string[];
   multimodal: boolean;
   mmprojPath: string | null;
+  engine: 'qwen' | 'qwen-coder';
 }
 
 interface ChatMessage {
@@ -38,7 +39,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
   const [status, setStatus] = useState<LocalLlmStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const chatAbortRef = useRef<AbortController | null>(null);
-  const { job: generationJob, adoptJob, cancelJob } = useGenerationJob();
+  const { job: generationJob, adoptJob, adoptCompletedOutput, cancelJob } = useGenerationJob();
   const [aiImageJobId, setAiImageJobId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -105,13 +106,21 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       setFileAttachError(`Unsupported file type. Local AI accepts supported text/code/config files, images and ZIP archives.`);
       return;
     }
+    const image = ['.png','.jpg','.jpeg','.webp','.bmp','.gif'].includes(extension);
+    const archive = extension === '.zip';
+    if (archive) {
+      await uploadAndActivateProject(file);
+      return;
+    }
     if (attachedFiles.length >= maxLocalAiFiles) {
       setFileAttachError(`You can attach up to ${maxLocalAiFiles} files to one Local AI turn.`);
       return;
     }
-    const image = ['.png','.jpg','.jpeg','.webp','.bmp','.gif'].includes(extension);
-    const archive = extension === '.zip';
-    const localLimit = image ? 12 * 1024 * 1024 : archive ? 25 * 1024 * 1024 : 2 * 1024 * 1024;
+    if (status?.engine === 'qwen-coder' && image) {
+      setFileAttachError('Qwen Coder accepts project/text/code files, but image attachments require Qwen 2.5-VL Vision Mode.');
+      return;
+    }
+    const localLimit = image ? 12 * 1024 * 1024 : 2 * 1024 * 1024;
     if (file.size > localLimit) {
       setFileAttachError(`"${file.name}" is too large. Maximum is ${Math.round(localLimit / 1024 / 1024)} MB for this type.`);
       return;
@@ -283,18 +292,18 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     };
   }, []);
 
-  const runAction = async (action: 'start' | 'stop' | 'restart') => {
+  const runAction = async (action: 'start' | 'stop' | 'restart', engine?: 'qwen' | 'qwen-coder') => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/llm/${action}`, { method: 'POST' });
+      const response = await fetch(engine ? '/api/llm/engine' : `/api/llm/${action}`, { method: 'POST', headers: engine ? {'Content-Type':'application/json'} : undefined, body: engine ? JSON.stringify({engine}) : undefined });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || `Failed to ${action} local LLM`);
       setStatus(data.status);
-      onAddLog('INFO', `Local Gemma ${action} request completed.`);
+      onAddLog('INFO', engine ? `Local AI engine switched to ${engine.toUpperCase()}.` : `Local ${status?.engine === 'qwen' ? 'Qwen Vision' : 'Qwen Coder'} ${action} request completed.`);
     } catch (err: any) {
       setError(err?.message || `Failed to ${action} local LLM`);
-      onAddLog('WARN', `Local Gemma ${action} failed: ${err?.message || 'unknown error'}`);
+      onAddLog('WARN', `Local Qwen ${action} failed: ${err?.message || 'unknown error'}`);
     } finally {
       setLoading(false);
       void loadStatus();
@@ -466,21 +475,17 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     chatAbortRef.current = null;
     setLoading(false);
     setError('Local AI generation cancelled.');
-    onAddLog('INFO', 'Local Gemma generation cancelled by user.');
+    onAddLog('INFO', 'Local Gina generation cancelled by user.');
   };
 
-  const isImageGenerationRequest = (text: string) => {
-    const normalized = text.trim();
-    if (!normalized) return false;
-    const imageNoun = /\b(image|picture|photo|artwork|illustration|render|portrait|wallpaper|logo|icon|bezel|watch face|scene|product shot|product photography)\b/i.test(normalized);
-    const createImage = /\b(create|generate|make|draw|render|produce|design|visuali[sz]e|paint|illustrate)\b/i.test(normalized) && imageNoun;
-    const modifyAttached = attachedFiles.some(file => file.kind === 'image') && /\b(edit|modify|change|alter|transform|retouch|remove|add|replace|restyle|improve|work off)\b/i.test(normalized) && /\b(this image|attached image|attached photo|reference image|use (this|the) image|from this image|based on this image)\b/i.test(normalized);
-    // AI Tools accepts a raw descriptive image prompt without requiring a leading
-    // imperative such as "create". Avoid sending these to Gemma, where the model
-    // may emit a fake tool_code block instead of invoking the local executor.
-    const analysisOrQuestion = /^(?:describe|analyse|analyze|what|why|how|can you|tell me|explain|identify|read|summari[sz]e)\b/i.test(normalized);
-    const bareImagePrompt = imageNoun && !analysisOrQuestion && !attachedFiles.some(file => file.kind === 'image') && normalized.length >= 12;
-    return createImage || modifyAttached || bareImagePrompt;
+  const classifyImageIntent = async (text: string) => {
+    const response = await fetch('/api/ai-tools/route', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, hasImage: attachedFiles.some(file => file.kind === 'image') })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.ok) throw new Error(data?.error || `Gina intent router failed (HTTP ${response.status}).`);
+    return data;
   };
 
   const pollGeneratedImage = async (jobId: string, promptText: string, usedReference: boolean) => {
@@ -492,9 +497,10 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       if (data.status === 'FAILED') throw new Error(data.error || 'Local image generation failed.');
       if (data.status === 'CANCELLED') throw new Error('Local image generation was cancelled.');
       if (data.ready && data.imageUrl) {
+        adoptCompletedOutput(data.jobId || jobId, data.imageUrl, data.filename, data.workflowId, { __generationAudit: { engine: data.engine, llmModel: data.llmModel, generationModel: data.generationModel, workflowId: data.workflowId } });
         setMessages(prev => [...prev, { role: 'assistant', content: usedReference ? `Done — I generated the image from your supplied reference.` : `Done — I generated the image locally from your prompt.`, imageUrl: data.imageUrl }]);
         try {
-          await fetch('/api/assets', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ title:`AI Tools · ${new Date().toLocaleString()}`, type:'image', url:data.imageUrl, fileFormat:'PNG', timestamp:new Date().toISOString(), promptUsed:promptText, jobId:data.jobId || jobId, workflowId:'flux_image' }) });
+          await fetch('/api/assets', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ title:`AI Tools · ${new Date().toLocaleString()}`, type:'image', url:data.imageUrl, fileFormat:'PNG', timestamp:new Date().toISOString(), promptUsed:promptText, jobId:data.jobId || jobId, workflowId:data.workflowId || 'sdxl_juggernaut' }) });
         } catch {}
         if (autoSpeak) void speakText(usedReference ? 'Done. I generated the image from your supplied reference.' : 'Done. I generated the image locally from your prompt.');
         return;
@@ -515,10 +521,103 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     onAddLog('INFO', `AI Tool routed image request to ComfyUI/${data.workflowId}${data.usedReference ? ' using the supplied reference image' : ''}.`);
     setAiImageJobId(data.jobId);
     await adoptJob(data.jobId);
-    setMessages(prev => [...prev, { role: 'assistant', content: data.usedReference ? 'I’m working from the supplied image now…' : 'I’m generating that image locally with FLUX…' }]);
+    setMessages(prev => [...prev, { role: 'assistant', content: data.usedReference ? `I’m working from the supplied image using ${data.generationModel || 'the selected local image model'}…` : `I’m generating that image locally using ${data.generationModel || 'the selected local image model'}…` }]);
     await pollGeneratedImage(data.jobId, text, !!data.usedReference);
     setAttachedFiles([]);
     setFileAttachError(null);
+  };
+
+
+  const [agentWorkspace, setAgentWorkspace] = useState<string | null>(() => {
+    try { return localStorage.getItem('gina_active_workspace'); } catch { return null; }
+  });
+  const [agentStatus, setAgentStatus] = useState<string>('READY');
+  const [agentActivity, setAgentActivity] = useState<string[]>([]);
+  const [githubUrl, setGithubUrl] = useState('');
+
+  const runProjectAgent = async (task: string) => {
+    if (!agentWorkspace) return false;
+    const prompt = `ACTIVE WORKSPACE: ${agentWorkspace}\n\nUSER REQUEST:\n${task}\n\nWork directly on this workspace. Inspect before editing, make the requested changes, validate them, repair failures when practical, review the final diff, and report what changed. Do not push to GitHub unless the user explicitly asks.`;
+    const response = await fetch('/api/agent/run-stream', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({prompt})
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error || `Gina Agent could not start (HTTP ${response.status}).`);
+    const id = data.runId;
+    setAgentStatus('WORKING');
+    setAgentActivity([]);
+    await new Promise<void>((resolve, reject) => {
+      const es = new EventSource(`/api/agent/runs/${encodeURIComponent(id)}/stream`);
+      const finish = () => { es.close(); resolve(); };
+      es.addEventListener('status', (ev:any) => {
+        try { const d=JSON.parse(ev.data||'{}'); setAgentStatus(d.phase || 'WORKING'); if(d.message) setAgentActivity(prev=>[...prev,d.message].slice(-12)); } catch {}
+      });
+      es.addEventListener('step_started', (ev:any) => {
+        try { const d=JSON.parse(ev.data||'{}'); setAgentActivity(prev=>[...prev, d.message || `Working on step ${d.step}`].slice(-12)); } catch {}
+      });
+      es.addEventListener('step_completed', (ev:any) => {
+        try { const d=JSON.parse(ev.data||'{}'); if(d.summary) setAgentActivity(prev=>[...prev,d.summary].slice(-12)); } catch {}
+      });
+      es.addEventListener('state', async (ev:any) => {
+        try {
+          const d=JSON.parse(ev.data||'{}');
+          if (['COMPLETED','FAILED','CANCELLED'].includes(d.state)) {
+            if (d.state === 'FAILED') reject(new Error(d.error || 'Gina coding task failed.'));
+            else {
+              const run = await fetch(`/api/agent/runs/${encodeURIComponent(id)}`).then(r=>r.json());
+              const summary = run?.result?.summary || run?.summary || (d.state === 'CANCELLED' ? 'Coding task cancelled.' : 'Coding task completed.');
+              setMessages(prev => [...prev, { role:'assistant', content:summary }]);
+              if (autoSpeak) void speakText(summary);
+              finish();
+            }
+            setAgentStatus(d.state);
+          }
+        } catch (e) { reject(e); }
+      });
+      es.onerror = () => setAgentStatus(prev => prev === 'READY' ? 'RECONNECTING' : prev);
+    });
+    return true;
+  };
+
+  const uploadAndActivateProject = async (file?: File) => {
+    if (!file) return;
+    setLoading(true); setError(null);
+    try {
+      const up = await fetch('/api/agent/upload-project', { method:'POST', headers:{'Content-Type':file.type || 'application/zip','X-Filename':encodeURIComponent(file.name)}, body:file });
+      const ud = await up.json().catch(()=>({}));
+      if (!up.ok) throw new Error(ud?.error || 'Project upload failed.');
+      let workspace = '';
+      if (ud.readyForImport) {
+        const imp = await fetch('/api/agent/import-project', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({archivePath:ud.path, workspace:pathSafeWorkspaceName(file.name)})});
+        const id = await imp.json().catch(()=>({}));
+        if (!imp.ok) throw new Error(id?.error || 'Project import failed.');
+        workspace = id.workspace || id.name;
+      }
+      if (!workspace) throw new Error('Only ZIP project uploads can be activated as a coding workspace.');
+      setAgentWorkspace(workspace); localStorage.setItem('gina_active_workspace',workspace);
+      setMessages(prev => [...prev,{role:'assistant',content:`Project "${workspace}" is loaded. I’ll inspect its structure, entry points, package scripts and Git state first, without changing or executing the uploaded code.`}]);
+      setAgentStatus('READY');
+      await runProjectAgent(`Inspect the newly uploaded project "${workspace}". Do not modify files and do not execute uploaded project code. Use workspace inspection and safe file reads to report the project structure, important entry points, package manager/scripts, Git status, and any obvious areas relevant to future coding requests.`);
+    } catch(e:any) { setError(e?.message || 'Project upload failed.'); }
+    finally { setLoading(false); }
+  };
+  const pathSafeWorkspaceName = (name:string) => name.replace(/\.zip$/i,'').replace(/[^a-zA-Z0-9._-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80) || 'project';
+  const exportActiveWorkspace = () => {
+    if (!agentWorkspace) return;
+    const link = document.createElement('a');
+    link.href = `/api/agent/workspaces/${encodeURIComponent(agentWorkspace)}/export.zip`;
+    link.download = `${agentWorkspace}-updated.zip`;
+    document.body.appendChild(link); link.click(); link.remove();
+  };
+  const loadGithubProject = async () => {
+    const url=githubUrl.trim(); if(!url) return;
+    setLoading(true); setError(null);
+    try {
+      const r=await fetch('/api/agent/github-clone',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+      const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d?.error || 'GitHub clone failed.');
+      setAgentWorkspace(d.name); localStorage.setItem('gina_active_workspace',d.name);
+      setMessages(prev=>[...prev,{role:'assistant',content:`GitHub repository "${d.name}" is loaded. I've inspected the workspace connection. Tell me what you want me to change.`}]);
+    } catch(e:any){setError(e?.message || 'GitHub connection failed.');} finally{setLoading(false);}
   };
 
   const sendMessage = async (overrideText?: string) => {
@@ -532,20 +631,28 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     const text = `${typedText}${attachmentsText}`.trim();
     if (!text || !status?.ready || loading) return;
 
-    if (isImageGenerationRequest(typedText)) {
-      const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: text }];
-      setMessages(nextMessages);
-      setInput('');
-      setLoading(true);
-      setError(null);
-      try {
-        await sendImageGeneration(typedText);
-      } catch (err: any) {
-        setError(err?.message || 'Local image generation failed');
-        onAddLog('WARN', `AI Tool image generation failed: ${err?.message || 'unknown error'}`);
-      } finally {
-        setLoading(false);
+    try {
+      const route = await classifyImageIntent(typedText);
+      if (route.intent === 'image-generation' || route.intent === 'image-modification') {
+        if (route.policyLocked) throw new Error('Qwen Coder is text-only. Switch to Qwen 2.5-VL Vision Mode to use image generation or vision attachments.');
+        const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: text }];
+        setMessages(nextMessages);
+        setInput('');
+        setLoading(true);
+        setError(null);
+        try {
+          await sendImageGeneration(typedText);
+        } catch (err: any) {
+          setError(err?.message || 'Local image generation failed');
+          onAddLog('WARN', `AI Tool image generation failed: ${err?.message || 'unknown error'}`);
+        } finally {
+          setLoading(false);
+        }
+        return;
       }
+    } catch (routeError: any) {
+      setError(routeError?.message || 'Gina intent routing failed');
+      onAddLog('WARN', `Gina intent router failed: ${routeError?.message || 'unknown error'}`);
       return;
     }
 
@@ -590,11 +697,11 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
         return;
       }
       // Do not keep a failed user turn in history. Keeping it would make the next
-      // request another consecutive-user turn and can poison strict Gemma templates.
+      // request another consecutive-user turn and can poison strict local model templates.
       setMessages(prev => prev.filter((_, index) => index !== prev.length - 1));
       setInput(text);
       setError(err?.message || 'Local model request failed');
-      onAddLog('WARN', `Local Gemma chat failed: ${err?.message || 'unknown error'}`);
+      onAddLog('WARN', `Local Gina chat failed: ${err?.message || 'unknown error'}`);
     } finally {
       if (chatAbortRef.current) chatAbortRef.current = null;
       setLoading(false);
@@ -615,21 +722,50 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
           <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-4 mb-4">
             <div>
               <div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Local inference engine</div>
-              <h2 className="text-xl font-semibold text-slate-100 mt-1 flex items-center gap-2"><Bot className="w-5 h-5 text-emerald-400" /> Gemma 3 12B</h2>
-              <p className="text-xs text-slate-500 mt-1">GGUF Q4_K_M through llama.cpp CUDA. The server stays off until you start it.</p>
+              <h2 className="text-xl font-semibold text-slate-100 mt-1 flex items-center gap-2">
+                <Bot className="w-5 h-5 text-emerald-400" />
+                {status?.modelName?.toLowerCase().includes('qwen')
+                  ? 'Qwen 2.5-VL 7B Vision-Language'
+                  : status?.modelName?.toLowerCase().includes('coder')
+                  ? 'Qwen Coder 7B' 
+                  : status?.modelName || 'Local Vision-Language Engine'}
+              </h2>
+              <p className="text-xs text-slate-500 mt-1">
+                {status?.modelName?.toLowerCase().includes('qwen')
+                  ? 'Qwen 2.5-VL 7B GGUF Q4_K_M via llama.cpp CUDA (100% GPU offload, ~35–45 tokens/sec, mmproj-F16 vision).'
+                  : 'Qwen local GGUF via llama.cpp CUDA. Vision mode includes mmproj-F16; Coder mode is text-only with the projector unloaded.'}
+              </p>
             </div>
             <span className={`px-2 py-1 rounded border text-[9px] font-mono font-bold ${status?.ready ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{stateLabel}</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono">
             <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">BACKEND</div><div className="text-slate-200 mt-1">{status?.backend || 'CUDA'}</div></div>
-            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">GPU LAYERS</div><div className="text-slate-200 mt-1">{status?.gpuLayers ?? 28}</div></div>
+            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">GPU LAYERS</div><div className="text-slate-200 mt-1">{status?.gpuLayers ?? 28} (100% Offload)</div></div>
             <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">CONTEXT</div><div className="text-slate-200 mt-1">{status?.contextSize ?? 8192}</div></div>
             <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">CPU THREADS</div><div className="text-slate-200 mt-1">{status?.threads ?? 6}</div></div>
+            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">VISION MMPROJ</div><div className="text-emerald-300 mt-1 truncate" title={status?.mmprojPath || 'None'}>{status?.mmprojPath ? (status.mmprojPath.split(/[/\\]/).pop() || 'Detected') : 'None'}</div></div>
+            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">EST. SPEED</div><div className="text-emerald-400 font-bold mt-1">{status?.engine === 'qwen-coder' ? '~30–50 t/s' : '~35–45 t/s'}</div></div>
+          </div>
+
+          <div className="mt-4 p-3 rounded border border-sky-500/20 bg-sky-500/5">
+            <div className="text-[9px] font-bold uppercase tracking-widest text-sky-300 mb-2">MODEL ROUTING</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => void runAction('restart','qwen')} disabled={loading || status?.engine === 'qwen'} className={`p-2 rounded border text-left ${status?.engine === 'qwen' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-700 bg-slate-900'}`}>
+                <div className="text-[10px] font-bold text-slate-100">Qwen 2.5-VL 7B</div>
+                <div className="text-[8px] text-slate-500 mt-1">Q4_K_M + mmproj-F16 · vision</div>
+                <div className="text-[8px] text-emerald-400 mt-1">→ Vision + Juggernaut-XL v9</div>
+              </button>
+              <button onClick={() => void runAction('restart','qwen-coder')} disabled={loading || status?.engine === 'qwen-coder'} className={`p-2 rounded border text-left ${status?.engine === 'qwen-coder' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-700 bg-slate-900'}`}>
+                <div className="text-[10px] font-bold text-slate-100">Qwen Coder 7B</div>
+                <div className="text-[8px] text-slate-500 mt-1">Q5_K_M · text-only · projector unloaded</div>
+                <div className="text-[8px] text-amber-300 mt-1">→ Code / project tasks</div>
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 p-3 rounded border border-amber-500/20 bg-amber-500/5 text-[10px] text-amber-200/80 leading-relaxed">
-            <strong className="text-amber-300">8 GB VRAM rule:</strong> starting Gemma tells ComfyUI to release cached models first. Avoid running heavy image/video generation at the same time as the 12B LLM.
+            <strong className="text-amber-300">8 GB VRAM rule:</strong> starting the local LLM tells ComfyUI to release cached models first. Avoid running heavy image/video generation at the same time as the local LLM.
           </div>
 
           <div className="flex flex-wrap gap-2 mt-4">
@@ -638,14 +774,19 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
             <button onClick={() => runAction('restart')} disabled={loading || !status?.configured} className="px-3 py-2 rounded border border-sky-500/30 bg-sky-500/10 text-sky-300 text-[10px] font-bold uppercase tracking-wider disabled:opacity-40 flex items-center gap-2"><RotateCw className="w-3.5 h-3.5" /> Restart</button>
           </div>
 
-          <div className="mt-4 text-[9px] font-mono text-slate-600 break-all">{status?.modelPath || 'C:\\Gina_AI\\models\\llm\\gemma-3-12b-it-Q4_K_M.gguf'}</div>
+          <div className="mt-4 text-[9px] font-mono text-slate-600 break-all">{status?.modelPath || 'C:\\Gina_AI\\models\\llm\\Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf'}</div>
           {error && <div className="mt-3 p-3 rounded border border-rose-500/30 bg-rose-500/5 text-[10px] text-rose-300">{error}</div>}
         </div>
 
         <div className="bg-slate-950 border border-slate-800 rounded-lg p-5 shadow-sm h-[620px] min-h-0 flex flex-col">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
             <div className="flex items-center gap-2"><MessageSquare className="w-4 h-4 text-emerald-400" /><span className="text-xs font-bold uppercase tracking-widest text-slate-200">Local Gina Chat</span></div>
-            <div className="flex items-center gap-2"><button onClick={() => { setMessages([]); setError(null); setPdfNotice(null); }} disabled={!messages.length || loading} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Clear</button><button onClick={() => void saveLastResponseAsPdf()} disabled={!messages.some(m => m.role === 'assistant') || pdfSaving} className="px-2 py-1 rounded border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1"><FileDown className="w-3 h-3" /> {pdfSaving ? 'Saving…' : 'Save PDF'}</button>
+            <div className="flex items-center gap-2">
+                
+                <button onClick={()=>{const u=window.prompt('GitHub repository URL'); if(u){setGithubUrl(u); setTimeout(()=>void loadGithubProject(),0);}}} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1"><Github className="w-3 h-3"/> GitHub</button>
+                {agentWorkspace && <span className="max-w-[170px] truncate text-[8px] font-mono text-amber-300/70" title={agentWorkspace}>● {agentWorkspace}</span>}<button onClick={exportActiveWorkspace} title="Download the current project as a clean ZIP" className="px-2 py-1 rounded border border-emerald-500/30 bg-emerald-500/5 text-emerald-300 text-[9px] font-bold uppercase tracking-wider">Export ZIP</button>
+              </div>
+              <div className="flex items-center gap-2"><button onClick={() => { setMessages([]); setError(null); setPdfNotice(null); }} disabled={!messages.length || loading} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Clear</button><button onClick={() => void saveLastResponseAsPdf()} disabled={!messages.some(m => m.role === 'assistant') || pdfSaving} className="px-2 py-1 rounded border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1"><FileDown className="w-3 h-3" /> {pdfSaving ? 'Saving…' : 'Save PDF'}</button>
               <button onClick={() => { const next = !voiceEnabled; setVoiceEnabled(next); if (next) testVoice(); }} disabled={!voiceAvailable && !browserVoiceAvailable} title={(voiceAvailable || browserVoiceAvailable) ? 'Toggle Gina voice' : 'No local voice engine detected'} className={`px-2 py-1 rounded border text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1 ${voiceEnabled ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-slate-700 bg-slate-900 text-slate-500'}`}>{voiceEnabled ? <Volume2 className="w-3 h-3"/> : <VolumeX className="w-3 h-3"/>} Voice</button>
               <button onClick={toggleMicrophone} disabled={listening || !microphoneAvailable} title="Speak to Gina" className={`px-2 py-1 rounded border text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1 ${listening ? 'border-rose-500/40 bg-rose-500/10 text-rose-300' : 'border-violet-500/30 bg-violet-500/5 text-violet-300'}`}>{listening ? <MicOff className="w-3 h-3"/> : <Mic className="w-3 h-3"/>} {listening ? 'Listening…' : 'Talk'}</button>
               <label className="flex items-center gap-1 px-2 text-[9px] font-mono text-slate-500"><input type="checkbox" checked={autoSpeak} onChange={e=>setAutoSpeak(e.target.checked)} /> Auto</label>
@@ -729,8 +870,12 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
           )}
 
           <div className="flex-1 min-h-0 max-h-[520px] overflow-y-scroll custom-scrollbar space-y-3 pr-1">
-            {!messages.length && <div className="h-full min-h-[300px] flex items-center justify-center text-center text-slate-600 text-xs"><div><Zap className="w-6 h-6 mx-auto mb-2 text-slate-700" /><p>Start Gemma to chat locally.</p><p className="text-[10px] mt-1">No cloud provider is used.</p></div></div>}
-            {messages.map((message, index) => (
+            {!messages.length && <div className="h-full min-h-[300px] flex items-center justify-center text-center text-slate-600 text-xs"><div><Zap className="w-6 h-6 mx-auto mb-2 text-slate-700" /><p>Start Qwen locally to chat with Gina.</p><p className="text-[10px] mt-1">No cloud provider is used.</p></div></div>}
+            {agentWorkspace && <div className="mb-2 rounded border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[9px] font-mono">
+            <div className="flex justify-between"><span className="text-amber-300">GINA CODING WORKSPACE</span><span className="text-slate-500">{agentStatus}</span></div>
+            {agentActivity.length > 0 && <div className="mt-1 text-slate-400 truncate">{agentActivity[agentActivity.length-1]}</div>}
+          </div>}
+          {messages.map((message, index) => (
               <div key={`${message.role}-${index}`} className={`rounded-lg border p-3 text-xs leading-relaxed ${message.role === 'user' ? 'ml-10 bg-emerald-500/5 border-emerald-500/20 text-slate-200' : 'mr-10 bg-slate-900 border-slate-800 text-slate-300'}`}>
                 <div className="text-[9px] font-mono uppercase tracking-wider text-slate-600 mb-1">{message.role}</div>
                 <div className="whitespace-pre-wrap break-words">{message.content}</div>{message.imageUrl && <img src={message.imageUrl} alt="Gina generated image" className="mt-3 max-w-full rounded-lg border border-slate-700" />}
@@ -748,8 +893,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
               accept=".txt,.md,.markdown,.json,.csv,.tsv,.log,.ini,.cfg,.conf,.yaml,.yml,.xml,.html,.htm,.css,.js,.jsx,.ts,.tsx,.py,.ps1,.bat,.cmd,.sh,.sql,.c,.h,.cpp,.hpp,.cc,.java,.cs,.go,.rs,.toml,.env,.png,.jpg,.jpeg,.webp,.bmp,.gif,.zip,text/plain,application/json,text/csv,text/markdown,text/xml,image/png,image/jpeg,image/webp,application/zip"
               className="hidden"
               onChange={e => {
-                const files = Array.from(e.target.files || []);
-                void files.reduce((promise, file) => promise.then(() => handleAttachFile(file)), Promise.resolve());
+                const files = Array.from(e.target.files || []) as File[];
+                void (async () => { for (const file of files) await handleAttachFile(file); })();
               }}
             />
 
@@ -770,11 +915,11 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
 
             <div className="flex gap-2">
               <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendMessage(); } }} disabled={!status?.ready || loading} rows={3} placeholder={status?.ready ? 'Ask Gina… (Enter to send, Shift+Enter for a new line)' : 'Start the local LLM first…'} className="flex-1 resize-none rounded border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-200 outline-none focus:border-emerald-500/50 disabled:opacity-50" />
-              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!status?.ready || loading || attachedFiles.length >= maxLocalAiFiles} title="Attach a supported local file, image or ZIP archive" className="self-end px-3 py-2 rounded border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[10px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5" /> Attach</button>
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!status?.ready || loading || attachedFiles.length >= maxLocalAiFiles} title={status?.engine === 'qwen-coder' ? 'Qwen Coder accepts text/code files and project ZIP archives. Image attachments require Qwen 2.5-VL Vision Mode.' : 'Attach a supported local file, image or ZIP archive'} className="self-end px-3 py-2 rounded border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[10px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5" /> Attach</button>
               {loading ? <button onClick={() => void cancelChat()} className="self-end px-4 py-2 rounded border border-rose-500/50 bg-rose-500/10 text-rose-300 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"><Square className="w-3 h-3" /> Stop & Flush</button> : <button onClick={() => void sendMessage()} disabled={!status?.ready || (!input.trim() && !attachedFiles.length)} className="self-end px-4 py-2 rounded bg-emerald-500 text-slate-950 text-[10px] font-bold uppercase tracking-wider disabled:opacity-30">Send</button>}
             </div>
           </div>
-          <div className="mt-2 text-[8px] font-mono text-slate-700">Local AI attachments stay on this machine: text/code/config ≤2 MB, images ≤12 MB, ZIP archives ≤25 MB · max 5 per turn. ZIP text is extracted locally. {status?.multimodal ? <span className="text-emerald-500">Vision attachments are enabled.</span> : <span>Image uploads are stored locally; add a Gemma mmproj to enable pixel vision.</span>}</div>
+          <div className="mt-2 text-[8px] font-mono text-slate-700">Local AI attachments stay on this machine: text/code/config ≤2 MB, images ≤12 MB in Vision Mode, ZIP project archives ≤100 MB · max 5 non-project attachments per turn. Project ZIPs are imported into a dedicated workspace and inspected locally; archives are no longer limited to 100 files. {status?.multimodal ? <span className="text-emerald-500">Vision attachments are enabled.</span> : <span>Image uploads are stored locally; switch to Qwen 2.5-VL Vision Mode with its mmproj-F16 projector to enable pixel vision.</span>}</div>
           {(voiceAvailable || browserVoiceAvailable) && <div className="mt-2 flex flex-wrap items-center gap-2 text-[9px] font-mono text-slate-600"><Volume2 className="w-3 h-3" /> SPEECH RATE <input aria-label="Speech rate" type="range" min="-5" max="5" value={voiceRate} onChange={e=>setVoiceRate(Number(e.target.value))} /><span>{voiceRate > 0 ? '+' : ''}{voiceRate}</span><button onClick={testVoice} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200">TEST</button>{speaking && <span className="text-emerald-400 animate-pulse">SPEAKING</span>}</div>}
         </div>
       </div>

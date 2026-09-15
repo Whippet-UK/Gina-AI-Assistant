@@ -48,6 +48,16 @@ except ImportError:
     ImageFont = None
     NDArray = Any
 
+try:
+    _script_dir = os.path.dirname(os.path.abspath(__file__))
+    if _script_dir not in sys.path:
+        sys.path.insert(0, _script_dir)
+    import gina_motion_physics_engine as gmpe
+    HAS_MOTION_PHYSICS = True
+except Exception as _e:
+    HAS_MOTION_PHYSICS = False
+    gmpe = None
+
 # ===============================================================================
 # GLOBAL CONSTANTS & CONFIGURATION
 # ===============================================================================
@@ -468,6 +478,107 @@ def resize_widescreen(
 
 
 # ===============================================================================
+# CPU WATERMARK INPAINTING MATRIX
+# ===============================================================================
+def inpaint_static_watermark(
+    input_path: str,
+    output_path: str,
+    wm_x: int = 85,
+    wm_y: int = 5,
+    wm_w: int = 12,
+    wm_h: int = 8,
+) -> str:
+    """Remove a static rectangular corner watermark frame-by-frame on CPU.
+
+    The mask is generated from percentage coordinates against the *source clip*
+    dimensions, so the operation happens before slicing/aspect conversion and
+    never consumes CUDA/VRAM. The output is a clean H.264 MP4 scratch asset.
+    """
+    if not HAS_OPENCV or cv2 is None or np is None:
+        raise RuntimeError("OpenCV and NumPy are required for watermark inpainting.")
+    if not os.path.isfile(input_path):
+        raise FileNotFoundError(f"Watermark inpainting input not found: {input_path}")
+
+    cap = cv2.VideoCapture(input_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"Could not open video for watermark inpainting: {input_path}")
+
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
+    if width <= 0 or height <= 0:
+        cap.release()
+        raise RuntimeError(f"Invalid video dimensions for watermark inpainting: {input_path}")
+
+    # Clamp UI percentages so malformed requests cannot create an out-of-frame mask.
+    x_pct = max(0, min(100, int(wm_x)))
+    y_pct = max(0, min(100, int(wm_y)))
+    w_pct = max(1, min(100, int(wm_w)))
+    h_pct = max(1, min(100, int(wm_h)))
+
+    box_x = int(width * x_pct / 100)
+    box_y = int(height * y_pct / 100)
+    box_w = max(1, int(width * w_pct / 100))
+    box_h = max(1, int(height * h_pct / 100))
+    box_x2 = min(width - 1, box_x + box_w)
+    box_y2 = min(height - 1, box_y + box_h)
+
+    # Prefer an actual H.264 OpenCV/FFmpeg writer. Some builds expose H264 as
+    # avc1; retry the canonical H264 tag if the first writer is unavailable.
+    writer = None
+    for fourcc_name in ("avc1", "H264"):
+        candidate = cv2.VideoWriter(
+            output_path,
+            cv2.VideoWriter_fourcc(*fourcc_name),
+            fps,
+            (width, height),
+        )
+        if candidate.isOpened():
+            writer = candidate
+            break
+        candidate.release()
+
+    if writer is None:
+        cap.release()
+        raise RuntimeError(
+            "OpenCV could not initialise an H.264 VideoWriter (tried avc1/H264). "
+            "Install an OpenCV build with FFmpeg H.264 encoding support."
+        )
+
+    frame_count = 0
+    try:
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+
+            # 1-channel binary mask: white = pixels to reconstruct, black = preserve.
+            mask = np.zeros((height, width), dtype=np.uint8)
+            cv2.rectangle(mask, (box_x, box_y), (box_x2, box_y2), 255, -1)
+            filtered = cv2.inpaint(frame, mask, 3, flags=cv2.INPAINT_TELEA)
+            writer.write(filtered)
+            frame_count += 1
+
+            if frame_count % 30 == 0:
+                print(
+                    f"[STREAMINJECT] Watermark inpainting: "
+                    f"{frame_count} frames processed ({os.path.basename(input_path)})"
+                )
+    finally:
+        cap.release()
+        writer.release()
+
+    if frame_count == 0 or not os.path.isfile(output_path):
+        raise RuntimeError(f"Watermark inpainting produced no frames: {input_path}")
+
+    print(
+        f"[STREAMINJECT] CPU watermark eraser complete: {os.path.basename(input_path)} "
+        f"box={x_pct}%,{y_pct}% {w_pct}%x{h_pct}% -> {os.path.basename(output_path)}"
+    )
+    return output_path
+
+
+# ===============================================================================
 # ENGINE 1: HARDCODED MASTER RENDER PIPELINE
 # ===============================================================================
 class MasterRenderPipeline:
@@ -505,10 +616,83 @@ class MasterRenderPipeline:
         audio_trim_end: Optional[float] = None,
         audio_volume: float = 1.0,
         audio_fade_in: float = 0.5,
-        audio_fade_out: float = 0.5
+        audio_fade_out: float = 0.5,
+        strip_audio: bool = False,
+        remove_watermark: bool = False,
+        wm_x: int = 85,
+        wm_y: int = 5,
+        wm_w: int = 12,
+        wm_h: int = 8
     ) -> Dict[str, Any]:
         start_time_all = time.time()
         scratch = ensure_scratch_directory()
+
+        if strip_audio:
+            source_paths = {
+                "intro_path": intro_path,
+                "main_gameplay_path": main_gameplay_path,
+                "outro_path": outro_path,
+                "green_screen_overlay": green_screen_overlay,
+            }
+            for source_name, source_path in source_paths.items():
+                if not source_path or not os.path.isfile(source_path):
+                    continue
+                silent_output = os.path.join(
+                    scratch,
+                    f"{os.path.splitext(os.path.basename(source_path))[0]}_silent_{source_name}.mp4"
+                )
+                ffmpeg_bin = get_ffmpeg_binary()
+                strip_cmd = [
+                    ffmpeg_bin, "-y", "-i", source_path,
+                    "-vcodec", "copy", "-an", silent_output
+                ]
+                print(f"[STREAMINJECT] Stripping source audio: {source_name} ({os.path.basename(source_path)})")
+                result = subprocess.run(
+                    strip_cmd,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    check=False
+                )
+                if result.returncode != 0:
+                    raise RuntimeError(
+                        f"FFmpeg audio stripping failed for {source_name}: {result.stderr[-400:]}"
+                    )
+                source_paths[source_name] = silent_output
+
+            intro_path = source_paths["intro_path"]
+            main_gameplay_path = source_paths["main_gameplay_path"] or main_gameplay_path
+            outro_path = source_paths["outro_path"]
+            green_screen_overlay = source_paths["green_screen_overlay"]
+
+        # CPU-only static watermark removal. This deliberately runs before any
+        # slicing/aspect work so the user percentages refer to the source clip.
+        if remove_watermark:
+            source_paths = {
+                "intro_path": intro_path,
+                "main_gameplay_path": main_gameplay_path,
+                "outro_path": outro_path,
+                "green_screen_overlay": green_screen_overlay,
+            }
+            for source_name, source_path in source_paths.items():
+                if not source_path or not os.path.isfile(source_path):
+                    continue
+                erased_output = os.path.join(
+                    scratch,
+                    f"{os.path.splitext(os.path.basename(source_path))[0]}_watermark_erased_{source_name}.mp4"
+                )
+                inpaint_static_watermark(
+                    source_path, erased_output,
+                    wm_x=wm_x, wm_y=wm_y, wm_w=wm_w, wm_h=wm_h
+                )
+                source_paths[source_name] = erased_output
+
+            intro_path = source_paths["intro_path"]
+            main_gameplay_path = source_paths["main_gameplay_path"] or main_gameplay_path
+            outro_path = source_paths["outro_path"]
+            green_screen_overlay = source_paths["green_screen_overlay"]
+
         purge_pycache()
 
         print("\n=======================================================")
@@ -876,6 +1060,7 @@ class IntroOutroStudio:
         text_layers = config.get("text_layers", [])
         video_boxes = config.get("video_boxes", [])
         profile_circles = config.get("profile_circles", [])
+        physics_layers = config.get("physics_layers", [])
         vfx_cfg = config.get("vfx", {})
 
         # Audio track mixing for Intro/Outro Studio
@@ -902,16 +1087,75 @@ class IntroOutroStudio:
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             writer = cv2.VideoWriter(raw_custom, fourcc, fps, (canvas_w, canvas_h))
 
+            bg_center_color = bg_cfg.get("center_color")
+            bg_edge_color = bg_cfg.get("edge_color")
+            bg_show_grid = bool(bg_cfg.get("show_grid", bg_type != "spotlight"))
+
+            def hex_to_bgr(hex_str, default_bgr=(255, 255, 255)):
+                if not hex_str or not isinstance(hex_str, str):
+                    return default_bgr
+                clean = hex_str.strip().lstrip("#")
+                if len(clean) == 3:
+                    clean = "".join([c * 2 for c in clean])
+                if len(clean) >= 6:
+                    try:
+                        r = int(clean[0:2], 16)
+                        g = int(clean[2:4], 16)
+                        b = int(clean[4:6], 16)
+                        return (b, g, r)
+                    except Exception:
+                        pass
+                return default_bgr
+
             # Base background
             if bg_type == "image" and bg_image_path and os.path.isfile(bg_image_path):
                 bg_loaded = cv2.imread(bg_image_path)
                 bg_base = cv2.resize(bg_loaded, (canvas_w, canvas_h))
             elif bg_type == "linear":
                 y, x = np.ogrid[:canvas_h, :canvas_w]
-                gradient = (bg_max_red * (y / float(canvas_h))).astype(np.uint8)
-                bg_base = cv2.merge([np.zeros_like(gradient), np.zeros_like(gradient), gradient])
+                top_bgr = hex_to_bgr(bg_center_color, default_bgr=(20, 10, bg_max_red))
+                bot_bgr = hex_to_bgr(bg_edge_color, default_bgr=(5, 0, 3))
+                ratio = (y / float(max(1, canvas_h)))
+                b_chan = (top_bgr[0] + (bot_bgr[0] - top_bgr[0]) * ratio).astype(np.uint8)
+                g_chan = (top_bgr[1] + (bot_bgr[1] - top_bgr[1]) * ratio).astype(np.uint8)
+                r_chan = (top_bgr[2] + (bot_bgr[2] - top_bgr[2]) * ratio).astype(np.uint8)
+                bg_base = cv2.merge([b_chan, g_chan, r_chan])
+            elif bg_type in ("spotlight", "indigo_vignette"):
+                # Central indigo spotlight vignette (matching The Whippet cinematic card)
+                y, x = np.ogrid[:canvas_h, :canvas_w]
+                center_x, center_y = canvas_w / 2.0, canvas_h / 2.0
+                max_dist = math.sqrt(center_x ** 2 + center_y ** 2) * 0.75
+                dist = np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
+                norm_dist = np.clip(dist / max(1.0, max_dist), 0.0, 1.0)
+                center_bgr = hex_to_bgr(bg_center_color, default_bgr=(66, 27, 37))
+                edge_bgr = hex_to_bgr(bg_edge_color, default_bgr=(10, 6, 7))
+                b_chan = (edge_bgr[0] + (center_bgr[0] - edge_bgr[0]) * (1.0 - norm_dist)).astype(np.uint8)
+                g_chan = (edge_bgr[1] + (center_bgr[1] - edge_bgr[1]) * (1.0 - norm_dist)).astype(np.uint8)
+                r_chan = (edge_bgr[2] + (center_bgr[2] - edge_bgr[2]) * (1.0 - norm_dist)).astype(np.uint8)
+                bg_base = cv2.merge([b_chan, g_chan, r_chan])
             else:
-                bg_base = cls.generate_radial_background(canvas_w, canvas_h, max_red=bg_max_red)
+                if bg_center_color or bg_edge_color:
+                    y, x = np.ogrid[:canvas_h, :canvas_w]
+                    center_x, center_y = canvas_w / 2.0, canvas_h / 2.0
+                    max_dist = math.sqrt(center_x ** 2 + center_y ** 2) * 0.95
+                    dist = np.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
+                    norm_dist = np.clip(dist / max(1.0, max_dist), 0.0, 1.0)
+                    center_bgr = hex_to_bgr(bg_center_color, default_bgr=(18, 8, bg_max_red))
+                    edge_bgr = hex_to_bgr(bg_edge_color, default_bgr=(5, 0, 3))
+                    b_chan = (edge_bgr[0] + (center_bgr[0] - edge_bgr[0]) * (1.0 - norm_dist)).astype(np.uint8)
+                    g_chan = (edge_bgr[1] + (center_bgr[1] - edge_bgr[1]) * (1.0 - norm_dist)).astype(np.uint8)
+                    r_chan = (edge_bgr[2] + (center_bgr[2] - edge_bgr[2]) * (1.0 - norm_dist)).astype(np.uint8)
+                    bg_base = cv2.merge([b_chan, g_chan, r_chan])
+                else:
+                    bg_base = cls.generate_radial_background(canvas_w, canvas_h, max_red=bg_max_red)
+
+            if bg_show_grid and bg_type != "spotlight":
+                grid_size = 40
+                grid_color = (25, 0, 80)  # subtle BGR overlay
+                for gx in range(0, canvas_w, grid_size):
+                    cv2.line(bg_base, (gx, 0), (gx, canvas_h), grid_color, 1)
+                for gy in range(0, canvas_h, grid_size):
+                    cv2.line(bg_base, (0, gy), (canvas_w, gy), grid_color, 1)
 
             for frame_idx in range(total_frames):
                 time_sec = frame_idx / fps
@@ -933,6 +1177,11 @@ class IntroOutroStudio:
                             anim_offset = int(math.sin(time_sec * 4.0) * 10.0)
                         elif anim == "flicker" and random.random() < 0.2 and time_sec < 2.0:
                             f_color = "#444444"
+                        elif anim == "cinematic_fade":
+                            # Luminous fade in first 3.5s
+                            fade_val = min(1.0, max(0.15, time_sec * 0.38))
+                            if fade_val < 0.6:
+                                f_color = "#888888"
 
                         try:
                             font = ImageFont.truetype("arial.ttf", f_size)
@@ -956,7 +1205,12 @@ class IntroOutroStudio:
                         else:
                             draw_y = int(canvas_h * 0.25) + (i * (f_size + 24))
 
-                        draw.text((draw_x, draw_y + anim_offset), t_str, font=font, fill=f_color)
+                        stroke_col = tl.get("stroke_color")
+                        stroke_w = int(tl.get("stroke_width", 3)) if stroke_col else 0
+                        if stroke_col and stroke_w > 0:
+                            draw.text((draw_x, draw_y + anim_offset), t_str, font=font, fill=f_color, stroke_width=stroke_w, stroke_fill=stroke_col)
+                        else:
+                            draw.text((draw_x, draw_y + anim_offset), t_str, font=font, fill=f_color)
 
                     frame = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
@@ -1005,6 +1259,57 @@ class IntroOutroStudio:
                     enable_bloom=enable_bloom,
                     enable_chroma=enable_chroma
                 )
+
+                # Motion Physics & Geometric Distortion Suite
+                if HAS_MOTION_PHYSICS and gmpe is not None and physics_layers:
+                    for p_layer in physics_layers:
+                        if not p_layer.get("enabled", True):
+                            continue
+                        p_type = p_layer.get("type", "")
+                        p_params = p_layer.get("params", {})
+                        try:
+                            if p_type == "shockwave":
+                                cx = int(p_params.get("cx", canvas_w // 2))
+                                cy = int(p_params.get("cy", canvas_h // 2))
+                                base_r = float(p_params.get("radius", 180.0))
+                                radius = max(10.0, base_r * (0.3 + 0.7 * abs(math.sin(time_sec * 2.0))))
+                                amp = float(p_params.get("amplitude", 35.0))
+                                width = float(p_params.get("width", 45.0))
+                                processed = gmpe.apply_radial_shockwave(processed, (cx, cy), radius, amp, width)
+                            elif p_type == "wave_line":
+                                amp = float(p_params.get("amplitude", 30.0))
+                                freq = float(p_params.get("frequency", 0.015))
+                                thick = int(p_params.get("thickness", 3))
+                                processed = gmpe.apply_rolling_wave_line(processed, time_sec, amp, freq, thickness=thick)
+                            elif p_type == "vortex":
+                                cx = int(p_params.get("cx", canvas_w // 2))
+                                cy = int(p_params.get("cy", canvas_h // 2))
+                                max_r = float(p_params.get("max_radius", 250.0))
+                                max_ang = float(p_params.get("max_angle_deg", 90.0)) * math.sin(time_sec * 2.0)
+                                processed = gmpe.apply_vortex_twirl(processed, (cx, cy), max_r, max_ang)
+                            elif p_type == "page_curl":
+                                p = float(p_params.get("progress", (time_sec / max(0.1, duration_sec)) % 1.0))
+                                rw = float(p_params.get("roll_width_pct", 0.15))
+                                processed = gmpe.apply_page_curl(processed, p, rw)
+                            elif p_type == "crt_scanlines":
+                                op = float(p_params.get("opacity", 0.25))
+                                ab = int(p_params.get("aberration_px", 3))
+                                processed = gmpe.apply_crt_scanlines(processed, op, ab)
+                            elif p_type == "datamosh":
+                                bs = int(p_params.get("block_size", 16))
+                                prob = float(p_params.get("probability", 0.25))
+                                p = (time_sec / max(0.1, duration_sec))
+                                processed = gmpe.apply_datamosh_glitch(processed, p, bs, prob)
+                            elif p_type == "liquid_flow":
+                                visc = float(p_params.get("viscosity", 18.0))
+                                processed = gmpe.apply_optical_liquid_flow(processed, time_sec, visc)
+                            elif p_type == "volumetric_glow":
+                                cx = int(p_params.get("cx", canvas_w // 2))
+                                cy = int(p_params.get("cy", canvas_h // 2))
+                                processed = gmpe.render_volumetric_glow_layer(processed, cx, cy, time_sec, p_params)
+                        except Exception as p_err:
+                            pass
+
                 writer.write(processed)
                 if frame_idx % max(1, total_frames // 5) == 0:
                     pct = int(20 + (frame_idx / total_frames) * 60)
@@ -1412,6 +1717,13 @@ def main():
     render_parser.add_argument("--audio-volume", type=float, default=1.0, help="Audio track volume scale")
     render_parser.add_argument("--audio-fade-in", type=float, default=0.5, help="Audio fade in duration")
     render_parser.add_argument("--audio-fade-out", type=float, default=0.5, help="Audio fade out duration")
+    render_parser.add_argument("--strip-audio", action="store_true", default=False, help="Strip embedded audio from source video inputs before processing")
+    # CPU-only static watermark eraser matrix. Percentages are relative to each source clip.
+    render_parser.add_argument("--remove-watermark", action="store_true", default=False, help="Enable CPU OpenCV static watermark inpainting")
+    render_parser.add_argument("--wm-x", type=int, default=85, help="Watermark box X position as percent of source width (default 85)")
+    render_parser.add_argument("--wm-y", type=int, default=5, help="Watermark box Y position as percent of source height (default 5)")
+    render_parser.add_argument("--wm-w", type=int, default=12, help="Watermark box width as percent of source width (default 12)")
+    render_parser.add_argument("--wm-h", type=int, default=8, help="Watermark box height as percent of source height (default 8)")
 
     # Pipeline 2: Intro/Outro Studio
     studio_parser = subparsers.add_parser("studio", help="Launch Intro & Outro Studio")
@@ -1451,7 +1763,13 @@ def main():
             audio_trim_end=args.audio_trim_end,
             audio_volume=args.audio_volume,
             audio_fade_in=args.audio_fade_in,
-            audio_fade_out=args.audio_fade_out
+            audio_fade_out=args.audio_fade_out,
+            strip_audio=args.strip_audio,
+            remove_watermark=args.remove_watermark,
+            wm_x=args.wm_x,
+            wm_y=args.wm_y,
+            wm_w=args.wm_w,
+            wm_h=args.wm_h
         )
     elif args.command == "studio":
         if args.layout_json:

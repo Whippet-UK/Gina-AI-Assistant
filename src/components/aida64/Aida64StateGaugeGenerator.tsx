@@ -944,14 +944,14 @@ export const Aida64StateGaugeGenerator: React.FC<Aida64StateGaugeGeneratorProps>
       }
     } else if (cfg.style === 'radar_tactical') {
       // Concentric range rings with sweep fill
-      const maxR = Math.min(width, height) / 2 - 10;
+      const maxR = Math.max(1, Math.min(width, height) / 2 - 10);
 
       // Concentric rings + crosshairs use the same Background Track controls.
       if (cfg.showTrack) {
         [0.3, 0.6, 0.9].forEach(factor => {
           ctx.save();
           ctx.beginPath();
-          ctx.arc(centerX, centerY, maxR * factor, 0, Math.PI * 2);
+          ctx.arc(centerX, centerY, Math.max(1, maxR * factor), 0, Math.PI * 2);
           ctx.strokeStyle = cfg.trackColor;
           ctx.globalAlpha = trackOpacity;
           ctx.lineWidth = Math.max(1, Math.min(3, trackThickness / 12));
@@ -979,7 +979,7 @@ export const Aida64StateGaugeGenerator: React.FC<Aida64StateGaugeGeneratorProps>
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(centerX, centerY);
-        ctx.arc(centerX, centerY, maxR, -Math.PI / 2, -Math.PI / 2 + sweepSpan);
+        ctx.arc(centerX, centerY, Math.max(1, maxR), -Math.PI / 2, -Math.PI / 2 + sweepSpan);
         ctx.closePath();
         ctx.fillStyle = color;
         ctx.globalAlpha = 0.35;
@@ -1492,9 +1492,9 @@ export const Aida64StateGaugeGenerator: React.FC<Aida64StateGaugeGeneratorProps>
 
     if (isCircular && cfg.warningZoneEnabled) {
       const start = ((cfg.startAngleDeg + rotationDeg) * Math.PI) / 180, end = (cfg.endAngleDeg * Math.PI) / 180;
-      const radius = (cfg.innerRadius + cfg.outerRadius) / 2, thickness = Math.max(2, activeThickness * 0.72);
+      const radius = Math.max(1, (cfg.innerRadius + cfg.outerRadius) / 2), thickness = Math.max(2, activeThickness * 0.72);
       const warn = Math.max(0, Math.min(100, cfg.warningThreshold)), crit = Math.max(warn, Math.min(100, cfg.criticalThreshold));
-      const zone = (a:number,b:number,color:string,alpha:number) => { if (b <= a) return; ctx.save(); ctx.beginPath(); ctx.arc(centerX, centerY, radius, start+(a/100)*(end-start), start+(b/100)*(end-start)); ctx.strokeStyle=color; ctx.lineWidth=thickness; ctx.globalAlpha=clamp01(alpha); ctx.stroke(); ctx.restore(); };
+      const zone = (a:number,b:number,color:string,alpha:number) => { if (b <= a) return; ctx.save(); ctx.beginPath(); ctx.arc(centerX, centerY, Math.max(1, radius), start+(a/100)*(end-start), start+(b/100)*(end-start)); ctx.strokeStyle=color; ctx.lineWidth=thickness; ctx.globalAlpha=clamp01(alpha); ctx.stroke(); ctx.restore(); };
       zone(warn, crit, cfg.warningColor, Number(cfg.warningZoneOpacity ?? 0.18)); zone(crit, 100, cfg.criticalColor, Number(cfg.criticalZoneOpacity ?? 0.24));
     }
 
@@ -1524,8 +1524,8 @@ export const Aida64StateGaugeGenerator: React.FC<Aida64StateGaugeGeneratorProps>
     if (cfg.scanlinesEnabled) { const spacing=Math.max(2,Number(cfg.scanlineSpacing??4));ctx.save();ctx.fillStyle=activeLightColor;ctx.globalAlpha=clamp01(Number(cfg.scanlineOpacity??.08));for(let y=0;y<height;y+=spacing)ctx.fillRect(0,y,width,1);ctx.restore(); }
 
     if (cfg.particleEnabled || cfg.sparkEnabled) { const base=Number(cfg.particleCount??18), count=Math.max(0,Math.min(200,base+(cfg.sparkEnabled?Number(cfg.sparkCount??10):0)));ctx.save();for(let i=0;i<count;i++){const r=Math.min(width,height)*(.18+seeded(i)*.36),a=seeded(i+31)*Math.PI*2,x=centerX+Math.cos(a)*r,y=centerY+Math.sin(a)*r,sz=cfg.sparkEnabled&&i>=base?1+seeded(i+91)*2:.6+seeded(i+61)*1.8;ctx.fillStyle=activeLightColor;ctx.globalAlpha=clamp01(Number(cfg.particleOpacity??.22))*(.45+.55*effectProgress);ctx.fillRect(x,y,sz,sz);}ctx.restore(); }
-    if (cfg.energyArcEnabled && isCircular) { const count=Math.max(1,Math.min(8,Number(cfg.energyArcCount??2))),radius=(cfg.innerRadius+cfg.outerRadius)/2;ctx.save();ctx.strokeStyle=activeLightColor;ctx.lineWidth=1.5;ctx.globalAlpha=.35+effectProgress*.25;for(let i=0;i<count;i++){const a0=seeded(i+101)*Math.PI*2,span=.08+seeded(i+121)*.28;ctx.beginPath();ctx.arc(centerX,centerY,radius+(seeded(i+141)-.5)*16,a0,a0+span);ctx.stroke();}ctx.restore(); }
-    if (cfg.rotatingRingEnabled && isCircular) { const count=Math.max(1,Math.min(6,Number(cfg.rotatingRingCount??2)));ctx.save();ctx.strokeStyle=activeLightColor;ctx.globalAlpha=clamp01(Number(cfg.rotatingRingOpacity??.3));for(let i=0;i<count;i++){const r=cfg.outerRadius+10+i*7,off=t*Math.PI*(i%2?-1:1);ctx.beginPath();ctx.arc(centerX,centerY,r,off,off+Math.PI*(.25+.12*i));ctx.stroke();}ctx.restore(); }
+    if (cfg.energyArcEnabled && isCircular) { const count=Math.max(1,Math.min(8,Number(cfg.energyArcCount??2))),radius=(cfg.innerRadius+cfg.outerRadius)/2;ctx.save();ctx.strokeStyle=activeLightColor;ctx.lineWidth=1.5;ctx.globalAlpha=.35+effectProgress*.25;for(let i=0;i<count;i++){const a0=seeded(i+101)*Math.PI*2,span=.08+seeded(i+121)*.28;const arcR=Math.max(1,radius+(seeded(i+141)-.5)*16);ctx.beginPath();ctx.arc(centerX,centerY,arcR,a0,a0+span);ctx.stroke();}ctx.restore(); }
+    if (cfg.rotatingRingEnabled && isCircular) { const count=Math.max(1,Math.min(6,Number(cfg.rotatingRingCount??2)));ctx.save();ctx.strokeStyle=activeLightColor;ctx.globalAlpha=clamp01(Number(cfg.rotatingRingOpacity??.3));for(let i=0;i<count;i++){const r=Math.max(1,cfg.outerRadius+10+i*7),off=t*Math.PI*(i%2?-1:1);ctx.beginPath();ctx.arc(centerX,centerY,r,off,off+Math.PI*(.25+.12*i));ctx.stroke();}ctx.restore(); }
 
     if (cfg.chromaticEnabled || cfg.glitchEnabled) { const amount=Math.max(0,Number(cfg.chromaticAmount??3)),glitch=clamp01(Number(cfg.glitchAmount??.08));const source=document.createElement('canvas');source.width=width;source.height=height;const sc=source.getContext('2d');if(sc){sc.drawImage(ctx.canvas,0,0);ctx.save();ctx.globalCompositeOperation='screen';if(cfg.chromaticEnabled&&amount){ctx.globalAlpha=.18;ctx.drawImage(source,amount,0);ctx.globalAlpha=.12;ctx.drawImage(source,-amount,0);}if(cfg.glitchEnabled&&glitch){for(let i=0;i<Math.max(1,Math.round(2+glitch*10));i++){const y=Math.floor(seeded(i+201)*height),h=Math.max(1,Math.floor(seeded(i+211)*8)),dx=Math.round((seeded(i+221)-.5)*glitch*40);ctx.globalAlpha=.12;ctx.drawImage(source,0,y,width,h,dx,y,width,h);}}ctx.restore();}}
     if (cfg.grainEnabled) { const amount=clamp01(Number(cfg.grainAmount??.04));ctx.save();ctx.globalAlpha=amount;ctx.fillStyle='#fff';for(let i=0;i<Math.round(width*height*.008);i++){ctx.fillRect(Math.floor(seeded(i+301)*width),Math.floor(seeded(i+401)*height),1,1);}ctx.restore(); }
