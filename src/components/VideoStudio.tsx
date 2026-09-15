@@ -286,8 +286,9 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
     setSeed(newSeed);
   };
 
-  const handleGenerateVideo = async () => {
-    if (!prompt.trim()) {
+  const handleGenerateVideo = async (promptOverride?: string) => {
+    const activePrompt = String(promptOverride ?? prompt).trim();
+    if (!activePrompt) {
       onAddLog('WARN', 'Please enter a video prompt before generating.');
       return;
     }
@@ -303,10 +304,10 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
       body: JSON.stringify({ unload_models: false, free_memory: true })
     }).catch(() => null);
 
-    onAddLog('INFO', `Submitting Wan 2.1 Video Job: "${prompt.slice(0, 45)}..." (${customFrames} frames @ ${fps}fps, motion scale ${motionScale})`);
+    onAddLog('INFO', `Submitting Wan 2.1 Video Job: "${activePrompt.slice(0, 45)}..." (${customFrames} frames @ ${fps}fps, motion scale ${motionScale})`);
 
     const resultJob = await startJob('wan_video', {
-      prompt,
+      prompt: activePrompt,
       negative_prompt: negativePrompt,
       duration_sec: selectedDuration,
       frames: customFrames,
@@ -334,6 +335,20 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
       });
     }
   };
+
+  const handleGenerateVideoRef = useRef<((promptOverride?: string) => Promise<void>) | null>(null);
+  handleGenerateVideoRef.current = handleGenerateVideo;
+
+  useEffect(() => {
+    const onVideoRequest = (event: Event) => {
+      const promptText = String((event as CustomEvent)?.detail?.prompt || '').trim();
+      if (!promptText) return;
+      setPrompt(promptText);
+      requestAnimationFrame(() => { void handleGenerateVideoRef.current?.(promptText); });
+    };
+    window.addEventListener('gina-video-generation-request', onVideoRequest);
+    return () => window.removeEventListener('gina-video-generation-request', onVideoRequest);
+  }, []);
 
   const handleSaveToAssets = () => {
     const targetUrl = activeVideoUrl;

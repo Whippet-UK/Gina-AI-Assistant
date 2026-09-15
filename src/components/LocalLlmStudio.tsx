@@ -38,6 +38,7 @@ const SYSTEM_PROMPT = `You are Gina, the local AI assistant inside Gina AI Facto
 export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
   const [status, setStatus] = useState<LocalLlmStatus | null>(null);
   const [loading, setLoading] = useState(false);
+  const [thinkingSource, setThinkingSource] = useState<'local'|'web'|'local+web'>('local');
   const chatAbortRef = useRef<AbortController | null>(null);
   const { job: generationJob, adoptJob, adoptCompletedOutput, cancelJob } = useGenerationJob();
   const [aiImageJobId, setAiImageJobId] = useState<string | null>(null);
@@ -548,7 +549,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     setAgentActivity([]);
     await new Promise<void>((resolve, reject) => {
       const es = new EventSource(`/api/agent/runs/${encodeURIComponent(id)}/stream`);
-      const finish = () => { es.close(); resolve(); };
+      const finish = () => { es.close(); setAgentStatus('READY'); setAgentActivity([]); resolve(); };
       es.addEventListener('status', (ev:any) => {
         try { const d=JSON.parse(ev.data||'{}'); setAgentStatus(d.phase || 'WORKING'); if(d.message) setAgentActivity(prev=>[...prev,d.message].slice(-12)); } catch {}
       });
@@ -632,7 +633,53 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     if (!text || !status?.ready || loading) return;
 
     try {
+      const capabilityResponse = await fetch('/api/agent/capability-plan', {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text:typedText})
+      });
+      const capabilityData = await capabilityResponse.json().catch(() => ({}));
+      const capabilityPlan = capabilityData?.plan;
+      // Capability plans can also describe web/network operations. Only engineering
+      // intents are allowed to enter the autonomous coding agent. Web research,
+      // media creation, knowledge and diagnostics remain in their own lanes.
+      const engineeringIntent = ['code-change','file-read','run-command','git-operation','project-operation'].includes(String(capabilityPlan?.intent || ''));
+      if (capabilityPlan?.mode === 'act' && engineeringIntent) {
+        const nextMessages: ChatMessage[] = [...messages, { role:'user', content:text }];
+        setMessages(nextMessages); setInput(''); setLoading(true); setError(null);
+        try {
+          setThinkingSource('local');
+          const started = await runProjectAgent(typedText);
+          if (!started) throw new Error('Gina Agent could not start for this operational request.');
+        } catch (agentError:any) {
+          setError(agentError?.message || 'Gina Agent could not execute the requested operation.');
+          onAddLog('WARN', `Capability-first agent routing failed: ${agentError?.message || 'unknown error'}`);
+        } finally { setLoading(false); }
+        return;
+      }
+      if (capabilityPlan?.intent === 'capability-query') {
+        const available = capabilityPlan.availableCapabilities?.length ? capabilityPlan.availableCapabilities.join(', ') : 'none';
+        const unavailable = capabilityPlan.unavailableCapabilities?.length ? capabilityPlan.unavailableCapabilities.join(', ') : 'none';
+        const reply = `I checked my live runtime capability registry. Available capabilities include: ${available}. Unavailable/unregistered for this runtime: ${unavailable}. I will distinguish an unavailable capability from a failed operation, and I will use registered tools rather than giving generic instructions when an operational task is requested.`;
+        setMessages(prev => [...prev, {role:'assistant',content:reply}]);
+        setInput(''); setLoading(false);
+        return;
+      }
       const route = await classifyImageIntent(typedText);
+      if (route.intent === 'video-generation') {
+        const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: text }];
+        setMessages(nextMessages);
+        setInput('');
+        setLoading(true);
+        setThinkingSource('local');
+        setError(null);
+        setAgentStatus('READY');
+        setAgentActivity([]);
+        // Video Studio is mounted alongside Local AI. Dispatch the explicit request
+        // to its real Wan 2.1 generation lane rather than pretending video is an image.
+        window.dispatchEvent(new CustomEvent('gina-video-generation-request', { detail: { prompt: typedText } }));
+        setMessages(prev => [...prev, { role:'assistant', content:'Video request accepted. Wan 2.1 Video Studio is starting the local generation.' }]);
+        setLoading(false);
+        return;
+      }
       if (route.intent === 'image-generation' || route.intent === 'image-modification') {
         if (route.policyLocked) throw new Error('Qwen Coder is text-only. Switch to Qwen 2.5-VL Vision Mode to use image generation or vision attachments.');
         const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: text }];
@@ -656,11 +703,15 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       return;
     }
 
+    setAgentStatus('READY');
+    setAgentActivity([]);
     const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: text }];
     setMessages(nextMessages);
     setInput('');
     setLoading(true);
     setError(null);
+    const webIntent = /\b(search(?: the)? web|search online|look(?: it)? up|google|browse|latest|current|today|news|weather|price|version|release|schedule)\b/i.test(text);
+    setThinkingSource(webIntent ? 'local+web' : 'local');
 
     try {
       const controller = new AbortController();
@@ -672,6 +723,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
           messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...nextMessages],
           temperature: 0.7,
           maxTokens: 512,
+          suite: 'Local AI',
           attachments: attachedFiles.filter(file => file.kind === 'image').map(file => ({
             name: file.name, mime: file.mime, localPath: file.localPath, kind: file.kind
           })),
@@ -687,6 +739,11 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       }
       const reply = data?.choices?.[0]?.message?.content;
       if (typeof reply !== 'string' || !reply.trim()) throw new Error('The local model returned an empty response.');
+      const telemetry = data?.ginaTelemetry;
+      if (telemetry) {
+        setThinkingSource(telemetry.source === 'local+web' ? 'local+web' : telemetry.source === 'web' ? 'web' : 'local');
+        onAddLog('INFO', `Prompt telemetry: ${Number(telemetry.promptTokens||0).toLocaleString()} prompt tokens · ${Number(telemetry.completionTokens||0).toLocaleString()} completion tokens${telemetry.webSearched ? ` · web: ${telemetry.webProvider || 'verified'}` : ' · local only'}.`);
+      }
       setMessages(prev => [...prev, { role: 'assistant', content: reply.trim() }]);
       setAttachedFiles([]);
       setFileAttachError(null);
@@ -871,7 +928,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
 
           <div className="flex-1 min-h-0 max-h-[520px] overflow-y-scroll custom-scrollbar space-y-3 pr-1">
             {!messages.length && <div className="h-full min-h-[300px] flex items-center justify-center text-center text-slate-600 text-xs"><div><Zap className="w-6 h-6 mx-auto mb-2 text-slate-700" /><p>Start Qwen locally to chat with Gina.</p><p className="text-[10px] mt-1">No cloud provider is used.</p></div></div>}
-            {agentWorkspace && <div className="mb-2 rounded border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[9px] font-mono">
+            {agentWorkspace && agentStatus !== 'READY' && <div className="mb-2 rounded border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[9px] font-mono">
             <div className="flex justify-between"><span className="text-amber-300">GINA CODING WORKSPACE</span><span className="text-slate-500">{agentStatus}</span></div>
             {agentActivity.length > 0 && <div className="mt-1 text-slate-400 truncate">{agentActivity[agentActivity.length-1]}</div>}
           </div>}
@@ -881,7 +938,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
                 <div className="whitespace-pre-wrap break-words">{message.content}</div>{message.imageUrl && <img src={message.imageUrl} alt="Gina generated image" className="mt-3 max-w-full rounded-lg border border-slate-700" />}
               </div>
             ))}
-            {loading && status?.ready && <div className="mr-10 rounded-lg border border-slate-800 bg-slate-900 p-3 text-xs text-slate-500 animate-pulse">Gina is thinking locally…</div>}
+            {loading && status?.ready && <div className="mr-10 rounded-lg border border-slate-800 bg-slate-900 p-3 text-xs text-slate-400 animate-pulse flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />{thinkingSource === 'local+web' ? 'Gina is searching the web and thinking locally…' : thinkingSource === 'web' ? 'Gina is searching the web…' : 'Gina is thinking locally…'}</div>}
           </div>
 
           {pdfNotice && <div className={`mb-2 p-2 rounded border text-[9px] ${pdfNotice.startsWith('PDF saved:') ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-rose-500/30 bg-rose-500/5 text-rose-300'}`}>{pdfNotice}</div>}

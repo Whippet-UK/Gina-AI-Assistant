@@ -18,6 +18,7 @@ import { ComfyWebSocket } from "./server/comfy/ComfyWebSocket.js";
 import { scanLocalModels, buildCapabilities, scanCustomNodes } from "./server/capabilities/CapabilityManager.js";
 import { buildCapabilityRegistry, planCapabilityIntent, recordCapabilityOutcome, readCapabilityHistory, capabilityPrompt } from "./server/capabilities/CapabilityRegistry.js";
 import { routeRuntimeIntent } from "./server/agent/IntentRouter.js";
+import { detectMediaIntent } from "./server/agent/MediaIntentRouter.js";
 import { firewallMessages } from "./server/agent/ContextFirewall.js";
 import { buildAgentPromptPolicy, autonomousEngineeringContract, extractExplicitTargets } from "./server/agent/AgentPromptPolicy.js";
 import { getActiveAgentSkillsPrompt } from "./server/agent/AgentSkillLoader.js";
@@ -44,6 +45,8 @@ import { AutonomousResearchEngine } from "./server/agent/AutonomousResearchEngin
 import { GitHubLifecycleManager } from "./server/agent/GitHubLifecycleManager.js";
 import { AutonomousRepairLoop } from "./server/agent/AutonomousRepairLoop.js";
 import { AutonomousAgentEngine } from "./server/agent/AutonomousAgentEngine.js";
+import { AutonomousVerificationEngine } from "./server/agent/AutonomousVerificationEngine.js";
+import { AgentExecutionCheckpointStore } from "./server/agent/AgentExecutionCheckpointStore.js";
 import { Aida64TelemetryBridge } from "./server/aida64/Aida64TelemetryBridge.js";
 import { LocalRagEngine } from "./server/rag/LocalRagEngine.js";
 import { KnowledgeBase } from "./server/knowledge/KnowledgeBase.js";
@@ -93,6 +96,8 @@ const autonomousResearch = new AutonomousResearchEngine(webResearch, localRag);
 const gitLifecycle = new GitHubLifecycleManager(GINA_ROOT);
 const autonomousRepair = new AutonomousRepairLoop(autonomousResearch, projectMap, definitionOfDoneGate, gitLifecycle, localLlm);
 const autonomousEngine = new AutonomousAgentEngine(autonomousResearch, projectMap, gitLifecycle);
+const autonomousVerification = new AutonomousVerificationEngine(GINA_ROOT);
+const agentCheckpoints = new AgentExecutionCheckpointStore(GINA_ROOT);
 const streamInjectService = new StreamInjectService(process.cwd());
 const musicService = new MusicService(process.cwd());
 const multimediaService = new MultimediaService(process.cwd());
@@ -1095,7 +1100,8 @@ async function runAgentTool(action: string, parameters: any) {
     }
     case 'refresh_context': {
       const snapshot = await agentContext.buildSnapshot();
-      await agentMemory.remember({ kind:'result', key:'context_refresh', value:`Project context refreshed at ${snapshot.generatedAt}`, source:'agent' });
+      if (taskId) await agentCheckpoints.save({ taskId, prompt:userPrompt, status: verification?.ok === false ? 'paused' : 'completed', step: steps.length, steps, finalSummary });
+  await agentMemory.remember({ kind:'result', key:'context_refresh', value:`Project context refreshed at ${snapshot.generatedAt}`, source:'agent' });
       return { refreshedAt:snapshot.generatedAt, primaryFiles:snapshot.primaryFiles, workflowSummary:snapshot.workflowSummary };
     }
     case 'read_text_file': {
@@ -1383,7 +1389,8 @@ app.get('/api/agent/model-route', (req, res) => {
 
 app.get('/api/agent/tasks', async (req,res) => { try { res.json({ok:true,tasks:await agentTasks.list(Number(req.query?.limit)||50)}); } catch(error:any){res.status(500).json({ok:false,error:error?.message||'Unable to list agent tasks.'});} });
 app.post('/api/agent/tasks', async (req,res) => { try { const prompt=String(req.body?.prompt||'').trim(); if(!prompt)return res.status(400).json({ok:false,error:'prompt is required'}); const task=await agentTasks.create(prompt,String(req.body?.profile||'auto'),req.body?.metadata||{}); res.status(201).json({ok:true,task}); } catch(error:any){res.status(500).json({ok:false,error:error?.message||'Unable to create agent task.'});} });
-app.get('/api/agent/tasks/:id', async (req,res) => { try { const task=await agentTasks.get(req.params.id); if(!task)return res.status(404).json({ok:false,error:'Agent task not found.'}); res.json({ok:true,task}); } catch(error:any){res.status(500).json({ok:false,error:error?.message||'Unable to read agent task.'});} });
+app.get('/api/agent/tasks/:id', async (req,res) => { try { const task=await agentTasks.get(req.params.id); if(!task)return res.status(404).json({ok:false,error:'Agent task not found.'}); res.json({ok:true,task,checkpoint:await agentCheckpoints.get(req.params.id)}); } catch(error:any){res.status(500).json({ok:false,error:error?.message||'Unable to read agent task.'});} });
+app.get('/api/agent/checkpoints', async (req,res) => { try { res.json({ok:true,checkpoints:await agentCheckpoints.list(Number(req.query?.limit)||50)}); } catch(error:any){res.status(500).json({ok:false,error:error?.message||'Unable to list agent checkpoints.'});} });
 
 app.get('/api/agent/approvals', async (_req,res) => { try { res.json({ok:true,approvals:await agentApprovals.pending()}); } catch(error:any){res.status(500).json({ok:false,error:error?.message||'Unable to list approvals.'});} });
 app.post('/api/agent/approvals/:id/resolve', async (req,res) => { try { const approval=await agentApprovals.resolve(req.params.id,req.body?.approved===true); res.json({ok:true,approval}); } catch(error:any){res.status(400).json({ok:false,error:error?.message||'Unable to resolve approval.'});} });
@@ -1534,6 +1541,22 @@ app.post('/api/agent/git/pull-request', async (req, res) => {
 });
 app.get('/api/agent/memory', async (req,res) => { try { res.json({ entries:await agentMemory.list(String(req.query?.q||'')) }); } catch(error:any){ res.status(500).json({error:error?.message||'Unable to read agent memory'}); } });
 app.post('/api/agent/memory', async (req,res) => { try { const entry=await agentMemory.remember({kind:req.body?.kind||'fact',key:String(req.body?.key||'note'),value:String(req.body?.value||''),source:String(req.body?.source||'user')}); res.json({entry}); } catch(error:any){ res.status(500).json({error:error?.message||'Unable to save agent memory'}); } });
+app.post('/api/agent/verify-run', async (req, res) => {
+  try {
+    const workspaceRoot = req.body?.workspace ? agentWorkspace.resolveWorkspace(req.body.workspace) : GINA_ROOT;
+    const result = await autonomousVerification.verify({
+      workspaceRoot,
+      changedPaths: Array.isArray(req.body?.changedPaths) ? req.body.changedPaths.map(String) : [],
+      steps: Array.isArray(req.body?.steps) ? req.body.steps : [],
+      requireValidation: req.body?.requireValidation !== false,
+      requireDiff: req.body?.requireDiff !== false
+    });
+    res.status(result.ok ? 200 : 422).json(result);
+  } catch (error: any) {
+    res.status(500).json({ ok:false, error:error?.message || 'Autonomous verification failed' });
+  }
+});
+
 app.get('/api/agent/self-test', async (_req,res) => { const checks:any[]=[]; const test=async(name:string,fn:()=>Promise<any>)=>{try{const value=await fn();checks.push({name,ok:true,value});}catch(error:any){checks.push({name,ok:false,error:error?.message||String(error)});}}; await test('project_context',async()=>{const s=await agentContext.buildSnapshot();return {files:s.primaryFiles.filter(x=>x.exists).length,workflows:s.workflowSummary.length};}); await test('project_map',async()=>{const m=await projectMap.getProjectMap();return {surfaces:m.surfaces.length,relationships:Object.keys(m.relationships).length};}); await test('definition_of_done',async()=>{const d=await definitionOfDoneGate.verify();return {gateOk:d.ok,passed:d.passedChecks,total:d.totalChecks};}); await test('research_engine',async()=>{const r=await autonomousResearch.research({query:'Wan 2.1 ComfyUI',maxResults:1});return {briefingOk:Boolean(r.timestamp),webEnabled:r.webEnabled};}); await test('git_lifecycle',async()=>{const g=await gitLifecycle.getStatus();return {branch:g.branch,clean:g.isClean};}); await test('memory',async()=>({entries:(await agentMemory.list('')).length})); await test('capabilities',async()=>{const c=await getAgentCapabilitySnapshot();return {tools:c.tools.length,models:c.models.length};}); await test('rag_knowledge',async()=>({chunks:localRag.getStatus().chunkCount})); await test('learning_knowledge',async()=>await knowledgeBase.stats()); res.json({ok:checks.every(c=>c.ok),checks}); });
 
 // Zero-VRAM Local RAG API Routes
@@ -1717,7 +1740,7 @@ app.get('/api/agent/workspaces/:name/export.zip', async (req,res) => {
 });
 
 
-async function executeAgentRun(userPrompt: string, runId?: string, emit?: (type: string, data: any) => Promise<void>) {
+async function executeAgentRun(userPrompt: string, runId?: string, emit?: (type: string, data: any) => Promise<void>, taskId?: string) {
   const publish = async (type: string, data: any) => { if (runId && emit) await emit(type, data); };
   if (!userPrompt) throw new Error('An agent prompt is required.');
   if (!agentFullAccess) throw new Error('Full local agent access is disabled.');
@@ -1752,8 +1775,12 @@ async function executeAgentRun(userPrompt: string, runId?: string, emit?: (type:
     { role:'system', content: GINA_AGENT_RUNTIME_PROMPT + autonomousEngineeringContract(promptPolicy) + `\n\nEXECUTION TOOL ROUTING CONTRACT:\n${formatToolSelection(initialSelection)}\n\nOnly the selected actions above are permitted for the current autonomous step. The full broker exists server-side but is intentionally not exposed to the model unless routing selects it.` },
     { role:'user', content: `${memoryText && memoryText !== '[]' ? `RELEVANT PERSISTENT MEMORY (use only when applicable):\n${memoryText}\n\n` : ''}${learnedKnowledge ? `${learnedKnowledge}\n\n` : ''}${preflightText}\nCURRENT USER TASK:\n${userPrompt.slice(0, 4200)}` }
   ];
-  const steps: any[] = [];
-  let finalSummary = '';
+  const checkpoint = taskId ? await agentCheckpoints.get(taskId) : null;
+  const steps: any[] = checkpoint?.prompt === userPrompt ? [...(checkpoint.steps || [])] : [];
+  let finalSummary = checkpoint?.prompt === userPrompt ? String(checkpoint.finalSummary || '') : '';
+  if (checkpoint?.prompt === userPrompt && steps.length) {
+    await publish('status', { phase:'RESUMING', message:`Resuming autonomous task from checkpoint at step ${checkpoint.step}.`, checkpointStep: checkpoint.step });
+  }
 
   for (let i=0; i<16 && loopGuard.canContinue(); i++) {
     if (runId && agentRuns.isCancelled(runId)) {
@@ -1825,6 +1852,7 @@ ${String(raw).slice(0, 1800)}` }
 
       finalSummary = String(plan.summary || raw).trim();
       steps.push({ plan, raw:String(raw).slice(0,4000) });
+      if (taskId) await agentCheckpoints.save({ taskId, prompt:userPrompt, status:'running', step:i+1, steps });
       await publish('step_completed', { step:i+1, maxSteps:16, action:'none', phase:'REPORTING', message:finalSummary || 'Agent produced its final report.', summary:finalSummary });
       break;
     }
@@ -1862,6 +1890,7 @@ ${String(raw).slice(0, 1800)}` }
       await publish('step_failed', { step:i+1, maxSteps:16, action, phase:'REPAIRING', error:toolResult.error, message:`${action} failed; diagnosing and continuing.` });
     }
     steps.push({ plan, raw:String(raw).slice(0,4000), toolResult:JSON.parse(JSON.stringify(toolResult)) });
+    if (taskId) await agentCheckpoints.save({ taskId, prompt:userPrompt, status:'running', step:i+1, steps });
   }
 
   if (!finalSummary && !agentRuns.isCancelled(runId || '')) {
@@ -1879,16 +1908,29 @@ ${String(raw).slice(0, 1800)}` }
     if (changed.length) finalSummary = `${finalSummary || 'Autonomous engineering task completed.'} Files changed: ${changed.join(', ')}. Successful validation passes: ${validatedSteps}.`;
   }
 
+  const changed = [...new Set(steps.filter((s:any)=>['write_file','patch_file','edit_file'].includes(String(s?.plan?.action||''))).map((s:any)=>String(s?.plan?.parameters?.path||s?.toolResult?.path||'')).filter(Boolean))];
+  let verification:any = null;
+  if (promptPolicy.taskType === 'code' && changed.length) {
+    verification = await autonomousVerification.verify({ workspaceRoot: GINA_ROOT, changedPaths: changed, steps, requireValidation: true, requireDiff: true });
+    if (!verification.ok) {
+      await publish('status', { phase:'VERIFICATION_FAILED', message:'Autonomous verification found missing evidence or consistency errors. Completion is blocked.', verification });
+      finalSummary = `${finalSummary || 'Autonomous engineering task stopped before completion.'} Verification gate: FAILED.`;
+    } else {
+      await publish('status', { phase:'VERIFIED', message:'Autonomous verification passed: validation, diff evidence, whitespace checks and consistency scan are clean.' });
+    }
+  }
+
+  if (taskId) await agentCheckpoints.save({ taskId, prompt:userPrompt, status: verification?.ok === false ? 'paused' : 'completed', step: steps.length, steps, finalSummary });
   await agentMemory.remember({ kind:'result', key:'last_agent_task', value:finalSummary.slice(0,4000), source:'agent_run' }).catch(() => undefined);
   const learned = await knowledgeBase.learnFromAgentRun({ prompt:userPrompt, summary:finalSummary, actions:steps.map((s:any)=>String(s?.plan?.action||'')).filter(Boolean), success:Boolean(finalSummary && steps.some((s:any)=>s?.plan?.action==='none')), source:`agent_run:${runId||'direct'}` }).catch(() => null);
-  return { fullAccess:true, summary:finalSummary || 'Agent run cancelled.', steps, contextLoaded:true, memoryLoaded:true, learnedKnowledge:learned?.id || null, contextSize:llmStatus.contextSize, routing:initialSelection, modelRoute, loopGuard:loopGuard.summary() };
+  return { fullAccess:true, summary:finalSummary || 'Agent run cancelled.', steps, contextLoaded:true, memoryLoaded:true, learnedKnowledge:learned?.id || null, contextSize:llmStatus.contextSize, routing:initialSelection, modelRoute, loopGuard:loopGuard.summary(), verification };
 }
 
 void agentScheduler.init(async (schedule) => {
   const task = await agentTasks.create(schedule.prompt, 'scheduled', { scheduleId:schedule.id, scheduleName:schedule.name });
   await agentTasks.update(task.id, { status:'running' });
   try {
-    const result = await executeAgentRun(schedule.prompt);
+    const result = await executeAgentRun(schedule.prompt, undefined, undefined, task.id);
     await agentTasks.update(task.id, { status:'completed', result });
     return { ok:true, taskId:task.id, summary:result.summary };
   } catch(error:any) {
@@ -1997,6 +2039,25 @@ app.get('/api/agent/runs/:id/stream', async (req,res) => {
   req.on('close', () => { clearInterval(heartbeat); unsubscribe(); });
 });
 
+app.post('/api/agent/tasks/:id/resume', async (req,res) => {
+  try {
+    if (!agentFullAccess) return res.status(403).json({ok:false,error:'Full local agent access is disabled.'});
+    const task = await agentTasks.get(req.params.id);
+    if (!task) return res.status(404).json({ok:false,error:'Agent task not found.'});
+    const checkpoint = await agentCheckpoints.get(task.id);
+    if (!checkpoint) return res.status(409).json({ok:false,error:'No resumable checkpoint exists for this task.'});
+    await agentTasks.update(task.id, { status:'running' });
+    const result = await executeAgentRun(task.prompt, undefined, undefined, task.id);
+    await agentTasks.update(task.id, { status: result.verification?.ok === false ? 'failed' : 'completed', result });
+    if (result.verification?.ok === false) return res.status(409).json({ok:false,resumed:true,result});
+    await agentCheckpoints.clear(task.id);
+    return res.json({ok:true,resumed:true,result});
+  } catch(error:any) {
+    try { await agentTasks.update(req.params.id, { status:'failed', error:error?.message || String(error) }); } catch {}
+    return res.status(500).json({ok:false,error:error?.message || 'Unable to resume agent task.'});
+  }
+});
+
 app.post("/api/agent/run-stream", async (req,res) => {
   try {
     const userPrompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim().slice(0,5000) : '';
@@ -2005,17 +2066,20 @@ app.post("/api/agent/run-stream", async (req,res) => {
     const llmStatus = await localLlm.getStatus();
     if (!llmStatus.ready) return res.status(503).json({ error:'Start the local Qwen engine before using Gina Agent.' });
     const run = await agentRuns.create(userPrompt);
+    const task = await agentTasks.create(userPrompt, 'interactive', { runId: run.id });
     void (async () => {
       try {
         await agentRuns.state(run.id,'RUNNING');
         await agentRuns.event(run.id,'run_started',{runId:run.id,prompt:userPrompt,startedAt:new Date().toISOString(),maxSteps:16});
-        const result = await executeAgentRun(userPrompt, run.id, async (type,data)=>{ await agentRuns.event(run.id,type,data); });
+        const result = await executeAgentRun(userPrompt, run.id, async (type,data)=>{ await agentRuns.event(run.id,type,data); }, task.id);
         const cancelled = agentRuns.isCancelled(run.id);
         await agentRuns.state(run.id,cancelled ? 'CANCELLED' : 'COMPLETED',{summary:result.summary,result});
+        await agentTasks.update(task.id, { status: cancelled ? 'cancelled' : 'completed', result });
         if (cancelled) agentRuns.clearCancel(run.id);
       } catch (error:any) {
         const message=error?.message || String(error);
         await agentRuns.state(run.id,'FAILED',{error:message});
+        await agentTasks.update(task.id, { status:'failed', error:message });
         await agentRuns.event(run.id,'error',{message});
       }
     })();
@@ -2356,50 +2420,6 @@ app.post("/api/llm/cancel", async (_req, res) => {
 });
 
 
-type GinaIntent = 'chat' | 'vision-analysis' | 'image-generation' | 'image-modification';
-
-interface GinaImageIntent {
-  intent: GinaIntent;
-  create: boolean;
-  modify: boolean;
-  explicit: boolean;
-  confidence: 'low' | 'normal' | 'high';
-  reason: string;
-}
-
-/**
- * Single source of truth for Gina's media intent. The UI used to have a second,
- * slightly different keyword router, which caused false positives and made the
- * server choose a different workflow than the Local AI panel expected.
- */
-function detectImageGenerationIntent(text: string, hasImageAttachment = false): GinaImageIntent {
-  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
-  if (!normalized) return { intent:'chat', create:false, modify:false, explicit:false, confidence:'normal', reason:'empty' };
-
-  const questionOrAnalysis = /^(?:what|why|how|can you|could you|would you|tell me|explain|describe|analyse|analyze|identify|read|summari[sz]e)\b/i.test(normalized);
-  const imageNoun = /\b(image|picture|photo|photograph|artwork|illustration|portrait|wallpaper|logo|icon|bezel|watch face|scene|product shot|product photography|visual)\b/i.test(normalized);
-  const createVerb = /\b(create|generate|make|draw|render|produce|design|visuali[sz]e|paint|illustrate|depict|show me|give me|provide me|send me)\b/i.test(normalized);
-  const editVerb = /\b(edit|modify|change|alter|transform|retouch|remove|add|replace|restyle|improve|redo|rework|work off|use)\b/i.test(normalized);
-  const referencePhrase = /\b(this image|attached image|attached photo|reference image|use (this|the) image|from this image|based on this image|supplied image|uploaded image)\b/i.test(normalized);
-
-  const geographicVisual = /\b(top[- ]down|aerial|satellite|bird'?s[- ]eye|overhead|map view|street view|location view|geographic view)\b/i.test(normalized) &&
-    /\b(view|image|picture|photo|shot|render|map|visual|scene)\b/i.test(normalized);
-  const directVisualRequest = /\b(show me|give me|provide me|send me|make me)\b/i.test(normalized) &&
-    /\b(image|picture|photo|photograph|visual|view|scene|render|illustration|portrait)\b/i.test(normalized);
-  const imageCreation = !questionOrAnalysis && createVerb && imageNoun;
-  const descriptiveStatement = /^(?:this|that|the|an?|my|your)\s+(?:is|was|looks?|shows?|contains?|has|have)\b/i.test(normalized);
-  const bareImagePrompt = !questionOrAnalysis && !descriptiveStatement && imageNoun && normalized.length >= 20 &&
-    !/\b(?:is|are|was|were|what|why|how|when|where|which|can|could|would)\b.*\?/i.test(normalized);
-
-  const modify = hasImageAttachment && editVerb && (referencePhrase || !questionOrAnalysis);
-  const create = !modify && !questionOrAnalysis && (imageCreation || geographicVisual || directVisualRequest || bareImagePrompt);
-
-  if (modify) return { intent:'image-modification', create:false, modify:true, explicit:true, confidence:'high', reason:'reference/edit request' };
-  if (create) return { intent:'image-generation', create:true, modify:false, explicit:true, confidence:'high', reason: geographicVisual ? 'geographic visual request' : directVisualRequest ? 'direct visual request' : 'image generation request' };
-  if (hasImageAttachment) return { intent:'vision-analysis', create:false, modify:false, explicit:false, confidence:'normal', reason:'image attachment without generation/edit intent' };
-  return { intent:'chat', create:false, modify:false, explicit:false, confidence:'normal', reason:'conversation/question' };
-}
-
 function imageGenerationPolicy(engine: 'qwen' | 'qwen-coder', multimodal: boolean, hasReference: boolean, highPrecision = false, hasMask = false) {
   if (engine !== 'qwen') throw new Error('Qwen Coder is text-only and cannot route image generation. Switch to Qwen 2.5-VL Vision Mode.');
   if (!multimodal) throw new Error('Qwen 2.5-VL Vision Mode requires its mmproj projector.');
@@ -2647,7 +2667,7 @@ app.post("/api/llm/chat", async (req, res) => {
     }
 
     const rawImageForIntent = Array.isArray(req.body?.attachments) ? req.body.attachments.find((a:any)=>a?.kind==='image' && typeof a.localPath==='string') : null;
-    const imageIntent = detectImageGenerationIntent(rawLatestUser, Boolean(rawImageForIntent));
+    const imageIntent = detectMediaIntent(rawLatestUser, Boolean(rawImageForIntent));
     if (imageIntent.explicit) {
       const rawImage = Array.isArray(req.body?.attachments) ? req.body.attachments.find((a:any)=>a?.kind==='image' && typeof a.localPath==='string') : null;
       let generationAttachment:any = rawImage;
@@ -4496,7 +4516,7 @@ async function readAssetStore(): Promise<any[]> {
 async function writeAssetStore(items:any[]) { await fs.mkdir(path.dirname(ASSET_STORE), {recursive:true}); await fs.writeFile(ASSET_STORE, JSON.stringify(items.slice(0,1000), null, 2), 'utf8'); }
 
 function classifyAiToolRequest(text:string, hasImage=false) {
-  const intent = detectImageGenerationIntent(text, hasImage);
+  const intent = detectMediaIntent(text, hasImage);
   const engine = localLlm.getEngine();
   const multimodal = Boolean(localLlm.getModelSelection().multimodal);
   let workflow: string | null = null;

@@ -1798,23 +1798,43 @@ Added a complete local filesystem tool contract matching the requested MCP-style
 - `/AGENTS.md` — **Phase 52 block appended after the Phase 51 entry**.
 - `/CHANGELOG.md` — **this Phase 52 block appended at the end**.
 
-## Phase 52 Startup Compatibility Fix — 2026-09-15
+## Phase 53 — Unified Intent Arbitration & Media Routing — 2026-09-15
 
 ### Changed / Added Files
 
-- Added `/server/agent/AutonomousVerificationEngine.js` — **lines 1–5**.
-  - Provides the runtime `.js` module targeted by `server.ts` while delegating to the authoritative TypeScript verifier implementation.
-  - Preserves the project's existing `.js` ESM import convention and avoids changing production bundle import semantics.
-  - Allows `tsx watch server.ts` to resolve the Phase 50 verifier during local development.
+- Added `/server/agent/MediaIntentRouter.ts` — **lines 1–54**.
+  - Extracts deterministic media arbitration from `server.ts` into a testable single-purpose module.
+  - Requires explicit creation language before generation.
+  - Gives explicit video-generation intent precedence over image vocabulary, preventing `video + scene` requests from becoming images.
+  - Treats bare `image`/`video` mentions and descriptive/analysis statements as non-generation requests.
 
-### Validation
+- Updated `/server.ts` — **line 21 import and media route call sites around lines 2670 and 4519**.
+  - Uses the extracted media router for Local AI image/video intent decisions and route previews.
 
-- Confirmed the Phase 50 source package contains `server.ts` importing `./server/agent/AutonomousVerificationEngine.js` while the verifier implementation is `AutonomousVerificationEngine.ts`.
-- Confirmed the project build uses esbuild to produce a single `dist/server.cjs`, so the source shim does not create a production output filename collision.
-- Native Node without the TypeScript loader correctly rejects the shim's `.ts` target; this is expected because the shim is specifically for the `tsx` development runtime.
+- Updated `/src/components/LocalLlmStudio.tsx` — **lines 552–554, 644–645, 667–679, 706–707, 931–934**.
+  - Prevents web research, network, knowledge and other non-engineering capability plans from entering the autonomous coding agent.
+  - Only explicit engineering capability intents may start the coding agent from Local AI.
+  - Explicit video requests are handed to the existing Video Studio/Wan 2.1 generation lane.
+  - Resets/hides coding-workspace activity when the current Local AI request is not a coding operation.
 
-### Exact Edited File Line References
+- Updated `/src/components/VideoStudio.tsx` — **lines 339–350**.
+  - Adds a Local AI event bridge to the existing `handleGenerateVideo` path so video generation continues to use the established Wan 2.1 safety/job pipeline.
 
-- `/server/agent/AutonomousVerificationEngine.js` — **lines 1–5**.
-- `/AGENTS.md` — **Phase 52 Startup Compatibility Fix block appended after the Phase 52 entry**.
-- `/CHANGELOG.md` — **this Phase 52 Startup Compatibility Fix block appended at the end**.
+- Updated `/scripts/test-agent-routing.ts` — **lines 18–61**.
+  - Adds regressions for BBC/news web routing, explicit code routing, explicit image/video generation, ordinary media mentions, media analysis, and the capability-plan web route.
+
+### Phase 53 Validation
+
+- TypeScript transpilation: **PASS** for `MediaIntentRouter.ts`, `IntentRouter.ts`, `CapabilityRegistry.ts`, `test-agent-routing.ts`, `LocalLlmStudio.tsx`, `VideoStudio.tsx`, and `server.ts` using the available system TypeScript transpiler.
+- Deterministic media regression: **8/8 PASS**.
+- Deterministic runtime-intent regression: **4/4 PASS** for BBC/news web routing, explicit code task, and local file operation.
+- Full project type-check was not used as the acceptance gate in this isolated environment because the project dependency tree is not installed in the workspace archive; existing unrelated dependency/type errors are present.
+
+### Phase 53 Exact Edited File Line References
+- `/server/agent/MediaIntentRouter.ts` — **lines 1–54**.
+- `/server.ts` — **line 21, line 2670, line 4519**.
+- `/src/components/LocalLlmStudio.tsx` — **lines 552–554, 644–645, 667–679, 706–707, 931–934**.
+- `/src/components/VideoStudio.tsx` — **lines 339–350**.
+- `/scripts/test-agent-routing.ts` — **lines 1–69**.
+- `/AGENTS.md` — **Phase 53 block appended at the end of the file**.
+- `/CHANGELOG.md` — **Phase 53 block appended at the end of the file**.

@@ -547,9 +547,18 @@ Rules:
 - `/scripts/test-phase52-repair-evidence.ts` — **lines 1–24**.
 - `/AGENTS.md` — **Phase 52 block appended after the Phase 51 entry**.
 
-## Phase 52 Startup Compatibility Fix — 2026-09-15
+## Phase 53 — Unified Intent Arbitration & Media Routing — 2026-09-15
 
-- Added `/server/agent/AutonomousVerificationEngine.js` as a runtime compatibility shim for the existing `.js` ESM import used by `server.ts`.
-- The shim re-exports the authoritative `/server/agent/AutonomousVerificationEngine.ts` implementation so `tsx watch server.ts` resolves the Phase 50 verifier without changing the project's `.js` import convention.
-- Do not duplicate verifier logic in the shim. The TypeScript implementation remains authoritative.
-- This is compatible with the project's esbuild server bundle because the build produces a single `dist/server.cjs`; the shim is resolved and bundled rather than emitted as a standalone production module.
+- **Web/research isolation:** capability plans for `web-research` and other non-engineering operations must never enter the autonomous coding agent. The Local AI client may enter the coding agent only for explicit engineering intents (`code-change`, `file-read`, `run-command`, `git-operation`, `project-operation`).
+- **Media intent isolation:** a media noun such as `image`, `video`, `photo`, `scene`, or `clip` is not sufficient to trigger generation. Creation requires an explicit creation verb; analysis/question phrasing remains conversational/vision analysis.
+- **Video precedence:** explicit video creation is resolved before image creation so phrases such as `make a video of a scene` cannot fall through to the image generator because `scene` is also an image vocabulary term.
+- **Video execution lane:** explicit Local AI video requests are handed to the existing Video Studio/Wan 2.1 lane, preserving its established 8GB VRAM safety gates and job monitoring instead of inventing a second video executor.
+- **Coding UI isolation:** the GINA CODING WORKSPACE status panel is visible only while an autonomous coding run is active; ordinary Local AI, web and media requests do not present coding/repair state.
+- **Regression requirement:** routing tests must cover BBC/news web research, explicit code tasks, explicit image creation, explicit video creation, ordinary mentions of `image`/`video`, and descriptive/analysis requests about existing media.
+
+### Phase 53 Exact Edited File Line References
+- `/server/agent/MediaIntentRouter.ts` — **lines 1–54**.
+- `/server.ts` — **line 21 import and the `/api/llm/chat`/`/api/ai-tools/route` media-routing call sites around lines 2670 and 4519**.
+- `/src/components/LocalLlmStudio.tsx` — **lines 552–554, 644–645, 667–679, 706–707, 931–934** for agent lifecycle reset, engineering-only agent entry, explicit video handoff, ordinary-chat reset, and coding-workspace visibility.
+- `/src/components/VideoStudio.tsx` — **lines 339–350** for the Local AI video-request event bridge.
+- `/scripts/test-agent-routing.ts` — **media/intent regression cases around lines 18–61**.
