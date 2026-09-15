@@ -1797,3 +1797,24 @@ Added a complete local filesystem tool contract matching the requested MCP-style
 - `/scripts/test-phase52-repair-evidence.ts` — **lines 1–24**.
 - `/AGENTS.md` — **Phase 52 block appended after the Phase 51 entry**.
 - `/CHANGELOG.md` — **this Phase 52 block appended at the end**.
+
+## Phase 52 Startup Compatibility Fix — 2026-09-15
+
+### Changed / Added Files
+
+- Added `/server/agent/AutonomousVerificationEngine.js` — **lines 1–5**.
+  - Provides the runtime `.js` module targeted by `server.ts` while delegating to the authoritative TypeScript verifier implementation.
+  - Preserves the project's existing `.js` ESM import convention and avoids changing production bundle import semantics.
+  - Allows `tsx watch server.ts` to resolve the Phase 50 verifier during local development.
+
+### Validation
+
+- Confirmed the Phase 50 source package contains `server.ts` importing `./server/agent/AutonomousVerificationEngine.js` while the verifier implementation is `AutonomousVerificationEngine.ts`.
+- Confirmed the project build uses esbuild to produce a single `dist/server.cjs`, so the source shim does not create a production output filename collision.
+- Native Node without the TypeScript loader correctly rejects the shim's `.ts` target; this is expected because the shim is specifically for the `tsx` development runtime.
+
+### Exact Edited File Line References
+
+- `/server/agent/AutonomousVerificationEngine.js` — **lines 1–5**.
+- `/AGENTS.md` — **Phase 52 Startup Compatibility Fix block appended after the Phase 52 entry**.
+- `/CHANGELOG.md` — **this Phase 52 Startup Compatibility Fix block appended at the end**.

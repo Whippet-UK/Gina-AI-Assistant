@@ -546,3 +546,10 @@ Rules:
 - `/server/agent/AutonomousRepairOrchestrator.ts` — **lines 1–100**.
 - `/scripts/test-phase52-repair-evidence.ts` — **lines 1–24**.
 - `/AGENTS.md` — **Phase 52 block appended after the Phase 51 entry**.
+
+## Phase 52 Startup Compatibility Fix — 2026-09-15
+
+- Added `/server/agent/AutonomousVerificationEngine.js` as a runtime compatibility shim for the existing `.js` ESM import used by `server.ts`.
+- The shim re-exports the authoritative `/server/agent/AutonomousVerificationEngine.ts` implementation so `tsx watch server.ts` resolves the Phase 50 verifier without changing the project's `.js` import convention.
+- Do not duplicate verifier logic in the shim. The TypeScript implementation remains authoritative.
+- This is compatible with the project's esbuild server bundle because the build produces a single `dist/server.cjs`; the shim is resolved and bundled rather than emitted as a standalone production module.
