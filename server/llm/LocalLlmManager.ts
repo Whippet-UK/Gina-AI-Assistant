@@ -104,7 +104,10 @@ export class LocalLlmManager {
   private isKnownIncompatibleMmproj(engine:LocalLlmEngine, candidate:string|null|undefined):boolean{
     if(!candidate) return false;
     if(engine !== 'qwen3.5') return false;
-    return /^mmproj-BF16\.gguf$/i.test(path.basename(candidate));
+    // mmproj-F16.gguf is the Qwen 2.5-VL 7B projector (n_embd = 3584). Qwen3.5-9B's official
+    // config reports n_embd = 4096, matched by mmproj-BF16.gguf, so the F16 file must never be
+    // auto-paired with the qwen3.5 engine even if it is found alongside the model.
+    return /^mmproj-F16\.gguf$/i.test(path.basename(candidate));
   }
 
   private effectiveGpuLayers(engine:LocalLlmEngine):number{
@@ -169,7 +172,7 @@ export class LocalLlmManager {
     if(this.config.mmprojPath){
       if(this.isKnownIncompatibleMmproj(this.engine,this.config.mmprojPath)){
         this.resolvedMmprojPath=null;
-        this.appendDiagnostic(`MMProj compatibility guard: ignored incompatible ${path.basename(this.config.mmprojPath)} for Qwen3.5-9B; starting text-only until a matched projector is installed.`);
+        this.appendDiagnostic(`MMProj compatibility guard: ignored incompatible ${path.basename(this.config.mmprojPath)} for Qwen3.5-9B (expects mmproj-BF16.gguf, 4096 hidden size); starting text-only until a matched projector is installed.`);
         return null;
       }
       this.resolvedMmprojPath=await fs.stat(this.config.mmprojPath).then(s=>s.isFile()?this.config.mmprojPath!:null).catch(()=>null);

@@ -11,10 +11,11 @@ const FILE_TARGET = /(?:^|[\s"'])(?:[A-Za-z]:[\\/]|\.?\.?[\\/]|(?:src|server|doc
 // launch a specialised executor. Conversely, natural requests such as "most recent
 // news headline" must reliably reach the web lane even when no site is named.
 const WEB_ACTION = /\b(?:search|browse|check|look(?: it)? up|find|visit|open|go to)\b(?:[^?\n]{0,80})\b(?:web|online|website|site|internet|bbc|cnn|reuters|guardian|sky news)\b/i;
-const RECENCY = /\b(?:latest|most recent|recent|current|breaking|today|tonight|this morning|this evening|right now|now|at the moment|up[- ]to[- ]date)\b/i;
+const RECENCY = /\b(?:latest|most recent|most rescent|rescent|recent|current|breaking|today|tonight|this morning|this evening|right now|now|at the moment|up[- ]to[- ]date)\b/i;
 const NEWS_TOPIC = /\b(?:news|headline|headlines|breaking news|top stories|top story)\b/i;
 const NEWS_QUESTION = /\b(?:what(?:'s| is| are)|who|which|show|give|tell|check|find|search|latest|most recent|current)\b/i;
 const PUBLIC_WEB_SOURCE = /\b(?:bbc|cnn|reuters|the guardian|guardian|sky news|associated press|ap news|new york times|washington post)\b/i;
+const TEMPORAL_FACT_QUERY = /\b(?:prime minister|president|chancellor|mayor|ceo|first minister)\b/i;
 
 function isWebResearchRequest(q:string): boolean {
   if (!q) return false;
@@ -22,6 +23,7 @@ function isWebResearchRequest(q:string): boolean {
   // News/headline requests are intrinsically time-sensitive when the user asks
   // for recency, or asks a normal current-news question without naming a source.
   if (NEWS_TOPIC.test(q) && (RECENCY.test(q) || NEWS_QUESTION.test(q))) return true;
+  if (TEMPORAL_FACT_QUERY.test(q) && (RECENCY.test(q) || NEWS_QUESTION.test(q) || WEB_ACTION.test(q))) return true;
   if (PUBLIC_WEB_SOURCE.test(q) && (NEWS_TOPIC.test(q) || RECENCY.test(q) || WEB_ACTION.test(q))) return true;
   return false;
 }

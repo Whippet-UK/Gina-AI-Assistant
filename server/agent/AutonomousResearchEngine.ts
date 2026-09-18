@@ -1,4 +1,5 @@
 import { WebResearchService, WebResearchResult } from './WebResearchService';
+import { WebBrowserService } from './WebBrowserService';
 
 export interface ResearchOptions {
   query: string;
@@ -24,7 +25,8 @@ export interface ResearchBriefing {
 export class AutonomousResearchEngine {
   constructor(
     private readonly webResearch: WebResearchService,
-    private readonly localRag?: { search: (query: string, category?: string, limit?: number) => any[] }
+    private readonly localRag?: { search: (query: string, category?: string, limit?: number) => any[] },
+    private readonly webBrowser?: WebBrowserService
   ) {}
 
   /**
@@ -80,7 +82,20 @@ export class AutonomousResearchEngine {
           }
         }
 
-        if (searchResult.fetched?.content) {
+        if (this.webBrowser && searchResult.results.length > 0) {
+          try {
+            const page = await this.webBrowser.open(searchResult.results[0].url, 12000);
+            if (page?.content) {
+              fetchedDoc = page.content.slice(0, 12000);
+              findings.push(`[Fetched via ${page.engine || 'Chromium'}: ${page.url}] Extracted ${fetchedDoc.length} characters of live API reference.`);
+            }
+          } catch {
+            if (searchResult.fetched?.content) {
+              fetchedDoc = searchResult.fetched.content.slice(0, 12000);
+              findings.push(`[Fetched Official Docs: ${searchResult.fetched.url}] Extracted ${fetchedDoc.length} characters of live API reference.`);
+            }
+          }
+        } else if (searchResult.fetched?.content) {
           fetchedDoc = searchResult.fetched.content.slice(0, 12000);
           findings.push(`[Fetched Official Docs: ${searchResult.fetched.url}] Extracted ${fetchedDoc.length} characters of live API reference.`);
         }
