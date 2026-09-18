@@ -34,6 +34,7 @@ import { AgentScheduler } from "./server/agent/AgentScheduler.js";
 import { McpServerAdapter } from "./server/agent/McpServerAdapter.js";
 import { runWanDiagnostic } from "./scripts/check_wan21.js";
 import { LocalLlmManager } from "./server/llm/LocalLlmManager.js";
+import { LOCAL_LLM_MODELS, getLocalLlmModelOptions } from "./server/llm/LocalLlmModelCatalog.js";
 import { AgentContextManager } from "./server/agent/AgentContextManager.js";
 import { AgentMemoryManager } from "./server/agent/AgentMemoryManager.js";
 import { AgentWorkspaceManager } from "./server/agent/AgentWorkspaceManager.js";
@@ -51,6 +52,8 @@ import { Aida64TelemetryBridge } from "./server/aida64/Aida64TelemetryBridge.js"
 import { LocalRagEngine } from "./server/rag/LocalRagEngine.js";
 import { KnowledgeBase } from "./server/knowledge/KnowledgeBase.js";
 import { WebResearchService } from "./server/agent/WebResearchService.js";
+import { WebBrowserService } from "./server/agent/WebBrowserService.js";
+import { TemporalFactStore } from "./server/knowledge/TemporalFactStore.js";
 import { StreamInjectService } from "./server/streaminject/StreamInjectService.js";
 import { MusicService } from "./server/music/MusicService.js";
 import { MultimediaService } from "./server/multimedia/MultimediaService.js";
@@ -92,6 +95,8 @@ const aida64Telemetry = new Aida64TelemetryBridge();
 const localRag = new LocalRagEngine(GINA_ROOT);
 const knowledgeBase = new KnowledgeBase(GINA_ROOT);
 const webResearch = new WebResearchService();
+const webBrowser = new WebBrowserService(webResearch);
+const temporalFacts = new TemporalFactStore(GINA_ROOT);
 const autonomousResearch = new AutonomousResearchEngine(webResearch, localRag);
 const gitLifecycle = new GitHubLifecycleManager(GINA_ROOT);
 const autonomousRepair = new AutonomousRepairLoop(autonomousResearch, projectMap, definitionOfDoneGate, gitLifecycle, localLlm);
@@ -1172,7 +1177,10 @@ async function runAgentTool(action: string, parameters: any) {
       return await webResearch.fetchPage(String(parameters?.url || ''), Number(parameters?.maxChars) || 30000);
     }
     case 'web_research': {
-      return await webResearch.research(String(parameters?.query || ''), Number(parameters?.maxResults) || 6, parameters?.fetchTop !== false);
+      const query=String(parameters?.query || '');
+      const result=await webBrowser.browse(query, Number(parameters?.maxResults) || 6, parameters?.fetchTop === false ? 0 : 2);
+      const facts=await temporalFacts.extractAndStore(query,result.pages,result.results.map((r:any)=>({url:r.url,snippet:r.snippet})));
+      return { ...result, facts };
     }
     case 'research_docs': {
       return await autonomousResearch.research({
@@ -1561,7 +1569,7 @@ app.get('/api/agent/self-test', async (_req,res) => { const checks:any[]=[]; con
 
 // Zero-VRAM Local RAG API Routes
 app.get('/api/knowledge/status', async (_req,res) => {
-  try { res.json({ok:true, status:await knowledgeBase.stats()}); }
+  try { res.json({ok:true, status:await knowledgeBase.stats(), temporalFacts:await temporalFacts.stats(), webBrowser:webBrowser.status()}); }
   catch(error:any){ res.status(500).json({ok:false,error:error?.message||'Unable to read knowledge base status.'}); }
 });
 app.get('/api/knowledge', async (req,res) => {
@@ -1569,8 +1577,29 @@ app.get('/api/knowledge', async (req,res) => {
   catch(error:any){ res.status(500).json({ok:false,error:error?.message||'Unable to read knowledge base.'}); }
 });
 app.post('/api/knowledge/search', async (req,res) => {
-  try { const query=String(req.body?.query||'').trim(); if(!query) return res.status(400).json({ok:false,error:'A query is required.'}); res.json({ok:true,query,results:await knowledgeBase.search(query,Number(req.body?.limit)||8)}); }
+  try {
+    const query=String(req.body?.query||'').trim();
+    if(!query) return res.status(400).json({ok:false,error:'A query is required.'});
+    res.json({ok:true,query,results:await knowledgeBase.search(query,Number(req.body?.limit)||8),temporalFacts:await temporalFacts.search(query,Number(req.body?.limit)||8)});
+  }
   catch(error:any){ res.status(500).json({ok:false,error:error?.message||'Knowledge search failed.'}); }
+});
+app.get('/api/web/browser/status', (_req,res) => res.json(webBrowser.status()));
+app.post('/api/web/browser/search', async (req,res) => {
+  try {
+    const query=String(req.body?.query||'').trim();
+    if(!query) return res.status(400).json({ok:false,error:'A browser search query is required.'});
+    const result=await webBrowser.browse(query,Number(req.body?.maxResults)||6,Number(req.body?.pagesToOpen)||2);
+    const facts=await temporalFacts.extractAndStore(query,result.pages,result.results.map((r:any)=>({url:r.url,snippet:r.snippet})));
+    res.json({ok:true,result,facts});
+  } catch(error:any) { res.status(502).json({ok:false,error:error?.message||'Browser search failed.'}); }
+});
+app.post('/api/web/browser/open', async (req,res) => {
+  try {
+    const url=String(req.body?.url||'').trim();
+    if(!url) return res.status(400).json({ok:false,error:'A public page URL is required.'});
+    res.json({ok:true,page:await webBrowser.open(url,Number(req.body?.maxChars)||30000)});
+  } catch(error:any) { res.status(502).json({ok:false,error:error?.message||'Browser page open failed.'}); }
 });
 app.post('/api/knowledge/learn', async (req,res) => {
   try {
@@ -2189,6 +2218,23 @@ async function saveLocalPdf(requestedPath: string, text: string): Promise<{ path
   return { path: target, bytes: stat.size, pages: Math.max(1, Math.ceil(sanitizePdfText(text).split('\n').length / 48)) };
 }
 
+app.get("/api/llm/models", async (_req, res) => {
+  try {
+    const root = process.env.GINA_LLM_ROOT || 'C:\\Gina_AI\\models\\llm';
+    const options = getLocalLlmModelOptions(root);
+    const fsPromises = await import('fs/promises');
+    const enriched = await Promise.all(options.map(async option => ({
+      ...option,
+      modelExists: await fsPromises.stat(option.modelPath).then(() => true).catch(() => false),
+      mmprojExists: option.mmprojPath ? await fsPromises.stat(option.mmprojPath).then(() => true).catch(() => false) : false,
+      compatibilityNote: option.engine === 'qwen3.5' ? 'Qwen3.5-9B requires a model-matched projector. Generic mmproj-BF16.gguf is not auto-selected because it mismatched the installed model at runtime.' : null,
+    })));
+    res.json({ ok:true, models:enriched });
+  } catch (error:any) {
+    res.status(500).json({ ok:false, error:error?.message || 'Unable to enumerate local LLM models.' });
+  }
+});
+
 app.get("/api/llm/status", async (_req, res) => {
   try {
     res.json(await localLlm.getStatus());
@@ -2200,12 +2246,12 @@ app.get("/api/llm/status", async (_req, res) => {
 app.post("/api/llm/engine", async (req, res) => {
   try {
     const engine = String(req.body?.engine || '').toLowerCase();
-    if (engine !== 'qwen' && engine !== 'qwen-coder') return res.status(400).json({ success:false, error:'Engine must be qwen or qwen-coder.' });
+    if (!Object.prototype.hasOwnProperty.call(LOCAL_LLM_MODELS, engine)) return res.status(400).json({ success:false, error:`Engine must be one of: ${Object.keys(LOCAL_LLM_MODELS).join(', ')}.` });
     // Switching the local engine is an explicit VRAM-affecting operation. Stop
     // the current llama-server first, release ComfyUI memory, then start the
     // requested engine so the selector and runtime cannot disagree.
     await fetch(`${COMFY_URL}/free`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ unload_models:true, free_memory:true }), signal:AbortSignal.timeout(5000) }).catch(() => null);
-    await localLlm.setEngine(engine as 'qwen'|'qwen-coder');
+    await localLlm.setEngine(engine as 'qwen'|'qwen-coder'|'qwen3.5');
     const status = await localLlm.start();
     res.json({ success:true, status });
   } catch (error:any) {
@@ -2227,7 +2273,9 @@ app.post("/api/llm/start", async (_req, res) => {
     const status = await localLlm.start();
     res.json({ success: true, status });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error?.message || "Failed to start local LLM", status: await localLlm.getStatus().catch(() => null) });
+    const message=error?.message || "Failed to start local LLM";
+    const conflict=/mismatch between text model/i.test(message)||/wrong mmproj/i.test(message);
+    res.status(conflict ? 409 : 500).json({ success: false, error: message, status: await localLlm.getStatus().catch(() => null) });
   }
 });
 
@@ -2420,8 +2468,8 @@ app.post("/api/llm/cancel", async (_req, res) => {
 });
 
 
-function imageGenerationPolicy(engine: 'qwen' | 'qwen-coder', multimodal: boolean, hasReference: boolean, highPrecision = false, hasMask = false) {
-  if (engine !== 'qwen') throw new Error('Qwen Coder is text-only and cannot route image generation. Switch to Qwen 2.5-VL Vision Mode.');
+function imageGenerationPolicy(engine: 'qwen' | 'qwen-coder' | 'qwen3.5', multimodal: boolean, hasReference: boolean, highPrecision = false, hasMask = false) {
+  if (engine === 'qwen-coder') throw new Error('Qwen Coder is text-only and cannot route image generation. Switch to Qwen 2.5-VL Vision or Qwen3.5 Vision.');
   if (!multimodal) throw new Error('Qwen 2.5-VL Vision Mode requires its mmproj projector.');
   if (highPrecision) return {
     workflowId: 'flux_lite_image',
@@ -2471,7 +2519,8 @@ async function assertGeneratedImageDimensions(file: any, expectedWidth: number, 
 async function queueAiToolImageGeneration(prompt: string, attachment?: { localPath: string; name?: string; mime?: string }) {
   await workflowRegistry.reload();
   const llmStatus:any = await localLlm.getStatus();
-  const engine = llmStatus.engine === 'qwen-coder' ? 'qwen-coder' : 'qwen';
+  const engine: 'qwen'|'qwen-coder'|'qwen3.5' = llmStatus.engine;
+  const visionEngine = engine !== 'qwen-coder';
   const useReference = !!attachment;
   const policy = imageGenerationPolicy(engine, Boolean(llmStatus.multimodal), useReference);
   const workflowId = policy.workflowId;
@@ -2482,8 +2531,8 @@ async function queueAiToolImageGeneration(prompt: string, attachment?: { localPa
   if (useReference && !definition.bindings.some(b => b.key === 'input_image')) throw new Error(`Workflow '${workflowId}' cannot accept a reference image.`);
 
   const parameters: Record<string, any> = {
-    prompt: prompt.trim(), width: 1024, height: engine === 'qwen' ? 1024 : 600,
-    steps: engine === 'qwen' ? 20 : 4, sampler: engine === 'qwen' ? 'dpmpp_2m' : 'euler', scheduler: engine === 'qwen' ? 'karras' : 'simple',
+    prompt: prompt.trim(), width: visionEngine ? 1024 : 1024, height: visionEngine ? 1024 : 600,
+    steps: visionEngine ? 20 : 4, sampler: visionEngine ? 'dpmpp_2m' : 'euler', scheduler: visionEngine ? 'karras' : 'simple',
     denoise: useReference ? 0.70 : 1, seed: Math.floor(Math.random() * 4294967295),
     ...(useReference ? { input_image: path.basename(attachment!.localPath) } : {}),
     __generationAudit: { source:'phase-34-router', intent:useReference?'image-modification':'image-generation', engine, llmModel:llmStatus.modelName, visionProjector:llmStatus.mmprojPath ? path.basename(llmStatus.mmprojPath) : null, workflowId, generationModel:policy.generationModel, lane:policy.lane }
@@ -2579,7 +2628,7 @@ app.get('/api/jobs/:id/result', async (req, res) => {
 
 function isLiveInformationRequest(text: string) {
   const q = String(text || '').trim();
-  return /\b(?:what(?:'s| is)|tell me|give me|check|search(?: the)? web|search online|look(?: it)? up|google|browse|current|latest|today|now|right now|this minute|this morning|this evening|tonight|date|time|weather|news|price|stock|exchange rate|version|release|opening hours|schedule)\b/i.test(q);
+  return /\b(?:what(?:'s| is)|who|which person|tell me|give me|check|verify|confirm|find out|search(?: the)? web|search online|look(?: it)? up|google|browse|current|latest|today|now|right now|this minute|this morning|this evening|tonight|date|time|weather|news|headline|headlines|price|stock|exchange rate|version|release|opening hours|schedule|prime minister|president|chancellor|mayor|ceo|chief executive)\b/i.test(q);
 }
 
 async function buildLiveGrounding(userText: string) {
@@ -2613,12 +2662,22 @@ async function buildLiveGrounding(userText: string) {
   }
   if (webResearch.enabled) {
     try {
-      const result = await webResearch.search(userText.slice(0, 500), 4);
-      const snippets = result.results.slice(0, 4).map((r: any) =>
-        `- ${String(r.title || r.source || 'Web result')}: ${String(r.snippet || '').slice(0, 360)}`
+      const result = await webBrowser.browse(userText.slice(0, 600), 5, 2);
+      const snippets = result.results.slice(0, 5).map((r: any) =>
+        `- SEARCH: ${String(r.title || r.source || 'Web result')} | ${String(r.url || '')} | ${String(r.snippet || '').slice(0, 420)}`
       ).filter(Boolean);
-      lines.push(`- Live web verification provider: ${result.provider}`);
+      lines.push(`- Live browser provider: ${result.provider}`);
       if (snippets.length) lines.push(...snippets);
+      const pages = result.pages.slice(0, 2);
+      for (const page of pages) {
+        lines.push(`- OPENED PAGE: ${page.title} | ${page.url}`);
+        lines.push(`  PAGE CONTENT: ${String(page.content || '').slice(0, 6000)}`);
+      }
+      const facts = await temporalFacts.extractAndStore(userText, pages, result.results.map((r: any) => ({ url:r.url, snippet:r.snippet })));
+      if (facts.length) {
+        lines.push('CURRENT TEMPORAL FACTS RECORDED FROM FRESH WEB EVIDENCE:');
+        for (const fact of facts.slice(0, 4)) lines.push(`- ${fact.subject} / ${fact.predicate}: ${fact.value} (source: ${fact.sourceAuthority}, observed ${fact.observedAt})`);
+      }
       return { text: lines.join('\n'), webSearched: true, provider: result.provider };
     } catch (error: any) {
       lines.push(`- Live web verification unavailable for this request: ${error?.message || 'unknown error'}`);
@@ -2769,7 +2828,7 @@ app.post("/api/llm/chat", async (req, res) => {
         skills: route.requiresSkills ? String(getActiveAgentSkillsPrompt()).length : 0
       }
     }, attachments);
-    data.ginaTelemetry = { ...(data.ginaTelemetry || {}), webProvider: liveGrounding.provider, webSearched: liveGrounding.webSearched, inference: 'local' };
+    data.ginaTelemetry = { ...(data.ginaTelemetry || {}), webProvider: liveGrounding.provider, webSearched: liveGrounding.webSearched, browserUsed: liveGrounding.webSearched, inference: 'local' };
     res.json(data);
   } catch (error: any) {
     const status = await localLlm.getStatus().catch(() => null);
@@ -4546,7 +4605,8 @@ function classifyAiToolRequest(text:string, hasImage=false) {
       generationModel = policy.generationModel;
     } catch { /* route preview reports the lock instead of silently selecting FLUX */ }
   }
-  return { intent:intent.intent, engine:intent.intent.startsWith('image-') ? (engine === 'qwen' ? 'ComfyUI/Juggernaut-XL v9' : 'Qwen Coder (text-only)') : (intent.intent === 'vision-analysis' ? `${engine === 'qwen' ? 'Qwen 2.5-VL' : 'Qwen Coder'} Vision` : engine === 'qwen' ? 'Qwen 2.5-VL 7B' : 'Qwen Coder 7B'), workflow, generationModel, confidence:intent.confidence, reason:intent.reason, multimodal, policyLocked:engine==='qwen-coder' && intent.intent.startsWith('image-') };
+  const engineLabel = engine === 'qwen' ? 'Qwen 2.5-VL 7B' : engine === 'qwen3.5' ? 'Qwen3.5 9B' : 'Qwen Coder 7B';
+  return { intent:intent.intent, engine:intent.intent.startsWith('image-') ? (engine === 'qwen-coder' ? 'Qwen Coder (text-only)' : 'ComfyUI/Juggernaut-XL v9') : (intent.intent === 'vision-analysis' ? `${engineLabel} Vision` : engineLabel), workflow, generationModel, confidence:intent.confidence, reason:intent.reason, multimodal, policyLocked:engine==='qwen-coder' && intent.intent.startsWith('image-') };
 }
 app.post('/api/ai-tools/route', async (req,res) => {
   try {

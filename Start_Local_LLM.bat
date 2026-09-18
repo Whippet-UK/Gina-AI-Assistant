@@ -12,32 +12,54 @@ if not exist "%LLAMA_ROOT%\llama-server.exe" (
 )
 
 set "MODEL_ROOT=C:\Gina_AI\models\llm"
-set "ENGINE=QWEN"
+set "ENGINE=%~1"
+if /I "%ENGINE%"=="" set "ENGINE=QWEN"
 
-rem Qwen is the only active Gina local inference lane.
-if /I not "%~1"=="" if /I not "%~1"=="QWEN" (
+if /I "%ENGINE%"=="QWEN" (
+  set "MODEL=%MODEL_ROOT%\Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
+  set "MODEL_DESC=Qwen 2.5-VL 7B Instruct (Q4_K_M)"
+  set "MMPROJ=%MODEL_ROOT%\mmproj-F16.gguf"
+  set "GPU_LAYERS=28"
+  set "CTX_SIZE=8192"
+) else if /I "%ENGINE%"=="QWEN35" (
+  set "ENGINE=QWEN3.5"
+  set "MODEL=%MODEL_ROOT%\Qwen3.5-9B-Q4_K_M.gguf"
+  set "MODEL_DESC=Qwen3.5 9B (Q4_K_M)"
+  if exist "%MODEL_ROOT%\mmproj-F16.gguf" (
+    set "MMPROJ=%MODEL_ROOT%\mmproj-F16.gguf"
+  ) else (
+    set "MMPROJ="
+    echo [GINA] No Qwen3.5-9B-matched mmproj-F16.gguf found. Starting Qwen3.5 in text-only mode.
+  )
+  set "GPU_LAYERS=24"
+  set "CTX_SIZE=8192"
+) else if /I "%ENGINE%"=="QWEN-CODER" (
+  set "ENGINE=QWEN-CODER"
+  set "MODEL=%MODEL_ROOT%\qwen2.5-coder-7b-instruct-q5_k_m.gguf"
+  set "MODEL_DESC=Qwen Coder 7B (Q5_K_M)"
+  set "MMPROJ="
+  set "GPU_LAYERS=28"
+  set "CTX_SIZE=16384"
+) else (
   echo [GINA] Unsupported local LLM selector: %~1
-  echo [GINA] Active engines are Qwen 2.5-VL 7B / Qwen Coder 7B.
+  echo [GINA] Options: QWEN, QWEN35, QWEN-CODER
   exit /b 2
 )
-
-set "MODEL=%MODEL_ROOT%\Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
-set "MODEL_DESC=Qwen 2.5-VL 7B Instruct (Q4_K_M)"
-set "MMPROJ=%MODEL_ROOT%\mmproj-F16.gguf"
 
 if not exist "%MODEL%" (
   echo [GINA] %ENGINE% model not found:
   echo %MODEL%
   echo.
-    pause
+  pause
   exit /b 1
 )
 
-if /I "%ENGINE%"=="QWEN" if not exist "%MMPROJ%" (
-  echo [GINA] Qwen model found but mmproj-F16.gguf is missing:
+if defined MMPROJ if not exist "%MMPROJ%" (
+  echo [GINA] %ENGINE% model found but its multimodal projector is missing:
   echo %MMPROJ%
-  echo [GINA] Qwen will start in text-only mode only if the server supports it.
-  set "MMPROJ="
+  echo [GINA] Continuing in text-only mode is not allowed for this vision profile.
+  pause
+  exit /b 1
 )
 
 echo =========================================================================
@@ -51,8 +73,8 @@ echo =========================================================================
 if defined MMPROJ (
   echo [GINA] Multimodal Vision Projector: %MMPROJ%
   echo [GINA] Vision input: ENABLED
-  "%LLAMA_ROOT%\llama-server.exe" --model "%MODEL%" --mmproj "%MMPROJ%" --host 127.0.0.1 --port 8080 --n-gpu-layers 28 --ctx-size 8192 --threads 6 --jinja --cache-type-k turbo3 --cache-type-v turbo3
+  "%LLAMA_ROOT%\llama-server.exe" --model "%MODEL%" --mmproj "%MMPROJ%" --host 127.0.0.1 --port 8080 --n-gpu-layers %GPU_LAYERS% --ctx-size %CTX_SIZE% --threads 6 --jinja --cache-type-k turbo3 --cache-type-v turbo3
 ) else (
   echo [GINA] Vision projector: not loaded
-  "%LLAMA_ROOT%\llama-server.exe" --model "%MODEL%" --host 127.0.0.1 --port 8080 --n-gpu-layers 28 --ctx-size 8192 --threads 6 --jinja --cache-type-k turbo3 --cache-type-v turbo3
+  "%LLAMA_ROOT%\llama-server.exe" --model "%MODEL%" --host 127.0.0.1 --port 8080 --n-gpu-layers %GPU_LAYERS% --ctx-size %CTX_SIZE% --threads 6 --jinja --cache-type-k turbo3 --cache-type-v turbo3
 )

@@ -1877,3 +1877,112 @@ Added a complete local filesystem tool contract matching the requested MCP-style
 ### Phase 55 Validation
 - TypeScript parsing/transpilation: PASS for `WebResearchService.ts`, `server.ts`, and `test-phase55-web-routing.ts`.
 - Routing regression: 5/5 PASS, including `check the web for the prime minister of the uk`.
+
+## Phase 45 — Web Browser + Temporal Fact Revision — 2026-09-18
+
+### Added / Changed
+- Added `/server/agent/WebBrowserService.ts` — **lines 1–69**.
+  - Provides a single server-side search/open browser abstraction over the existing guarded public-web service.
+  - Opens multiple top result pages and returns source URLs, search metadata and page content before Qwen inference.
+- Added `/server/knowledge/TemporalFactStore.ts` — **lines 1–214**.
+  - Persists volatile facts to `.gina/knowledge/facts.jsonl` with source authority, observation time, validity and supersession metadata.
+  - Supersedes lower/equal-authority current facts when fresh evidence establishes a new value for the same subject/property.
+  - Resolves one authoritative current fact per subject/property to prevent conflicting stale facts from being reintroduced.
+  - Extracts common current-officeholder facts from fresh evidence (Prime Minister, President, Chancellor, Mayor, CEO).
+- Updated `/server/agent/IntentRouter.ts` — **lines 1–24**.
+  - Routes generic `check/verify/find out on the web/online/website/internet` requests and volatile officeholder questions to `web-research`.
+  - Prevents a prompt such as `is Rishi Sunak the Prime Minister of the UK?` from falling through to stale local knowledge.
+- Updated `/server.ts` — **imports lines 54–55; runtime instances lines 97–98; `web_research` broker lines 1178–1183; knowledge/browser APIs lines 1570–1600; live grounding lines 2608–2655; LLM web telemetry line 2810**.
+  - Integrates the browser into live grounding and the autonomous `web_research` broker action.
+  - Adds `/api/web/browser/status`, `/api/web/browser/search`, and `/api/web/browser/open`.
+  - Adds temporal fact status to `/api/knowledge/status` and temporal fact results to `/api/knowledge/search`.
+  - Includes opened page evidence and current temporal facts in the server-generated live grounding so Qwen answers from evidence instead of its original training memory.
+- Added `/scripts/test-phase45-browser-facts.ts` — **lines 1–53**.
+  - Regression coverage for live-web routing, code/media isolation, fresh officeholder extraction, and stale-fact supersession.
+
+### Phase 45 Validation
+- TypeScript transpilation: **PASS** for `server.ts`, `IntentRouter.ts`, `WebBrowserService.ts`, `TemporalFactStore.ts`, and the Phase 45 smoke test.
+- Deterministic Phase 45 smoke: **PASS** — browser routing + temporal fact revision.
+- Fresh fact extraction correctly reduced the test evidence `The Prime Minister is Andy Burnham. He took office...` to the fact value **Andy Burnham** and replaced the stale conflicting record in the temporal fact resolver.
+
+## Phase 45.1 — Qwen3.5 9B Local Model Mapping — 2026-09-18
+
+### Added / Changed
+
+- Added `/server/llm/LocalLlmModelCatalog.ts` — **lines 1–76**.
+  - Creates the authoritative catalog for the three local engines: Qwen 2.5-VL 7B, Qwen Coder 7B and Qwen3.5 9B.
+  - Maps the supplied Qwen3.5 files exactly to `Qwen3.5-9B-Q4_K_M.gguf` + `mmproj-BF16.gguf` under `C:\Gina_AI\models\llm`.
+  - Defines a conservative 24-GPU-layer default for Qwen3.5 while retaining `GINA_LLM_GPU_LAYERS` as an explicit override.
+
+- Updated `/server/llm/LocalLlmManager.ts` — **lines 7, 86–99, 104–145, 147–176, 181–182, 191, 214**.
+  - Adds `qwen3.5` as a real runtime engine rather than a display-only option.
+  - Resolves the exact Qwen3.5 GGUF and BF16 projector, launches `--mmproj` for multimodal profiles, and prevents Qwen3.5 from falling back to the Qwen 2.5 projector.
+  - Uses the catalog for model/profile defaults and status reporting.
+
+- Updated `/server.ts` — **line 17, lines 2221–2240, 2241–2263, 2468–2469, 2520–2533, 4598–4606**.
+  - Adds `/api/llm/models` model inventory data.
+  - Accepts `qwen3.5` through the existing VRAM-safe engine switching path.
+  - Allows Qwen3.5 to participate in the existing Juggernaut image lane as a multimodal assistant while retaining the existing Qwen 2.5-only FLUX.1 Lite high-precision restriction.
+  - Corrects AI-tools route labels so Qwen3.5 is never displayed as Qwen Coder.
+
+- Updated `/src/components/LocalLlmStudio.tsx` — **lines 23, 120–121, 296–319, 762–777, 787–805, 966**.
+  - Adds Qwen3.5 9B to the Local AI model selector.
+  - Shows its Q4_K_M + mmproj-BF16 profile and multimodal status.
+  - Persists the selected engine through the existing `local_llm_engine` preference memory.
+  - Updates attachment guidance so Qwen3.5 is recognised as vision-capable.
+
+- Updated `/src/components/AiStudioSuite.tsx` — **lines 10–13, 58**.
+  - Adds Qwen3.5 9B to the global AI Studio engine selector and active-engine label.
+
+- Updated `/src/types.ts` — **line 55**.
+  - Extends `LocalLlmEngine` with `qwen3.5`.
+
+- Updated `/server/capabilities/CapabilityManager.ts` — **lines 28, 42–43, 59, 122–123, 152, 166**.
+  - Maps the Qwen3.5 model and `mmproj-BF16.gguf` as first-class local capabilities.
+  - Adds `qwen35Ready` validation requiring both files.
+  - Adds a Qwen3.5 LLM generator entry.
+
+- Updated `/server/agent/ProjectMapManager.ts` — **line 92**.
+  - Includes Qwen3.5 9B in the Local AI engine bindings.
+
+- Updated `/server/rag/LocalRagEngine.ts` — **line 50**.
+  - Updates the local LLM architecture knowledge entry to include Qwen3.5 + mmproj-BF16.
+
+- Updated `/src/components/AppFeaturesGuide.tsx` — **lines 48, 128–140**.
+  - Removes the stale two-model description and documents Qwen3.5 as the new multimodal option.
+
+- Updated `/Start_Local_LLM.bat` — **lines 12–75**.
+  - Adds `QWEN35` selection with the exact supplied model/projector paths and a 24-layer conservative VRAM profile.
+  - Retains Qwen 2.5-VL and Qwen Coder launch options.
+
+- Added `/scripts/test-local-llm-model-catalog.ts` — **lines 1–22**.
+  - Verifies the exact Qwen3.5 model/projector mapping and all three engine definitions.
+
+### Phase 45.1 Validation
+
+- TypeScript transpilation/parsing: **PASS** for all 11 changed/added TypeScript/TSX files.
+- Direct Node catalog smoke test: **PASS — local LLM model catalog maps Qwen 2.5-VL, Qwen Coder and Qwen3.5 9B**.
+- Qwen3.5 path verification: **PASS** for the supplied model filename and `mmproj-BF16.gguf` projector filename.
+- No model downloads or external network resources were used.
+
+### Phase 45.1 Documentation Line References
+- `/AGENTS.md` — **lines 607–633** for the Phase 45.1 model-mapping contract and exact file references.
+- `/CHANGELOG.md` — **lines 1908–1968** for the Phase 45.1 implementation, validation and this documentation reference footer.
+
+
+## Phase 45.1.1 — Qwen3.5 Projector Compatibility Guard — 2026-09-18
+
+- **Root cause:** Phase 45.1 mapped the user's `mmproj-BF16.gguf` as the default Qwen3.5 projector. The local llama-server log shows the installed text model reports `n_embd = 3584`, while that projector reports `n_embd = 4096`, so llama.cpp rejects the multimodal pair and exits with code 1. This was a real compatibility defect in the Phase 45.1 mapping.
+- Updated `/server/llm/LocalLlmModelCatalog.ts` — **lines 46–58**. Qwen3.5 now prefers `mmproj-F16.gguf` or explicitly Qwen3.5-named projectors and no longer treats generic `mmproj-BF16.gguf` as an automatic candidate.
+- Updated `/server/llm/LocalLlmManager.ts` — **lines 105–108, 161–185, 191–235**. Added a generic-BF16 compatibility guard and a recovery path that retries Qwen3.5 text-only when llama.cpp reports a projector mismatch.
+- Updated `/server/capabilities/CapabilityManager.ts` — **lines 43, 123, 166**. Qwen3.5 vision capability is only validated with a matched projector.
+- Updated `/server/rag/LocalRagEngine.ts` — **line 50**. Corrected Qwen3.5 projector knowledge.
+- Updated `/server.ts` — **lines 2221–2240, 2261–2277**. Added a compatibility note to the local model inventory and conflict-aware startup response.
+- Updated `/Start_Local_LLM.bat` — **lines 24–36**. QWEN35 no longer blindly loads the incompatible BF16 projector and can start text-only when a matched projector is absent.
+- Updated `/src/components/LocalLlmStudio.tsx` — **lines 781–815**, `/src/components/AiStudioSuite.tsx` — **line 13**, and `/src/components/AppFeaturesGuide.tsx` — **line 137** to stop advertising the generic BF16 file as a guaranteed Qwen3.5 vision projector.
+- Added `/scripts/test-qwen35-projector-guard.ts` — **lines 1–16**.
+
+### Phase 45.1.1 Validation
+- TypeScript transpile/parse: **PASS** for changed TypeScript/TSX files.
+- Projector guard smoke: **PASS**.
+- Regression verifies generic `mmproj-BF16.gguf` is not auto-selected and Qwen3.5 mismatch recovery exists.

@@ -45,7 +45,7 @@ export const AppFeaturesGuide: React.FC = () => {
       category: 'Image Inference',
       shortDesc: 'Vision-aware prompt engineering paired with Juggernaut-XL v9 SDXL generation, reference editing, dynamic workflow binding, and local output management.',
       details: [
-        'Qwen 2.5-VL is the default local vision/text assistant; Qwen Coder 7B is the optional text-only coding mode. Image generation/editing routes to Juggernaut-XL v9 by default, with optional FLUX.1 Lite high-precision rendering.',
+        'Qwen 2.5-VL 7B and the newly mapped Qwen3.5 9B are local multimodal options; Qwen Coder 7B remains the text-only coding mode. Image generation/editing routes to Juggernaut-XL v9 by default, with optional FLUX.1 Lite high-precision rendering.',
         'Dynamic Workflow Binding: Introspects the selected ComfyUI workflow and binds prompt, seed, steps, CFG, dimensions, and reference-image inputs without silently switching models.',
         'Token Budget & Parameter Control: Enforces safe token counts, seeds, CFG scales (1-10), and aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4).',
         'Direct ComfyUI Queueing: Compiles and dispatches JSON workflows directly to the local ComfyUI instance at 127.0.0.1:8188.',
@@ -125,16 +125,16 @@ export const AppFeaturesGuide: React.FC = () => {
     },
     {
       id: 'local_llm',
-      title: 'Qwen 2.5-VL 7B / Qwen Coder 7B Local CUDA Studio',
+      title: 'Qwen 2.5-VL 7B / Qwen3.5 9B / Qwen Coder Local CUDA Studio',
       icon: Cpu,
       color: 'text-amber-400',
       bgColor: 'bg-amber-500/10',
       borderColor: 'border-amber-500/30',
-      badge: 'Qwen 2.5-VL / Qwen Coder · 28 Layers',
+      badge: 'Qwen 2.5-VL / Qwen3.5 / Qwen Coder',
       category: 'Local LLM Inference',
       shortDesc: 'Quantized Qwen local GGUF models are served via llama.cpp CUDA with the vision projector mounted only in Vision Mode.',
       details: [
-        'Primary Model: Qwen 2.5-VL 7B Q4_K_M + mmproj-F16; optional Qwen Coder 7B Q5_K_M for code work. Both run locally without external cloud dependencies.',
+        'Local options: Qwen 2.5-VL 7B Q4_K_M + mmproj-F16, Qwen3.5 9B Q4_K_M + a matched mmproj-F16, and Qwen Coder 7B Q5_K_M for code work. All run locally without external cloud dependencies.',
         'llama-server.exe CUDA Backend: Bound to http://127.0.0.1:8080/v1 with 4096 context window and 6 CPU threads.',
         'Pinned 28 GPU Layers: Verified at ~9.2-10.7 tokens/sec; safely avoids the 36-layer VRAM paging performance cliff.',
         'VRAM Mutual Exclusion: Automatically purges ComfyUI cache prior to starting the local Qwen engine to ensure stability on 8GB VRAM.',

@@ -2,8 +2,9 @@ import fs from "fs/promises";
 import fsSync from "fs";
 import path from "path";
 import { spawn, ChildProcessWithoutNullStreams } from "child_process";
-
-export type LocalLlmEngine = "qwen" | "qwen-coder";
+import { loadAgentSkills, getActiveAgentSkillsPrompt } from "../agent/AgentSkillLoader";
+import { estimateTokens, runtimeTelemetry, PromptTelemetrySource } from "../telemetry/RuntimeTelemetry";
+import { getLocalLlmModel, LOCAL_LLM_MODELS, type LocalLlmEngine } from "./LocalLlmModelCatalog";
 
 export interface LocalLlmConfig {
   executablePath: string;
@@ -80,18 +81,35 @@ export class LocalLlmManager {
   private startPromise:Promise<void>|null=null;
   private resolvedMmprojPath:string|null=null;
   private activeChatController:AbortController|null=null;
-  private engine:LocalLlmEngine=(process.env.GINA_LLM_ENGINE === 'qwen-coder' ? 'qwen-coder' : 'qwen');
+  private readonly agentSkillsLoadPromise: Promise<void>;
+  private engine:LocalLlmEngine=(process.env.GINA_LLM_ENGINE === 'qwen-coder' || process.env.GINA_LLM_ENGINE === 'qwen3.5' ? process.env.GINA_LLM_ENGINE as LocalLlmEngine : 'qwen');
   readonly config:LocalLlmConfig;
 
   constructor(){
     const root=process.env.GINA_LLM_ROOT||'C:\\Gina_AI\\models\\llm';
+    const projectRoot=process.env.GINA_ROOT||'C:\\Gina_AI';
+    this.agentSkillsLoadPromise=loadAgentSkills(projectRoot).then(()=>undefined).catch((error:any)=>{
+      this.appendDiagnostic(`AGENT SKILL LOAD ERROR: ${error?.message||String(error)}`);
+    });
     const toolsRoot=process.env.GINA_LLAMA_ROOT||'C:\\Gina_AI\\tools\\llama.cpp';
     const configuredModel=process.env.GINA_LLM_MODEL||'';
     const executablePath=process.env.GINA_LLM_EXE||path.join(toolsRoot,'llama-server.exe');
-    this.config={executablePath,modelPath:configuredModel||this.defaultModelPath(root,this.engine),host:process.env.GINA_LLM_HOST||'127.0.0.1',port:envNumber('GINA_LLM_PORT',8080),gpuLayers:envNumber('GINA_LLM_GPU_LAYERS',28),contextSize:envNumber('GINA_LLM_CONTEXT',8192),threads:envNumber('GINA_LLM_THREADS',6),timeoutMs:envNumber('GINA_LLM_TIMEOUT_MS',300000),mmprojPath:process.env.GINA_LLM_MMPROJ||undefined};
+    const model=getLocalLlmModel(this.engine);
+    this.config={executablePath,modelPath:configuredModel||path.join(root,model.modelFile),host:process.env.GINA_LLM_HOST||'127.0.0.1',port:envNumber('GINA_LLM_PORT',8080),gpuLayers:envNumber('GINA_LLM_GPU_LAYERS',model.defaultGpuLayers),contextSize:envNumber('GINA_LLM_CONTEXT',model.defaultContextSize),threads:envNumber('GINA_LLM_THREADS',6),timeoutMs:envNumber('GINA_LLM_TIMEOUT_MS',300000),mmprojPath:process.env.GINA_LLM_MMPROJ||undefined};
   }
 
-  private defaultModelPath(root:string,engine:LocalLlmEngine){return path.join(root,engine==='qwen-coder'?'qwen2.5-coder-7b-instruct-q5_k_m.gguf':'Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf');}
+  private defaultModelPath(root:string,engine:LocalLlmEngine){return path.join(root,getLocalLlmModel(engine).modelFile);}
+
+  private defaultMmprojPath(root:string,engine:LocalLlmEngine){const file=getLocalLlmModel(engine).mmprojFile;return file?path.join(root,file):null;}
+  private isKnownIncompatibleMmproj(engine:LocalLlmEngine, candidate:string|null|undefined):boolean{
+    if(!candidate) return false;
+    if(engine !== 'qwen3.5') return false;
+    return /^mmproj-BF16\.gguf$/i.test(path.basename(candidate));
+  }
+
+  private effectiveGpuLayers(engine:LocalLlmEngine):number{
+    return Number(process.env.GINA_LLM_GPU_LAYERS)>0 ? envNumber('GINA_LLM_GPU_LAYERS',getLocalLlmModel(engine).defaultGpuLayers) : getLocalLlmModel(engine).defaultGpuLayers;
+  }
 
   private async syncPersistedEnginePreference(){
     if(this.child && !this.child.killed) return;
@@ -100,12 +118,14 @@ export class LocalLlmManager {
     try{
       const parsed=JSON.parse(await fs.readFile(memoryPath,'utf8'));
       const entries=Array.isArray(parsed?.entries)?parsed.entries:[];
-      const preference=entries.find((entry:any)=>entry?.key==='local_llm_engine'&&(entry?.value==='qwen'||entry?.value==='qwen-coder'));
+      const preference=entries.find((entry:any)=>entry?.key==='local_llm_engine'&&(entry?.value==='qwen'||entry?.value==='qwen-coder'||entry?.value==='qwen3.5'));
       const preferred=preference?.value as LocalLlmEngine|undefined;
       if(preferred && preferred!==this.engine){
         this.engine=preferred;
         const modelRoot=process.env.GINA_LLM_ROOT||'C:\\Gina_AI\\models\\llm';
         this.config.modelPath=process.env.GINA_LLM_MODEL||this.defaultModelPath(modelRoot,preferred);
+        this.config.gpuLayers=this.effectiveGpuLayers(preferred);
+        this.config.contextSize=getLocalLlmModel(preferred).defaultContextSize;
         this.config.mmprojPath=undefined;
         this.resolvedMmprojPath=null;
         this.appendDiagnostic(`ENGINE PREFERENCE SYNC: ${preferred}`);
@@ -115,25 +135,57 @@ export class LocalLlmManager {
 
   getEngine():LocalLlmEngine{return this.engine;}
   getModelSelection(){return { engine:this.engine, modelPath:this.config.modelPath, modelName:path.basename(this.config.modelPath), mmprojPath:this.resolvedMmprojPath, multimodal:!!this.resolvedMmprojPath };}
-  async setEngine(engine:LocalLlmEngine):Promise<LocalLlmStatus>{if(engine!=='qwen'&&engine!=='qwen-coder')throw new Error('Unsupported local LLM engine. Use qwen or qwen-coder.');if(this.child&&!this.child.killed)await this.stop();this.engine=engine;const root=process.env.GINA_LLM_ROOT||'C:\\Gina_AI\\models\\llm';this.config.modelPath=(engine==='qwen' && process.env.GINA_LLM_MODEL)?process.env.GINA_LLM_MODEL:this.defaultModelPath(root,engine);this.config.mmprojPath=undefined;this.resolvedMmprojPath=null;return this.status(await this.isConfigured());}
+  async setEngine(engine:LocalLlmEngine):Promise<LocalLlmStatus>{
+    if(!(engine in LOCAL_LLM_MODELS)) throw new Error(`Unsupported local LLM engine. Use one of: ${Object.keys(LOCAL_LLM_MODELS).join(', ')}.`);
+    if(this.child&&!this.child.killed)await this.stop();
+    this.engine=engine;
+    const root=process.env.GINA_LLM_ROOT||'C:\\Gina_AI\\models\\llm';
+    this.config.modelPath=process.env.GINA_LLM_MODEL||this.defaultModelPath(root,engine);
+    this.config.gpuLayers=this.effectiveGpuLayers(engine);
+    this.config.contextSize=envNumber('GINA_LLM_CONTEXT',getLocalLlmModel(engine).defaultContextSize);
+    this.config.mmprojPath=undefined;
+    this.resolvedMmprojPath=null;
+    return this.status(await this.isConfigured());
+  }
 
-  private async resolveModelPath():Promise<string>{if(process.env.GINA_LLM_MODEL){this.config.modelPath=process.env.GINA_LLM_MODEL;return this.config.modelPath;}const directExists=await fs.stat(this.config.modelPath).then(s=>s.isFile()).catch(()=>false);if(directExists)return this.config.modelPath;const root=path.dirname(this.config.modelPath);try{const files=await fs.readdir(root);const patterns=this.engine==='qwen-coder'?[/^qwen.*coder.*7b.*\.gguf$/i]:[/^qwen.*2\.5.*vl.*\.gguf$/i,/^qwen.*vl.*\.gguf$/i];for(const pattern of patterns){const match=files.find(n=>pattern.test(n)&&!/mmproj/i.test(n));if(match){this.config.modelPath=path.join(root,match);return this.config.modelPath;}}}catch{}return this.config.modelPath;}
+  private async resolveModelPath():Promise<string>{
+    if(process.env.GINA_LLM_MODEL){this.config.modelPath=process.env.GINA_LLM_MODEL;return this.config.modelPath;}
+    const directExists=await fs.stat(this.config.modelPath).then(s=>s.isFile()).catch(()=>false);
+    if(directExists)return this.config.modelPath;
+    const root=path.dirname(this.config.modelPath);
+    try{
+      const files=await fs.readdir(root);
+      for(const pattern of getLocalLlmModel(this.engine).modelPatterns){
+        const match=files.find(n=>pattern.test(n)&&!/mmproj/i.test(n));
+        if(match){this.config.modelPath=path.join(root,match);return this.config.modelPath;}
+      }
+    }catch{}
+    return this.config.modelPath;
+  }
 
   private async resolveMmprojPath():Promise<string|null>{
-    if(this.engine!=='qwen'){ this.resolvedMmprojPath=null; return null; }
+    const profile=getLocalLlmModel(this.engine);
+    if(!profile.multimodal){ this.resolvedMmprojPath=null; return null; }
     if(this.config.mmprojPath){
+      if(this.isKnownIncompatibleMmproj(this.engine,this.config.mmprojPath)){
+        this.resolvedMmprojPath=null;
+        this.appendDiagnostic(`MMProj compatibility guard: ignored incompatible ${path.basename(this.config.mmprojPath)} for Qwen3.5-9B; starting text-only until a matched projector is installed.`);
+        return null;
+      }
       this.resolvedMmprojPath=await fs.stat(this.config.mmprojPath).then(s=>s.isFile()?this.config.mmprojPath!:null).catch(()=>null);
       return this.resolvedMmprojPath;
     }
     const root=path.dirname(this.config.modelPath);
+    const exact=this.defaultMmprojPath(root,this.engine);
+    if(exact && !this.isKnownIncompatibleMmproj(this.engine,exact)){
+      const exists=await fs.stat(exact).then(s=>s.isFile()).catch(()=>false);
+      if(exists){this.resolvedMmprojPath=exact;return exact;}
+    }
     try{
       const files=await fs.readdir(root);
-      const candidates=files.filter(name=>/mmproj.*\.gguf$/i.test(name));
-      const ranked=candidates.sort((a,b)=>{
-        const score=(name:string)=>(/qwen/i.test(name)?30:0)+(/f16/i.test(name)?20:0)+(/mmproj/i.test(name)?5:0);
-        return score(b)-score(a);
-      });
-      const match=ranked[0];
+      const patterns=profile.mmprojPatterns||[/mmproj.*\.gguf$/i];
+      const match=patterns.flatMap(pattern=>files.filter(n=>pattern.test(n)))
+        .find(n=>!this.isKnownIncompatibleMmproj(this.engine,n));
       this.resolvedMmprojPath=match?path.join(root,match):null;
       return this.resolvedMmprojPath;
     }catch{return null;}
@@ -142,21 +194,86 @@ export class LocalLlmManager {
   async getStatus():Promise<LocalLlmStatus>{await this.syncPersistedEnginePreference();const configured=await this.isConfigured();await this.resolveMmprojPath();if(this.child&&!this.child.killed)this.ready=await this.checkHealth();else this.ready=false;return this.status(configured);}
   async isConfigured():Promise<boolean>{await this.resolveModelPath();const [exe,model]=await Promise.all([fs.stat(this.config.executablePath).then(s=>s.isFile()).catch(()=>false),fs.stat(this.config.modelPath).then(s=>s.isFile()).catch(()=>false)]);return exe&&model;}
 
-  async start():Promise<LocalLlmStatus>{await this.syncPersistedEnginePreference();if(this.child&&!this.child.killed){await this.waitForReady(5000).catch(()=>undefined);return this.status(await this.isConfigured());}if(this.startPromise){await this.startPromise;return this.status(await this.isConfigured());}const configured=await this.isConfigured();this.resolvedMmprojPath=await this.resolveMmprojPath();if(!configured)throw new Error(`Local LLM is not configured for ${this.engine}. Expected llama-server at ${this.config.executablePath} and model at ${this.config.modelPath}.`);this.lastError=null;this.ready=false;this.recentLog=[];const engine=this.engine;this.startPromise=new Promise<void>((resolve,reject)=>{const args=['--model',this.config.modelPath,'--host',this.config.host,'--port',String(this.config.port),'--n-gpu-layers',String(this.config.gpuLayers),'--ctx-size',String(this.engine==='qwen-coder'?Math.max(this.config.contextSize,16384):this.config.contextSize),'--threads',String(this.config.threads),'--jinja'];if(this.engine==='qwen' && this.resolvedMmprojPath)args.push('--mmproj',this.resolvedMmprojPath);const child=spawn(this.config.executablePath,args,{cwd:path.dirname(this.config.executablePath),windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...process.env}});this.child=child;this.startedAt=new Date().toISOString();const addLog=(chunk:Buffer|string)=>{const lines=String(chunk).split(/\r?\n/).map(line=>line.trim()).filter(Boolean);for(const line of lines)this.recentLog.push(line.slice(0,1000));if(this.recentLog.length>60)this.recentLog.splice(0,this.recentLog.length-60);};child.stdout.on('data',addLog);child.stderr.on('data',addLog);child.once('error',error=>{this.lastError=`${engine} llama-server spawn error: ${error.message}`;this.ready=false;this.child=null;reject(error);});child.once('exit',(code,signal)=>{addLog(`[llama-server exited] engine=${engine} code=${code??'null'} signal=${signal??'null'}`);if(!this.ready&&code!==0){const detail=this.recentLog.slice(-8).join(' | ');this.lastError=`${engine} llama-server exited before becoming ready (code ${code??'unknown'}).${detail?` ${detail}`:''}`;}this.ready=false;this.child=null;});void this.waitForReady(this.config.timeoutMs).then(()=>{this.ready=true;resolve();}).catch(error=>{this.lastError=error instanceof Error?error.message:String(error);if(this.child&&!this.child.killed)this.child.kill();this.child=null;reject(error);});}).finally(()=>{this.startPromise=null;});await this.startPromise;return this.status(true);}
+  async start():Promise<LocalLlmStatus>{
+    await this.syncPersistedEnginePreference();
+    if(this.child&&!this.child.killed){await this.waitForReady(5000).catch(()=>undefined);return this.status(await this.isConfigured());}
+    if(this.startPromise){await this.startPromise;return this.status(await this.isConfigured());}
+    const configured=await this.isConfigured();
+    this.resolvedMmprojPath=await this.resolveMmprojPath();
+    if(!configured) throw new Error(`Local LLM is not configured for ${this.engine}. Expected llama-server at ${this.config.executablePath} and model at ${this.config.modelPath}.`);
+    this.lastError=null; this.ready=false; this.recentLog=[];
+    const engine=this.engine;
+    const launch=async(useMmproj:string|null)=>{
+      this.startPromise=new Promise<void>((resolve,reject)=>{
+        const args=['--model',this.config.modelPath,'--host',this.config.host,'--port',String(this.config.port),'--n-gpu-layers',String(this.config.gpuLayers),'--ctx-size',String(this.engine==='qwen-coder'?Math.max(this.config.contextSize,16384):this.config.contextSize),'--threads',String(this.config.threads),'--jinja'];
+        if(getLocalLlmModel(this.engine).multimodal && useMmproj)args.push('--mmproj',useMmproj);
+        const child=spawn(this.config.executablePath,args,{cwd:path.dirname(this.config.executablePath),windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...process.env}});
+        this.child=child; this.startedAt=new Date().toISOString();
+        const addLog=(chunk:Buffer|string)=>{const lines=String(chunk).split(/\r?\n/).map(line=>line.trim()).filter(Boolean);for(const line of lines)this.recentLog.push(line.slice(0,1000));if(this.recentLog.length>60)this.recentLog.splice(0,this.recentLog.length-60);};
+        child.stdout.on('data',addLog); child.stderr.on('data',addLog);
+        child.once('error',error=>{this.lastError=`${engine} llama-server spawn error: ${error.message}`;this.ready=false;this.child=null;reject(error);});
+        child.once('exit',(code,signal)=>{addLog(`[llama-server exited] engine=${engine} code=${code??'null'} signal=${signal??'null'}`);if(!this.ready&&code!==0){const detail=this.recentLog.slice(-8).join(' | ');this.lastError=`${engine} llama-server exited before becoming ready (code ${code??'unknown'}).${detail?` ${detail}`:''}`;}this.ready=false;this.child=null;});
+        void this.waitForReady(this.config.timeoutMs).then(()=>{this.ready=true;resolve();}).catch(error=>{this.lastError=error instanceof Error?error.message:String(error);if(this.child&&!this.child.killed)this.child.kill();this.child=null;reject(error);});
+      }).finally(()=>{this.startPromise=null;});
+      return this.startPromise;
+    };
+    try{
+      await launch(this.resolvedMmprojPath);
+    }catch(error){
+      const detail=String(this.lastError || (error instanceof Error ? error.message : String(error)));
+      const mismatch=/mismatch between text model/i.test(detail)||/wrong mmproj/i.test(detail)||/load_multimodal_model/i.test(detail);
+      if(engine==='qwen3.5' && this.resolvedMmprojPath && mismatch){
+        this.appendDiagnostic(`MMProj mismatch detected for Qwen3.5-9B; retrying text-only startup without projector.`);
+        this.resolvedMmprojPath=null;
+        this.lastError=null; this.recentLog=[];
+        await launch(null);
+      }else{
+        throw error;
+      }
+    }
+    return this.status(true);
+  }
 
   async stop():Promise<LocalLlmStatus>{if(!this.child||this.child.killed){this.ready=false;return this.status(await this.isConfigured());}const child=this.child;this.ready=false;child.kill();await new Promise<void>(resolve=>{const timer=setTimeout(resolve,3000);child.once('exit',()=>{clearTimeout(timer);resolve();});});this.child=null;return this.status(await this.isConfigured());}
   async restart():Promise<LocalLlmStatus>{await this.stop();return this.start();}
   async cancelChat():Promise<boolean>{const controller=this.activeChatController;if(!controller)return false;controller.abort();this.activeChatController=null;if(this.child&&!this.child.killed)await this.stop();this.appendDiagnostic('CHAT CANCEL COMPLETE — llama.cpp stopped and VRAM released; restart Local AI to continue');return true;}
 
-  async chat(messages:ChatMessage[],options?:{temperature?:number;maxTokens?:number},attachments:ImageAttachment[]=[]){const status=await this.getStatus();if(!status.ready)throw new Error(`Local ${this.engine==='qwen'?'Qwen Vision':'Qwen Coder'} engine is not running. Start the local AI engine first.`);const maxTokens=Math.min(1024,Math.max(64,Math.round(Number(options?.maxTokens)||768)));const request=async(normalized:ChatMessage[],label:string)=>{if(!normalized.length||normalized[normalized.length-1].role!=='user')throw new Error('Local LLM conversation could not be normalized into a valid user turn.');const requestMessages:any[]=normalized.map(m=>({...m}));const imageAttachments=attachments.filter(a=>a?.localPath&&/^image\//i.test(a.mime));if(imageAttachments.length){if(!this.resolvedMmprojPath)throw new Error(`${this.engine === 'qwen' ? 'Qwen 2.5-VL' : 'Qwen Coder'} vision is selected, but no multimodal projector GGUF was found beside the local model.`);const latest=requestMessages[requestMessages.length-1];const parts:any[]=[{type:'text',text:String(latest.content||'')}];for(const attachment of imageAttachments.slice(0,5)){const buffer=await fs.readFile(attachment.localPath);parts.push({type:'image_url',image_url:{url:`data:${attachment.mime};base64,${buffer.toString('base64')}`}});}latest.content=parts;}this.appendDiagnostic(`${label}: engine=${this.engine}, model=${path.basename(this.config.modelPath)}, turns=${requestMessages.length}${imageAttachments.length?`, images=${imageAttachments.length}`:''}`);const controller=new AbortController();this.activeChatController=controller;const timeout=setTimeout(()=>controller.abort(),this.config.timeoutMs);try{const response=await fetch(`http://${this.config.host}:${this.config.port}/v1/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:path.basename(this.config.modelPath),messages:requestMessages,temperature:options?.temperature??0.7,max_tokens:maxTokens,stream:false}),signal:controller.signal});const bodyText=await response.text();if(!bodyText.trim())throw new Error(`llama-server returned an empty response (HTTP ${response.status}).`);let data:any;try{data=JSON.parse(bodyText);}catch{throw new Error(`llama-server returned invalid JSON (HTTP ${response.status}).`);}if(!response.ok)throw new Error(String(data?.error?.message||data?.error||`llama-server returned HTTP ${response.status}`));return data;}finally{clearTimeout(timeout);if(this.activeChatController===controller)this.activeChatController=null;}};const normalized=normalizeChatMessages(messages);try{const data=await request(normalized,'CHAT');this.lastError=null;return data;}catch(firstError:any){const firstMessage=firstError?.message||String(firstError);this.lastError=firstMessage;this.appendDiagnostic(`CHAT ERROR: ${firstMessage}`);if(isRecoverableTemplateError(firstMessage)||isContextError(firstMessage)||/HTTP 5\d\d|temporar|server busy|overloaded|empty response/i.test(firstMessage)){const fallback=normalizeChatMessages(messages,true);try{const data=await request(fallback,'RECOVERY');this.lastError=null;return data;}catch(fallbackError:any){this.lastError=fallbackError?.message||String(fallbackError);}}throw new Error(`${firstMessage} (Gina recovery attempts were also exhausted.)`);}}
-
-  async generateCompletion(options: { systemPrompt?: string; prompt: string; temperature?: number; maxTokens?: number }): Promise<string> {
-    const messages: ChatMessage[] = [];
-    if (options.systemPrompt) {
-      messages.push({ role: 'system', content: options.systemPrompt });
+  async chat(messages:ChatMessage[],options?:{temperature?:number;maxTokens?:number;suite?:string;telemetrySource?:PromptTelemetrySource;webProvider?:string|null;includeAgentSkills?:boolean;contextBreakdown?:Record<string,number>;iteration?:number;toolCalls?:number},attachments:ImageAttachment[]=[]){
+    await this.agentSkillsLoadPromise;
+    const skillAwareMessages = Array.isArray(messages) ? [...messages] : [];
+    if (options?.includeAgentSkills !== false) {
+      const skillPrompt = getActiveAgentSkillsPrompt();
+      if (!skillAwareMessages.some(message => message?.role === 'system' && String(message.content || '').includes('=== ACTIVE AGENT SKILLS'))) {
+        skillAwareMessages.unshift({ role: 'system', content: skillPrompt });
+      }
     }
-    messages.push({ role: 'user', content: options.prompt });
-    const res = await this.chat(messages, { temperature: options.temperature ?? 0.7, maxTokens: options.maxTokens ?? 1024 });
+    messages = skillAwareMessages;
+    const status=await this.getStatus();if(!status.ready)throw new Error(`Local ${getLocalLlmModel(this.engine).label} engine is not running. Start the local AI engine first.`);const maxTokens=Math.min(1024,Math.max(64,Math.round(Number(options?.maxTokens)||768)));const request=async(normalized:ChatMessage[],label:string)=>{if(!normalized.length||normalized[normalized.length-1].role!=='user')throw new Error('Local LLM conversation could not be normalized into a valid user turn.');const requestMessages:any[]=normalized.map(m=>({...m}));const imageAttachments=attachments.filter(a=>a?.localPath&&/^image\//i.test(a.mime));if(imageAttachments.length){if(!this.resolvedMmprojPath)throw new Error(`${getLocalLlmModel(this.engine).label} vision is selected, but no multimodal projector GGUF was found beside the local model.`);const latest=requestMessages[requestMessages.length-1];const parts:any[]=[{type:'text',text:String(latest.content||'')}];for(const attachment of imageAttachments.slice(0,5)){const buffer=await fs.readFile(attachment.localPath);parts.push({type:'image_url',image_url:{url:`data:${attachment.mime};base64,${buffer.toString('base64')}`}});}latest.content=parts;}this.appendDiagnostic(`${label}: engine=${this.engine}, model=${path.basename(this.config.modelPath)}, turns=${requestMessages.length}${imageAttachments.length?`, images=${imageAttachments.length}`:''}`);const controller=new AbortController();this.activeChatController=controller;const timeout=setTimeout(()=>controller.abort(),this.config.timeoutMs);try{const response=await fetch(`http://${this.config.host}:${this.config.port}/v1/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:path.basename(this.config.modelPath),messages:requestMessages,temperature:options?.temperature??0.7,max_tokens:maxTokens,stream:false}),signal:controller.signal});const bodyText=await response.text();if(!bodyText.trim())throw new Error(`llama-server returned an empty response (HTTP ${response.status}).`);let data:any;try{data=JSON.parse(bodyText);}catch{throw new Error(`llama-server returned invalid JSON (HTTP ${response.status}).`);}if(!response.ok)throw new Error(String(data?.error?.message||data?.error||`llama-server returned HTTP ${response.status}`));return data;}finally{clearTimeout(timeout);if(this.activeChatController===controller)this.activeChatController=null;}};const normalized=normalizeChatMessages(messages);
+    const startedAt=Date.now();
+    const suite=String(options?.suite||'Local AI');
+    const source:PromptTelemetrySource=options?.telemetrySource||'local';
+    const recordTelemetry=(data:any,success:boolean)=>{
+      const usage=data?.usage||{};
+      const promptTokens=Number(usage.prompt_tokens||usage.promptTokens||estimateTokens(normalized));
+      const completionTokens=Number(usage.completion_tokens||usage.completionTokens||estimateTokens(data?.choices?.[0]?.message?.content||''));
+      const durationMs=Date.now()-startedAt; const completionRate=durationMs>0?(completionTokens/(durationMs/1000)):0; const promptRate=durationMs>0?(promptTokens/(durationMs/1000)):0; const telemetry=runtimeTelemetry.recordPrompt({suite,source,promptTokens,completionTokens,totalTokens:Number(usage.total_tokens||usage.totalTokens||promptTokens+completionTokens),maxTokens:Math.min(1024,Math.max(64,Math.round(Number(options?.maxTokens)||768))),contextSize:this.config.contextSize,durationMs,tokensPerSecond:completionRate,promptTokensPerSecond:promptRate,completionTokensPerSecond:completionRate,firstTokenLatencyMs:null,iteration:options?.iteration??null,toolCalls:options?.toolCalls??0,contextBreakdown:options?.contextBreakdown,webSearched:source==='web'||source==='local+web',webProvider:options?.webProvider||null,success});
+      if(data && typeof data==='object') data.ginaTelemetry=telemetry;
+      return data;
+    };
+    try{const data=await request(normalized,'CHAT');this.lastError=null;return recordTelemetry(data,true);}catch(firstError:any){const firstMessage=firstError?.message||String(firstError);this.lastError=firstMessage;this.appendDiagnostic(`CHAT ERROR: ${firstMessage}`);if(isRecoverableTemplateError(firstMessage)||isContextError(firstMessage)||/HTTP 5\d\d|temporar|server busy|overloaded|empty response/i.test(firstMessage)){const fallback=normalizeChatMessages(messages,true);try{const data=await request(fallback,'RECOVERY');this.lastError=null;return recordTelemetry(data,true);}catch(fallbackError:any){this.lastError=fallbackError?.message||String(fallbackError);recordTelemetry({choices:[]},false);}}throw new Error(`${firstMessage} (Gina recovery attempts were also exhausted.)`);}}
+
+  async generateCompletion(options: { systemPrompt?: string; prompt: string; temperature?: number; maxTokens?: number; suite?: string; telemetrySource?: PromptTelemetrySource; webProvider?: string | null }): Promise<string> {
+    await this.agentSkillsLoadPromise;
+    const skillPrompt = getActiveAgentSkillsPrompt();
+    const baseSystemPrompt = options.systemPrompt || '';
+    const systemContent = baseSystemPrompt.includes('=== ACTIVE AGENT SKILLS')
+      ? baseSystemPrompt
+      : `${baseSystemPrompt ? `${baseSystemPrompt}\n\n` : ''}${skillPrompt}`;
+    const messages: ChatMessage[] = [
+      { role: 'system', content: systemContent },
+      { role: 'user', content: options.prompt }
+    ];
+    const res = await this.chat(messages, { temperature: options.temperature ?? 0.7, maxTokens: options.maxTokens ?? 1024, suite: options.suite, telemetrySource: options.telemetrySource, webProvider: options.webProvider });
     return res?.choices?.[0]?.message?.content || "";
   }
 

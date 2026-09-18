@@ -47,7 +47,7 @@ const PRE_SEEDED_KNOWLEDGE: Omit<RagChunk, 'id'>[] = [
     sourceFile: 'LOCAL_LLM_SETUP.md / AGENTS.md',
     keywords: ['qwen', 'coder', 'vision', 'llama.cpp', 'llama-server', 'cuda', '28 layers', '8080', 'context', '4096', 'q4_k_m', 'vram'],
     content: `Local LLM Engine Architecture:
-- Vision Model: Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf + mmproj-F16. Optional Coder Model: qwen2.5-coder-7b-instruct-q5_k_m.gguf.
+- Vision Models: Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf + mmproj-F16 and Qwen3.5-9B-Q4_K_M.gguf + a Qwen3.5-9B-matched mmproj-F16. Optional Coder Model: qwen2.5-coder-7b-instruct-q5_k_m.gguf.
 - Runtime: llama-server.exe Windows x64 CUDA backend listening on http://127.0.0.1:8080.
 - Pinned Layer Allocation: 28 GPU layers (achieves ~9.2-10.7 tokens/sec generation without OOM).
 - Performance Cliff Note: 36 layers drops speed to 1.3 tok/sec due to VRAM paging; 28 layers is strictly pinned.

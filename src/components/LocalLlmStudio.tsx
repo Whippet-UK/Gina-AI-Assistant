@@ -20,7 +20,7 @@ interface LocalLlmStatus {
   recentLog: string[];
   multimodal: boolean;
   mmprojPath: string | null;
-  engine: 'qwen' | 'qwen-coder';
+  engine: 'qwen' | 'qwen-coder' | 'qwen3.5';
 }
 
 interface ChatMessage {
@@ -118,7 +118,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       return;
     }
     if (status?.engine === 'qwen-coder' && image) {
-      setFileAttachError('Qwen Coder accepts project/text/code files, but image attachments require Qwen 2.5-VL Vision Mode.');
+      setFileAttachError('Qwen Coder is text-only. Switch to Qwen 2.5-VL Vision or Qwen3.5 Vision to inspect image attachments.');
       return;
     }
     const localLimit = image ? 12 * 1024 * 1024 : 2 * 1024 * 1024;
@@ -293,7 +293,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     };
   }, []);
 
-  const runAction = async (action: 'start' | 'stop' | 'restart', engine?: 'qwen' | 'qwen-coder') => {
+  const runAction = async (action: 'start' | 'stop' | 'restart', engine?: 'qwen' | 'qwen-coder' | 'qwen3.5') => {
     setLoading(true);
     setError(null);
     try {
@@ -301,7 +301,17 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || `Failed to ${action} local LLM`);
       setStatus(data.status);
-      onAddLog('INFO', engine ? `Local AI engine switched to ${engine.toUpperCase()}.` : `Local ${status?.engine === 'qwen' ? 'Qwen Vision' : 'Qwen Coder'} ${action} request completed.`);
+      const label = engine === 'qwen' ? 'Qwen 2.5-VL' : engine === 'qwen3.5' ? 'Qwen3.5 9B' : engine === 'qwen-coder' ? 'Qwen Coder' : 'Local LLM';
+      if (engine) {
+        try {
+          await fetch('/api/agent/memory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kind:'preference', key:'local_llm_engine', value:engine, source:'local_llm_studio' }),
+          });
+        } catch {}
+      }
+      onAddLog('INFO', engine ? `Local AI engine switched to ${label}.` : `Local ${label} ${action} request completed.`);
     } catch (err: any) {
       setError(err?.message || `Failed to ${action} local LLM`);
       onAddLog('WARN', `Local Qwen ${action} failed: ${err?.message || 'unknown error'}`);
@@ -549,7 +559,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     setAgentActivity([]);
     await new Promise<void>((resolve, reject) => {
       const es = new EventSource(`/api/agent/runs/${encodeURIComponent(id)}/stream`);
-      const finish = () => { es.close(); setAgentStatus('READY'); setAgentActivity([]); resolve(); };
+      const finish = () => { es.close(); resolve(); };
       es.addEventListener('status', (ev:any) => {
         try { const d=JSON.parse(ev.data||'{}'); setAgentStatus(d.phase || 'WORKING'); if(d.message) setAgentActivity(prev=>[...prev,d.message].slice(-12)); } catch {}
       });
@@ -638,11 +648,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       });
       const capabilityData = await capabilityResponse.json().catch(() => ({}));
       const capabilityPlan = capabilityData?.plan;
-      // Capability plans can also describe web/network operations. Only engineering
-      // intents are allowed to enter the autonomous coding agent. Web research,
-      // media creation, knowledge and diagnostics remain in their own lanes.
-      const engineeringIntent = ['code-change','file-read','run-command','git-operation','project-operation'].includes(String(capabilityPlan?.intent || ''));
-      if (capabilityPlan?.mode === 'act' && engineeringIntent) {
+      if (capabilityPlan?.mode === 'act' && capabilityPlan?.intent !== 'network-diagnostic' && agentWorkspace) {
         const nextMessages: ChatMessage[] = [...messages, { role:'user', content:text }];
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null);
         try {
@@ -664,22 +670,6 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
         return;
       }
       const route = await classifyImageIntent(typedText);
-      if (route.intent === 'video-generation') {
-        const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: text }];
-        setMessages(nextMessages);
-        setInput('');
-        setLoading(true);
-        setThinkingSource('local');
-        setError(null);
-        setAgentStatus('READY');
-        setAgentActivity([]);
-        // Video Studio is mounted alongside Local AI. Dispatch the explicit request
-        // to its real Wan 2.1 generation lane rather than pretending video is an image.
-        window.dispatchEvent(new CustomEvent('gina-video-generation-request', { detail: { prompt: typedText } }));
-        setMessages(prev => [...prev, { role:'assistant', content:'Video request accepted. Wan 2.1 Video Studio is starting the local generation.' }]);
-        setLoading(false);
-        return;
-      }
       if (route.intent === 'image-generation' || route.intent === 'image-modification') {
         if (route.policyLocked) throw new Error('Qwen Coder is text-only. Switch to Qwen 2.5-VL Vision Mode to use image generation or vision attachments.');
         const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: text }];
@@ -703,8 +693,6 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       return;
     }
 
-    setAgentStatus('READY');
-    setAgentActivity([]);
     const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: text }];
     setMessages(nextMessages);
     setInput('');
@@ -781,16 +769,20 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
               <div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Local inference engine</div>
               <h2 className="text-xl font-semibold text-slate-100 mt-1 flex items-center gap-2">
                 <Bot className="w-5 h-5 text-emerald-400" />
-                {status?.modelName?.toLowerCase().includes('qwen')
+                {status?.engine === 'qwen3.5'
+                  ? 'Qwen3.5 9B Vision-Language'
+                  : status?.engine === 'qwen'
                   ? 'Qwen 2.5-VL 7B Vision-Language'
-                  : status?.modelName?.toLowerCase().includes('coder')
-                  ? 'Qwen Coder 7B' 
+                  : status?.engine === 'qwen-coder'
+                  ? 'Qwen Coder 7B'
                   : status?.modelName || 'Local Vision-Language Engine'}
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                {status?.modelName?.toLowerCase().includes('qwen')
-                  ? 'Qwen 2.5-VL 7B GGUF Q4_K_M via llama.cpp CUDA (100% GPU offload, ~35–45 tokens/sec, mmproj-F16 vision).'
-                  : 'Qwen local GGUF via llama.cpp CUDA. Vision mode includes mmproj-F16; Coder mode is text-only with the projector unloaded.'}
+                {status?.engine === 'qwen3.5'
+                  ? 'Qwen3.5 9B GGUF Q4_K_M via llama.cpp CUDA; vision requires a Qwen3.5-9B-matched projector.'
+                  : status?.engine === 'qwen'
+                  ? 'Qwen 2.5-VL 7B GGUF Q4_K_M via llama.cpp CUDA with mmproj-F16 vision.'
+                  : 'Qwen Coder 7B GGUF via llama.cpp CUDA. Text-only coding profile; projector unloaded.'}
               </p>
             </div>
             <span className={`px-2 py-1 rounded border text-[9px] font-mono font-bold ${status?.ready ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{stateLabel}</span>
@@ -802,12 +794,12 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
             <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">CONTEXT</div><div className="text-slate-200 mt-1">{status?.contextSize ?? 8192}</div></div>
             <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">CPU THREADS</div><div className="text-slate-200 mt-1">{status?.threads ?? 6}</div></div>
             <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">VISION MMPROJ</div><div className="text-emerald-300 mt-1 truncate" title={status?.mmprojPath || 'None'}>{status?.mmprojPath ? (status.mmprojPath.split(/[/\\]/).pop() || 'Detected') : 'None'}</div></div>
-            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">EST. SPEED</div><div className="text-emerald-400 font-bold mt-1">{status?.engine === 'qwen-coder' ? '~30–50 t/s' : '~35–45 t/s'}</div></div>
+            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">EST. SPEED</div><div className="text-emerald-400 font-bold mt-1">{status?.engine === 'qwen-coder' ? '~30–50 t/s' : status?.engine === 'qwen3.5' ? 'profile-dependent' : '~35–45 t/s'}</div></div>
           </div>
 
           <div className="mt-4 p-3 rounded border border-sky-500/20 bg-sky-500/5">
             <div className="text-[9px] font-bold uppercase tracking-widest text-sky-300 mb-2">MODEL ROUTING</div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               <button onClick={() => void runAction('restart','qwen')} disabled={loading || status?.engine === 'qwen'} className={`p-2 rounded border text-left ${status?.engine === 'qwen' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-700 bg-slate-900'}`}>
                 <div className="text-[10px] font-bold text-slate-100">Qwen 2.5-VL 7B</div>
                 <div className="text-[8px] text-slate-500 mt-1">Q4_K_M + mmproj-F16 · vision</div>
@@ -817,6 +809,11 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
                 <div className="text-[10px] font-bold text-slate-100">Qwen Coder 7B</div>
                 <div className="text-[8px] text-slate-500 mt-1">Q5_K_M · text-only · projector unloaded</div>
                 <div className="text-[8px] text-amber-300 mt-1">→ Code / project tasks</div>
+              </button>
+              <button onClick={() => void runAction('restart','qwen3.5')} disabled={loading || status?.engine === 'qwen3.5'} className={`p-2 rounded border text-left ${status?.engine === 'qwen3.5' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-700 bg-slate-900'}`}>
+                <div className="text-[10px] font-bold text-slate-100">Qwen3.5 9B</div>
+                <div className="text-[8px] text-slate-500 mt-1">Q4_K_M + matched mmproj-F16 · multimodal when projector is present</div>
+                <div className="text-[8px] text-sky-300 mt-1">→ General + vision</div>
               </button>
             </div>
           </div>
@@ -928,7 +925,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
 
           <div className="flex-1 min-h-0 max-h-[520px] overflow-y-scroll custom-scrollbar space-y-3 pr-1">
             {!messages.length && <div className="h-full min-h-[300px] flex items-center justify-center text-center text-slate-600 text-xs"><div><Zap className="w-6 h-6 mx-auto mb-2 text-slate-700" /><p>Start Qwen locally to chat with Gina.</p><p className="text-[10px] mt-1">No cloud provider is used.</p></div></div>}
-            {agentWorkspace && agentStatus !== 'READY' && <div className="mb-2 rounded border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[9px] font-mono">
+            {agentWorkspace && <div className="mb-2 rounded border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[9px] font-mono">
             <div className="flex justify-between"><span className="text-amber-300">GINA CODING WORKSPACE</span><span className="text-slate-500">{agentStatus}</span></div>
             {agentActivity.length > 0 && <div className="mt-1 text-slate-400 truncate">{agentActivity[agentActivity.length-1]}</div>}
           </div>}
@@ -972,11 +969,11 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
 
             <div className="flex gap-2">
               <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendMessage(); } }} disabled={!status?.ready || loading} rows={3} placeholder={status?.ready ? 'Ask Gina… (Enter to send, Shift+Enter for a new line)' : 'Start the local LLM first…'} className="flex-1 resize-none rounded border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-200 outline-none focus:border-emerald-500/50 disabled:opacity-50" />
-              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!status?.ready || loading || attachedFiles.length >= maxLocalAiFiles} title={status?.engine === 'qwen-coder' ? 'Qwen Coder accepts text/code files and project ZIP archives. Image attachments require Qwen 2.5-VL Vision Mode.' : 'Attach a supported local file, image or ZIP archive'} className="self-end px-3 py-2 rounded border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[10px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5" /> Attach</button>
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!status?.ready || loading || attachedFiles.length >= maxLocalAiFiles} title={status?.engine === 'qwen-coder' ? 'Qwen Coder accepts text/code files and project ZIP archives. Image attachments require a multimodal vision model.' : 'Attach a supported local file, image or ZIP archive'} className="self-end px-3 py-2 rounded border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[10px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5" /> Attach</button>
               {loading ? <button onClick={() => void cancelChat()} className="self-end px-4 py-2 rounded border border-rose-500/50 bg-rose-500/10 text-rose-300 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"><Square className="w-3 h-3" /> Stop & Flush</button> : <button onClick={() => void sendMessage()} disabled={!status?.ready || (!input.trim() && !attachedFiles.length)} className="self-end px-4 py-2 rounded bg-emerald-500 text-slate-950 text-[10px] font-bold uppercase tracking-wider disabled:opacity-30">Send</button>}
             </div>
           </div>
-          <div className="mt-2 text-[8px] font-mono text-slate-700">Local AI attachments stay on this machine: text/code/config ≤2 MB, images ≤12 MB in Vision Mode, ZIP project archives ≤100 MB · max 5 non-project attachments per turn. Project ZIPs are imported into a dedicated workspace and inspected locally; archives are no longer limited to 100 files. {status?.multimodal ? <span className="text-emerald-500">Vision attachments are enabled.</span> : <span>Image uploads are stored locally; switch to Qwen 2.5-VL Vision Mode with its mmproj-F16 projector to enable pixel vision.</span>}</div>
+          <div className="mt-2 text-[8px] font-mono text-slate-700">Local AI attachments stay on this machine: text/code/config ≤2 MB, images ≤12 MB in Vision Mode, ZIP project archives ≤100 MB · max 5 non-project attachments per turn. Project ZIPs are imported into a dedicated workspace and inspected locally; archives are no longer limited to 100 files. {status?.multimodal ? <span className="text-emerald-500">Vision attachments are enabled.</span> : <span>Image uploads are stored locally; switch to Qwen 2.5-VL Vision Mode or Qwen3.5 9B with its configured multimodal projector to enable pixel vision.</span>}</div>
           {(voiceAvailable || browserVoiceAvailable) && <div className="mt-2 flex flex-wrap items-center gap-2 text-[9px] font-mono text-slate-600"><Volume2 className="w-3 h-3" /> SPEECH RATE <input aria-label="Speech rate" type="range" min="-5" max="5" value={voiceRate} onChange={e=>setVoiceRate(Number(e.target.value))} /><span>{voiceRate > 0 ? '+' : ''}{voiceRate}</span><button onClick={testVoice} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200">TEST</button>{speaking && <span className="text-emerald-400 animate-pulse">SPEAKING</span>}</div>}
         </div>
       </div>
