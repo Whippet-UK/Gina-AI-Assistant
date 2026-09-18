@@ -1,9 +1,9 @@
-(async () => {
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { AutonomousRepairOrchestrator } from '../server/agent/AutonomousRepairOrchestrator';
+import { AutonomousRepairOrchestrator } from '../server/agent/AutonomousRepairOrchestrator.js';
 
+(async () => {
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gina-phase52-'));
 try {
   const orchestrator = new AutonomousRepairOrchestrator(root, 3);
@@ -16,7 +16,7 @@ try {
   await orchestrator.recordRollback('phase52-smoke', 2, 'rollback after repeated failure');
   await orchestrator.complete('phase52-smoke', 2, false, 'bounded repair loop stopped safely');
   const history = await orchestrator.history('phase52-smoke');
-  if (history.length !== 5) throw new Error(`expected 5 evidence records, got ${history.length}`);
+  if (history.length !== 6) throw new Error(`expected 6 evidence records, got ${history.length}`);
   console.log('PASS: phase 52 persistent repair evidence + repeat-failure guard');
 } finally {
   await fs.rm(root, { recursive: true, force: true });
