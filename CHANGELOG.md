@@ -1986,3 +1986,45 @@ Added a complete local filesystem tool contract matching the requested MCP-style
 - TypeScript transpile/parse: **PASS** for changed TypeScript/TSX files.
 - Projector guard smoke: **PASS**.
 - Regression verifies generic `mmproj-BF16.gguf` is not auto-selected and Qwen3.5 mismatch recovery exists.
+
+
+## Phase 45.1.2 — Qwen3.5 Projector Pairing Correction — 2026-09-18
+
+- **Root cause:** Phase 45.1.1 misread the `mtmd_init_from_file` mismatch log and swapped Qwen3.5's projector to `mmproj-F16.gguf`, on the assumption that BF16 (4096) was the wrong file. Qwen3.5-9B's **official config reports a 4096 text hidden size**; `mmproj-BF16.gguf` (4096) is its correct, model-matched projector. `mmproj-F16.gguf` (3584) is the Qwen 2.5-VL 7B projector, not a Qwen3.5 file. Phase 45.1.1 had the pairing backwards, causing the runtime to search for/prefer the 3584 file instead of the correct 4096 one for Qwen3.5.
+- Updated `/server/llm/LocalLlmModelCatalog.ts` — **lines 44–59**. Qwen3.5 `mmprojFile`/`mmprojPatterns` reverted to `mmproj-BF16.gguf`.
+- Updated `/server/llm/LocalLlmManager.ts` — **lines 104–108, 172**. Compatibility guard retargeted to flag `mmproj-F16.gguf` (not BF16) as incompatible with the qwen3.5 engine; diagnostic message updated. The text-only mismatch-recovery retry path added in Phase 45.1.1 is unchanged.
+- Updated `/server/capabilities/CapabilityManager.ts` — **lines 43, 123, 166**. Qwen3.5 capability again requires the model-matched `mmproj-BF16.gguf`.
+- Updated `/server/rag/LocalRagEngine.ts` — **line 50**. Corrected Qwen3.5 projector knowledge back to BF16.
+- Updated `/server.ts` — **line 2230**. Compatibility note corrected.
+- Updated `/Start_Local_LLM.bat` — **lines 26–33**. QWEN35 loads `mmproj-BF16.gguf` when present, text-only fallback otherwise.
+- Updated `/src/components/LocalLlmStudio.tsx` — **lines 782, 815**, `/src/components/AiStudioSuite.tsx` — **line 13**, and `/src/components/AppFeaturesGuide.tsx` — **line 137** to advertise `mmproj-BF16.gguf` as the Qwen3.5 vision projector again.
+- Rewrote `/scripts/test-qwen35-projector-guard.ts` — **lines 1–20**. Assertions now check for the BF16 pairing and are scoped to the qwen3.5 catalog block so the test no longer false-fails against the unrelated (and correct) Qwen 2.5-VL F16 entry.
+
+### Phase 45.1.2 Validation
+- Projector guard smoke test rewritten and manually verified against the patched files: **5/5 PASS**.
+- Confirmed the Qwen 2.5-VL 7B ↔ `mmproj-F16.gguf` pairing (3584) was already correct and untouched by this change.
+- No model downloads or external network resources were used.
+
+
+## Phase 45.2 — Local AI Telemetry Compaction — 2026-09-18
+
+- Moved the llama-server diagnostic log from a large full-width block below the Local AI grid into a small `<details>` element docked directly under the chat preview pane, inside the Local Gina Chat panel.
+- Added a compact per-turn telemetry line (prompt/completion tokens, web-grounding source) directly under the preview, sourced from the existing `ginaTelemetry` response payload.
+- Updated `/src/components/LocalLlmStudio.tsx`: new `lastTelemetry` state, populated in `sendMessage`; relocated/shrunk diagnostic log block; presentation-only, no API/contract changes.
+
+### Phase 45.2 Validation
+- Manual review of the modified JSX confirms both elements now render inside the chat panel's right column, directly beneath the message list, at a reduced font size (8px) and max-height (24 vs previous 48).
+
+
+## Phase 45.3 — Local Browser Integration — 2026-09-18
+
+- Added `/server/browser/LocalBrowserService.ts`: detects local installations of Google Chrome, Google Chrome Canary (SxS), Microsoft Edge (Chromium) and Brave via standard Windows install paths, plus portable Chromium-family binaries under `C:\Gina_AI\tools\` (override with `GINA_TOOLS_ROOT`).
+- Adds a `dumpDom(url, options)` method that launches the preferred/requested browser headless with `--headless=new --disable-gpu --disable-extensions --disable-sync --dump-dom`, via a scratch `--user-data-dir` cleaned up after each call.
+- Wired into `/server.ts`: `GET /api/browser/local/status` (detection results) and `POST /api/browser/local/dump` (headless DOM fetch), added directly after the existing `/api/web/browser/*` routes. Distinct from and does not modify `WebBrowserService` (the existing public-web search/fetch lane).
+- No external dependencies added; uses only Node's built-in `fs`/`path`/`os`/`child_process` modules, consistent with the existing `execFileAsync` subprocess pattern already used in `server.ts`.
+
+### Phase 45.3 Validation
+- `node --experimental-strip-types --check server/browser/LocalBrowserService.ts`: **PASS** (syntax-valid TypeScript).
+- `node --experimental-strip-types --check server.ts`: **PASS** after the import/instance/route additions.
+- No model or binary downloads; detection is read-only `fs.stat`/`fs.readdir` against local paths only.
+

@@ -25,11 +25,11 @@ if /I "%ENGINE%"=="QWEN" (
   set "ENGINE=QWEN3.5"
   set "MODEL=%MODEL_ROOT%\Qwen3.5-9B-Q4_K_M.gguf"
   set "MODEL_DESC=Qwen3.5 9B (Q4_K_M)"
-  if exist "%MODEL_ROOT%\mmproj-F16.gguf" (
-    set "MMPROJ=%MODEL_ROOT%\mmproj-F16.gguf"
+  if exist "%MODEL_ROOT%\mmproj-BF16.gguf" (
+    set "MMPROJ=%MODEL_ROOT%\mmproj-BF16.gguf"
   ) else (
     set "MMPROJ="
-    echo [GINA] No Qwen3.5-9B-matched mmproj-F16.gguf found. Starting Qwen3.5 in text-only mode.
+    echo [GINA] No Qwen3.5-9B-matched mmproj-BF16.gguf found. Starting Qwen3.5 in text-only mode.
   )
   set "GPU_LAYERS=24"
   set "CTX_SIZE=8192"

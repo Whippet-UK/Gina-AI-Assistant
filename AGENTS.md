@@ -652,3 +652,49 @@ Rules:
 - `/src/components/AiStudioSuite.tsx` — **line 13**: Qwen3.5 selector description now reflects optional matched vision projector.
 - `/src/components/AppFeaturesGuide.tsx` — **line 137**: model guide corrected.
 - `/scripts/test-qwen35-projector-guard.ts` — **lines 1–16**: regression test for the projector compatibility guard.
+
+
+## Phase 45.1.2 — Qwen3.5 Projector Pairing Correction — 2026-09-18
+
+- **Root cause of Phase 45.1.1:** the runtime log line interpreted in Phase 45.1.1 (`mismatch between text model (n_embd = 3584) and mmproj (n_embd = 4096)`) was read as "the text model is 3584, so the 4096 BF16 projector is wrong." That reading was incorrect. Qwen3.5-9B's **official published config reports a 4096 text hidden size**, and `mmproj-BF16.gguf` (4096) is the verified model-matched projector supplied for it. `mmproj-F16.gguf` (3584) is the **Qwen 2.5-VL 7B** projector, not a Qwen3.5 file. Phase 45.1.1 swapped the pairing backwards, which caused the local model catalog to search for/prefer the 3584 F16 file for Qwen3.5 instead of its real 4096 BF16 match.
+- **Correction:** Qwen3.5-9B's projector mapping is reverted to `mmproj-BF16.gguf` (matching Phase 45.1's original, correct mapping). The compatibility guard introduced in Phase 45.1.1 is retained as infrastructure but retargeted: it now flags `mmproj-F16.gguf` (the Qwen 2.5-VL file) as incompatible with the qwen3.5 engine instead of BF16. The text-only mismatch-recovery retry path is unchanged and still protects startup if an unexpected projector is ever supplied.
+- **Verified pairing (per user-confirmed file inventory):**
+  - `C:\Gina_AI\models\llm\Qwen3.5-9B-Q4_K_M.gguf` + `C:\Gina_AI\models\llm\mmproj-BF16.gguf` — Qwen3.5-9B, 4096 hidden size.
+  - `C:\Gina_AI\models\llm\Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf` + `C:\Gina_AI\models\llm\mmproj-F16.gguf` — Qwen 2.5-VL 7B, 3584 hidden size. (Unchanged from Phase 45.1/45.1.1 — this pairing was already correct.)
+- **Capability policy:** `qwen35Ready` is true only when the Qwen3.5 model and the model-matched `mmproj-BF16.gguf` are both present.
+- **Launcher policy:** `Start_Local_LLM.bat` QWEN35 branch loads `mmproj-BF16.gguf` when present, otherwise starts text-only with a warning naming the BF16 file.
+
+### Phase 45.1.2 Exact Edited File Line References
+- `/server/llm/LocalLlmModelCatalog.ts` — **lines 44–59**: Qwen3.5 `mmprojFile`/`mmprojPatterns` reverted to `mmproj-BF16.gguf`.
+- `/server/llm/LocalLlmManager.ts` — **lines 104–108, 172**: `isKnownIncompatibleMmproj` now matches `mmproj-F16.gguf` for the qwen3.5 engine; diagnostic text updated.
+- `/Start_Local_LLM.bat` — **lines 26–33**: QWEN35 branch looks for and loads `mmproj-BF16.gguf`.
+- `/server/capabilities/CapabilityManager.ts` — **lines 43, 123, 166**: `qwen3.5-mmproj` known model, `qwen35Mmproj` detection, and generator notes point at `mmproj-BF16.gguf`.
+- `/server.ts` — **line 2230**: `/api/llm/models` compatibility note corrected.
+- `/server/rag/LocalRagEngine.ts` — **line 50**: local knowledge corrected back to BF16.
+- `/src/components/LocalLlmStudio.tsx` — **lines 782, 815**; `/src/components/AiStudioSuite.tsx` — **line 13**; `/src/components/AppFeaturesGuide.tsx` — **line 137**: UI copy corrected back to mmproj-BF16.
+- `/scripts/test-qwen35-projector-guard.ts` — **lines 1–20**: regression test rewritten to assert the BF16 pairing, scoped to the qwen3.5 catalog block so it no longer false-fails against the (correct, unrelated) Qwen 2.5-VL F16 entry.
+
+
+## Phase 45.2 — Local AI Telemetry Compaction — 2026-09-18
+
+- **UI:** the llama-server diagnostic log, previously a large full-width `<details>` block rendered below both Local AI columns, is now a compact `<details>` element docked directly under the chat preview pane inside the Local Gina Chat panel, with a smaller max-height and font size.
+- **Telemetry readout:** each turn's prompt/completion token counts and web-grounding source are now also surfaced as a small persistent line directly under the preview (previously only written to the global activity log and otherwise lost).
+- No backend telemetry contract changed; this is a presentation-only change in `LocalLlmStudio.tsx`.
+
+### Phase 45.2 Exact Edited File Line References
+- `/src/components/LocalLlmStudio.tsx` — added `lastTelemetry` state; populated it alongside the existing `onAddLog` telemetry call in `sendMessage`; moved and shrank the `recentLog` `<details>` block to sit under the chat preview, and added the compact telemetry line next to it.
+
+
+## Phase 45.3 — Local Browser Integration — 2026-09-18
+
+- **New service:** `/server/browser/LocalBrowserService.ts` detects real local installations of Google Chrome, Google Chrome Canary (SxS), Microsoft Edge (Chromium) and Brave via their standard Windows install paths (`%PROGRAMFILES%`, `%PROGRAMFILES(X86)%`, `%ProgramW6432%`, `%LOCALAPPDATA%`), and also scans `C:\Gina_AI\tools\` (override with `GINA_TOOLS_ROOT`) up to 3 directories deep for portable `chrome.exe` / `msedge.exe` / `brave.exe` / `chromium.exe` binaries.
+- **Distinct from `WebBrowserService`:** the existing `/server/agent/WebBrowserService.ts` performs public web search + page fetch for the agent's research lane. `LocalBrowserService` is a separate, lower-level capability: it drives a real local Chromium-family browser process headlessly. Nothing in the existing web-research/browse lane was changed.
+- **Headless launch:** `dumpDom(url, options)` spawns the preferred (or explicitly requested) detected browser with `--headless=new --disable-gpu --disable-extensions --disable-sync --dump-dom <url>`, using a fresh scratch `--user-data-dir` per call (cleaned up afterward) so headless runs never collide with a signed-in profile or a running browser instance. Default timeout 20s, overridable per call.
+- **Preference order:** Chrome → Edge → Brave → Chrome Canary → portable, when no explicit `browserId` is given; the first channel with an existing binary wins.
+- **API:** `GET /api/browser/local/status` returns the full detection result (all channels, found or not, plus the preferred pick). `POST /api/browser/local/dump` accepts `{ url, browserId?, timeoutMs? }` and returns the rendered DOM HTML plus timing/diagnostic metadata.
+- **No downloads, no new dependencies:** uses only Node's built-in `fs`, `path`, `os`, and `child_process`/`execFile` (the same subprocess pattern already used elsewhere in `server.ts`).
+
+### Phase 45.3 Exact Edited File Line References
+- Added `/server/browser/LocalBrowserService.ts` — **lines 1–207**.
+- `/server.ts` — import line 56; runtime instance line 100; routes added directly after the existing `/api/web/browser/open` route (`/api/browser/local/status`, `/api/browser/local/dump`).
+

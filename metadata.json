@@ -3,6 +3,7 @@
   "version": "1.20.7",
   "description": "Strictly local creator dashboard with ComfyUI, Juggernaut XL SDXL high-speed engine, Qwen 2.5-VL Vision & Qwen 2.5 Coder local CUDA inference, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, and voice mode.",
   "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API",
     "LOCAL_FIRST_WEB_RESEARCH",
     "QWEN_25_VL_7B_CUDA_INFERENCE",
     "JUGGERNAUT_XL_SDXL_WORKFLOW",

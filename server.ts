@@ -53,6 +53,7 @@ import { LocalRagEngine } from "./server/rag/LocalRagEngine.js";
 import { KnowledgeBase } from "./server/knowledge/KnowledgeBase.js";
 import { WebResearchService } from "./server/agent/WebResearchService.js";
 import { WebBrowserService } from "./server/agent/WebBrowserService.js";
+import { LocalBrowserService } from "./server/browser/LocalBrowserService.js";
 import { TemporalFactStore } from "./server/knowledge/TemporalFactStore.js";
 import { StreamInjectService } from "./server/streaminject/StreamInjectService.js";
 import { MusicService } from "./server/music/MusicService.js";
@@ -96,6 +97,7 @@ const localRag = new LocalRagEngine(GINA_ROOT);
 const knowledgeBase = new KnowledgeBase(GINA_ROOT);
 const webResearch = new WebResearchService();
 const webBrowser = new WebBrowserService(webResearch);
+const localBrowser = new LocalBrowserService();
 const temporalFacts = new TemporalFactStore(GINA_ROOT);
 const autonomousResearch = new AutonomousResearchEngine(webResearch, localRag);
 const gitLifecycle = new GitHubLifecycleManager(GINA_ROOT);
@@ -1601,6 +1603,22 @@ app.post('/api/web/browser/open', async (req,res) => {
     res.json({ok:true,page:await webBrowser.open(url,Number(req.body?.maxChars)||30000)});
   } catch(error:any) { res.status(502).json({ok:false,error:error?.message||'Browser page open failed.'}); }
 });
+
+// Local browser integration: detects real Chrome / Chrome Canary (SxS) / Edge / Brave
+// installations, plus any portable Chromium-family binaries under C:\Gina_AI\tools, and can
+// drive one headlessly (--headless=new --dump-dom --disable-gpu) to fetch rendered DOM.
+app.get('/api/browser/local/status', async (_req,res) => {
+  try { res.json({ok:true, status:await localBrowser.detect()}); }
+  catch(error:any){ res.status(500).json({ok:false,error:error?.message||'Unable to detect local browsers.'}); }
+});
+app.post('/api/browser/local/dump', async (req,res) => {
+  try {
+    const url=String(req.body?.url||'').trim();
+    if(!url) return res.status(400).json({ok:false,error:'A URL is required.'});
+    const result=await localBrowser.dumpDom(url,{ browserId:req.body?.browserId, timeoutMs:Number(req.body?.timeoutMs)||undefined });
+    res.json({ok:true,result});
+  } catch(error:any) { res.status(502).json({ok:false,error:error?.message||'Local headless browser dump failed.'}); }
+});
 app.post('/api/knowledge/learn', async (req,res) => {
   try {
     const kind=String(req.body?.kind||'lesson') as any;
@@ -2227,7 +2245,7 @@ app.get("/api/llm/models", async (_req, res) => {
       ...option,
       modelExists: await fsPromises.stat(option.modelPath).then(() => true).catch(() => false),
       mmprojExists: option.mmprojPath ? await fsPromises.stat(option.mmprojPath).then(() => true).catch(() => false) : false,
-      compatibilityNote: option.engine === 'qwen3.5' ? 'Qwen3.5-9B requires a model-matched projector. Generic mmproj-BF16.gguf is not auto-selected because it mismatched the installed model at runtime.' : null,
+      compatibilityNote: option.engine === 'qwen3.5' ? 'Qwen3.5-9B (4096 hidden size) requires its model-matched mmproj-BF16.gguf projector. The Qwen 2.5-VL-only mmproj-F16.gguf (3584 hidden size) is not auto-selected for this engine.' : null,
     })));
     res.json({ ok:true, models:enriched });
   } catch (error:any) {
