@@ -134,7 +134,7 @@ export const AppFeaturesGuide: React.FC = () => {
       category: 'Local LLM Inference',
       shortDesc: 'Quantized Qwen local GGUF models are served via llama.cpp CUDA with the vision projector mounted only in Vision Mode.',
       details: [
-        'Local options: Qwen 2.5-VL 7B Q4_K_M + mmproj-F16, Qwen3.5 9B Q4_K_M + a matched mmproj-F16, and Qwen Coder 7B Q5_K_M for code work. All run locally without external cloud dependencies.',
+        'Local options: Qwen 2.5-VL 7B Q4_K_M + mmproj-F16, Qwen3.5 9B Q4_K_M + a matched mmproj-BF16, and Qwen Coder 7B Q5_K_M for code work. All run locally without external cloud dependencies.',
         'llama-server.exe CUDA Backend: Bound to http://127.0.0.1:8080/v1 with 4096 context window and 6 CPU threads.',
         'Pinned 28 GPU Layers: Verified at ~9.2-10.7 tokens/sec; safely avoids the 36-layer VRAM paging performance cliff.',
         'VRAM Mutual Exclusion: Automatically purges ComfyUI cache prior to starting the local Qwen engine to ensure stability on 8GB VRAM.',

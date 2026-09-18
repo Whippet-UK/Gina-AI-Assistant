@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Video, Play, Sparkles, SlidersHorizontal, RefreshCw, Zap,
@@ -830,7 +830,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={handleGenerateVideo}
+              onClick={() => void handleGenerateVideo()}
               disabled={isBusy}
               className={`flex-1 py-3.5 px-4 rounded-md font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg ${
                 isBusy
@@ -1096,8 +1096,18 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
             )}
           </div>
 
+          {/* Compact Iteration \ VRAM Telemetry directly underneath Video Preview */}
+          {telemetry && (
+            <VRAMHistoryGraph
+              telemetry={telemetry}
+              compact={true}
+              onAddLog={onAddLog}
+              onClearCache={onClearCache}
+            />
+          )}
+
           {/* VRAM & Hardware Info Note */}
-          <div className="bg-slate-950/80 border border-slate-800/80 rounded-lg p-3.5 text-[10px] font-mono text-slate-400 space-y-2">
+          <div className="bg-slate-950/80 border border-slate-800/80 rounded-lg p-3 text-[10px] font-mono text-slate-400 space-y-1.5">
             <div className="flex items-center justify-between text-slate-300 font-bold border-b border-slate-800 pb-1">
               <span className="flex items-center gap-1.5 text-emerald-400">
                 <ShieldCheck className="w-3.5 h-3.5" /> 8GB VRAM Hardware Guidance
@@ -1110,14 +1120,6 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
               <li>ComfyUI flags <code className="text-emerald-400">--lowvram --fp8_e4m3fn-text-enc</code> are required.</li>
             </ul>
           </div>
-
-          {telemetry && (
-            <VRAMHistoryGraph
-              telemetry={telemetry}
-              onAddLog={onAddLog}
-              onClearCache={onClearCache}
-            />
-          )}
         </div>
       </div>
 

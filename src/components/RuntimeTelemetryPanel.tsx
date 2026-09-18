@@ -48,4 +48,4 @@ export const RuntimeTelemetryPanel: React.FC<RuntimeTelemetryPanelProps> = ({ te
   </section>;
 };
 
-function Metric({icon,label,value}:{icon:React.ReactNode;label:string;value:string}) { return <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2"><div className="flex items-center gap-1.5 text-slate-500 text-[8px] font-bold tracking-wider">{React.cloneElement(icon as React.ReactElement,{className:'w-3 h-3'})}{label}</div><div className="text-[11px] font-mono font-bold text-slate-200 mt-0.5 truncate">{value}</div></div>; }
+function Metric({icon,label,value}:{icon:React.ReactNode;label:string;value:string}) { return <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-2"><div className="flex items-center gap-1.5 text-slate-500 text-[8px] font-bold tracking-wider">{React.cloneElement(icon as React.ReactElement<{ className?: string }>,{className:'w-3 h-3'})}{label}</div><div className="text-[11px] font-mono font-bold text-slate-200 mt-0.5 truncate">{value}</div></div>; }

@@ -10,7 +10,7 @@ interface LlmStatus { engine: LocalLlmEngine; ready: boolean; running: boolean; 
 const ENGINE_META: Record<LocalLlmEngine, { label:string; model:string; detail:string; vision:boolean }> = {
   qwen: { label:'Qwen 2.5-VL 7B', model:'Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf + mmproj-F16', detail:'Default · Vision + text · primary local assistant', vision:true },
   'qwen-coder': { label:'Qwen Coder 7B', model:'qwen2.5-coder-7b-instruct-q5_k_m.gguf', detail:'Code mode · text-only · projector unloaded', vision:false },
-  'qwen3.5': { label:'Qwen3.5 9B', model:'Qwen3.5-9B-Q4_K_M.gguf + matched mmproj-F16', detail:'General mode · vision + text when projector is present', vision:true }
+  'qwen3.5': { label:'Qwen3.5 9B', model:'Qwen3.5-9B-Q4_K_M.gguf + matched mmproj-BF16', detail:'General mode · vision + text when projector is present', vision:true }
 };
 
 export const AiStudioSuite: React.FC<Props> = ({ onAddLog, view }) => {

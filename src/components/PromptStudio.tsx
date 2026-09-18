@@ -108,7 +108,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
   const [inputImageOpen, setInputImageOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<GinaSettingsTab>('setting');
-  const [vramGraphOpen, setVramGraphOpen] = useState(false);
+  const [vramGraphOpen, setVramGraphOpen] = useState(true);
   // Auto-quality tuning runs after an image is described. Manual changes are tracked
   // so a later description never silently overwrites a user's deliberate setting.
   const manualImageSettings = useRef({
@@ -930,13 +930,6 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
         </div>
       </div>
 
-      {/* Optional VRAM Telemetry Graph Drawer */}
-      {vramGraphOpen && (
-        <div className="bg-[#0d1117] border-b border-[#21262d] p-3 animate-in fade-in">
-          <VRAMHistoryGraph telemetry={telemetry} />
-        </div>
-      )}
-
       {/* Authentic Fooocus Main Workspace */}
       <div
         className={`p-4 sm:p-5 bg-[#0d1117] ${
@@ -979,6 +972,18 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
             resolutionLabel={`${customSize ? width : currentRatioDef.w} × ${customSize ? height : currentRatioDef.h}`}
             ratioLabel={customSize ? 'Custom Size' : currentRatioDef.label}
           />
+
+          {/* Compact Iteration \ VRAM Telemetry directly underneath Image Preview */}
+          {telemetry && vramGraphOpen && (
+            <div className="w-full animate-in fade-in duration-200">
+              <VRAMHistoryGraph
+                telemetry={telemetry}
+                compact={true}
+                onClearCache={handlePurgeVram}
+                onAddLog={onAddLog}
+              />
+            </div>
+          )}
 
           {/* Drawer: Input Image Tabs (Appears when [x] Input Image is checked) */}
           {inputImageOpen && (

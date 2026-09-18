@@ -8,6 +8,7 @@ interface VRAMHistoryGraphProps {
   telemetry: SystemTelemetry;
   onAddLog?: (level: 'INFO' | 'WARN' | 'SEC' | 'RULE', message: string, ruleId?: string) => void;
   onClearCache?: () => void;
+  compact?: boolean;
 }
 
 interface VramHistoryPoint {
@@ -23,9 +24,11 @@ interface VramHistoryPoint {
 export const VRAMHistoryGraph: React.FC<VRAMHistoryGraphProps> = ({
   telemetry,
   onAddLog,
-  onClearCache
+  onClearCache,
+  compact = false
 }) => {
   const { job } = useGenerationJob();
+  const [showDetails, setShowDetails] = useState(false);
   const [history, setHistory] = useState<VramHistoryPoint[]>(() => {
     const now = Date.now();
     const initPoints: VramHistoryPoint[] = [];
@@ -117,8 +120,8 @@ export const VRAMHistoryGraph: React.FC<VRAMHistoryGraphProps> = ({
 
     const container = containerRef.current;
     const width = container.clientWidth || 700;
-    const height = 220;
-    const margin = { top: 24, right: 30, bottom: 32, left: 54 };
+    const height = compact ? 100 : 160;
+    const margin = compact ? { top: 12, right: 16, bottom: 22, left: 45 } : { top: 18, right: 24, bottom: 28, left: 52 };
 
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
@@ -305,149 +308,160 @@ export const VRAMHistoryGraph: React.FC<VRAMHistoryGraphProps> = ({
   const spikes = history.filter(p => p.isSpike || p.vramMB >= 7168);
 
   return (
-    <div id="vram-history-graph-panel" className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 shadow-sm space-y-4">
+    <div id="vram-history-graph-panel" className={`bg-slate-950/80 border border-slate-800/80 rounded-lg ${compact ? 'p-2.5 space-y-2' : 'p-4 space-y-4'} shadow-sm`}>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <Activity className="w-5 h-5 animate-pulse" />
+      <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 ${compact ? 'pb-1.5' : 'pb-3'}`}>
+        <div className="flex items-center gap-2">
+          <div className={`${compact ? 'p-1' : 'p-1.5'} rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20`}>
+            <Activity className={`${compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} animate-pulse`} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-                VRAM History Graph (30-Second Stage Telemetry)
+              <h3 className={`${compact ? 'text-xs' : 'text-sm'} font-bold text-slate-100 uppercase tracking-wider`}>
+                {compact ? 'Iteration \\ VRAM Telemetry' : 'VRAM History Graph (30-Second Stage Telemetry)'}
               </h3>
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                1Hz HIGH RESOLUTION
+              <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                1Hz
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Tracks continuous GPU memory usage and attributes allocation spikes to individual ComfyUI workflow nodes.
-            </p>
+            {!compact && (
+              <p className="text-xs text-slate-400 mt-0.5">
+                Tracks continuous GPU memory usage and attributes allocation spikes to individual ComfyUI workflow nodes.
+              </p>
+            )}
           </div>
         </div>
 
         {/* Quick Stats Badges & Flush Button */}
-        <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
-          <div className="px-2.5 py-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
-            <span className="text-slate-500 text-[10px] block uppercase">30s Peak</span>
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-mono">
+          <div className={`${compact ? 'px-2 py-0.5' : 'px-2.5 py-1'} rounded bg-slate-900 border border-slate-800 text-slate-300 flex items-center gap-1`}>
+            <span className="text-slate-500 text-[9px] uppercase">Live</span>
+            <span className={`font-bold ${telemetry.vramUsedMB >= 7168 ? 'text-rose-400' : 'text-emerald-400'}`}>
+              {(telemetry.vramUsedMB / 1024).toFixed(2)} GB
+            </span>
+          </div>
+          <div className={`${compact ? 'px-2 py-0.5' : 'px-2.5 py-1'} rounded bg-slate-900 border border-slate-800 text-slate-300 flex items-center gap-1`}>
+            <span className="text-slate-500 text-[9px] uppercase">Peak</span>
             <span className={`font-bold ${maxVram >= 7168 ? 'text-rose-400' : 'text-amber-400'}`}>
-              {(maxVram / 1024).toFixed(2)} GB ({maxVram} MB)
+              {(maxVram / 1024).toFixed(2)} GB
             </span>
           </div>
-          <div className="px-2.5 py-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
-            <span className="text-slate-500 text-[10px] block uppercase">30s Avg</span>
-            <span className="text-emerald-400 font-bold">
-              {(avgVram / 1024).toFixed(2)} GB
-            </span>
-          </div>
-          <div className="px-2.5 py-1 rounded bg-slate-950 border border-slate-800 text-slate-300">
-            <span className="text-slate-500 text-[10px] block uppercase">Spikes Detected</span>
-            <span className={`font-bold ${spikes.length > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
-              {spikes.length} events
-            </span>
+          <div className={`${compact ? 'px-2 py-0.5' : 'px-2.5 py-1'} rounded bg-slate-900 border border-slate-800 text-slate-300 flex items-center gap-1`}>
+            <span className="text-slate-500 text-[9px] uppercase">Temp</span>
+            <span className="text-amber-400 font-bold">{telemetry.gpuTempC || 52}°C</span>
           </div>
           {onClearCache && (
             <button
               type="button"
               onClick={onClearCache}
-              className="px-2.5 py-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1.5 transition-colors cursor-pointer text-[10px] font-bold uppercase"
+              className={`${compact ? 'px-2 py-0.5' : 'px-2.5 py-1.5'} rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1 transition-colors cursor-pointer text-[9px] font-bold uppercase`}
               title="Send 'clear cache' signal to ComfyUI /free API"
             >
               <Trash2 className="w-3 h-3 text-rose-400" />
-              Flush VRAM (/free)
+              Flush
+            </button>
+          )}
+          {compact && (
+            <button
+              type="button"
+              onClick={() => setShowDetails(!showDetails)}
+              className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[9px] font-mono transition-colors"
+            >
+              {showDetails ? 'Hide Details' : 'Details'}
             </button>
           )}
         </div>
       </div>
 
       {/* D3 Canvas Container */}
-      <div ref={containerRef} className="w-full bg-slate-950 rounded-lg border border-slate-800/90 p-2 relative overflow-hidden">
+      <div ref={containerRef} className="w-full bg-slate-950 rounded-lg border border-slate-800/90 p-1.5 relative overflow-hidden">
         <svg ref={svgRef} className="w-full h-auto overflow-visible"></svg>
 
         {/* Legend */}
-        <div className="flex flex-wrap items-center justify-end gap-3 text-[10px] font-mono text-slate-400 pt-2 border-t border-slate-900 mt-1">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-            <span>Smooth Allocation</span>
+        <div className={`flex flex-wrap items-center justify-end gap-2.5 ${compact ? 'text-[9px]' : 'text-[10px]'} font-mono text-slate-400 pt-1.5 border-t border-slate-900 mt-1`}>
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span>Allocated</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
-            <span>Active Node Stage</span>
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-sky-400"></span>
+            <span>Active Stage</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
-            <span>VRAM Spike (&gt;600MB jump)</span>
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+            <span>Spike (&gt;600MB)</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-            <span>Critical Pressure (&gt;7.0 GB)</span>
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+            <span>Cage Limit (7.3GB)</span>
           </div>
         </div>
       </div>
 
-      {/* Interactive Node Stage Inspector Card */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-xs">
-        {/* Selected / Current Point Details */}
-        <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-2">
-          <div className="flex items-center justify-between text-slate-300">
-            <span className="flex items-center gap-1.5 font-bold text-sky-400 uppercase text-[11px]">
-              <Layers className="w-3.5 h-3.5" />
-              Stage Memory Attribution
-            </span>
-            <span className="text-[10px] text-slate-500">
-              {selectedPoint ? selectedPoint.timestamp.toLocaleTimeString() : 'Current Live Head'}
-            </span>
+      {/* Interactive Node Stage Inspector Card (shown in full mode, or toggled in compact mode) */}
+      {(!compact || showDetails) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 font-mono text-xs animate-in fade-in duration-200">
+          {/* Selected / Current Point Details */}
+          <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800 space-y-1.5">
+            <div className="flex items-center justify-between text-slate-300">
+              <span className="flex items-center gap-1.5 font-bold text-sky-400 uppercase text-[10px]">
+                <Layers className="w-3 h-3" />
+                Stage Memory Attribution
+              </span>
+              <span className="text-[9px] text-slate-500">
+                {selectedPoint ? selectedPoint.timestamp.toLocaleTimeString() : 'Current Live Head'}
+              </span>
+            </div>
+
+            <div className="space-y-1 text-[10px]">
+              <div className="flex justify-between p-1 rounded bg-slate-900/80 border border-slate-800/80">
+                <span className="text-slate-400">Attributed Stage:</span>
+                <span className="font-bold text-slate-200">
+                  {selectedPoint ? selectedPoint.nodeStage : getNodeStageName(job?.currentNodeId, job?.workflowId)}
+                </span>
+              </div>
+              <div className="flex justify-between p-1 rounded bg-slate-900/80 border border-slate-800/80">
+                <span className="text-slate-400">VRAM Allocation:</span>
+                <span className={`font-bold ${(selectedPoint ? selectedPoint.vramMB : telemetry.vramUsedMB) >= 7168 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                  {((selectedPoint ? selectedPoint.vramMB : telemetry.vramUsedMB) / 1024).toFixed(2)} GB ({selectedPoint ? selectedPoint.vramMB : telemetry.vramUsedMB} MB)
+                </span>
+              </div>
+              <div className="flex justify-between p-1 rounded bg-slate-900/80 border border-slate-800/80">
+                <span className="text-slate-400">GPU Temperature:</span>
+                <span className="text-amber-400 font-bold">
+                  {selectedPoint ? selectedPoint.gpuTempC : telemetry.gpuTempC}°C
+                </span>
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-1.5 text-[11px]">
-            <div className="flex justify-between p-1.5 rounded bg-slate-900/80 border border-slate-800/80">
-              <span className="text-slate-400">Attributed Stage:</span>
-              <span className="font-bold text-slate-200">
-                {selectedPoint ? selectedPoint.nodeStage : getNodeStageName(job?.currentNodeId, job?.workflowId)}
+          {/* Workflow Stage Memory Diagnostic Guide */}
+          <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800 space-y-1.5 text-[10px]">
+            <div className="flex items-center justify-between text-slate-300">
+              <span className="flex items-center gap-1.5 font-bold text-amber-400 uppercase text-[10px]">
+                <ShieldAlert className="w-3 h-3" />
+                Node Spike Analysis & Tips
               </span>
+              <span className="text-[9px] text-slate-500">8GB Optimization</span>
             </div>
-            <div className="flex justify-between p-1.5 rounded bg-slate-900/80 border border-slate-800/80">
-              <span className="text-slate-400">VRAM Allocation:</span>
-              <span className={`font-bold ${(selectedPoint ? selectedPoint.vramMB : telemetry.vramUsedMB) >= 7168 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                {((selectedPoint ? selectedPoint.vramMB : telemetry.vramUsedMB) / 1024).toFixed(2)} GB ({selectedPoint ? selectedPoint.vramMB : telemetry.vramUsedMB} MB)
-              </span>
-            </div>
-            <div className="flex justify-between p-1.5 rounded bg-slate-900/80 border border-slate-800/80">
-              <span className="text-slate-400">GPU Temperature:</span>
-              <span className="text-amber-400 font-bold">
-                {selectedPoint ? selectedPoint.gpuTempC : telemetry.gpuTempC}°C
-              </span>
-            </div>
+
+            <ul className="space-y-1 text-slate-400 text-[10px]">
+              <li className="flex items-start gap-1">
+                <span className="text-amber-400 font-bold">•</span>
+                <span><strong className="text-slate-200">KSampler (Node #5):</strong> Peaks during initial 3D attention tensor allocation.</span>
+              </li>
+              <li className="flex items-start gap-1">
+                <span className="text-amber-400 font-bold">•</span>
+                <span><strong className="text-slate-200">VAEDecode (Node #6):</strong> Large frame batches cause secondary VRAM spikes.</span>
+              </li>
+              <li className="flex items-start gap-1">
+                <span className="text-amber-400 font-bold">•</span>
+                <span><strong className="text-slate-200">Flags:</strong> Requires <code className="text-amber-300">--lowvram --fp8_e4m3fn-text-enc</code>.</span>
+              </li>
+            </ul>
           </div>
         </div>
-
-        {/* Workflow Stage Memory Diagnostic Guide */}
-        <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-2 text-[11px]">
-          <div className="flex items-center justify-between text-slate-300">
-            <span className="flex items-center gap-1.5 font-bold text-amber-400 uppercase text-[11px]">
-              <ShieldAlert className="w-3.5 h-3.5" />
-              Node Spike Analysis & Tips
-            </span>
-            <span className="text-[10px] text-slate-500">8GB Optimization</span>
-          </div>
-
-          <ul className="space-y-1 text-slate-400 text-[10.5px]">
-            <li className="flex items-start gap-1.5">
-              <span className="text-amber-400 font-bold">•</span>
-              <span><strong className="text-slate-200">KSampler (Node #5):</strong> Peaks during initial 3D attention tensor allocation. High resolutions (&gt;512px) produce immediate 2GB+ spikes.</span>
-            </li>
-            <li className="flex items-start gap-1.5">
-              <span className="text-amber-400 font-bold">•</span>
-              <span><strong className="text-slate-200">VAEDecode (Node #6):</strong> Large frame batches (&gt;49 frames) cause secondary VRAM spikes during latent-to-pixel reconstruction.</span>
-            </li>
-            <li className="flex items-start gap-1.5">
-              <span className="text-amber-400 font-bold">•</span>
-              <span><strong className="text-slate-200">CheckpointLoader (Node #1):</strong> Requires <code className="text-amber-300">--lowvram --fp8_e4m3fn-text-enc</code> flags to keep base model under 5.3GB.</span>
-            </li>
-          </ul>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
