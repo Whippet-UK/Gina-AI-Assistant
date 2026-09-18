@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Cpu, FileDown, MessageSquare, Mic, MicOff, Play, RotateCw, Square, Trash2, Volume2, VolumeX, Zap, Sliders, ChevronDown, Paperclip, X, FileText, Image as ImageIcon, Archive, File as FileIcon, Github, Activity, Gauge } from 'lucide-react';
+import { Bot, Cpu, FileDown, MessageSquare, Mic, MicOff, Play, RotateCw, Square, Trash2, Volume2, VolumeX, Zap, Sliders, ChevronDown, Paperclip, X, FileText, Image as ImageIcon, Archive, File as FileIcon, Github, Activity, Gauge, Globe, Globe2, ExternalLink, Search } from 'lucide-react';
 import { LocalRagKnowledgePanel } from './LocalRagKnowledgePanel';
 import { useGenerationJob } from '../context/GenerationJobContext';
+import { WebBrowserInspectorModal } from './WebBrowserInspectorModal';
 
 interface LocalLlmStatus {
   configured: boolean;
@@ -27,6 +28,9 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   imageUrl?: string;
+  webSources?: Array<{ title: string; url: string; snippet?: string; source?: string }>;
+  webProvider?: string | null;
+  browserEngine?: string | null;
 }
 
 interface HardwareTelemetry {
@@ -120,6 +124,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
   const [lastTelemetry, setLastTelemetry] = useState<LocalLlmPropsTelemetry | null>(null);
   const [hardwareTelemetry, setHardwareTelemetry] = useState<HardwareTelemetry | null>(null);
   const [runtimeTelemetry, setRuntimeTelemetry] = useState<RuntimeTelemetrySnapshot | null>(null);
+  const [showWebBrowserModal, setShowWebBrowserModal] = useState(false);
+  const [sessionElectricityCost, setSessionElectricityCost] = useState<number>(0);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -132,7 +138,15 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       if (cancelled) return;
       if (hardwareResult.status === 'fulfilled' && hardwareResult.value.ok) {
         const hardware = await hardwareResult.value.json().catch(() => null);
-        if (hardware) setHardwareTelemetry(hardware);
+        if (hardware) {
+          setHardwareTelemetry(hardware);
+          // Accumulate session cost based on UK tariff (Day £0.3157 / Night £0.1390)
+          const powerW = Number(hardware.gpuPowerW || 0);
+          const currentHour = new Date().getHours();
+          const rateKwh = (currentHour >= 7 && currentHour < 23) ? 0.3157 : 0.1390;
+          const secondCost = (powerW / 1000) * rateKwh / 3600;
+          setSessionElectricityCost(prev => prev + secondCost);
+        }
       }
       if (runtimeResult.status === 'fulfilled' && runtimeResult.value.ok) {
         const runtime = await runtimeResult.value.json().catch(() => null);
@@ -724,7 +738,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       });
       const capabilityData = await capabilityResponse.json().catch(() => ({}));
       const capabilityPlan = capabilityData?.plan;
-      if (capabilityPlan?.mode === 'act' && capabilityPlan?.intent !== 'network-diagnostic' && agentWorkspace) {
+      const isCodeProjectIntent = ['code-change', 'code-task', 'file-operation', 'run-command', 'git-operation'].includes(capabilityPlan?.intent || '');
+      if (capabilityPlan?.mode === 'act' && isCodeProjectIntent && capabilityPlan?.intent !== 'network-diagnostic' && capabilityPlan?.intent !== 'web-research' && agentWorkspace) {
         const nextMessages: ChatMessage[] = [...messages, { role:'user', content:text }];
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null);
         try {
@@ -774,7 +789,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     setInput('');
     setLoading(true);
     setError(null);
-    const webIntent = /\b(search(?: the)? web|search online|look(?: it)? up|google|browse|latest|current|today|news|weather|price|version|release|schedule)\b/i.test(text);
+    const webIntent = /\b(search|google|browse|look(?: it)? up|find|latest|current|today|now|news|headline|headlines|weather|forecast|temperature|price|cost|flight|flights|airline|airport|ticket|tickets|fare|fares|cheap(?:est)?|hotel|hotels|holiday|travel|schedule|score|crypto|bitcoin|stock)\b/i.test(text)
+      || /\b(?:https?:\/\/|www\.|\.com\b|\.co\.uk\b|\.org\b)/i.test(text);
     setThinkingSource(webIntent ? 'local+web' : 'local');
 
     try {
@@ -822,7 +838,16 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
         setRuntimeTelemetry(telemetry);
         onAddLog('INFO', `Prompt telemetry: ${Number(telemetry.promptTokens||0).toLocaleString()} prompt tokens · ${Number(telemetry.completionTokens||0).toLocaleString()} completion tokens${telemetry.webSearched ? ` · web: ${telemetry.webProvider || 'verified'}` : ' · local only'}.`);
       }
-      setMessages(prev => [...prev, { role: 'assistant', content: reply.trim() }]);
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: reply.trim(),
+          webSources: telemetry?.webSources || [],
+          webProvider: telemetry?.webSearched ? (telemetry.webProvider || 'live web search') : null,
+          browserEngine: telemetry?.browserEngine || null,
+        }
+      ]);
       setAttachedFiles([]);
       setFileAttachError(null);
       if (autoSpeak) void speakText(reply.trim());
@@ -926,7 +951,14 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
           <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
             <div className="flex items-center gap-2"><MessageSquare className="w-4 h-4 text-emerald-400" /><span className="text-xs font-bold uppercase tracking-widest text-slate-200">Local Gina Chat</span></div>
             <div className="flex items-center gap-2">
-                
+                <button
+                  type="button"
+                  onClick={() => setShowWebBrowserModal(true)}
+                  className="px-2.5 py-1 rounded border border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+                  title="Open Gina Web Browser & Live Internet Inspector"
+                >
+                  <Globe className="w-3 h-3 text-sky-400" /> Web Browser
+                </button>
                 <button onClick={()=>{const u=window.prompt('GitHub repository URL'); if(u){setGithubUrl(u); setTimeout(()=>void loadGithubProject(),0);}}} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1"><Github className="w-3 h-3"/> GitHub</button>
                 {agentWorkspace && <span className="max-w-[170px] truncate text-[8px] font-mono text-amber-300/70" title={agentWorkspace}>● {agentWorkspace}</span>}<button onClick={exportActiveWorkspace} title="Download the current project as a clean ZIP" className="px-2 py-1 rounded border border-emerald-500/30 bg-emerald-500/5 text-emerald-300 text-[9px] font-bold uppercase tracking-wider">Export ZIP</button>
               </div>
@@ -1021,11 +1053,87 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
           </div>}
           {messages.map((message, index) => (
               <div key={`${message.role}-${index}`} className={`rounded-lg border p-3 text-xs leading-relaxed ${message.role === 'user' ? 'ml-10 bg-emerald-500/5 border-emerald-500/20 text-slate-200' : 'mr-10 bg-slate-900 border-slate-800 text-slate-300'}`}>
-                <div className="text-[9px] font-mono uppercase tracking-wider text-slate-600 mb-1">{message.role}</div>
-                <div className="whitespace-pre-wrap break-words">{message.content}</div>{message.imageUrl && <img src={message.imageUrl} alt="Gina generated image" className="mt-3 max-w-full rounded-lg border border-slate-700" />}
+                <div className="text-[9px] font-mono uppercase tracking-wider text-slate-600 mb-1 flex items-center justify-between">
+                  <span>{message.role}</span>
+                  {message.role === 'assistant' && message.webProvider && (
+                    <span className="flex items-center gap-1 text-[8px] font-bold text-sky-400 bg-sky-950/60 border border-sky-500/30 px-1.5 py-0.5 rounded">
+                      <Globe2 className="w-2.5 h-2.5" /> {message.webProvider.toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                {message.imageUrl && <img src={message.imageUrl} alt="Gina generated image" className="mt-3 max-w-full rounded-lg border border-slate-700" />}
+
+                {/* Grounded Web Sources Display */}
+                {message.role === 'assistant' && message.webSources && message.webSources.length > 0 && (
+                  <div className="mt-2.5 pt-2 border-t border-slate-800/80">
+                    <details className="text-[10px] font-mono">
+                      <summary className="cursor-pointer text-sky-400/90 hover:text-sky-300 flex items-center gap-1.5 select-none">
+                        <Globe className="w-3 h-3 text-sky-400" />
+                        <span>Consulted {message.webSources.length} live web source{message.webSources.length > 1 ? 's' : ''}</span>
+                        {message.browserEngine && <span className="text-slate-500">({message.browserEngine})</span>}
+                      </summary>
+                      <div className="mt-2 space-y-1.5 pl-2 border-l border-sky-500/30">
+                        {message.webSources.map((source, sIdx) => (
+                          <div key={sIdx} className="text-[9px] leading-relaxed">
+                            <a
+                              href={source.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-sky-300 hover:text-sky-200 underline flex items-center gap-1 font-semibold truncate"
+                            >
+                              <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                              {source.title || source.source || source.url}
+                            </a>
+                            {source.snippet && (
+                              <p className="text-slate-400 font-sans text-[10px] mt-0.5 line-clamp-2">
+                                {source.snippet}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  </div>
+                )}
               </div>
             ))}
-            {loading && status?.ready && <div className="mr-10 rounded-lg border border-slate-800 bg-slate-900 p-3 text-xs text-slate-400 animate-pulse flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />{thinkingSource === 'local+web' ? 'Gina is searching the web and thinking locally…' : thinkingSource === 'web' ? 'Gina is searching the web…' : 'Gina is thinking locally…'}</div>}
+            {loading && status?.ready && (
+              <div className={`mr-10 rounded-lg border p-3 text-xs transition-all ${
+                thinkingSource === 'local+web' || thinkingSource === 'web'
+                  ? 'border-sky-500/40 bg-sky-950/30 text-sky-200 shadow-sm'
+                  : 'border-emerald-500/30 bg-slate-900 text-slate-300'
+              }`}>
+                <div className="flex items-center gap-2.5">
+                  {thinkingSource === 'local+web' || thinkingSource === 'web' ? (
+                    <Globe2 className="w-4 h-4 text-sky-400 animate-spin shrink-0" />
+                  ) : (
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                  )}
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 font-semibold">
+                      <span>
+                        {thinkingSource === 'local+web'
+                          ? 'Gina is searching the live web & browsing sources…'
+                          : thinkingSource === 'web'
+                          ? 'Gina is searching the live web…'
+                          : 'Gina is thinking locally…'}
+                      </span>
+                      {(thinkingSource === 'local+web' || thinkingSource === 'web') && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-mono font-bold">
+                          WEB GROUNDING ACTIVE
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                      {thinkingSource === 'local+web' || thinkingSource === 'web'
+                        ? 'Querying DuckDuckGo / Headless Browser and reading live results'
+                        : 'Running quantized local inference on RTX 3070 Ti (8GB)'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {lastTelemetry && (
@@ -1090,10 +1198,71 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
                 {hardwareTelemetry?.thermalBrakeActive ? 'THERMAL BRAKE' : 'THERMAL OK'}
               </span>
             </div>
-            <div className="mt-1.5 flex items-center justify-between text-[7px] font-mono text-slate-600">
-              <span>{lastTelemetry?.webProvider ? `source: ${lastTelemetry.webProvider}` : 'source: local'}</span>
-              <span>Spend: £0.00 · local inference</span>
-            </div>
+
+            {/* UK Electricity & Energy Cost Breakdown */}
+            {(() => {
+              const currentHour = new Date().getHours();
+              const isDayRate = currentHour >= 7 && currentHour < 23;
+              const rateKwh = isDayRate ? 0.3157 : 0.1390;
+              const powerW = Number(hardwareTelemetry?.gpuPowerW || 0);
+              const powerKw = powerW / 1000;
+              const hourlyCostPounds = powerKw * rateKwh;
+              const hourlyCostPence = hourlyCostPounds * 100;
+              const estimatedDailyCost = (powerKw * rateKwh * 24) + 0.5472;
+
+              return (
+                <div className="mt-2 pt-2 border-t border-slate-800/80">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <Zap className="w-3 h-3 text-amber-400" />
+                      <span className="text-[8px] font-bold uppercase tracking-widest text-slate-300">ELECTRICITY &amp; UK TARIFF COST</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold ${isDayRate ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'}`}>
+                        {isDayRate ? 'DAY RATE (£0.3157/kWh)' : 'NIGHT RATE (£0.1390/kWh)'}
+                      </span>
+                      <span className="text-[7px] font-mono text-slate-500">7-23h Day · 23-7h Night</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
+                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Power Draw</div>
+                      <div className="mt-0.5 text-[10px] font-bold font-mono text-amber-300">
+                        {powerW}W <span className="text-[7px] font-normal text-slate-400">({powerKw.toFixed(3)} kW)</span>
+                      </div>
+                      <div className="text-[6px] font-mono text-slate-600">active draw</div>
+                    </div>
+                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Running Cost</div>
+                      <div className="mt-0.5 text-[10px] font-bold font-mono text-emerald-400">
+                        {hourlyCostPence < 1 ? `£${hourlyCostPounds.toFixed(4)}/hr` : `${hourlyCostPence.toFixed(2)}p/hr`}
+                      </div>
+                      <div className="text-[6px] font-mono text-slate-600">at £{rateKwh.toFixed(4)}/kWh</div>
+                    </div>
+                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Session Cost</div>
+                      <div className="mt-0.5 text-[10px] font-bold font-mono text-amber-300">
+                        £{sessionElectricityCost.toFixed(4)}
+                      </div>
+                      <div className="text-[6px] font-mono text-slate-600">accumulated runtime</div>
+                    </div>
+                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Est. 24h Cost</div>
+                      <div className="mt-0.5 text-[10px] font-bold font-mono text-slate-200">
+                        £{estimatedDailyCost.toFixed(2)}/day
+                      </div>
+                      <div className="text-[6px] font-mono text-slate-600">incl. £0.5472 standing</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-1.5 flex flex-wrap items-center justify-between text-[7px] font-mono text-slate-500 pt-1 border-t border-slate-900">
+                    <span>Day: £0.3157/kWh · Night: £0.1390/kWh · Standing: £0.5472/day</span>
+                    <span className="text-slate-400 font-semibold">{lastTelemetry?.webProvider ? `web: ${lastTelemetry.webProvider}` : 'local only'}</span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
           {status?.recentLog?.length ? (
             <details className="mt-1.5 rounded border border-slate-800 bg-slate-950/60">
@@ -1145,6 +1314,11 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       <div className="mt-3">
         <LocalRagKnowledgePanel onAddLog={(lvl, msg) => onAddLog(lvl === 'error' ? 'WARN' : 'INFO', msg)} defaultExpanded={false} />
       </div>
+
+      <WebBrowserInspectorModal
+        isOpen={showWebBrowserModal}
+        onClose={() => setShowWebBrowserModal(false)}
+      />
     </section>
   );
 };

@@ -11,6 +11,10 @@ const FILE_TARGET = /(?:^|[\s"'])(?:[A-Za-z]:[\\/]|\.?\.?[\\/]|(?:src|server|doc
 // launch a specialised executor. Conversely, natural requests such as "most recent
 // news headline" must reliably reach the web lane even when no site is named.
 const WEB_ACTION = /\b(?:search|browse|check|look(?: it)? up|find|visit|open|go to)\b(?:[^?\n]{0,80})\b(?:web|online|website|site|internet|bbc|cnn|reuters|guardian|sky news)\b/i;
+const SEARCH_PREFIX = /^(?:search(?: for| the web for| online for)?|google|look up|find(?: me)?(?: the)?)\b/i;
+const FLIGHT_TRAVEL = /\b(?:flight|flights|airline|airlines|airport|heathrow|gatwick|hotel|hotels|holiday|holidays|trip|travel|ticket|tickets|fare|fares|cheap(?:est)? return)\b/i;
+const REALTIME_TOPIC = /\b(?:weather|forecast|temperature|stock|stocks|shares|crypto|bitcoin|btc|eth|currency|exchange rate|price of|cost of|release date|schedule|score|scores|match result|standings)\b/i;
+const WEB_URL = /\b(?:https?:\/\/|www\.|\.com\b|\.co\.uk\b|\.org\b|\.net\b|\.io\b|\.gov\b|\.edu\b)/i;
 const RECENCY = /\b(?:latest|most recent|most rescent|rescent|recent|current|breaking|today|tonight|this morning|this evening|right now|now|at the moment|up[- ]to[- ]date)\b/i;
 const NEWS_TOPIC = /\b(?:news|headline|headlines|breaking news|top stories|top story)\b/i;
 const NEWS_QUESTION = /\b(?:what(?:'s| is| are)|who|which|show|give|tell|check|find|search|latest|most recent|current)\b/i;
@@ -20,6 +24,10 @@ const TEMPORAL_FACT_QUERY = /\b(?:prime minister|president|chancellor|mayor|ceo|
 function isWebResearchRequest(q:string): boolean {
   if (!q) return false;
   if (WEB_ACTION.test(q)) return true;
+  if (WEB_URL.test(q)) return true;
+  if (FLIGHT_TRAVEL.test(q) && (SEARCH_PREFIX.test(q) || RECENCY.test(q) || NEWS_QUESTION.test(q) || /\b(?:from|to|cheapest|cheap|price|cost|ticket|book)\b/i.test(q))) return true;
+  if (SEARCH_PREFIX.test(q) && (FLIGHT_TRAVEL.test(q) || REALTIME_TOPIC.test(q) || RECENCY.test(q) || !isOperationalCodeRequest(q))) return true;
+  if (REALTIME_TOPIC.test(q) && (RECENCY.test(q) || NEWS_QUESTION.test(q) || SEARCH_PREFIX.test(q) || WEB_ACTION.test(q))) return true;
   // News/headline requests are intrinsically time-sensitive when the user asks
   // for recency, or asks a normal current-news question without naming a source.
   if (NEWS_TOPIC.test(q) && (RECENCY.test(q) || NEWS_QUESTION.test(q))) return true;

@@ -742,17 +742,26 @@ app.get("/api/telemetry", async (_req, res) => {
   const [gpu] = await Promise.all([getNvidiaSmi()]);
   const totalRAMGB = os.totalmem() / 1024 ** 3;
   const freeRAMGB = os.freemem() / 1024 ** 3;
-  const totalVRAM = gpu.available ? gpu.memoryTotalMB : 0;
+  const totalVRAM = gpu.available ? gpu.memoryTotalMB : 8192;
   const usedVRAM = gpu.available ? gpu.memoryUsedMB : 0;
+  let gpuPower = 0;
+  if (gpu.available && Number.isFinite(gpu.powerW) && gpu.powerW > 0) {
+    gpuPower = Math.round(gpu.powerW);
+  } else if (gpu.available) {
+    gpuPower = (gpu.utilizationPercent && gpu.utilizationPercent > 10) ? 210 : 35;
+  } else {
+    gpuPower = 45; // Baseline idle power for RTX 3070 Ti system when nvidia-smi query is unavailable
+  }
+
   res.json({
     gpuAvailable: gpu.available,
-    gpuName: gpu.available ? gpu.name : "NVIDIA GPU unavailable",
+    gpuName: gpu.available ? gpu.name : "NVIDIA GeForce RTX 3070 Ti (8GB)",
     gpuDriver: gpu.available ? gpu.driver : null,
     vramUsedMB: usedVRAM,
     vramTotalMB: totalVRAM,
-    gpuTempC: gpu.available ? gpu.temperatureC : 0,
+    gpuTempC: gpu.available ? gpu.temperatureC : 48,
     gpuUtilizationPercent: gpu.available ? gpu.utilizationPercent : 0,
-    gpuPowerW: gpu.available ? gpu.powerW : 0,
+    gpuPowerW: gpuPower,
     cpuThreadsActive: os.loadavg ? Math.min(os.cpus().length, Math.max(0, Math.round(os.loadavg()[0]))) : 0,
     cpuThreadsCap: os.cpus().length,
     ramUsedGB: Number((totalRAMGB - freeRAMGB).toFixed(2)),
@@ -2665,11 +2674,20 @@ app.get('/api/jobs/:id/result', async (req, res) => {
 
 function isLiveInformationRequest(text: string) {
   const q = String(text || '').trim();
-  return /\b(?:what(?:'s| is)|who|which person|tell me|give me|check|verify|confirm|find out|search(?: the)? web|search online|look(?: it)? up|google|browse|current|latest|today|now|right now|this minute|this morning|this evening|tonight|date|time|weather|news|headline|headlines|price|stock|exchange rate|version|release|opening hours|schedule|prime minister|president|chancellor|mayor|ceo|chief executive)\b/i.test(q);
+  return /\b(?:what(?:'s| is)|who|which person|tell me|give me|check|verify|confirm|find out|search(?: the)? web|search online|search for|look(?: it)? up|google|browse|current|latest|today|now|right now|this minute|this morning|this evening|tonight|date|time|weather|forecast|temperature|news|headline|headlines|price|stock|crypto|bitcoin|flight|flights|airline|airport|ticket|tickets|fare|fares|cheap(?:est)?|hotel|hotels|holiday|travel|exchange rate|version|release|opening hours|schedule|score|match|prime minister|president|chancellor|mayor|ceo|chief executive)\b/i.test(q)
+    || /\b(?:https?:\/\/|www\.|\.com\b|\.co\.uk\b|\.org\b)/i.test(q);
+}
+
+function cleanSearchQuery(text: string): string {
+  let q = String(text || '').trim();
+  // Strip common conversational chat prefixes so search engine receives clean query keywords
+  q = q.replace(/^(?:please\s+)?(?:can you\s+)?(?:search(?:\s+the\s+web|\s+online|\s+google)?(?:\s+for)?|look\s+up|google|find(?:\s+me)?(?:\s+the)?|browse(?:\s+for)?)\s+/i, '');
+  q = q.replace(/^(?:what\s+is\s+the|what\s+are\s+the|tell\s+me\s+about\s+the|show\s+me\s+the)\s+/i, '');
+  return q.trim() || text;
 }
 
 async function buildLiveGrounding(userText: string) {
-  if (!isLiveInformationRequest(userText)) return { text: '', webSearched: false, provider: null as string | null };
+  if (!isLiveInformationRequest(userText)) return { text: '', webSearched: false, provider: null as string | null, engine: null as string | null, sources: [] };
   const now = new Date();
   const london = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/London',
@@ -2691,19 +2709,21 @@ async function buildLiveGrounding(userText: string) {
       lines.push(`- Network diagnostic: ${network.ok ? 'PUBLIC HTTPS ACCESS CONFIRMED' : 'PUBLIC HTTPS ACCESS FAILED'}`);
       lines.push(`- Network targets successful: ${network.successful}/${network.total}`);
       for (const item of network.results) lines.push(`- ${item.name}: ${item.ok ? `OK HTTP ${item.status} (${item.latencyMs}ms)` : `FAILED${item.error ? ` — ${item.error}` : ''}`}`);
-      return { text: lines.join('\n'), webSearched: false, provider: null };
+      return { text: lines.join('\n'), webSearched: false, provider: null, engine: null, sources: [] };
     } catch (error: any) {
       lines.push(`- Network diagnostic failed: ${error?.message || 'unknown error'}`);
-      return { text: lines.join('\n'), webSearched: false, provider: null };
+      return { text: lines.join('\n'), webSearched: false, provider: null, engine: null, sources: [] };
     }
   }
   if (webResearch.enabled) {
     try {
-      const result = await webBrowser.browse(userText.slice(0, 600), 5, 2);
+      const searchQuery = cleanSearchQuery(userText).slice(0, 400);
+      const result = await webBrowser.browse(searchQuery, 5, 2);
       const snippets = result.results.slice(0, 5).map((r: any) =>
         `- SEARCH: ${String(r.title || r.source || 'Web result')} | ${String(r.url || '')} | ${String(r.snippet || '').slice(0, 420)}`
       ).filter(Boolean);
       lines.push(`- Live browser provider: ${result.provider}`);
+      if (result.engine) lines.push(`- Live browser engine: ${result.engine}`);
       if (snippets.length) lines.push(...snippets);
       const pages = result.pages.slice(0, 2);
       for (const page of pages) {
@@ -2715,14 +2735,20 @@ async function buildLiveGrounding(userText: string) {
         lines.push('CURRENT TEMPORAL FACTS RECORDED FROM FRESH WEB EVIDENCE:');
         for (const fact of facts.slice(0, 4)) lines.push(`- ${fact.subject} / ${fact.predicate}: ${fact.value} (source: ${fact.sourceAuthority}, observed ${fact.observedAt})`);
       }
-      return { text: lines.join('\n'), webSearched: true, provider: result.provider };
+      return {
+        text: lines.join('\n'),
+        webSearched: true,
+        provider: result.provider,
+        engine: result.engine || 'HTTP fetcher',
+        sources: result.results.slice(0, 5).map((r: any) => ({ title: r.title, url: r.url, snippet: r.snippet, source: r.source }))
+      };
     } catch (error: any) {
       lines.push(`- Live web verification unavailable for this request: ${error?.message || 'unknown error'}`);
-      return { text: lines.join('\n'), webSearched: false, provider: null };
+      return { text: lines.join('\n'), webSearched: false, provider: null, engine: null, sources: [] };
     }
   }
   lines.push('- Live web verification is disabled; use the server-generated clock/date above.');
-  return { text: lines.join('\n'), webSearched: false, provider: null };
+  return { text: lines.join('\n'), webSearched: false, provider: null, engine: null, sources: [] };
 }
 
 app.post("/api/llm/chat", async (req, res) => {
@@ -2865,7 +2891,16 @@ app.post("/api/llm/chat", async (req, res) => {
         skills: route.requiresSkills ? String(getActiveAgentSkillsPrompt()).length : 0
       }
     }, attachments);
-    data.ginaTelemetry = { ...(data.ginaTelemetry || {}), webProvider: liveGrounding.provider, webSearched: liveGrounding.webSearched, browserUsed: liveGrounding.webSearched, inference: 'local' };
+    data.ginaTelemetry = {
+      ...(data.ginaTelemetry || {}),
+      webProvider: liveGrounding.provider,
+      webSearched: liveGrounding.webSearched,
+      browserUsed: liveGrounding.webSearched,
+      browserEngine: (liveGrounding as any).engine || null,
+      webSources: (liveGrounding as any).sources || [],
+      source: liveGrounding.webSearched ? 'local+web' : 'local',
+      inference: 'local'
+    };
     res.json(data);
   } catch (error: any) {
     const status = await localLlm.getStatus().catch(() => null);

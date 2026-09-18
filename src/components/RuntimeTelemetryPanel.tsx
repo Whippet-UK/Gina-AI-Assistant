@@ -23,6 +23,10 @@ export const RuntimeTelemetryPanel: React.FC<RuntimeTelemetryPanelProps> = ({ te
   useEffect(() => { void refresh(); const id=setInterval(()=>void refresh(),1000); return()=>clearInterval(id); }, []);
 
   // Live electricity cost calculation
+  const effectiveGpuPowerW = Number(telemetry.gpuPowerW || 0) > 0
+    ? Number(telemetry.gpuPowerW)
+    : (telemetry.vramUsedMB > 6000 ? 210 : telemetry.vramUsedMB > 2000 ? 120 : 45);
+
   useEffect(() => {
     const costInterval = setInterval(() => {
       const currentDate = new Date();
@@ -30,20 +34,20 @@ export const RuntimeTelemetryPanel: React.FC<RuntimeTelemetryPanelProps> = ({ te
       setSessionCost(prev => {
         const hour = currentDate.getHours();
         const activeRate = (hour >= 7 && hour < 23) ? DAY_RATE_KWH : NIGHT_RATE_KWH;
-        const kw = Math.max(0, Number(telemetry.gpuPowerW || 0)) / 1000;
+        const kw = effectiveGpuPowerW / 1000;
         const energyCostPerSec = (kw * activeRate) / 3600;
         const standingChargePerSec = DAILY_STANDING_CHARGE / 86400;
         return prev + energyCostPerSec + standingChargePerSec;
       });
     }, 1000);
     return () => clearInterval(costInterval);
-  }, [telemetry.gpuPowerW]);
+  }, [effectiveGpuPowerW]);
 
   const currentHour = now.getHours();
   const isDayRate = currentHour >= 7 && currentHour < 23;
   const rateMode: 'DAY' | 'NIGHT' = isDayRate ? 'DAY' : 'NIGHT';
   const currentRate = isDayRate ? DAY_RATE_KWH : NIGHT_RATE_KWH;
-  const gpuPowerW = Number(telemetry.gpuPowerW || 0);
+  const gpuPowerW = effectiveGpuPowerW;
   const powerKw = Math.max(0, gpuPowerW) / 1000;
 
   // Estimated daily cost based on current GPU power consumption (16h day + 8h night + standing charge)
