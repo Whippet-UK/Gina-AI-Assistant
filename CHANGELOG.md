@@ -1,3 +1,24 @@
+# v1.20.7 — Phase 54 — Live News Grounding Arbitration Fix
+
+- `/server/agent/IntentRouter.ts` — fixed live-news routing for `most recent`, the observed `most rescent` spelling variant, headlines, top stories, and named news sources; web research is resolved before engineering intent.
+- `/server.ts` — added a final server-side live-information arbitration fallback so a natural news/current request cannot fall through to general local chat; the promotion is web-only and cannot enter coding/repair.
+- `/src/components/LocalLlmStudio.tsx` — expanded live-web thinking telemetry to recognize `most recent` and headline wording.
+- `/scripts/test-agent-routing.ts` — added regression cases matching the observed failing requests.
+- `/AGENTS.md` — recorded Phase 54 operating rules and exact edited-file references.
+
+### Phase 54 Exact Edited File Line References
+- `/server/agent/IntentRouter.ts` — **lines 1–60**.
+- `/server.ts` — **lines 2687–2694**.
+- `/src/components/LocalLlmStudio.tsx` — **line 713**.
+- `/scripts/test-agent-routing.ts` — **lines 19–20**.
+- `/AGENTS.md` — **lines 566–579**.
+
+## 2026-09-15 — Phase 54 verification
+
+- TypeScript transpile/syntax checks passed for `server.ts` and `server/agent/IntentRouter.ts`.
+- Deterministic intent-router regression: 8/8 targeted routing cases passed, including the observed `rescent` spelling variant.
+- The fix does not require or change the local Qwen model; it corrects the pre-inference routing/grounding boundary.
+
 # v1.20.7 — Phase 42.1 Intent Routing, Context Firewall & Performance Telemetry
 
 - Added deterministic `server/agent/IntentRouter.ts` so current-web/news, network diagnostics, code/file operations, capability questions and ordinary chat are classified before local inference.
@@ -1839,29 +1860,20 @@ Added a complete local filesystem tool contract matching the requested MCP-style
 - `/AGENTS.md` — **Phase 53 block appended at the end of the file**.
 - `/CHANGELOG.md` — **Phase 53 block appended at the end of the file**.
 
-## Phase 54 — Live News Intent Arbitration Repair — 2026-09-15
+## Phase 55 — Deterministic Live-Web Execution Boundary — 2026-09-15
 
 ### Changed / Added Files
+- Updated `/server/agent/WebResearchService.ts` — **lines 1–210**.
+  - Adds Bing HTML fallback after DuckDuckGo.
+  - Treats a provider as successful only when it returns at least one parsed result.
+  - Reports aggregate provider failures instead of returning an empty result that can be mistaken for success.
+  - Uses bounded 12-second public fetch timeouts.
+- Updated `/server.ts` — **live grounding around lines 2585–2638; `/api/llm/chat` web execution gate around lines 2714–2723**.
+  - Labels retrieved results as already fetched so Qwen does not announce a future search.
+  - Blocks explicit web requests from silently falling through to an unsourced local response when web execution fails.
+  - Returns truthful web-failure telemetry instead of fabricating lack of access or pretending a search occurred.
+- Added `/scripts/test-phase55-web-routing.ts` — **lines 1–15**.
 
-- Updated `/server/agent/IntentRouter.ts` — **lines 1–74**.
-  - Replaced the narrow BBC/source-dependent live-news regex with explicit web-action, recency, news-topic, news-question and public-source intent signals.
-  - `most recent news headline`, `latest news`, current headline requests and generic website checks now enter the real `web-research` route.
-  - Keeps specialised execution gated by intent combinations rather than isolated keywords.
-
-- Updated `/scripts/test-agent-routing.ts` — **lines 18–75**.
-  - Added regressions for generic current-news/headline requests and unnamed website checks.
-
-- Updated `/AGENTS.md` — **Phase 54 block appended at the end**.
-  - Documents the live-news arbitration contract.
-
-### Phase 54 Validation
-
-- TypeScript transpilation: **PASS** for `IntentRouter.ts` and `test-agent-routing.ts`.
-- Deterministic routing cases include generic `most recent news headline` and current headline requests and are expected to resolve to `web-research`.
-- Web requests remain excluded from the autonomous coding execution gate.
-
-### Phase 54 Exact Edited File Line References
-- `/server/agent/IntentRouter.ts` — **lines 1–74**.
-- `/scripts/test-agent-routing.ts` — **lines 18–75**.
-- `/AGENTS.md` — **Phase 54 block appended at the end of the file**.
-- `/CHANGELOG.md` — **Phase 54 block appended at the end of the file**.
+### Phase 55 Validation
+- TypeScript parsing/transpilation: PASS for `WebResearchService.ts`, `server.ts`, and `test-phase55-web-routing.ts`.
+- Routing regression: 5/5 PASS, including `check the web for the prime minister of the uk`.

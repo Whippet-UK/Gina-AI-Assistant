@@ -563,10 +563,25 @@ Rules:
 - `/src/components/VideoStudio.tsx` — **lines 339–350** for the Local AI video-request event bridge.
 - `/scripts/test-agent-routing.ts` — **media/intent regression cases around lines 18–61**.
 
-## Phase 54 — Live News Intent Arbitration Repair — 2026-09-15
+## Phase 54 — Live News Grounding Arbitration Fix — 2026-09-15
 
-- News/headline requests are now classified by intent combinations rather than a narrow source-specific regex.
-- Phrases such as `most recent news headline`, `latest news`, `current top story`, and `what are the latest headlines` must route to `web-research`.
-- Explicit web actions such as `check the website for the latest news` must route to `web-research` even when the site is not named.
-- A bare media noun remains non-generative; specialised executors require explicit action intent.
-- Web research remains mutually exclusive with autonomous coding/file execution at the server action gate.
+- **Live-news variants must route to web research:** IntentRouter recognizes `latest`, `most recent`, common typo `most rescent`, headlines, top stories, and named public news sources before general chat or engineering routing.
+- **Server-side fallback:** `/api/llm/chat` promotes an otherwise-general request containing live-news/source markers into `web-research` without ever promoting it into coding or repair.
+- **Grounding contract:** current-information requests receive server-generated live web results before local Qwen inference; if live search fails, Gina must report the failure rather than inventing a current answer.
+- **UI telemetry:** Local AI's thinking-source indicator recognizes `most recent`, `headline`, and related live-news wording as `local+web`.
+- **Regression:** routing tests include `most recent news headline` and the observed `most rescent news headline` input, plus BBC/news, coding, and media isolation cases.
+
+### Phase 54 Exact Edited File Line References
+- `/server/agent/IntentRouter.ts` — **lines 1–60**.
+- `/server.ts` — **lines 2687–2694** for final server-side live-information arbitration.
+- `/src/components/LocalLlmStudio.tsx` — **line 713** for live-web thinking-source detection.
+- `/scripts/test-agent-routing.ts` — **lines 19–20** for the observed news regression cases.
+- `/AGENTS.md` — **lines 566–579** for this Phase 54 contract.
+
+## Phase 55 — Deterministic Live-Web Execution Boundary
+- Explicit `requiresWeb` requests must execute the brokered web-search lane before local inference.
+- Live web requests may not silently degrade into an unsourced Qwen answer, a fake future search announcement, or a claim that Gina has no internet access.
+- `WebResearchService` uses Brave when configured, then DuckDuckGo HTML and Bing HTML fallbacks; public web search is considered successful only when at least one provider returns results.
+- Retrieved web results are labelled as already fetched so the model answers from them rather than promising to search later.
+- The web lane remains mutually exclusive with autonomous coding/repair execution.
+- Regression coverage must include explicit web-action requests, BBC/news requests, and UK-current-office requests.

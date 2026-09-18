@@ -25,7 +25,7 @@ function assertPublicHttpUrl(input: string): URL {
   return url;
 }
 
-async function fetchText(url: URL, timeoutMs = 15000): Promise<{ response: Response; text: string }> {
+async function fetchText(url: URL, timeoutMs = 12000): Promise<{ response: Response; text: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -88,6 +88,29 @@ function parseDuckDuckGo(html: string, maxResults: number): WebSearchResult[] {
   return results;
 }
 
+
+function parseBing(html: string, maxResults: number): WebSearchResult[] {
+  const results: WebSearchResult[] = [];
+  const blocks = html.split(/<li[^>]+class=[\"']b_algo[\"'][^>]*>/i).slice(1);
+  for (const block of blocks) {
+    if (results.length >= maxResults) break;
+    const match = block.match(/<h2[^>]*>\s*<a[^>]+href=[\"']([^\"']+)[\"'][^>]*>([\s\S]*?)<\/a>/i);
+    if (!match) continue;
+    try {
+      const url = new URL(match[1]);
+      if (!['http:', 'https:'].includes(url.protocol)) continue;
+      const snippetMatch = block.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+      results.push({
+        title: decodeHtml(match[2]),
+        url: url.toString(),
+        snippet: decodeHtml(snippetMatch?.[1] || ''),
+        source: url.hostname
+      });
+    } catch { /* malformed result */ }
+  }
+  return results;
+}
+
 export class WebResearchService {
   readonly enabled: boolean;
 
@@ -132,11 +155,33 @@ export class WebResearchService {
       } catch { /* fallback below */ }
     }
 
-    const endpoint = new URL('https://html.duckduckgo.com/html/');
-    endpoint.searchParams.set('q', clean);
-    const { response, text } = await fetchText(endpoint);
-    if (!response.ok) throw new Error(`Web search failed with HTTP ${response.status}.`);
-    return { query: clean, provider: 'DuckDuckGo', results: parseDuckDuckGo(text, limit) };
+    const providers: Array<() => Promise<WebResearchResult>> = [
+      async () => {
+        const endpoint = new URL('https://html.duckduckgo.com/html/');
+        endpoint.searchParams.set('q', clean);
+        const { response, text } = await fetchText(endpoint);
+        if (!response.ok) throw new Error(`DuckDuckGo HTTP ${response.status}`);
+        return { query: clean, provider: 'DuckDuckGo', results: parseDuckDuckGo(text, limit) };
+      },
+      async () => {
+        const endpoint = new URL('https://www.bing.com/search');
+        endpoint.searchParams.set('q', clean);
+        const { response, text } = await fetchText(endpoint);
+        if (!response.ok) throw new Error(`Bing HTTP ${response.status}`);
+        return { query: clean, provider: 'Bing HTML', results: parseBing(text, limit) };
+      }
+    ];
+    const failures: string[] = [];
+    for (const provider of providers) {
+      try {
+        const result = await provider();
+        if (result.results.length) return result;
+        failures.push(`${result.provider}: no results`);
+      } catch (error: any) {
+        failures.push(error?.message || 'provider failed');
+      }
+    }
+    throw new Error(`All public web search providers failed or returned no results (${failures.join('; ')}).`);
   }
 
   async fetchPage(input: string, maxChars = 30000) {

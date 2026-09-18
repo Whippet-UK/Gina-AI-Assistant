@@ -2595,7 +2595,8 @@ async function buildLiveGrounding(userText: string) {
     'LIVE CONTEXT (server generated at request time; do not guess over it):',
     `- Europe/London local date/time: ${london}`,
     `- UTC timestamp: ${utc}`,
-    '- Instruction: for current/time-sensitive answers, trust this live context over model memory and state the date/time explicitly.'
+    '- Instruction: for current/time-sensitive answers, trust this live context over model memory and state the date/time explicitly.',
+    '- WEB RESULTS ARE ALREADY RETRIEVED BELOW. Do not announce that you will search; answer using the retrieved results.'
   ];
   const networkIntent = /\b(ping|network access|internet access|internet connection|network connection|can you access the internet|test (?:the )?(?:network|internet)|connectivity test|online access)\b/i.test(userText);
   if (networkIntent && webResearch.enabled) {
@@ -2684,7 +2685,14 @@ app.post("/api/llm/chat", async (req, res) => {
 
     // Ground current/time-sensitive requests with a server-side clock plus live web verification.
     // This happens before local inference so the model cannot invent a stale date/time.
-    const route = routeRuntimeIntent(rawLatestUser);
+    const routedIntent = routeRuntimeIntent(rawLatestUser);
+    // Final server-side live-web arbitration. This is deliberately independent of
+    // the React client and catches natural variants such as "most recent news"
+    // even if a future router regression misses the phrase. It can only promote a
+    // request into web research; it can never promote it into coding or repair.
+    const route = routedIntent.intent === 'general-chat' && /\b(?:news|headline|headlines|breaking news|top stories|latest|most recent|current|today|recent|bbc|reuters|guardian|sky news|cnn)\b/i.test(rawLatestUser)
+      ? { ...routedIntent, intent:'web-research' as const, requiresWeb:true, requiresProjectContext:false, requiresSkills:false, confidence:Math.max(routedIntent.confidence, .97), reason:'Server live-information arbitration' }
+      : routedIntent;
     const capabilityRegistry = getCapabilityIntelligenceRegistry();
     const capabilityPlan = planCapabilityIntent(rawLatestUser, capabilityRegistry);
 
@@ -2704,6 +2712,16 @@ app.post("/api/llm/chat", async (req, res) => {
       ? await knowledgeBase.promptContext(rawLatestUser, route.intent === 'code-task' || route.intent === 'file-operation' ? 2400 : 1400).catch(() => '')
       : '';
     const liveGrounding = route.requiresWeb || route.intent === 'network-diagnostic' ? await buildLiveGrounding(rawLatestUser) : { text:'', webSearched:false, provider:null as string|null };
+    // Explicit web requests may never silently fall back to an unsourced local answer.
+    // If the public web lane failed, report the actual failure rather than letting Qwen say
+    // that it will search later or claim it has no internet access.
+    if (route.requiresWeb && !liveGrounding.webSearched) {
+      const failureText = String(liveGrounding.text || 'Live web verification failed.');
+      return res.json({
+        choices:[{message:{role:'assistant',content:`I could not complete the live web search. ${failureText.split('\n').filter((line:string)=>/unavailable|failed|disabled/i.test(line)).join(' ') || 'The configured web search providers did not return a result.'}`}}],
+        ginaTelemetry:{source:'local',webSearched:false,webProvider:liveGrounding.provider,inference:'none',agentExecution:false,webSearchRequired:true,webSearchFailed:true}
+      });
+    }
     const capabilityGrounding = route.intent === 'capability-query'
       ? `${capabilityPrompt(capabilityRegistry)}\nCURRENT REQUEST CAPABILITY PLAN:\n${JSON.stringify(capabilityPlan)}`
       : route.intent === 'code-task' || route.intent === 'file-operation'
