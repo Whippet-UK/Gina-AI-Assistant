@@ -83,7 +83,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
   const [loading, setLoading] = useState(false);
   const [thinkingSource, setThinkingSource] = useState<'local'|'web'|'local+web'>('local');
   const chatAbortRef = useRef<AbortController | null>(null);
-  const { job: generationJob, adoptJob, adoptCompletedOutput, cancelJob } = useGenerationJob();
+  const { job: generationJob, adoptJob, adoptCompletedOutput, updateJobProgress, cancelJob } = useGenerationJob();
   const [aiImageJobId, setAiImageJobId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -578,8 +578,13 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       if (!response.ok || data?.ok === false) throw new Error(data?.error || `Image result check failed (HTTP ${response.status}).`);
       if (data.status === 'FAILED') throw new Error(data.error || 'Local image generation failed.');
       if (data.status === 'CANCELLED') throw new Error('Local image generation was cancelled.');
+
+      if (typeof data.progress === 'number' && updateJobProgress) {
+        updateJobProgress(jobId, data.progress, data.currentStep, data.totalSteps, data.step);
+      }
+
       if (data.ready && data.imageUrl) {
-        adoptCompletedOutput(data.jobId || jobId, data.imageUrl, data.filename, data.workflowId, { __generationAudit: { engine: data.engine, llmModel: data.llmModel, generationModel: data.generationModel, workflowId: data.workflowId } });
+        adoptCompletedOutput(data.jobId || jobId, data.imageUrl, data.filename, data.workflowId || 'sdxl_juggernaut', { prompt: promptText, __generationAudit: { engine: data.engine, llmModel: data.llmModel, generationModel: data.generationModel, workflowId: data.workflowId } });
         setMessages(prev => [...prev, { role: 'assistant', content: usedReference ? `Done — I generated the image from your supplied reference.` : `Done — I generated the image locally from your prompt.`, imageUrl: data.imageUrl }]);
         try {
           await fetch('/api/assets', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ title:`AI Tools · ${new Date().toLocaleString()}`, type:'image', url:data.imageUrl, fileFormat:'PNG', timestamp:new Date().toISOString(), promptUsed:promptText, jobId:data.jobId || jobId, workflowId:data.workflowId || 'sdxl_juggernaut' }) });
@@ -1008,8 +1013,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
             </div>
           )}
 
-          <div className="flex-1 min-h-0 max-h-[520px] overflow-y-scroll custom-scrollbar space-y-3 pr-1">
-            {!messages.length && <div className="h-full min-h-[300px] flex items-center justify-center text-center text-slate-600 text-xs"><div><Zap className="w-6 h-6 mx-auto mb-2 text-slate-700" /><p>Start Qwen locally to chat with Gina.</p><p className="text-[10px] mt-1">No cloud provider is used.</p></div></div>}
+          <div className="flex-1 min-h-[400px] max-h-[600px] overflow-y-scroll custom-scrollbar space-y-3 pr-1">
+            {!messages.length && <div className="h-full min-h-[400px] flex items-center justify-center text-center text-slate-600 text-xs"><div><Zap className="w-6 h-6 mx-auto mb-2 text-slate-700" /><p>Start Qwen locally to chat with Gina.</p><p className="text-[10px] mt-1">No cloud provider is used.</p></div></div>}
             {agentWorkspace && <div className="mb-2 rounded border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[9px] font-mono">
             <div className="flex justify-between"><span className="text-amber-300">GINA CODING WORKSPACE</span><span className="text-slate-500">{agentStatus}</span></div>
             {agentActivity.length > 0 && <div className="mt-1 text-slate-400 truncate">{agentActivity[agentActivity.length-1]}</div>}

@@ -1107,8 +1107,7 @@ async function runAgentTool(action: string, parameters: any) {
     }
     case 'refresh_context': {
       const snapshot = await agentContext.buildSnapshot();
-      if (taskId) await agentCheckpoints.save({ taskId, prompt:userPrompt, status: verification?.ok === false ? 'paused' : 'completed', step: steps.length, steps, finalSummary });
-  await agentMemory.remember({ kind:'result', key:'context_refresh', value:`Project context refreshed at ${snapshot.generatedAt}`, source:'agent' });
+      await agentMemory.remember({ kind:'result', key:'context_refresh', value:`Project context refreshed at ${snapshot.generatedAt}`, source:'agent' });
       return { refreshedAt:snapshot.generatedAt, primaryFiles:snapshot.primaryFiles, workflowSummary:snapshot.workflowSummary };
     }
     case 'read_text_file': {
@@ -1244,7 +1243,7 @@ async function runAgentTool(action: string, parameters: any) {
       const query = String(parameters?.query || '').trim();
       if (!query) throw new Error('resolve_location requires a place, address, Plus Code or landmark query.');
       const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=${encodeURIComponent(query)}`;
-      const response = await fetch(url, { headers:{'User-Agent':'Gina-AI-Factory/1.18.8 local-agent'}, signal:AbortSignal.timeout(15000) });
+      const response = await fetch(url, { headers:{'User-Agent':'Gina-AI-Factory/1.18.8 local-agent'}, signal:AbortSignal.timeout(30000) });
       if (!response.ok) throw new Error(`Location lookup failed (HTTP ${response.status}).`);
       const data = await response.json() as any[];
       return { query, results:Array.isArray(data) ? data.map(x=>({displayName:x.display_name,lat:x.lat,lon:x.lon,type:x.type,category:x.category,boundingBox:x.boundingbox})) : [], source:'OpenStreetMap Nominatim', note:'Geocoding/reference lookup only; this does not claim to provide satellite imagery.' };
@@ -1333,7 +1332,7 @@ async function runAgentTool(action: string, parameters: any) {
       const token = String(parameters?.token || GITHUB_TOKEN);
       const match = remote.stdout.trim().match(/github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?$/i);
       if (!match) throw new Error('Origin is not a GitHub repository.');
-      const response = await fetch(`https://api.github.com/repos/${match[1]}/${match[2]}/pulls`, { method:'POST', headers:{Authorization:`Bearer ${token}`,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','Content-Type':'application/json'}, body:JSON.stringify({title,body,head,base}), signal:AbortSignal.timeout(15000) });
+      const response = await fetch(`https://api.github.com/repos/${match[1]}/${match[2]}/pulls`, { method:'POST', headers:{Authorization:`Bearer ${token}`,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','Content-Type':'application/json'}, body:JSON.stringify({title,body,head,base}), signal:AbortSignal.timeout(30000) });
       const data = await response.json();
       if (!response.ok) throw new Error(`GitHub PR failed (HTTP ${response.status}): ${data?.message || 'unknown error'}`);
       return {number:data.number,url:data.html_url,state:data.state,title:data.title};
@@ -1672,7 +1671,7 @@ app.get('/mcp', (_req, res) => {
 app.post('/mcp', express.json({ limit:'2mb' }), async (req, res) => {
   const response = await mcpServer.handle(req.body);
   if (response === undefined) return res.status(202).end();
-  res.type('application/json').status(response.error ? 400 : 200).json(response);
+  res.type('application/json').status('error' in response && response.error ? 400 : 200).json(response);
 });
 
 app.post('/api/agent/tool', async (req, res) => {
@@ -1690,7 +1689,7 @@ app.post('/api/agent/tool', async (req, res) => {
     }
     const result = await runAgentTool(action, parameters);
     auditAgent(action, parameters, true, result);
-    const failed = result && (result.ok === false || Number(result.exitCode) > 0);
+    const failed = Boolean(result && ((result as any).ok === false || Number((result as any).exitCode) > 0));
     await recordCapabilityOutcome(GINA_ROOT, action, !failed, result);
     res.json({ ok:!failed, action, parameters, result });
   } catch (error:any) {
@@ -2609,7 +2608,17 @@ app.get('/api/jobs/:id/result', async (req, res) => {
     if (job.status !== 'COMPLETED' && job.promptId) {
       job = await reconcileComfyJobFromHistory(job);
     }
-    if (job.status !== 'COMPLETED' || !job.promptId) return res.json({ ok: true, status: job.status, ready: false });
+    if (job.status !== 'COMPLETED' || !job.promptId) {
+      return res.json({
+        ok: true,
+        status: job.status,
+        ready: false,
+        progress: job.progress ?? 0,
+        currentStep: job.currentStep,
+        totalSteps: job.totalSteps,
+        step: job.step
+      });
+    }
     const historyResponse = await fetch(`${COMFY_URL}/history/${encodeURIComponent(job.promptId)}`, { signal: AbortSignal.timeout(8000) });
     if (!historyResponse.ok) return res.status(historyResponse.status).json({ ok: false, error: `ComfyUI returned HTTP ${historyResponse.status}.` });
     const history = await historyResponse.json() as Record<string, any>;
@@ -2621,7 +2630,17 @@ app.get('/api/jobs/:id/result', async (req, res) => {
         for (const file of values) if (file?.filename) images.push(file);
       }
     }
-    if (!images.length) return res.json({ ok: true, status: job.status, ready: false });
+    if (!images.length) {
+      return res.json({
+        ok: true,
+        status: job.status,
+        ready: false,
+        progress: job.progress ?? 0,
+        currentStep: job.currentStep,
+        totalSteps: job.totalSteps,
+        step: job.step
+      });
+    }
     const file = images[0];
     try { await assertGeneratedImageDimensions(file, Number(job.parameters?.width), Number(job.parameters?.height)); } catch (validationError: any) {
       const message = validationError?.message || 'Generated image failed dimension validation.';
@@ -4049,7 +4068,7 @@ async function runGifSequentialStory(parentJob: any) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: built.workflow, client_id: comfyWebSocket.clientId }),
-        signal: AbortSignal.timeout(15000)
+        signal: AbortSignal.timeout(30000)
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.prompt_id) {
@@ -4138,7 +4157,7 @@ async function runGifSequentialStory(parentJob: any) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt: rifeBuilt.workflow, client_id: comfyWebSocket.clientId }),
-            signal: AbortSignal.timeout(15000)
+            signal: AbortSignal.timeout(30000)
           });
           const rifeData = await rifeResponse.json().catch(() => ({}));
           if (!rifeResponse.ok || !rifeData.prompt_id) {

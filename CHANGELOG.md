@@ -1,3 +1,73 @@
+# v1.20.7 — Phase 56 — UI Sizing, Web Timeout, Image Transfer & Electricity Cost Telemetry
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    <div className="flex-1 min-h-[400px] max-h-[600px] overflow-y-scroll custom-scrollbar space-y-3 pr-1">
+      {!messages.length && <div className="h-full min-h-[400px] flex items-center justify-center text-center text-slate-600 text-xs">...</div>}
+    ```
+    and in `pollGeneratedImage`:
+    ```tsx
+    if (typeof data.progress === 'number' && updateJobProgress) {
+      updateJobProgress(jobId, data.progress, data.currentStep, data.totalSteps, data.step);
+    }
+    if (data.ready && data.imageUrl) {
+      adoptCompletedOutput(data.jobId || jobId, data.imageUrl, data.filename, data.workflowId || 'sdxl_juggernaut', { prompt: promptText, ... });
+    }
+    ```
+  - **Why:** Increased chat messages container min-height to 400px and max-height to 600px for clear response visibility. Ensured progress updates are emitted and `adoptCompletedOutput` transfers finished images to Image Creation Studio.
+
+- **Target File Path:** `/server.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    AbortSignal.timeout(30000) // Increased from 15000ms across web fetchers and API calls
+    ```
+    and in `/api/jobs/:id/result`:
+    ```typescript
+    res.json({ ready: false, status: job.status, progress: job.progress || 0, currentStep: job.currentStep, totalSteps: job.totalSteps, step: job.step });
+    ```
+  - **Why:** Prevent Chromium/HTTP navigation timeouts by increasing request timeout to 30000ms, and expose live progress on result polling.
+
+- **Target File Path:** `/server/agent/WebBrowserService.ts` & `/server/agent/WebResearchService.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    const timeout = setTimeout(() => { ... }, 30000); // 30s timeout
+    signal: AbortSignal.timeout(30000)
+    ```
+  - **Why:** Increased web browser process and web research HTTP request timeouts from 15000ms to 30000ms.
+
+- **Target File Path:** `/src/context/GenerationJobContext.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    updateJobProgress: (jobId: string, progress: number, currentStep?: number, totalSteps?: number, step?: string) => void;
+    // Window custom event dispatch:
+    window.dispatchEvent(new CustomEvent('gina:job-progress', { detail: { jobId, progress, currentStep, totalSteps, step } }));
+    window.dispatchEvent(new CustomEvent('gina:job-completed', { detail: { jobId, imageUrl, filename, workflowId } }));
+    ```
+  - **Why:** Expose `updateJobProgress` and dispatch `gina:job-progress` and `gina:job-completed` events so image generation progress and completion are synchronized across studios.
+
+- **Target File Path:** `/src/components/RuntimeTelemetryPanel.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    // Electricity Cost Calculator: Day = £0.3157/kWh (7 AM - 11 PM), Night = £0.1390/kWh (11 PM - 7 AM), Daily standing charge = £0.5472
+    const currentHour = new Date().getHours();
+    const isDayTariff = currentHour >= 7 && currentHour < 23;
+    const unitRate = isDayTariff ? 0.3157 : 0.1390;
+    const standingCharge = 0.5472;
+    const powerW = Math.max(10, telemetry?.gpuPowerW || (telemetry?.isGenerating ? 220 : 65));
+    const hourlyCost = (powerW / 1000) * unitRate;
+    const dailyCost = (standingCharge + (16 * (powerW / 1000) * 0.3157) + (8 * (powerW / 1000) * 0.1390));
+    ```
+  - **Why:** Added UK dual-rate electricity cost calculator showing current hourly rate, daily estimated cost, and active tariff period (Day/Night).
+
+- **Target File Path:** `/src/components/Header.tsx` & `/src/App.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    <button onClick={onOpenTelemetry} className="...">TELEMETRY</button>
+    // App.tsx modal rendering for RuntimeTelemetryPanel and gpuPowerW polling
+    ```
+  - **Why:** Added the global `TELEMETRY` button to Header and rendered the RuntimeTelemetryPanel modal in App.tsx.
+
 # v1.20.7 — Phase 54 — Live News Grounding Arbitration Fix
 
 - `/server/agent/IntentRouter.ts` — fixed live-news routing for `most recent`, the observed `most rescent` spelling variant, headlines, top stories, and named news sources; web research is resolved before engineering intent.
@@ -2027,4 +2097,29 @@ Added a complete local filesystem tool contract matching the requested MCP-style
 - `node --experimental-strip-types --check server/browser/LocalBrowserService.ts`: **PASS** (syntax-valid TypeScript).
 - `node --experimental-strip-types --check server.ts`: **PASS** after the import/instance/route additions.
 - No model or binary downloads; detection is read-only `fs.stat`/`fs.readdir` against local paths only.
+
+## GitHub Import Migration Fixes — 2026-09-18
+
+- **Target File Path:** `/src/routes/imageroute.ts`, `/src/routes/imageRoute.js`
+- **Exact Code Change:** Removed misplaced, obsolete client-side route duplicates.
+- **Why:** The authoritative server route exists at `/server/routes/imageRoute.ts` (mounted via `/api/llm`). The misplaced duplicate files under `src/routes/` triggered a TypeScript compilation error (`TS2307: Cannot find module '../llm/LocalLlmManager.ts'`).
+
+- **Target File Path:** `/server.ts`
+- **Exact Code Change:**
+  ```typescript
+  // Removed out-of-scope variables from refresh_context:
+  case 'refresh_context': {
+    const snapshot = await agentContext.buildSnapshot();
+    await agentMemory.remember({ kind:'result', key:'context_refresh', value:`Project context refreshed at ${snapshot.generatedAt}`, source:'agent' });
+    return { refreshedAt:snapshot.generatedAt, primaryFiles:snapshot.primaryFiles, workflowSummary:snapshot.workflowSummary };
+  }
+
+  // Guarded JSON-RPC error property check:
+  res.type('application/json').status('error' in response && response.error ? 400 : 200).json(response);
+
+  // Cast result properties safely for tool failure check:
+  const failed = Boolean(result && ((result as any).ok === false || Number((result as any).exitCode) > 0));
+  ```
+- **Why:** Resolved TypeScript compiler errors (`tsc --noEmit`) blocking `lint_applet` and type-checking during application boot and migration verification.
+
 

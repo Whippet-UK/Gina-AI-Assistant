@@ -44,6 +44,7 @@ interface GenerationJobContextValue {
   cancelJob: () => Promise<void>;
   adoptJob: (jobId: string) => Promise<GinaJob | null>;
   adoptCompletedOutput: (jobId: string, imageUrl: string, filename?: string, workflowId?: string, parameters?: Record<string, any>) => void;
+  updateJobProgress: (jobId: string, progress: number, currentStep?: number, totalSteps?: number, step?: string) => void;
   refreshJob: () => Promise<void>;
   clearCurrentOutput: () => void;
 }
@@ -172,14 +173,20 @@ export const GenerationJobProvider: React.FC<{
     source.addEventListener('progress', (event) => {
       if (activeJobIdRef.current !== jobId) return;
       const data = JSON.parse((event as MessageEvent).data);
+      const progressPercent = data.max ? Math.min(100, Math.round((data.value / data.max) * 100)) : 0;
       setJob(prev => prev && prev.id === jobId ? {
         ...prev,
         status: prev.status === 'COMPLETED' ? 'COMPLETED' : (prev.status === 'FAILED' ? 'FAILED' : 'RUNNING'),
-        progress: data.max ? Math.min(100, Math.round((data.value / data.max) * 100)) : prev.progress,
+        progress: data.max ? progressPercent : prev.progress,
         currentStep: data.value,
         totalSteps: data.max,
         step: data.max && data.value >= data.max ? 'Finalising output…' : prev.step
       } : prev);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('gina:job-progress', {
+          detail: { jobId, progress: progressPercent, currentStep: data.value, totalSteps: data.max, step: data.max && data.value >= data.max ? 'Finalising output…' : undefined }
+        }));
+      }
     });
 
     source.addEventListener('node_executing', (event) => {
@@ -429,10 +436,38 @@ export const GenerationJobProvider: React.FC<{
         createdAt: new Date().toISOString(),
         completedAt: new Date().toISOString(),
         outputs: [syntheticOutput],
-        parameters: {}
+        parameters: parameters || {}
       },
       outputs: [syntheticOutput]
     });
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gina:job-progress', {
+        detail: { jobId, progress: 100, status: 'COMPLETED' }
+      }));
+      window.dispatchEvent(new CustomEvent('gina:job-completed', {
+        detail: { jobId, imageUrl, filename, workflowId }
+      }));
+    }
+  }, []);
+
+  const updateJobProgress = useCallback((jobId: string, progress: number, currentStep?: number, totalSteps?: number, step?: string) => {
+    setJob(prev => {
+      if (!prev || prev.id !== jobId) return prev;
+      return {
+        ...prev,
+        status: prev.status === 'COMPLETED' ? 'COMPLETED' : (prev.status === 'FAILED' ? 'FAILED' : 'RUNNING'),
+        progress: Math.min(100, Math.max(0, Math.round(progress))),
+        currentStep: currentStep ?? prev.currentStep,
+        totalSteps: totalSteps ?? prev.totalSteps,
+        step: step ?? prev.step
+      };
+    });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gina:job-progress', {
+        detail: { jobId, progress, currentStep, totalSteps, step }
+      }));
+    }
   }, []);
 
   const cancelJob = useCallback(async () => {
@@ -491,6 +526,7 @@ export const GenerationJobProvider: React.FC<{
       cancelJob,
       adoptJob,
       adoptCompletedOutput,
+      updateJobProgress,
       refreshJob,
       clearCurrentOutput
     }}>

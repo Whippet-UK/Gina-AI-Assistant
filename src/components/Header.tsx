@@ -5,6 +5,7 @@ import { APP_VERSION } from '../version';
 interface HeaderProps {
   onRunAudit: () => void;
   onOpenManifest: () => void;
+  onOpenTelemetry?: () => void;
   isAuditing: boolean;
   activeSavePoint: string;
 }
@@ -12,6 +13,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   onRunAudit,
   onOpenManifest,
+  onOpenTelemetry,
   isAuditing,
   activeSavePoint
 }) => {
@@ -74,6 +76,17 @@ export const Header: React.FC<HeaderProps> = ({
             <RefreshCw className={`w-3.5 h-3.5 ${isAuditing ? 'animate-spin' : ''}`} />
             {isAuditing ? 'AUDITING...' : 'RUN AUDIT'}
           </button>
+
+          {onOpenTelemetry && (
+            <button
+              onClick={onOpenTelemetry}
+              className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded text-xs font-medium transition-all active:scale-95 cursor-pointer uppercase tracking-tight"
+              title="Open Live Runtime Telemetry & Electricity Calculator"
+            >
+              <Cpu className="w-3.5 h-3.5 text-emerald-400" />
+              TELEMETRY
+            </button>
+          )}
 
           <button
             onClick={onOpenManifest}

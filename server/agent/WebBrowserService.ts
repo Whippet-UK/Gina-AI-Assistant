@@ -182,7 +182,7 @@ export class WebBrowserService {
     return { title, content: clean };
   }
 
-  private async fetchWithChromium(url: string, chromePath: string, maxChars = 30000, timeoutMs = 15000): Promise<BrowserPage> {
+  private async fetchWithChromium(url: string, chromePath: string, maxChars = 30000, timeoutMs = 30000): Promise<BrowserPage> {
     return new Promise((resolve, reject) => {
       const args = [
         '--headless=new',

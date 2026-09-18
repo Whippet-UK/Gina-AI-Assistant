@@ -17,6 +17,7 @@ import { VRAMWarningToast } from './components/VRAMWarningToast';
 import { LocalLlmStudio } from './components/LocalLlmStudio';
 import { WorkspaceErrorBoundary } from './components/WorkspaceErrorBoundary';
 import { ComfyUIStatusIndicator } from './components/WanDiagnostic';
+import { RuntimeTelemetryPanel } from './components/RuntimeTelemetryPanel';
 import { LogEntry, SystemTelemetry } from './types';
 import { Aida64Hud } from './components/Aida64Hud';
 import { APP_VERSION, ACTIVE_SAVE_POINT_ID } from './version';
@@ -37,7 +38,8 @@ export default function App() {
   const [telemetry, setTelemetry] = useState<SystemTelemetry>({
     vramUsedMB: 5120, vramTotalMB: 7372, gpuTempC: 58,
     cpuThreadsActive: 4, cpuThreadsCap: 4, ramUsedGB: 14.2,
-    ramTotalGB: 32.0, ssdFreeGB: 168.4, thermalBrakeActive: false
+    ramTotalGB: 32.0, ssdFreeGB: 168.4, thermalBrakeActive: false,
+    gpuPowerW: 0
   });
   const [logs, setLogs] = useState<LogEntry[]>([
     { id: '1', timestamp: new Date().toISOString().slice(11, 23), level: 'INFO', message: 'Gina AI Factory Engine Dashboard initialized successfully.' },
@@ -127,7 +129,8 @@ export default function App() {
           vramUsedMB: Number(data.vramUsedMB || 0), vramTotalMB: Number(data.vramTotalMB || 0),
           gpuTempC: Number(data.gpuTempC || 0), cpuThreadsActive: Number(data.cpuThreadsActive || 0),
           cpuThreadsCap: Number(data.cpuThreadsCap || 0), ramUsedGB: Number(data.ramUsedGB || 0),
-          ramTotalGB: Number(data.ramTotalGB || 0), ssdFreeGB: prev.ssdFreeGB, thermalBrakeActive: !!data.thermalBrakeActive
+          ramTotalGB: Number(data.ramTotalGB || 0), ssdFreeGB: prev.ssdFreeGB, thermalBrakeActive: !!data.thermalBrakeActive,
+          gpuPowerW: Number(data.gpuPowerW || 0)
         }));
         const errRes = await fetch('/api/comfy/error-logs', { cache: 'no-store' });
         if (errRes.ok && !cancelled) {
@@ -184,6 +187,7 @@ interface AppContentProps {
 
 function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCache, handleRunAudit, isAuditing, activeSavePoint, isCooldownActive, cooldownRemainingSec, isManifestOpen, setIsManifestOpen }: AppContentProps) {
   const [activeView, setActiveView] = useState<'create' | 'video' | 'gif' | 'streaminject' | 'music' | 'aida64' | 'shorts' | 'assets' | 'jobs' | 'llm' | 'system'>('create');
+  const [isTelemetryOpen, setIsTelemetryOpen] = useState<boolean>(false);
   const { job, outputLoading } = useGenerationJob();
   const { updatePromptStudio } = useProjectState();
   const [stagedAida64Reference, setStagedAida64Reference] = useState<{ filename: string; name: string; bytes: number; previewUrl: string } | null>(null);
@@ -224,7 +228,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
     <div className="min-h-screen bg-[#020617] text-[#c9d1d9] font-sans">
       <VRAMWarningToast telemetry={telemetry} thresholdMB={7168} isCooldownActive={isCooldownActive} cooldownRemainingSec={cooldownRemainingSec} onClearCache={() => handleClearCache(false)} />
       <div className="max-w-[1500px] mx-auto px-4 md:px-6 py-4">
-        <Header onRunAudit={handleRunAudit} onOpenManifest={() => setIsManifestOpen(true)} isAuditing={isAuditing} activeSavePoint={activeSavePoint} />
+        <Header onRunAudit={handleRunAudit} onOpenManifest={() => setIsManifestOpen(true)} onOpenTelemetry={() => setIsTelemetryOpen(true)} isAuditing={isAuditing} activeSavePoint={activeSavePoint} />
         <div className="sticky top-0 z-20 mt-4 mb-6 -mx-2 px-2 py-2 bg-[#020617]/95 backdrop-blur border-y border-slate-800/80">
           <nav className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
             {navItems.map(({ id, label, icon: Icon, isGenerating }) => (
@@ -291,6 +295,11 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
 
         <footer className="border-t border-slate-800 mt-8 pt-4 pb-6 text-center text-[10px] text-slate-600">Gina AI Factory v{APP_VERSION} · Local-first · ComfyUI + llama.cpp execution backends · C:\Gina_AI\</footer>
       </div>
+      {isTelemetryOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <RuntimeTelemetryPanel telemetry={telemetry} onClose={() => setIsTelemetryOpen(false)} />
+        </div>
+      )}
       <RestoreManifestModal isOpen={isManifestOpen} onClose={() => setIsManifestOpen(false)} activeSavePoint={activeSavePoint} />
     </div>
   );

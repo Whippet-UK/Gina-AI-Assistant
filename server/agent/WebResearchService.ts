@@ -25,7 +25,7 @@ function assertPublicHttpUrl(input: string): URL {
   return url;
 }
 
-async function fetchText(url: URL, timeoutMs = 12000): Promise<{ response: Response; text: string }> {
+async function fetchText(url: URL, timeoutMs = 30000): Promise<{ response: Response; text: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -140,7 +140,7 @@ export class WebResearchService {
         endpoint.searchParams.set('count', String(limit));
         const response = await fetch(endpoint, {
           headers: { Accept: 'application/json', 'X-Subscription-Token': braveKey },
-          signal: AbortSignal.timeout(15000)
+          signal: AbortSignal.timeout(30000)
         });
         if (response.ok) {
           const data: any = await response.json();
