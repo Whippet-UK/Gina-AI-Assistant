@@ -1,5 +1,5 @@
 export interface HardwareMetric { name: string; value: string; subtext: string; iconName: string; }
-export interface SystemTelemetry { vramUsedMB: number; vramTotalMB: number; gpuTempC: number; cpuThreadsActive: number; cpuThreadsCap: number; ramUsedGB: number; ramTotalGB: number; ssdFreeGB: number; thermalBrakeActive: boolean; gpuPowerW?: number; }
+export interface SystemTelemetry { vramUsedMB: number; vramTotalMB: number; gpuTempC: number; cpuThreadsActive: number; cpuThreadsCap: number; ramUsedGB: number; ramTotalGB: number; ssdFreeGB: number; thermalBrakeActive: boolean; gpuPowerW?: number; cpuPowerW?: number | null; otherHardwarePowerW?: number; componentDcPowerW?: number; psuEfficiency?: number; estimatedWallPowerW?: number; systemPowerW?: number; powerSource?: string; }
 export interface RuleSafeguard { id: string; range: string; category: string; title: string; rules: string[]; severity: 'CRITICAL'|'HIGH'|'MEDIUM'|'STANDARD'; locked: boolean; }
 export interface LifecyclePhase { phase: number; name: string; status: 'COMPLETED'|'IN_PROGRESS'|'PENDING'; details: string; }
 export interface RestorePoint { id: string; label: string; description: string; timestamp: string; status: 'ACTIVE'|'LOCKED'|'PENDING'; }

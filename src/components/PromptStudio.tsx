@@ -167,6 +167,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     filename: string;
     previewUrl: string;
   } | null>(null);
+  const [additiveEditOnly, setAdditiveEditOnly] = useState(true);
   const [imageWeight, setImageWeight] = useState(0.85);
   const [stopAt, setStopAt] = useState(0.85);
   const [uploadingReference, setUploadingReference] = useState(false);
@@ -498,7 +499,14 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     if (!cfg.promptInput.trim() || !selectedWorkflow || isBusy) return;
     setSelectedHistoryUrl(null);
 
-    const { positive, negative } = buildFinalPrompt(cfg.promptInput);
+    const { positive: rawPositive, negative: rawNegative } = buildFinalPrompt(cfg.promptInput);
+    const additiveRequested = Boolean(referenceImage && additiveEditOnly);
+    const positive = additiveRequested
+      ? `SOURCE PRESERVATION: keep the supplied image unchanged except for the newly requested additions. Preserve the existing subject, whippet, pose, fur, camera, background, lighting, colours and composition. ADD ONLY: ${rawPositive}`
+      : rawPositive;
+    const negative = additiveRequested
+      ? `${rawNegative ? `${rawNegative}, ` : ''}do not alter, remove, replace, restyle, recolour, move, resize or redesign existing content; no global changes`
+      : rawNegative;
     const bound: Record<string, any> = { ...parameters };
 
     // Prompt bindings
@@ -522,7 +530,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     const hasRef = Boolean(referenceImage);
     const hasMask = Boolean(referenceImage && inpaintMask);
     // Inpainting inside the mask requires adequate denoise (0.85) to cleanly transform dark fur to white, while SetLatentNoiseMask protects unmasked background 100%
-    const effectiveDenoise = hasMask ? 0.85 : hasRef ? denoise : 1.0;
+    const effectiveDenoise = hasMask ? 0.85 : hasRef ? (additiveRequested ? 0.32 : denoise) : 1.0;
     if (controls.some((c) => c.key === 'denoise')) bound.denoise = effectiveDenoise;
     if (controls.some((c) => c.key === 'batch_size')) bound.batch_size = imageNumber;
 
@@ -577,7 +585,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
 
     onAddLog(
       'INFO',
-      `[Gina Image Studio] Generating with ${workflowModelLabel} (${effectiveWidth}×${effectiveHeight}, ${steps} steps, seed ${effectiveSeed}${hasRef ? `, ref: ${referenceImage.filename}, denoise ${effectiveDenoise}` : ''}${hasMask ? `, mask: ${inpaintMask.filename}` : ''}). Styles: [${selectedStyles.join(', ')}]${highPrecisionText ? ', HIGH PRECISION / FLUX.1 LITE' : ''}`
+      `[Gina Image Studio] Generating with ${workflowModelLabel} (${effectiveWidth}×${effectiveHeight}, ${steps} steps, seed ${effectiveSeed}${hasRef ? `, ref: ${referenceImage.filename}, denoise ${effectiveDenoise}` : ''}${hasMask ? `, mask: ${inpaintMask.filename}` : ''}${additiveRequested ? ', ADD-ONLY / SOURCE PRESERVATION' : ''}). Styles: [${selectedStyles.join(', ')}]${highPrecisionText ? ', HIGH PRECISION / FLUX.1 LITE' : ''}`
     );
 
     await startJob(targetWorkflow, bound);
@@ -1112,6 +1120,12 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
                   <span className="w-2 h-2 rounded-full bg-emerald-400" title="Reference Image Attached" />
                 )}
               </label>
+              {referenceImage && (
+                <label className="flex items-center gap-2 cursor-pointer select-none font-semibold text-emerald-300 hover:text-emerald-200 transition-colors" title="Preserve the uploaded image and add only the requested elements">
+                  <input type="checkbox" checked={additiveEditOnly} onChange={e => setAdditiveEditOnly(e.target.checked)} className="w-4 h-4 rounded bg-zinc-800 border-zinc-700 text-emerald-500 focus:ring-0 cursor-pointer" />
+                  <span>ADD ONLY · PRESERVE SOURCE</span>
+                </label>
+              )}
 
               {/* [x] Advanced Checkbox */}
               <label className="flex items-center gap-2 cursor-pointer select-none font-semibold text-zinc-300 hover:text-white transition-colors">

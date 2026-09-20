@@ -23,9 +23,9 @@ export const RuntimeTelemetryPanel: React.FC<RuntimeTelemetryPanelProps> = ({ te
   useEffect(() => { void refresh(); const id=setInterval(()=>void refresh(),1000); return()=>clearInterval(id); }, []);
 
   // Live electricity cost calculation
-  const effectiveGpuPowerW = Number(telemetry.gpuPowerW || 0) > 0
-    ? Number(telemetry.gpuPowerW)
-    : (telemetry.vramUsedMB > 6000 ? 210 : telemetry.vramUsedMB > 2000 ? 120 : 45);
+  const effectiveSystemPowerW = Number(telemetry.systemPowerW || telemetry.estimatedWallPowerW || 0) > 0
+    ? Number(telemetry.systemPowerW || telemetry.estimatedWallPowerW)
+    : (Number(telemetry.gpuPowerW || 0) + Number(telemetry.cpuPowerW || 0) + Number(telemetry.otherHardwarePowerW || 35));
 
   useEffect(() => {
     const costInterval = setInterval(() => {
@@ -34,20 +34,21 @@ export const RuntimeTelemetryPanel: React.FC<RuntimeTelemetryPanelProps> = ({ te
       setSessionCost(prev => {
         const hour = currentDate.getHours();
         const activeRate = (hour >= 7 && hour < 23) ? DAY_RATE_KWH : NIGHT_RATE_KWH;
-        const kw = effectiveGpuPowerW / 1000;
+        const kw = effectiveSystemPowerW / 1000;
         const energyCostPerSec = (kw * activeRate) / 3600;
         const standingChargePerSec = DAILY_STANDING_CHARGE / 86400;
         return prev + energyCostPerSec + standingChargePerSec;
       });
     }, 1000);
     return () => clearInterval(costInterval);
-  }, [effectiveGpuPowerW]);
+  }, [effectiveSystemPowerW]);
 
   const currentHour = now.getHours();
   const isDayRate = currentHour >= 7 && currentHour < 23;
   const rateMode: 'DAY' | 'NIGHT' = isDayRate ? 'DAY' : 'NIGHT';
   const currentRate = isDayRate ? DAY_RATE_KWH : NIGHT_RATE_KWH;
-  const gpuPowerW = effectiveGpuPowerW;
+  const systemPowerW = effectiveSystemPowerW;
+  const gpuPowerW = Number(telemetry.gpuPowerW || 0);
   const powerKw = Math.max(0, gpuPowerW) / 1000;
 
   // Estimated daily cost based on current GPU power consumption (16h day + 8h night + standing charge)
@@ -76,7 +77,7 @@ export const RuntimeTelemetryPanel: React.FC<RuntimeTelemetryPanelProps> = ({ te
       <div className="flex items-center justify-between gap-2 border-b border-slate-800/80 pb-1.5 mb-2">
         <div className="flex items-center gap-1.5 text-[9px] font-bold tracking-wider text-emerald-400">
           <Zap className="w-3.5 h-3.5 text-amber-400" />
-          ELECTRICITY & GPU POWER TELEMETRY
+          WHOLE-PC ELECTRICITY & RUNNING COST
         </div>
         <div className="flex items-center gap-1.5 text-[9px] font-mono">
           <span className="text-slate-500">RATE MODE:</span>
@@ -87,9 +88,9 @@ export const RuntimeTelemetryPanel: React.FC<RuntimeTelemetryPanelProps> = ({ te
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[9px] font-mono">
         <div className="bg-slate-950/70 border border-slate-800/80 p-2 rounded">
-          <span className="text-slate-500 block text-[8px] uppercase tracking-wider">Current GPU Power</span>
-          <span className="text-slate-200 font-bold text-sm">{gpuPowerW} W</span>
-          <span className="text-slate-500 text-[8px] block mt-0.5">{(powerKw).toFixed(3)} kW draw</span>
+          <span className="text-slate-500 block text-[8px] uppercase tracking-wider">Whole PC / Wall Estimate</span>
+          <span className="text-slate-200 font-bold text-sm">{systemPowerW} W</span>
+          <span className="text-slate-500 text-[8px] block mt-0.5">{(powerKw).toFixed(3)} kW · CPU {telemetry.cpuPowerW ?? '—'}W · GPU {gpuPowerW}W</span>
         </div>
         <div className="bg-slate-950/70 border border-slate-800/80 p-2 rounded">
           <span className="text-slate-500 block text-[8px] uppercase tracking-wider">Current Rate Mode</span>
@@ -104,13 +105,13 @@ export const RuntimeTelemetryPanel: React.FC<RuntimeTelemetryPanelProps> = ({ te
         <div className="bg-slate-950/70 border border-slate-800/80 p-2 rounded">
           <span className="text-slate-500 block text-[8px] uppercase tracking-wider">Estimated Daily Cost</span>
           <span className="text-emerald-300 font-bold text-sm">£{estimatedDailyCost.toFixed(2)}/day</span>
-          <span className="text-slate-500 text-[8px] block mt-0.5">Day £0.3157 · Night £0.1390</span>
+          <span className="text-slate-500 text-[8px] block mt-0.5">£{(powerKw * currentRate).toFixed(4)}/hr · {(powerKw * currentRate * 100).toFixed(2)}p/hr</span>
         </div>
       </div>
       <div className="mt-2 text-[8px] text-slate-500 flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-800/60 font-mono">
         <span>Day Rate: £0.3157/kWh (07:00–23:00)</span>
         <span>Night Rate: £0.1390/kWh (23:00–07:00)</span>
-        <span>Daily Standing Charge: £0.5472/day</span>
+        <span>Daily Standing Charge: £0.5472/day · {telemetry.powerSource || 'estimated system draw'}</span>
       </div>
     </div>
 

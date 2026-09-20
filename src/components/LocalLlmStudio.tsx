@@ -41,6 +41,13 @@ interface HardwareTelemetry {
   gpuTempC: number;
   gpuUtilizationPercent: number;
   gpuPowerW: number;
+  cpuPowerW?: number | null;
+  otherHardwarePowerW?: number;
+  componentDcPowerW?: number;
+  psuEfficiency?: number;
+  estimatedWallPowerW?: number;
+  systemPowerW?: number;
+  powerSource?: string;
   ramUsedGB: number;
   ramTotalGB: number;
   thermalBrakeActive: boolean;
@@ -125,6 +132,9 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
   const [hardwareTelemetry, setHardwareTelemetry] = useState<HardwareTelemetry | null>(null);
   const [runtimeTelemetry, setRuntimeTelemetry] = useState<RuntimeTelemetrySnapshot | null>(null);
   const [showWebBrowserModal, setShowWebBrowserModal] = useState(false);
+  const [activePreviewContent, setActivePreviewContent] = useState<{ type:'text'|'html'|'web'; title:string; content:string; url?:string; sources?:Array<{title:string;url:string;snippet?:string}> } | null>(null);
+  const [savedCodeFiles, setSavedCodeFiles] = useState<Record<string, { url:string; path:string; bytes:number }>>({});
+  const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [sessionElectricityCost, setSessionElectricityCost] = useState<number>(0);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -141,7 +151,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
         if (hardware) {
           setHardwareTelemetry(hardware);
           // Accumulate session cost based on UK tariff (Day £0.3157 / Night £0.1390)
-          const powerW = Number(hardware.gpuPowerW || 0);
+          const powerW = Number(hardware.systemPowerW ?? hardware.estimatedWallPowerW ?? hardware.gpuPowerW ?? 0);
           const currentHour = new Date().getHours();
           const rateKwh = (currentHour >= 7 && currentHour < 23) ? 0.3157 : 0.1390;
           const secondCost = (powerW / 1000) * rateKwh / 3600;
@@ -160,6 +170,83 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       window.clearInterval(timer);
     };
   }, []);
+
+  const resizePromptInput = useCallback(() => {
+    const element = promptInputRef.current;
+    if (!element) return;
+    element.style.height = '44px';
+    const nextHeight = Math.min(200, Math.max(44, element.scrollHeight));
+    element.style.height = `${nextHeight}px`;
+    element.style.overflowY = element.scrollHeight > 200 ? 'auto' : 'hidden';
+  }, []);
+
+  useEffect(() => { resizePromptInput(); }, [input, resizePromptInput]);
+
+  const saveCodeBlock = async (filename: string, content: string, blockKey: string) => {
+    try {
+      const response = await fetch('/api/llm/save-code-file', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ filename, content, directory:'.gina/generated-code' })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+      setSavedCodeFiles(prev => ({ ...prev, [blockKey]: { url:data.url, path:data.path, bytes:Number(data.bytes || 0) } }));
+      setActivePreviewContent({ type: filename.toLowerCase().endsWith('.html') ? 'html' : 'text', title:filename, content });
+      onAddLog('INFO', `Generated code saved: ${data.path}`);
+    } catch (saveError:any) {
+      setError(`Code save failed: ${saveError?.message || 'unknown error'}`);
+      onAddLog('WARN', `Generated code save failed: ${saveError?.message || 'unknown error'}`);
+    }
+  };
+
+  const renderMarkdownLinks = (text: string) => {
+    const parts: React.ReactNode[] = [];
+    const linkPattern = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+    let cursor = 0; let match: RegExpExecArray | null;
+    while ((match = linkPattern.exec(text))) {
+      if (match.index > cursor) parts.push(<span key={`text-${cursor}`}>{text.slice(cursor, match.index)}</span>);
+      parts.push(
+        <a key={`link-${match.index}`} href={match[2]} target="_blank" rel="noopener noreferrer" onClick={() => setActivePreviewContent({type:'web', title:match![1], content:match![2], url:match![2]})}
+          className="my-1 inline-flex max-w-full items-center gap-2 rounded-lg border border-sky-500/25 bg-sky-500/5 px-2.5 py-1.5 text-sky-300 hover:bg-sky-500/10 hover:border-sky-400/40 transition-colors align-middle">
+          <ExternalLink className="w-3 h-3 shrink-0" /><span className="truncate font-semibold">{match[1]}</span><span className="text-[9px] text-slate-500 truncate max-w-[260px]">{match[2]}</span>
+        </a>
+      );
+      cursor = match.index + match[0].length;
+    }
+    if (cursor < text.length) parts.push(<span key={`text-${cursor}`}>{text.slice(cursor)}</span>);
+    return parts.length ? parts : text;
+  };
+
+  const renderRichContent = (content: string, messageIndex: number) => {
+    const blocks: React.ReactNode[] = [];
+    const fence = /```([\w+-]*)\n?([\s\S]*?)```/g;
+    let cursor = 0; let match: RegExpExecArray | null; let codeIndex = 0;
+    while ((match = fence.exec(content))) {
+      if (match.index > cursor) blocks.push(<div key={`txt-${cursor}`} className="whitespace-pre-wrap break-words">{renderMarkdownLinks(content.slice(cursor, match.index))}</div>);
+      const language = (match[1] || 'text').toLowerCase();
+      const code = match[2].replace(/^\n/, '').replace(/\n$/, '');
+      const supported = ['js','ts','tsx','py','html','css','json'].includes(language);
+      const ext = language === 'js' ? 'js' : language === 'ts' ? 'ts' : language === 'tsx' ? 'tsx' : language === 'py' ? 'py' : language === 'html' ? 'html' : language === 'css' ? 'css' : language === 'json' ? 'json' : 'txt';
+      const filename = `gina-generated-${messageIndex + 1}-${codeIndex + 1}.${ext}`;
+      const blockKey = `${messageIndex}:${codeIndex}`;
+      const saved = savedCodeFiles[blockKey];
+      blocks.push(
+        <div key={`code-${blockKey}`} className="my-2 overflow-hidden rounded-lg border border-slate-700 bg-slate-950">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-2.5 py-1.5">
+            <div className="flex items-center gap-2 text-[9px] font-mono uppercase tracking-wider text-slate-400"><span className="rounded bg-slate-800 px-1.5 py-0.5 text-emerald-300">{language}</span><span className="truncate">{saved?.path || filename}</span></div>
+            {supported && <div className="flex items-center gap-1.5">
+              <button type="button" onClick={() => void saveCodeBlock(filename, code, blockKey)} className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/20">Save &amp; Open File</button>
+              {saved && <a href={saved.url} target="_blank" rel="noopener noreferrer" download={filename} className="rounded border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[8px] font-bold text-sky-300 hover:bg-sky-500/20">Saved · {saved.bytes.toLocaleString()} B</a>}
+            </div>}
+          </div>
+          <pre className="max-h-[360px] overflow-auto p-3 text-[10px] leading-relaxed text-slate-300"><code>{code}</code></pre>
+        </div>
+      );
+      cursor = match.index + match[0].length; codeIndex++;
+    }
+    if (cursor < content.length) blocks.push(<div key={`tail-${cursor}`} className="whitespace-pre-wrap break-words">{renderMarkdownLinks(content.slice(cursor))}</div>);
+    return blocks.length ? blocks : renderMarkdownLinks(content);
+  };
 
   const supportedLocalAiExtensions = new Set([
     '.txt','.md','.markdown','.json','.csv','.tsv','.log','.ini','.cfg','.conf','.yaml','.yml','.xml','.html','.htm','.css',
@@ -637,8 +724,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
   const [githubUrl, setGithubUrl] = useState('');
 
   const runProjectAgent = async (task: string) => {
-    if (!agentWorkspace) return false;
-    const prompt = `ACTIVE WORKSPACE: ${agentWorkspace}\n\nUSER REQUEST:\n${task}\n\nWork directly on this workspace. Inspect before editing, make the requested changes, validate them, repair failures when practical, review the final diff, and report what changed. Do not push to GitHub unless the user explicitly asks.`;
+    const executionRoot = agentWorkspace || 'C:\\Gina_AI';
+    const prompt = `ACTIVE WORKSPACE: ${executionRoot}\n\nUSER REQUEST:\n${task}\n\nWork directly on this workspace. Inspect before editing, make the requested changes, validate them, repair failures when practical, review the final diff, and report what changed. Do not push to GitHub unless the user explicitly asks.`;
     const response = await fetch('/api/agent/run-stream', {
       method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({prompt})
     });
@@ -668,6 +755,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
               const run = await fetch(`/api/agent/runs/${encodeURIComponent(id)}`).then(r=>r.json());
               const summary = run?.result?.summary || run?.summary || (d.state === 'CANCELLED' ? 'Coding task cancelled.' : 'Coding task completed.');
               setMessages(prev => [...prev, { role:'assistant', content:summary }]);
+              setActivePreviewContent({ type:'text', title:'Agent Execution Preview', content:summary });
               if (autoSpeak) void speakText(summary);
               finish();
             }
@@ -738,8 +826,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       });
       const capabilityData = await capabilityResponse.json().catch(() => ({}));
       const capabilityPlan = capabilityData?.plan;
-      const isCodeProjectIntent = ['code-change', 'code-task', 'file-operation', 'run-command', 'git-operation'].includes(capabilityPlan?.intent || '');
-      if (capabilityPlan?.mode === 'act' && isCodeProjectIntent && capabilityPlan?.intent !== 'network-diagnostic' && capabilityPlan?.intent !== 'web-research' && agentWorkspace) {
+      const isCodeProjectIntent = ['code-change', 'code-task', 'web-app-build', 'file-operation', 'run-command', 'git-operation'].includes(capabilityPlan?.intent || '');
+      if (capabilityPlan?.mode === 'act' && isCodeProjectIntent && capabilityPlan?.intent !== 'network-diagnostic' && capabilityPlan?.intent !== 'web-research') {
         const nextMessages: ChatMessage[] = [...messages, { role:'user', content:text }];
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null);
         try {
@@ -819,6 +907,13 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
       }
       const reply = data?.choices?.[0]?.message?.content;
       if (typeof reply !== 'string' || !reply.trim()) throw new Error('The local model returned an empty response.');
+      const htmlPreview = reply.match(/```html\n?([\s\S]*?)```/i);
+      const firstMarkdownLink = reply.match(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/);
+      const telemetrySources = Array.isArray(data?.ginaTelemetry?.webSources) ? data.ginaTelemetry.webSources : [];
+      if (htmlPreview) setActivePreviewContent({ type:'html', title:'Generated HTML Preview', content:htmlPreview[1] });
+      else if (telemetrySources.length) setActivePreviewContent({ type:'web', title:telemetrySources[0].title || 'Live web source', content:telemetrySources[0].snippet || telemetrySources[0].url, url:telemetrySources[0].url, sources:telemetrySources });
+      else if (firstMarkdownLink) setActivePreviewContent({ type:'web', title:firstMarkdownLink[1], content:firstMarkdownLink[2], url:firstMarkdownLink[2] });
+      else setActivePreviewContent({ type:'text', title:'Live Response Preview', content:reply });
       const telemetry = data?.ginaTelemetry;
       if (telemetry) {
         setThinkingSource(telemetry.source === 'local+web' ? 'local+web' : telemetry.source === 'web' ? 'web' : 'local');
@@ -876,9 +971,9 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
   }, [status]);
 
   return (
-    <section className="space-y-5">
-      <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_1.5fr] gap-5">
-        <div className="bg-slate-950 border border-slate-800 rounded-lg p-5 shadow-sm">
+    <section className="space-y-5 min-h-[calc(100vh-150px)]">
+      <div className="grid grid-cols-12 gap-5 items-start min-w-0">
+        <div className="col-span-12 lg:col-span-3 bg-slate-950 border border-slate-800 rounded-lg p-5 shadow-sm min-w-0 overflow-hidden">
           <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-4 mb-4">
             <div>
               <div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Local inference engine</div>
@@ -947,10 +1042,10 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
           {error && <div className="mt-3 p-3 rounded border border-rose-500/30 bg-rose-500/5 text-[10px] text-rose-300">{error}</div>}
         </div>
 
-        <div className="bg-slate-950 border border-slate-800 rounded-lg p-5 shadow-sm h-[620px] min-h-0 flex flex-col">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+        <div className="col-span-12 lg:col-span-9 bg-slate-950 border border-slate-800 rounded-lg p-5 shadow-sm min-h-[calc(100vh-165px)] h-auto flex flex-col min-w-0 overflow-hidden">
+          <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3 border-b border-slate-800 pb-3 mb-3 min-w-0">
             <div className="flex items-center gap-2"><MessageSquare className="w-4 h-4 text-emerald-400" /><span className="text-xs font-bold uppercase tracking-widest text-slate-200">Local Gina Chat</span></div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
                 <button
                   type="button"
                   onClick={() => setShowWebBrowserModal(true)}
@@ -962,7 +1057,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
                 <button onClick={()=>{const u=window.prompt('GitHub repository URL'); if(u){setGithubUrl(u); setTimeout(()=>void loadGithubProject(),0);}}} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1"><Github className="w-3 h-3"/> GitHub</button>
                 {agentWorkspace && <span className="max-w-[170px] truncate text-[8px] font-mono text-amber-300/70" title={agentWorkspace}>● {agentWorkspace}</span>}<button onClick={exportActiveWorkspace} title="Download the current project as a clean ZIP" className="px-2 py-1 rounded border border-emerald-500/30 bg-emerald-500/5 text-emerald-300 text-[9px] font-bold uppercase tracking-wider">Export ZIP</button>
               </div>
-              <div className="flex items-center gap-2"><button onClick={() => { setMessages([]); setError(null); setPdfNotice(null); }} disabled={!messages.length || loading} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Clear</button><button onClick={() => void saveLastResponseAsPdf()} disabled={!messages.some(m => m.role === 'assistant') || pdfSaving} className="px-2 py-1 rounded border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1"><FileDown className="w-3 h-3" /> {pdfSaving ? 'Saving…' : 'Save PDF'}</button>
+              <div className="flex flex-wrap items-center gap-2 min-w-0"><button onClick={() => { setMessages([]); setError(null); setPdfNotice(null); setActivePreviewContent(null); }} disabled={!messages.length || loading} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Clear</button><button onClick={() => void saveLastResponseAsPdf()} disabled={!messages.some(m => m.role === 'assistant') || pdfSaving} className="px-2 py-1 rounded border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1"><FileDown className="w-3 h-3" /> {pdfSaving ? 'Saving…' : 'Save PDF'}</button>
               <button onClick={() => { const next = !voiceEnabled; setVoiceEnabled(next); if (next) testVoice(); }} disabled={!voiceAvailable && !browserVoiceAvailable} title={(voiceAvailable || browserVoiceAvailable) ? 'Toggle Gina voice' : 'No local voice engine detected'} className={`px-2 py-1 rounded border text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1 ${voiceEnabled ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-slate-700 bg-slate-900 text-slate-500'}`}>{voiceEnabled ? <Volume2 className="w-3 h-3"/> : <VolumeX className="w-3 h-3"/>} Voice</button>
               <button onClick={toggleMicrophone} disabled={listening || !microphoneAvailable} title="Speak to Gina" className={`px-2 py-1 rounded border text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1 ${listening ? 'border-rose-500/40 bg-rose-500/10 text-rose-300' : 'border-violet-500/30 bg-violet-500/5 text-violet-300'}`}>{listening ? <MicOff className="w-3 h-3"/> : <Mic className="w-3 h-3"/>} {listening ? 'Listening…' : 'Talk'}</button>
               <label className="flex items-center gap-1 px-2 text-[9px] font-mono text-slate-500"><input type="checkbox" checked={autoSpeak} onChange={e=>setAutoSpeak(e.target.checked)} /> Auto</label>
@@ -1045,7 +1140,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
             </div>
           )}
 
-          <div className="flex-1 min-h-[400px] max-h-[600px] overflow-y-scroll custom-scrollbar space-y-3 pr-1">
+          <div className="flex-1 min-h-[calc(100vh-430px)] h-[calc(100vh-430px)] grid grid-cols-12 gap-3 min-w-0">
+            <div className="col-span-12 xl:col-span-8 min-w-0 overflow-y-auto custom-scrollbar space-y-3 pr-1">
             {!messages.length && <div className="h-full min-h-[400px] flex items-center justify-center text-center text-slate-600 text-xs"><div><Zap className="w-6 h-6 mx-auto mb-2 text-slate-700" /><p>Start Qwen locally to chat with Gina.</p><p className="text-[10px] mt-1">No cloud provider is used.</p></div></div>}
             {agentWorkspace && <div className="mb-2 rounded border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[9px] font-mono">
             <div className="flex justify-between"><span className="text-amber-300">GINA CODING WORKSPACE</span><span className="text-slate-500">{agentStatus}</span></div>
@@ -1061,7 +1157,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
                     </span>
                   )}
                 </div>
-                <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                <div>{renderRichContent(message.content, index)}</div>
                 {message.imageUrl && <img src={message.imageUrl} alt="Gina generated image" className="mt-3 max-w-full rounded-lg border border-slate-700" />}
 
                 {/* Grounded Web Sources Display */}
@@ -1134,6 +1230,24 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
                 </div>
               </div>
             )}
+            </div>
+            <aside className="col-span-12 xl:col-span-4 min-w-0 overflow-hidden rounded-lg border border-slate-800 bg-slate-950/90 flex flex-col">
+              <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
+                <div className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-widest text-slate-300"><Search className="w-3 h-3 text-sky-400" /> Interactive Preview</div>
+                <span className="text-[8px] font-mono text-slate-600">LIVE FRAME</span>
+              </div>
+              <div className="flex-1 min-h-0 overflow-auto p-3">
+                {!activePreviewContent ? <div className="h-full min-h-[260px] flex items-center justify-center text-center text-slate-600 text-[10px]">Web sources, HTML layouts and live response scraps will appear here.</div> : activePreviewContent.type === 'html' ? (
+                  <iframe title={activePreviewContent.title} sandbox="" srcDoc={activePreviewContent.content} className="h-full min-h-[320px] w-full rounded border border-slate-800 bg-white" />
+                ) : activePreviewContent.type === 'web' ? (
+                  <div className="space-y-3">
+                    <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-3"><div className="text-[9px] font-bold uppercase tracking-wider text-sky-300">SOURCE</div><div className="mt-1 text-xs font-semibold text-slate-200 break-words">{activePreviewContent.title}</div>{activePreviewContent.url && <a href={activePreviewContent.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-[9px] text-sky-300 hover:text-sky-200"><ExternalLink className="w-3 h-3" /> Open source</a>}</div>
+                    <div className="text-[10px] leading-relaxed text-slate-400 break-words">{activePreviewContent.content}</div>
+                  </div>
+                ) : <div className="whitespace-pre-wrap break-words text-[10px] leading-relaxed text-slate-300">{renderMarkdownLinks(activePreviewContent.content)}</div>}
+              </div>
+              {messages.some(m => m.webSources?.length) && <div className="border-t border-slate-800 p-2 space-y-1.5">{messages.flatMap(m => m.webSources || []).slice(0,6).map((source, i) => <button type="button" key={`${source.url}-${i}`} onClick={() => setActivePreviewContent({type:'web', title:source.title || source.source || source.url, content:source.snippet || source.url, url:source.url})} className="w-full rounded border border-slate-800 bg-slate-900/70 px-2 py-1.5 text-left hover:border-sky-500/30"><div className="flex items-center gap-1 text-[9px] font-semibold text-sky-300 truncate"><Globe2 className="w-2.5 h-2.5 shrink-0" />{source.title || source.url}</div></button>)}</div>}
+            </aside>
           </div>
 
           {lastTelemetry && (
@@ -1204,7 +1318,11 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
               const currentHour = new Date().getHours();
               const isDayRate = currentHour >= 7 && currentHour < 23;
               const rateKwh = isDayRate ? 0.3157 : 0.1390;
-              const powerW = Number(hardwareTelemetry?.gpuPowerW || 0);
+              const powerW = Number(hardwareTelemetry?.systemPowerW ?? hardwareTelemetry?.estimatedWallPowerW ?? hardwareTelemetry?.gpuPowerW ?? 0);
+              const cpuPowerW = Number(hardwareTelemetry?.cpuPowerW || 0);
+              const gpuPowerW = Number(hardwareTelemetry?.gpuPowerW || 0);
+              const otherPowerW = Number(hardwareTelemetry?.otherHardwarePowerW || 0);
+              const powerSource = hardwareTelemetry?.powerSource || 'estimated';
               const powerKw = powerW / 1000;
               const hourlyCostPounds = powerKw * rateKwh;
               const hourlyCostPence = hourlyCostPounds * 100;
@@ -1215,7 +1333,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
                   <div className="flex items-center justify-between mb-1.5">
                     <div className="flex items-center gap-1.5">
                       <Zap className="w-3 h-3 text-amber-400" />
-                      <span className="text-[8px] font-bold uppercase tracking-widest text-slate-300">ELECTRICITY &amp; UK TARIFF COST</span>
+                      <span className="text-[8px] font-bold uppercase tracking-widest text-slate-300">WHOLE-PC ELECTRICITY &amp; RUNNING COST</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold ${isDayRate ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'}`}>
@@ -1227,16 +1345,14 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
                     <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Power Draw</div>
-                      <div className="mt-0.5 text-[10px] font-bold font-mono text-amber-300">
-                        {powerW}W <span className="text-[7px] font-normal text-slate-400">({powerKw.toFixed(3)} kW)</span>
-                      </div>
-                      <div className="text-[6px] font-mono text-slate-600">active draw</div>
+                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Whole PC Draw</div>
+                      <div className="mt-0.5 text-[10px] font-bold font-mono text-amber-300">{powerW}W <span className="text-[7px] font-normal text-slate-400">({powerKw.toFixed(3)} kW)</span></div>
+                      <div className="text-[6px] font-mono text-slate-500">CPU {cpuPowerW || '—'}W · GPU {gpuPowerW}W · Other {otherPowerW}W</div>
                     </div>
                     <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
                       <div className="text-[7px] uppercase tracking-widest text-slate-500">Running Cost</div>
                       <div className="mt-0.5 text-[10px] font-bold font-mono text-emerald-400">
-                        {hourlyCostPence < 1 ? `£${hourlyCostPounds.toFixed(4)}/hr` : `${hourlyCostPence.toFixed(2)}p/hr`}
+                        £{hourlyCostPounds.toFixed(4)}/hr · {hourlyCostPence.toFixed(2)}p/hr
                       </div>
                       <div className="text-[6px] font-mono text-slate-600">at £{rateKwh.toFixed(4)}/kWh</div>
                     </div>
@@ -1257,8 +1373,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
                   </div>
 
                   <div className="mt-1.5 flex flex-wrap items-center justify-between text-[7px] font-mono text-slate-500 pt-1 border-t border-slate-900">
-                    <span>Day: £0.3157/kWh · Night: £0.1390/kWh · Standing: £0.5472/day</span>
-                    <span className="text-slate-400 font-semibold">{lastTelemetry?.webProvider ? `web: ${lastTelemetry.webProvider}` : 'local only'}</span>
+                    <span>Day: £0.3157/kWh · Night: £0.1390/kWh · Standing: £0.5472/day · Cost shown in £/hr and p/hr</span>
+                    <span className="text-slate-400 font-semibold">Power source: {powerSource}</span>
                   </div>
                 </div>
               );
@@ -1300,10 +1416,10 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
             )}
             {fileAttachError && <div className="mb-2 p-2 rounded border border-rose-500/20 bg-rose-500/5 text-[9px] text-rose-300">{fileAttachError}</div>}
 
-            <div className="flex gap-2">
-              <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendMessage(); } }} disabled={!status?.ready || loading} rows={3} placeholder={status?.ready ? 'Ask Gina… (Enter to send, Shift+Enter for a new line)' : 'Start the local LLM first…'} className="flex-1 resize-none rounded border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-200 outline-none focus:border-emerald-500/50 disabled:opacity-50" />
-              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!status?.ready || loading || attachedFiles.length >= maxLocalAiFiles} title={status?.engine === 'qwen-coder' ? 'Qwen Coder accepts text/code files and project ZIP archives. Image attachments require a multimodal vision model.' : 'Attach a supported local file, image or ZIP archive'} className="self-end px-3 py-2 rounded border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[10px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5" /> Attach</button>
-              {loading ? <button onClick={() => void cancelChat()} className="self-end px-4 py-2 rounded border border-rose-500/50 bg-rose-500/10 text-rose-300 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"><Square className="w-3 h-3" /> Stop & Flush</button> : <button onClick={() => void sendMessage()} disabled={!status?.ready || (!input.trim() && !attachedFiles.length)} className="self-end px-4 py-2 rounded bg-emerald-500 text-slate-950 text-[10px] font-bold uppercase tracking-wider disabled:opacity-30">Send</button>}
+            <div className="relative flex gap-2">
+              <textarea ref={promptInputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (input.trim() || attachedFiles.length) void sendMessage(); } }} disabled={!status?.ready || loading} rows={1} placeholder={status?.ready ? 'Message Gina… (Enter to send, Shift+Enter for a new line)' : 'Start the local LLM first…'} className="flex-1 min-h-[44px] max-h-[200px] resize-none overflow-y-hidden rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 pr-24 text-xs text-slate-200 outline-none focus:border-emerald-500/50 disabled:opacity-50 leading-relaxed" />
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!status?.ready || loading || attachedFiles.length >= maxLocalAiFiles} title={status?.engine === 'qwen-coder' ? 'Qwen Coder accepts text/code files and project ZIP archives. Image attachments require a multimodal vision model.' : 'Attach a supported local file, image or ZIP archive'} className="absolute right-14 bottom-2 h-9 px-2.5 rounded-lg border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5" /> Attach</button>
+              {loading ? <button onClick={() => void cancelChat()} className="absolute right-2 bottom-2 w-9 h-9 rounded-full border border-rose-500/50 bg-rose-500/15 text-rose-300 flex items-center justify-center" title="Stop inference and flush VRAM"><Square className="w-3.5 h-3.5 fill-current" /></button> : <button onClick={() => void sendMessage()} disabled={!status?.ready || (!input.trim() && !attachedFiles.length)} className="absolute right-2 bottom-2 w-9 h-9 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center disabled:opacity-30" title="Send"><span className="text-base font-black leading-none">↑</span></button>}
             </div>
           </div>
           <div className="mt-2 text-[8px] font-mono text-slate-700">Local AI attachments stay on this machine: text/code/config ≤2 MB, images ≤12 MB in Vision Mode, ZIP project archives ≤100 MB · max 5 non-project attachments per turn. Project ZIPs are imported into a dedicated workspace and inspected locally; archives are no longer limited to 100 files. {status?.multimodal ? <span className="text-emerald-500">Vision attachments are enabled.</span> : <span>Image uploads are stored locally; switch to Qwen 2.5-VL Vision Mode or Qwen3.5 9B with its configured multimodal projector to enable pixel vision.</span>}</div>

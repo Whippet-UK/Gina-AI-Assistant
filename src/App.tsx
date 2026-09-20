@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Image, Video, Film, FolderOpen, ListChecks, Settings2, Gauge, Bot, Music } from 'lucide-react';
+import { Image, Video, Film, FolderOpen, ListChecks, Settings2, Gauge, Bot, Music, AudioLines } from 'lucide-react';
 import { Header } from './components/Header';
 import { ProjectStateProvider, useProjectState } from './context/ProjectStateContext';
 import { GenerationJobProvider, useGenerationJob } from './context/GenerationJobContext';
@@ -9,6 +9,7 @@ import { VideoStudio } from './components/VideoStudio';
 import { GifStudio } from './components/GifStudio';
 import { StreamInjectStudio } from './components/StreamInjectStudio';
 import { MusicStudio } from './components/MusicStudio';
+import { UnifiedAudioDeck } from './components/UnifiedAudioDeck';
 import { Aida64Studio } from './components/Aida64Studio';
 import { AiStudioSuite } from './components/AiStudioSuite';
 import { SystemHub } from './components/SystemHub';
@@ -130,7 +131,7 @@ export default function App() {
           gpuTempC: Number(data.gpuTempC || 0), cpuThreadsActive: Number(data.cpuThreadsActive || 0),
           cpuThreadsCap: Number(data.cpuThreadsCap || 0), ramUsedGB: Number(data.ramUsedGB || 0),
           ramTotalGB: Number(data.ramTotalGB || 0), ssdFreeGB: prev.ssdFreeGB, thermalBrakeActive: !!data.thermalBrakeActive,
-          gpuPowerW: Number(data.gpuPowerW || 0)
+          gpuPowerW: Number(data.gpuPowerW || 0), cpuPowerW: data.cpuPowerW == null ? null : Number(data.cpuPowerW), otherHardwarePowerW: Number(data.otherHardwarePowerW || 0), componentDcPowerW: Number(data.componentDcPowerW || 0), psuEfficiency: Number(data.psuEfficiency || 0), estimatedWallPowerW: Number(data.estimatedWallPowerW || 0), systemPowerW: Number(data.systemPowerW || 0), powerSource: String(data.powerSource || '')
         }));
         const errRes = await fetch('/api/comfy/error-logs', { cache: 'no-store' });
         if (errRes.ok && !cancelled) {
@@ -186,7 +187,7 @@ interface AppContentProps {
 }
 
 function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCache, handleRunAudit, isAuditing, activeSavePoint, isCooldownActive, cooldownRemainingSec, isManifestOpen, setIsManifestOpen }: AppContentProps) {
-  const [activeView, setActiveView] = useState<'create' | 'video' | 'gif' | 'streaminject' | 'music' | 'aida64' | 'shorts' | 'assets' | 'jobs' | 'llm' | 'system'>('create');
+  const [activeView, setActiveView] = useState<'create' | 'video' | 'gif' | 'streaminject' | 'music' | 'audio' | 'aida64' | 'shorts' | 'assets' | 'jobs' | 'llm' | 'system'>('create');
   const [isTelemetryOpen, setIsTelemetryOpen] = useState<boolean>(false);
   const { job, outputLoading } = useGenerationJob();
   const { updatePromptStudio } = useProjectState();
@@ -201,6 +202,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
     { id: 'gif' as const, label: 'GIF STUDIO', icon: Film, isGenerating: isJobActive && job?.workflowId === 'gif_studio' },
     { id: 'streaminject' as const, label: 'STREAMINJECT', icon: Film, isGenerating: isJobActive && (job?.workflowId === 'streaminject_studio' || job?.workflowId === 'streaminject_render') },
     { id: 'music' as const, label: 'MUSIC SUITE', icon: Music, isGenerating: isJobActive && (job?.workflowId === 'music_studio' || job?.workflowId === 'stem_separation') },
+    { id: 'audio' as const, label: 'VOICE GENERATOR', icon: AudioLines, isGenerating: false },
     { id: 'aida64' as const, label: 'AIDA64', icon: Gauge, isGenerating: false },
     { id: 'shorts' as const, label: 'SHORTS', icon: Film, isGenerating: false },
     { id: 'assets' as const, label: 'ASSETS', icon: FolderOpen, isGenerating: false },
@@ -227,7 +229,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
   return (
     <div className="min-h-screen bg-[#020617] text-[#c9d1d9] font-sans">
       <VRAMWarningToast telemetry={telemetry} thresholdMB={7168} isCooldownActive={isCooldownActive} cooldownRemainingSec={cooldownRemainingSec} onClearCache={() => handleClearCache(false)} />
-      <div className="max-w-[1500px] mx-auto px-4 md:px-6 py-4">
+      <div className="w-full max-w-[100vw] px-4 sm:px-5 lg:px-6 xl:px-8 py-4 min-w-0 overflow-x-clip">
         <Header onRunAudit={handleRunAudit} onOpenManifest={() => setIsManifestOpen(true)} onOpenTelemetry={() => setIsTelemetryOpen(true)} isAuditing={isAuditing} activeSavePoint={activeSavePoint} />
         <div className="sticky top-0 z-20 mt-4 mb-6 -mx-2 px-2 py-2 bg-[#020617]/95 backdrop-blur border-y border-slate-800/80">
           <nav className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
@@ -276,6 +278,11 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
               }}
             />
           </WorkspaceErrorBoundary>
+        </main>
+
+        <main className={`space-y-5 ${activeView === 'audio' ? 'block' : 'hidden'}`}>
+          <div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Voice generator</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Voice Audio Generation</h1><p className="text-xs text-slate-500 mt-1">Self-hosted Bark + XTTS v2 with cloning, stitched timelines and local voice management.</p></div>
+          <WorkspaceErrorBoundary name="Voice Generator"><UnifiedAudioDeck onAddLog={logWithOomCheck} /></WorkspaceErrorBoundary>
         </main>
 
         <main className={`space-y-5 ${activeView === 'shorts' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Production pipeline</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Shorts Factory</h1><p className="text-xs text-slate-500 mt-1">Build faceless Shorts from scenes, local assets, audio and a final timeline.</p></div><WorkspaceErrorBoundary name="Shorts Factory"><AiStudioSuite onAddLog={logWithOomCheck} view="shorts" /></WorkspaceErrorBoundary></main>
