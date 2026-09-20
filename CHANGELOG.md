@@ -2414,3 +2414,42 @@ Added a complete local filesystem tool contract matching the requested MCP-style
 - Physical audio post-processing smoke test: **PASS** — pitch/formant/time-stretch pipeline produced a valid WAV.
 - ZIP integrity: **PASS**.
 - Full Windows runtime/audio-model generation remains to be exercised on the user's machine because the installed Python/Node environment is outside this isolated build workspace.
+
+## Phase 59 — Voice Engine Runtime Repair & XTTS Compatibility — 2026-09-20
+
+### Target File Path: `/scripts/check_audio_env.py`
+- **Exact Code Snippet**:
+  ```python
+  def apply_transformers_shim() -> None:
+      import transformers
+      if not hasattr(transformers, "BeamSearchScorer"):
+          from transformers.generation.beam_search import BeamSearchScorer
+          transformers.BeamSearchScorer = BeamSearchScorer
+      if not hasattr(transformers, "LogitsWarper"):
+          from transformers.generation.logits_process import LogitsWarper
+          transformers.LogitsWarper = LogitsWarper
+
+  def install_sitecustomize_shim() -> None:
+      purelib = sysconfig.get_paths().get("purelib")
+      # Writes persistent sitecustomize.py to virtualenv site-packages
+  ```
+- **Why**: Created a dedicated diagnostic script that applies the backward-compatibility shim immediately in memory and registers `sitecustomize.py` in the virtual environment's `site-packages`, permanently resolving XTTS `BeamSearchScorer` / `LogitsWarper` `ImportError` across all Python invocations.
+
+### Target File Path: `/scripts/setup_audio_deps.py`
+- **Exact Code Snippet**:
+  ```python
+  "transformers": [sys.executable, "-m", "pip", "install", "--force-reinstall", "--no-deps", "transformers>=4.33.0,<=4.43.4"],
+  "TTS": [sys.executable, "-m", "pip", "install", "--upgrade", "--no-deps", "coqui-tts"],
+  install_sitecustomize_shim()
+  if "TTS" in broken and "transformers" not in broken:
+      broken.insert(0, "transformers")
+  ```
+- **Why**: Enforces pinning to tested `transformers` versions (<=4.43.4) where `BeamSearchScorer` is natively present, deep-verifies `from TTS.tts.layers.xtts.gpt import GPT`, and installs the permanent `sitecustomize.py` shim.
+
+### Target File Path: `/server/routes/audioEngineRoute.ts`
+- **Exact Code Snippet**:
+  ```typescript
+  const CHECK_ENV_SCRIPT = path.resolve(process.cwd(), 'scripts', 'check_audio_env.py');
+  const result = await execFileAsync(candidate.command, [...candidate.args, CHECK_ENV_SCRIPT], { cwd: GINA_ROOT, ... });
+  ```
+- **Why**: Replaced fragile multiline `-c` strings on Windows `python.exe` with execution of the physical `check_audio_env.py` script, preventing Windows argument newline truncation and ensuring the compatibility shim runs before module loading.

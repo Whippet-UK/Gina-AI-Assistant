@@ -18,37 +18,29 @@ const SCRIPT = path.resolve(process.cwd(), 'scripts', 'unified_audio_backend.py'
 const execFileAsync = promisify(execFile);
 const safeFilename = (name: string) => path.basename(name).replace(/[^a-zA-Z0-9._-]/g, '_');
 
-const CHECK_SCRIPT = `
-import sys
-try:
-    import transformers
-    if not hasattr(transformers, "BeamSearchScorer"):
-        try:
-            from transformers.generation.beam_search import BeamSearchScorer
-            transformers.BeamSearchScorer = BeamSearchScorer
-        except Exception:
-            pass
-    if not hasattr(transformers, "LogitsWarper"):
-        try:
-            from transformers.generation.logits_process import LogitsWarper
-            transformers.LogitsWarper = LogitsWarper
-        except Exception:
-            pass
-except Exception:
-    pass
-import TTS, bark, pydub
-print(sys.executable)
-print(TTS.__file__)
-print(bark.__file__)
-print(pydub.__file__)
-`.trim();
+const CHECK_ENV_SCRIPT = [
+  path.resolve(process.cwd(), 'scripts', 'check_audio_env.py'),
+  path.resolve(GINA_ROOT, 'scripts', 'check_audio_env.py')
+].find(p => {
+  try { return readFileSync(p, 'utf8').length > 0; } catch { return false; }
+}) || path.resolve(process.cwd(), 'scripts', 'check_audio_env.py');
+
+const SETUP_DEPS_SCRIPT = [
+  path.resolve(process.cwd(), 'scripts', 'setup_audio_deps.py'),
+  path.resolve(GINA_ROOT, 'scripts', 'setup_audio_deps.py')
+].find(p => {
+  try { return readFileSync(p, 'utf8').length > 0; } catch { return false; }
+}) || path.resolve(process.cwd(), 'scripts', 'setup_audio_deps.py');
 
 function formatPythonError(error: any): string {
   const raw = String(error?.stderr || error?.message || error || '').trim();
   if (!raw) return 'Python interpreter check failed.';
   const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  // Prioritize meaningful import or traceback error lines
+  const errorLine = [...lines].reverse().find(l => l.startsWith('Import check failed:') || l.includes('Error:') || l.includes('Exception:'));
+  if (errorLine) return errorLine;
   const tail = lines.slice(-3).join(' · ');
-  return tail.length > 500 ? (lines[lines.length - 1] || tail.slice(-500)) : tail;
+  return tail.length > 350 ? (lines[lines.length - 1] || tail.slice(-350)) : tail;
 }
 
 function pythonCandidates(): PythonCandidate[] {
@@ -72,7 +64,7 @@ function pythonCandidates(): PythonCandidate[] {
 
 async function interpreterCheck(candidate: PythonCandidate): Promise<{ok:boolean; error?:string; executable?:string}> {
   try {
-    const result = await execFileAsync(candidate.command, [...candidate.args, '-c', CHECK_SCRIPT], { cwd: GINA_ROOT, windowsHide: true, timeout: 20000, maxBuffer: 1024 * 1024 });
+    const result = await execFileAsync(candidate.command, [...candidate.args, CHECK_ENV_SCRIPT], { cwd: GINA_ROOT, windowsHide: true, timeout: 25000, maxBuffer: 1024 * 1024 });
     const lines = String(result.stdout || '').trim().split(/\r?\n/).filter(Boolean);
     return {ok:true, executable:lines[0] || candidate.executable || candidate.command};
   } catch (error:any) {
@@ -119,9 +111,8 @@ router.post('/repair', async (_req: Request, res: Response) => {
   resolvedPython = null;
   const candidates = pythonCandidates();
   const py = candidates.find(c => c.label === 'Gina g_env') || candidates[0];
-  const setupScript = path.resolve(GINA_ROOT, 'scripts', 'setup_audio_deps.py');
   try {
-    const out = await execFileAsync(py.command, [...py.args, setupScript], { cwd: GINA_ROOT, windowsHide: true, timeout: 180000, maxBuffer: 10 * 1024 * 1024 });
+    const out = await execFileAsync(py.command, [...py.args, SETUP_DEPS_SCRIPT], { cwd: GINA_ROOT, windowsHide: true, timeout: 180000, maxBuffer: 10 * 1024 * 1024 });
     const check = await resolvePython();
     res.json({ ok: true, message: 'Audio dependencies repaired successfully.', output: String(out.stdout || '').trim(), python: check.executable });
   } catch (err: any) {
@@ -133,7 +124,7 @@ router.get('/diagnostics', async (_req: Request, res: Response) => {
   const db = await import('../audio/VoiceDatabase.js');
   try {
     const python = await resolvePython();
-    const version = await execFileAsync(python.command, [...python.args, '-c', CHECK_SCRIPT], { cwd: GINA_ROOT, windowsHide: true, timeout: 20000, maxBuffer: 1024 * 1024 });
+    const version = await execFileAsync(python.command, [...python.args, CHECK_ENV_SCRIPT], { cwd: GINA_ROOT, windowsHide: true, timeout: 20000, maxBuffer: 1024 * 1024 });
     const dbCheck = db.testDatabase();
     res.json({ ok:true, databasePath: dbCheck.path, databaseWritable: dbCheck.writable, python: python.executable || python.command, imports: String(version.stdout || '').trim().split(/\r?\n/).filter(Boolean), candidates: pythonCandidates().map(c => ({label:c.label, command:c.command, args:c.args})) });
   } catch (error: any) {
