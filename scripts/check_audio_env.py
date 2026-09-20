@@ -132,6 +132,35 @@ def apply_transformers_shim() -> None:
         pass
 
 
+def apply_pytorch_utils_shim() -> None:
+    """Ensure transformers.pytorch_utils exports isin_mps_friendly.
+
+    TTS/coqui-tts's XTTS code imports this helper directly; newer/older
+    transformers releases have moved or dropped it at different points.
+    """
+    try:
+        import transformers.pytorch_utils as ptu
+    except Exception:
+        return
+
+    if hasattr(ptu, "isin_mps_friendly"):
+        return
+
+    try:
+        import torch
+
+        def isin_mps_friendly(elements, test_elements):
+            if not torch.is_tensor(test_elements):
+                test_elements = torch.tensor(test_elements, device=elements.device)
+            if elements.device.type == "mps":
+                return (elements[..., None] == test_elements.reshape(-1)).any(-1)
+            return torch.isin(elements, test_elements)
+
+        ptu.isin_mps_friendly = isin_mps_friendly
+    except Exception:
+        pass
+
+
 def get_all_site_packages_dirs() -> list[Path]:
     """Gather all potential site-packages directories for the current interpreter."""
     dirs: list[Path] = []
@@ -311,6 +340,7 @@ def main() -> int:
     patch_xtts_layers_on_disk()
     install_sitecustomize_and_pth()
     apply_transformers_shim()
+    apply_pytorch_utils_shim()
 
     errors: list[str] = []
     imported_paths: list[str] = [sys.executable]

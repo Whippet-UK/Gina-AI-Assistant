@@ -16,9 +16,19 @@ import sys
 import sysconfig
 from pathlib import Path
 
+# NOTE: coqui-tts's own metadata declares `transformers>=4.57`, but the XTTS
+# layers this app actually imports (isin_mps_friendly, BeamSearchScorer,
+# LogitsWarper) only exist in the 4.4x line. Installing "coqui-tts" unpinned
+# lets pip's resolver silently upgrade transformers back past 4.4x to satisfy
+# that floor, which is what was undoing the transformers==4.44.2 pin every
+# single repair pass. --no-deps stops coqui-tts from touching transformers at
+# install time; PINNED_TRANSFORMERS is re-asserted at the end of main() as a
+# belt-and-suspenders guard against any *other* package doing the same thing.
+PINNED_TRANSFORMERS = "transformers==4.44.2"
+
 REQUIRED: dict[str, list[str]] = {
-    "transformers": [sys.executable, "-m", "pip", "install", "transformers==4.44.2"],
-    "TTS": [sys.executable, "-m", "pip", "install", "coqui-tts"],
+    "transformers": [sys.executable, "-m", "pip", "install", PINNED_TRANSFORMERS],
+    "TTS": [sys.executable, "-m", "pip", "install", "--no-deps", "coqui-tts"],
     "scipy": [sys.executable, "-m", "pip", "install", "scipy"],
     "pydub": [sys.executable, "-m", "pip", "install", "pydub"],
     "bark": [sys.executable, "-m", "pip", "install", "git+https://github.com/suno-ai/bark.git"],
@@ -141,6 +151,40 @@ def apply_transformers_shim() -> None:
                 pass
     except Exception as exc:
         print(f"[Unified Audio] Notice: apply_transformers_shim: {exc}")
+
+
+def apply_pytorch_utils_shim() -> None:
+    """Ensure transformers.pytorch_utils exports isin_mps_friendly.
+
+    Newer/older transformers releases have moved or dropped this helper at
+    different points, and TTS/coqui-tts's XTTS code imports it directly with
+    `from transformers.pytorch_utils import isin_mps_friendly`. If it's
+    missing, that import fails before XTTS ever gets a chance to run.
+    """
+    try:
+        import transformers.pytorch_utils as ptu
+    except Exception:
+        return
+
+    if hasattr(ptu, "isin_mps_friendly"):
+        return
+
+    try:
+        import torch
+
+        def isin_mps_friendly(elements, test_elements):
+            # MPS-safe fallback: torch.isin works fine on CPU/CUDA; the
+            # original helper only special-cased MPS's lack of isin support.
+            if not torch.is_tensor(test_elements):
+                test_elements = torch.tensor(test_elements, device=elements.device)
+            if elements.device.type == "mps":
+                return (elements[..., None] == test_elements.reshape(-1)).any(-1)
+            return torch.isin(elements, test_elements)
+
+        ptu.isin_mps_friendly = isin_mps_friendly
+        print("[Unified Audio] Shimmed transformers.pytorch_utils.isin_mps_friendly")
+    except Exception as exc:
+        print(f"[Unified Audio] Notice: apply_pytorch_utils_shim: {exc}")
 
 
 def get_all_site_packages_dirs() -> list[Path]:
@@ -339,6 +383,7 @@ def import_ok(module_name: str) -> tuple[bool, str]:
         if importlib.util.find_spec(module_name) is None:
             return False, "module not found"
         apply_transformers_shim()
+        apply_pytorch_utils_shim()
         module = __import__(module_name)
         if module_name == "TTS":
             try:
@@ -372,6 +417,7 @@ def main() -> int:
     patch_xtts_layers_on_disk()
     install_sitecustomize_and_pth()
     apply_transformers_shim()
+    apply_pytorch_utils_shim()
 
     # Step 3: Fast-path audit before touching pip
     broken: list[str] = []
@@ -402,6 +448,16 @@ def main() -> int:
         patch_xtts_layers_on_disk()
         install_sitecustomize_and_pth()
         apply_transformers_shim()
+        apply_pytorch_utils_shim()
+
+        # Guard: coqui-tts declares transformers>=4.57 in its own metadata.
+        # Even with --no-deps on the coqui-tts install above, re-assert the
+        # pin here so nothing installed in this pass (or a stray pip resolve)
+        # can silently drag transformers back past the 4.4x line XTTS needs.
+        print(f"[Unified Audio] Re-asserting {PINNED_TRANSFORMERS} pin...")
+        install([sys.executable, "-m", "pip", "install", PINNED_TRANSFORMERS])
+        apply_transformers_shim()
+        apply_pytorch_utils_shim()
     else:
         print("[Unified Audio] All required Python imports are healthy.")
 
