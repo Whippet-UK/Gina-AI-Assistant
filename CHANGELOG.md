@@ -2,6 +2,17 @@
 
 ## AI Studio Container & TypeScript Build Migration Update — 2026-09-20
 
+- **Target File Path:** `/scripts/setup_audio_deps.py`
+  - **Exact Code Snippet:**
+    ```python
+    # Note: Do NOT install torchcodec; its binary C++ ABI conflicts with Windows PyTorch DLLs
+    # (causing "torch_get_const_data_ptr" Entry Point Not Found dialogs).
+    def purge_incompatible_packages() -> None:
+        if importlib.util.find_spec("torchcodec") is not None:
+            subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "torchcodec"], check=False)
+    ```
+  - **Why:** Resolved the fatal Windows popup error `python.exe - Entry Point Not Found: The procedure entry point torch_get_const_data_ptr could not be located in dynamic link library libtorchcodec_image.dll`. Removed `torchcodec` from the audio dependency requirements (not required by Coqui TTS, Bark, or Gina) and added automatic uninstallation of `torchcodec` on script execution to heal existing environments.
+
 - **Target File Path:** `/server/routes/audioEngineRoute.ts`
   - **Exact Code Snippet:**
     ```typescript

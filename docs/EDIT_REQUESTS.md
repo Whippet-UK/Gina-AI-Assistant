@@ -119,7 +119,7 @@ The former broad request “making Gina reliable and genuinely autonomous” is 
 ## Phase 59 — Voice Engine Runtime Repair & Fluid Layout — 2026-09-20
 - [x] Attach/Send composer overlap removed and action space reserved.
 - [x] Local AI chat/preview height now fills the available viewport instead of stopping well above the bottom edge.
-- [x] Audio setup repairs broken imports, installs Torch/Torchaudio/TorchCodec before Coqui TTS, and validates the final interpreter.
+- [x] Audio setup repairs broken imports, installs Torch/Torchaudio before Coqui TTS, purges conflicting torchcodec to eliminate Windows DLL entry point errors, and validates the final interpreter.
 - [x] Main Windows launcher runs audio setup in the active `g_env`.
 - [x] Bark CPU offload enabled for the 8 GB VRAM profile.
 - [x] SQLite database-file probe with automatic `.gina/data/audio` fallback.
