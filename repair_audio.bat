@@ -27,7 +27,13 @@ python -m pip uninstall -y torchcodec TTS
 
 echo.
 echo [3/4] Installing verified transformers 4.44.2 and coqui-tts...
-python -m pip install "transformers==4.44.2" coqui-tts pydub scipy
+REM coqui-tts's own metadata requires transformers^>=4.57, which does not
+REM contain the isin_mps_friendly/BeamSearchScorer symbols XTTS actually
+REM needs. Installing it with --no-deps stops pip's resolver from silently
+REM upgrading transformers back past 4.4x and undoing the pin below.
+python -m pip install "transformers==4.44.2" pydub scipy
+python -m pip install --no-deps coqui-tts
+python -m pip install "transformers==4.44.2"
 
 echo.
 echo [4/4] Applying XTTS backwards-compatibility shims and disk patches...
