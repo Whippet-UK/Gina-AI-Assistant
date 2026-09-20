@@ -373,118 +373,51 @@ def patch_transformers_pytorch_utils_on_disk() -> None:
                 pass
 
 
-def install_sitecustomize_and_pth() -> None:
-    """Persist the transformers & PyTorch 2.6 compatibility shim in site-packages via sitecustomize.py and .pth."""
-    sc_snippet = (
-        "\n# Gina AI Factory - XTTS & PyTorch 2.6 compatibility shim\n"
-        "try:\n"
-        "    import torch\n"
-        "    try:\n"
-        "        import numpy as np\n"
-        "        safe_objs = []\n"
-        "        for mod in [np, getattr(np, 'core', None), getattr(np, '_core', None)]:\n"
-        "            if mod:\n"
-        "                for attr in ['scalar', '_reconstruct', 'multiarray', 'dtype']:\n"
-        "                    val = getattr(mod, attr, None)\n"
-        "                    if val is not None and val not in safe_objs:\n"
-        "                        safe_objs.append(val)\n"
-        "        if hasattr(torch.serialization, 'add_safe_globals') and safe_objs:\n"
-        "            torch.serialization.add_safe_globals(safe_objs)\n"
-        "    except Exception:\n"
-        "        pass\n"
-        "    if not getattr(torch, '_gina_weights_only_patched', False):\n"
-        "        _orig_torch_load = torch.load\n"
-        "        def _patched_load(*args, **kwargs):\n"
-        "            if 'weights_only' not in kwargs:\n"
-        "                kwargs['weights_only'] = False\n"
-        "            try:\n"
-        "                return _orig_torch_load(*args, **kwargs)\n"
-        "            except Exception as _exc:\n"
-        "                _m = str(_exc)\n"
-        "                if ('WeightsUnpickler' in _m or 'weights_only' in _m or 'Unsupported global' in _m) and kwargs.get('weights_only', True):\n"
-        "                    kwargs['weights_only'] = False\n"
-        "                    return _orig_torch_load(*args, **kwargs)\n"
-        "                raise\n"
-        "        torch.load = _patched_load\n"
-        "        torch._gina_weights_only_patched = True\n"
-        "except Exception:\n"
-        "    pass\n"
-        "try:\n"
-        "    import transformers\n"
-        "    if not hasattr(transformers, 'BeamSearchScorer'):\n"
-        "        try:\n"
-        "            from transformers.generation.beam_search import BeamSearchScorer\n"
-        "            transformers.BeamSearchScorer = BeamSearchScorer\n"
-        "        except Exception:\n"
-        "            try:\n"
-        "                from transformers.generation import BeamSearchScorer\n"
-        "                transformers.BeamSearchScorer = BeamSearchScorer\n"
-        "            except Exception:\n"
-        "                class BeamSearchScorer:\n"
-        "                    def __init__(self, *args, **kwargs): pass\n"
-        "                    def is_done(self): return True\n"
-        "                    def process(self, *args, **kwargs): return {}\n"
-        "                    def finalize(self, *args, **kwargs): return args[0] if args else None\n"
-        "                transformers.BeamSearchScorer = BeamSearchScorer\n"
-        "        if hasattr(transformers, '_extra_objects') and isinstance(transformers._extra_objects, dict):\n"
-        "            transformers._extra_objects['BeamSearchScorer'] = transformers.BeamSearchScorer\n"
-        "    if not hasattr(transformers, 'LogitsWarper'):\n"
-        "        try:\n"
-        "            from transformers.generation.logits_process import LogitsWarper\n"
-        "            transformers.LogitsWarper = LogitsWarper\n"
-        "        except Exception:\n"
-        "            class LogitsWarper:\n"
-        "                def __call__(self, input_ids, scores): return scores\n"
-        "            transformers.LogitsWarper = LogitsWarper\n"
-        "        if hasattr(transformers, '_extra_objects') and isinstance(transformers._extra_objects, dict):\n"
-        "            transformers._extra_objects['LogitsWarper'] = transformers.LogitsWarper\n"
-        "    def _isin_mps(elements, test_elements):\n"
-        "        try:\n"
-        "            import torch\n"
-        "            if not torch.is_tensor(test_elements):\n"
-        "                test_elements = torch.tensor(test_elements, device=elements.device)\n"
-        "            if getattr(elements.device, 'type', None) == 'mps':\n"
-        "                return (elements[..., None] == test_elements.reshape(-1)).any(-1)\n"
-        "            return torch.isin(elements, test_elements)\n"
-        "        except Exception: return False\n"
-        "    if not hasattr(transformers, 'isin_mps_friendly'):\n"
-        "        setattr(transformers, 'isin_mps_friendly', _isin_mps)\n"
-        "    try:\n"
-        "        import transformers.pytorch_utils as ptu\n"
-        "        if not hasattr(ptu, 'isin_mps_friendly'):\n"
-        "            setattr(ptu, 'isin_mps_friendly', _isin_mps)\n"
-        "    except Exception:\n"
-        "        pass\n"
-        "except Exception:\n"
-        "    pass\n"
-    )
+def remove_eager_torch_shims() -> None:
+    """Remove eager .pth and sitecustomize.py shims from site-packages.
 
-    pth_one_liner = (
-        "import sys; exec(\"try:\\n import torch\\n if not getattr(torch,'_gina_weights_only_patched',False):\\n  _l=torch.load\\n  def _pl(*a,**k):\\n   if 'weights_only' not in k: k['weights_only']=False\\n   try: return _l(*a,**k)\\n   except Exception as e:\\n    if ('WeightsUnpickler' in str(e) or 'Unsupported global' in str(e)) and k.get('weights_only',True): k['weights_only']=False; return _l(*a,**k)\\n    raise\\n  torch.load=_pl; torch._gina_weights_only_patched=True\\nexcept Exception: pass\\ntry:\\n import transformers\\n b=getattr(transformers,'BeamSearchScorer',None)\\n if not b:\\n  try:\\n   from transformers.generation.beam_search import BeamSearchScorer as b\\n  except Exception:\\n   class b: pass\\n  transformers.BeamSearchScorer=b\\n  if hasattr(transformers,'_extra_objects'): transformers._extra_objects['BeamSearchScorer']=b\\nexcept Exception: pass\")\n"
-    )
+    Eagerly importing torch during Python interpreter startup via .pth or sitecustomize
+    causes PyTorch C++ static CUDAAllocatorConfig to parse early with default settings.
+    When ComfyUI subsequently initializes, PyTorch crashes with:
+    RuntimeError: config[i] == get()->name() INTERNAL ASSERT FAILED ...
+    Allocator backend parsed at runtime != allocator backend parsed at load time
 
+    All needed shims are applied in-place on disk to transformers and TTS layers,
+    and torch.load is patched directly inside unified_audio_backend.py when needed.
+    """
     for sp_dir in get_all_site_packages_dirs():
-        try:
-            sc_file = sp_dir / "sitecustomize.py"
-            if not sc_file.exists():
-                sc_file.write_text(sc_snippet.lstrip(), encoding="utf-8")
-            else:
-                existing = sc_file.read_text(encoding="utf-8", errors="ignore")
-                if "BeamSearchScorer" not in existing or "_gina_weights_only_patched" not in existing:
-                    sc_file.write_text(existing + sc_snippet, encoding="utf-8")
+        # 1. Remove gina_xtts_shim.pth
+        pth_file = sp_dir / "gina_xtts_shim.pth"
+        if pth_file.is_file():
+            try:
+                pth_file.unlink()
+                print(f"[Unified Audio] Removed eager startup shim: {pth_file}")
+            except Exception as exc:
+                print(f"[Unified Audio] Notice: Failed to remove {pth_file}: {exc}")
 
-            pth_file = sp_dir / "gina_xtts_shim.pth"
-            if not pth_file.exists():
-                pth_file.write_text(pth_one_liner, encoding="utf-8")
-        except Exception:
-            pass
+        # 2. Clean sitecustomize.py
+        sc_file = sp_dir / "sitecustomize.py"
+        if sc_file.is_file():
+            try:
+                text = sc_file.read_text(encoding="utf-8", errors="ignore")
+                if any(k in text for k in ("BeamSearchScorer", "_gina_weights_only_patched", "XTTS & PyTorch 2.6", "isin_mps_friendly")):
+                    lines = [line for line in text.splitlines() if not any(k in line for k in ("_gina_weights_only_patched", "BeamSearchScorer", "LogitsWarper", "isin_mps_friendly", "XTTS & PyTorch 2.6", "gina_xtts_shim"))]
+                    cleaned = chr(10).join(lines).strip()
+                    if not cleaned or (cleaned.startswith("#") and len(cleaned.splitlines()) <= 2):
+                        sc_file.unlink()
+                        print(f"[Unified Audio] Removed eager sitecustomize: {sc_file}")
+                    else:
+                        sc_file.write_text(cleaned + chr(10), encoding="utf-8")
+                        print(f"[Unified Audio] Sanitized sitecustomize: {sc_file}")
+            except Exception as exc:
+                print(f"[Unified Audio] Notice: Failed to sanitize {sc_file}: {exc}")
 
 
 def main() -> int:
     # 1. First-pass: Apply in-place disk repairs and runtime shims
     patch_xtts_layers_on_disk()
     patch_transformers_pytorch_utils_on_disk()
-    install_sitecustomize_and_pth()
+    remove_eager_torch_shims()
     apply_torch_load_patch()
     apply_transformers_shim()
     apply_pytorch_utils_shim()

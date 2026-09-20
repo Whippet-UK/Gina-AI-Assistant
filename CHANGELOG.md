@@ -1,5 +1,60 @@
 # v1.20.12 — Phase 59 — Voice Engine Runtime Repair & Transformers BeamSearchScorer Fix
 
+## ComfyUI CUDA Allocator Assertion Resolution & Eager Startup Shim Removal — 2026-09-20
+
+- **Target File Path:** `/scripts/setup_audio_deps.py`
+  - **Exact Code Snippet:**
+    ```python
+    def remove_eager_torch_shims() -> None:
+        """Remove eager .pth and sitecustomize.py shims from site-packages.
+        Eagerly importing torch during Python interpreter startup via .pth or sitecustomize
+        causes PyTorch C++ static CUDAAllocatorConfig to parse early with default settings.
+        When ComfyUI subsequently initializes, PyTorch crashes with:
+        RuntimeError: config[i] == get()->name() INTERNAL ASSERT FAILED ...
+        Allocator backend parsed at runtime != allocator backend parsed at load time
+        """
+        for sp_dir in get_all_site_packages_dirs():
+            pth_file = sp_dir / "gina_xtts_shim.pth"
+            if pth_file.is_file():
+                pth_file.unlink()
+            sc_file = sp_dir / "sitecustomize.py"
+            if sc_file.is_file():
+                # Clean out eager torch import block
+    ```
+  - **Why:** Resolved the fatal `CUDAAllocatorConfig.cpp:253` assertion failure (`Allocator backend parsed at runtime != allocator backend parsed at load time`) that prevented ComfyUI from booting. Eagerly importing `torch` at Python interpreter startup via `.pth` or `sitecustomize.py` caused PyTorch C++ static constructors to parse environment variables before ComfyUI's `cuda_malloc.py` ran. Removed eager startup `.pth` and sanitized `sitecustomize.py` while preserving all on-disk layer and transformers shims.
+
+- **Target File Path:** `/scripts/check_audio_env.py`
+  - **Exact Code Snippet:**
+    ```python
+    def remove_eager_torch_shims() -> None:
+        for sp_dir in get_all_site_packages_dirs():
+            pth_file = sp_dir / "gina_xtts_shim.pth"
+            if pth_file.is_file():
+                pth_file.unlink()
+    ```
+  - **Why:** Replaced `install_sitecustomize_and_pth` with `remove_eager_torch_shims` in diagnostics script so running health checks also cleans up any residual startup `.pth` files.
+
+- **Target File Path:** `/Start_Factory.bat`
+  - **Exact Code Snippet:**
+    ```bat
+    REM Ensure any leftover eager startup shims are removed to protect ComfyUI CUDA allocator
+    if exist "%GINA_ROOT%\g_env\Lib\site-packages\gina_xtts_shim.pth" (
+      del /f /q "%GINA_ROOT%\g_env\Lib\site-packages\gina_xtts_shim.pth" 2>nul
+    )
+    ...
+    start "ComfyUI - Gina Backend" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && set PYTORCH_CUDA_ALLOC_CONF= && python ComfyUI_windows_portable\ComfyUI\main.py --lowvram --fp8_e4m3fn-text-enc --preview-method latent2rgb --disable-cuda-malloc"
+    ```
+  - **Why:** Deletes leftover `gina_xtts_shim.pth` before interpreter boot, clears any residual `PYTORCH_CUDA_ALLOC_CONF` in the subshell, and launches ComfyUI with `--disable-cuda-malloc` to prevent runtime allocator backend re-parsing conflicts.
+
+- **Target File Path:** `/repair_audio.bat`
+  - **Exact Code Snippet:**
+    ```bat
+    if exist "%GINA_ROOT%\g_env\Lib\site-packages\gina_xtts_shim.pth" (
+      del /f /q "%GINA_ROOT%\g_env\Lib\site-packages\gina_xtts_shim.pth" 2>nul
+    )
+    ```
+  - **Why:** Guarantees that running the 1-click audio repair batch utility also automatically deletes any stale `.pth` shim file.
+
 ## Comprehensive Audio Environment Inoculation & 1-Click Repair Batch — 2026-09-20
 
 ## AI Studio GitHub Import Migration & Metadata Synchronization — 2026-09-20
