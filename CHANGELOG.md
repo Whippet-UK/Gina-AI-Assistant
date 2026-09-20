@@ -1,5 +1,37 @@
 # v1.20.11 — Phase 59 — Voice Engine Runtime Repair & Fluid Layout
 
+## AI Studio Container & TypeScript Build Migration Update — 2026-09-20
+
+- **Target File Path:** `/server/routes/audioEngineRoute.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    const safeFilename = (name: string) => path.basename(name).replace(/[^a-zA-Z0-9._-]/g, '_');
+    // Inside runPython:
+    return new Promise((resolve, reject) => {
+      resolvePython().then((python) => {
+        // ...
+      }).catch(reject);
+    });
+    ```
+  - **Why:** Resolved TypeScript compile error TS2304 where `reject` was invoked outside the Promise executor scope in `runPython`, and error TS2552 where `safeFilename` was referenced in `/voice-clone` without a preceding function definition.
+
+- **Target File Path:** `/src/components/MilestoneChecklist.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    { phase: 58, name: 'Voice Engine Repair & Fluid Layout', status: 'IN_PROGRESS', details: '...' }
+    // In restorePoints:
+    { id: 'RESTORE_V1.20.8_UNIFIED_AUDIO_APNG_LOCAL_AI_UX', label: '...', timestamp: '2026-09-20 09:18', status: 'LOCKED' },
+    ```
+  - **Why:** Fixed TypeScript type mismatch TS2322 where `LifecyclePhase.status` received `'ACTIVE'` instead of `'IN_PROGRESS'`, and `RestorePoint.status` received `'COMPLETED'` instead of `'LOCKED'`.
+
+- **Target File Path:** `/index.html`
+  - **Exact Code Snippet:**
+    ```html
+    <title>Gina AI Factory v1.20.11 — Local Creator UI</title>
+    <meta name="description" content="Strictly local creator dashboard with ComfyUI, Juggernaut XL SDXL high-speed engine, Qwen 2.5-VL Vision & Qwen 2.5 Coder local CUDA inference, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, and voice mode." />
+    ```
+  - **Why:** Synchronized HTML entry point title and meta description with `metadata.json` and `src/version.ts` (v1.20.11).
+
 - **Local AI composer:** Attach is now a dedicated control beside Send instead of sharing the Send button's absolute position; the composer reserves action space so the two buttons cannot overlap.
 - **Local AI height:** Chat/Interactive Preview now expands against the viewport instead of stopping roughly 20% above the bottom on tall displays.
 - **Voice dependencies:** `setup_audio_deps.py` now detects broken imports (not just missing module specs), repairs Torch/Torchaudio/TorchCodec before Coqui TTS, verifies every import after installation, and the main Windows launcher runs the audit in the active `g_env`.

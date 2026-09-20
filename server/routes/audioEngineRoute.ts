@@ -16,6 +16,7 @@ type PythonCandidate = { label:string; command:string; args:string[]; executable
 let resolvedPython: PythonCandidate | null = null;
 const SCRIPT = path.resolve(process.cwd(), 'scripts', 'unified_audio_backend.py');
 const execFileAsync = promisify(execFile);
+const safeFilename = (name: string) => path.basename(name).replace(/[^a-zA-Z0-9._-]/g, '_');
 
 function pythonCandidates(): PythonCandidate[] {
   const candidates: PythonCandidate[] = [];
@@ -65,20 +66,20 @@ async function runPython(payload: any): Promise<any> {
   await fs.mkdir(AUDIO_ROOT, { recursive: true });
   return new Promise((resolve, reject) => {
     resolvePython().then((python) => {
-    const child = spawn(python.command, [...python.args, SCRIPT], { cwd: GINA_ROOT, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
-    let stdout = ''; let stderr = '';
-    child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
-    child.stdout.on('data', chunk => { stdout += chunk; }); child.stderr.on('data', chunk => { stderr += chunk; });
-    child.on('error', reject);
-    child.on('close', code => {
-      let parsed: any = null;
-      try { parsed = JSON.parse(stdout.trim().split(/\r?\n/).filter(Boolean).pop() || '{}'); } catch {}
-      if (code !== 0 || !parsed?.ok) return reject(new Error(parsed?.error || stderr.trim() || `Unified audio backend exited with code ${code}`));
-      resolve(parsed);
-    });
-    child.stdin.end(JSON.stringify(payload));
-    });
-  }).catch(reject);
+      const child = spawn(python.command, [...python.args, SCRIPT], { cwd: GINA_ROOT, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      let stdout = ''; let stderr = '';
+      child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+      child.stdout.on('data', chunk => { stdout += chunk; }); child.stderr.on('data', chunk => { stderr += chunk; });
+      child.on('error', reject);
+      child.on('close', code => {
+        let parsed: any = null;
+        try { parsed = JSON.parse(stdout.trim().split(/\r?\n/).filter(Boolean).pop() || '{}'); } catch {}
+        if (code !== 0 || !parsed?.ok) return reject(new Error(parsed?.error || stderr.trim() || `Unified audio backend exited with code ${code}`));
+        resolve(parsed);
+      });
+      child.stdin.end(JSON.stringify(payload));
+    }).catch(reject);
+  });
 }
 
 router.get('/diagnostics', async (_req: Request, res: Response) => {
