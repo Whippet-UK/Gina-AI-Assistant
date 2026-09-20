@@ -69,8 +69,17 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
     try {
       onAddLog?.('INFO', 'Running Unified Audio dependency repair...');
       const res = await fetch('/api/audio/repair', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || 'Repair failed.');
+      const rawText = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        // Not valid JSON
+      }
+      if (!res.ok || !data?.ok) {
+        const detail = data?.error || (rawText.trim() ? `Server response: ${rawText.slice(0, 260)}` : `Server returned empty response (${res.status}).`);
+        throw new Error(detail);
+      }
       onAddLog?.('SEC', 'Unified Audio dependencies repaired successfully.');
       setRepairLog(data.message || 'Repaired successfully.');
       await fetchDiagnostics();
@@ -196,12 +205,17 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
         {audioDiagnostics?.imports?.length ? <span className="text-slate-600 truncate" title={audioDiagnostics.imports.join(' · ')}>Python imports: {audioDiagnostics.imports.map(x=>x.split(/[\\/]/).pop()).join(' · ')}</span> : null}
       </div>
       {!audioDiagnostics?.ok && (
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-amber-200/80 break-words flex-1">{audioDiagnostics?.error || 'Checking TTS, Bark and pydub…'}</div>
+        <div className="mt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="text-amber-200/80 break-words flex-1 text-[10px]">
+            <div>{audioDiagnostics?.error || 'Checking TTS, Bark and pydub…'}</div>
+            <div className="mt-1 text-[9px] text-amber-300/70 font-sans">
+              To resolve on your PC: Click <strong>Run Auto Repair</strong> or run <code className="bg-slate-900 px-1 py-0.5 rounded text-amber-200 font-mono">repair_audio.bat</code> in <code className="bg-slate-900 px-1 py-0.5 rounded text-amber-200 font-mono">C:\Gina_AI</code>.
+            </div>
+          </div>
           <button
             onClick={() => void handleRepair()}
             disabled={repairing}
-            className="px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+            className="px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer shrink-0"
           >
             <Wrench className={`w-3.5 h-3.5 ${repairing ? 'animate-spin' : ''}`} />
             {repairing ? 'Repairing Dependencies...' : 'Run Auto Repair'}

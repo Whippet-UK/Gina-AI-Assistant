@@ -50,7 +50,7 @@ python scripts\setup_audio_deps.py
 if errorlevel 1 (
   echo [WARN] Voice engine dependency audit failed.
   echo        Gina will still start, but the VOICE GENERATOR may remain offline.
-  echo        Re-run this launcher after fixing the Python/pip error above.
+  echo        Run 'repair_audio.bat' to automatically repair audio dependencies.
 ) else (
   echo    Voice engine Python environment is READY.
 )

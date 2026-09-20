@@ -3,7 +3,7 @@ import { spawn, execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs/promises';
-import { readFileSync } from 'node:fs';
+import fsSync, { readFileSync, existsSync } from 'node:fs';
 import { listVoices, setFavorite, upsertVoice } from '../audio/VoiceDatabase.js';
 
 const router = Router();
@@ -46,17 +46,45 @@ function formatPythonError(error: any): string {
 function pythonCandidates(): PythonCandidate[] {
   const candidates: PythonCandidate[] = [];
   if (CONFIGURED_PYTHON) candidates.push({label:'GINA_AUDIO_PYTHON', command:CONFIGURED_PYTHON, args:[], executable:CONFIGURED_PYTHON});
-  candidates.push({label:'Gina g_env', command:path.join(GINA_ROOT, 'g_env', 'Scripts', 'python.exe'), args:[], executable:path.join(GINA_ROOT, 'g_env', 'Scripts', 'python.exe')});
+
   try {
     const raw = readFileSync(PYTHON_BINDING_FILE, 'utf8');
     const bound = String(JSON.parse(raw)?.python || '').trim();
-    if (bound) candidates.unshift({label:'Saved Gina audio interpreter', command:bound, args:[], executable:bound});
+    if (bound) candidates.push({label:'Saved Gina audio interpreter', command:bound, args:[], executable:bound});
   } catch {}
-  candidates.push({label:'Windows python command', command:'python', args:[], executable:'python'});
+
+  const gEnvWin = path.join(GINA_ROOT, 'g_env', 'Scripts', 'python.exe');
+  const gEnvLinux = path.join(GINA_ROOT, 'g_env', 'bin', 'python3');
+  const gEnvLinuxAlt = path.join(GINA_ROOT, 'g_env', 'bin', 'python');
+
+  if (fsSync.existsSync(gEnvWin)) {
+    candidates.push({label:'Gina g_env', command:gEnvWin, args:[], executable:gEnvWin});
+  } else if (fsSync.existsSync(gEnvLinux)) {
+    candidates.push({label:'Gina g_env', command:gEnvLinux, args:[], executable:gEnvLinux});
+  } else if (fsSync.existsSync(gEnvLinuxAlt)) {
+    candidates.push({label:'Gina g_env', command:gEnvLinuxAlt, args:[], executable:gEnvLinuxAlt});
+  } else if (process.platform === 'win32') {
+    candidates.push({label:'Gina g_env', command:gEnvWin, args:[], executable:gEnvWin});
+  }
+
   if (process.platform === 'win32') {
+    candidates.push({label:'Windows python command', command:'python', args:[], executable:'python'});
     candidates.push({label:'Windows Python Launcher 3.12', command:'py', args:['-3.12'], executable:'py -3.12'});
     candidates.push({label:'Windows Python Launcher default', command:'py', args:[], executable:'py'});
+    const localAppData = process.env.LOCALAPPDATA || '';
+    if (localAppData) {
+      for (const pyVer of ['Python312', 'Python311', 'Python310']) {
+        const p = path.join(localAppData, 'Programs', 'Python', pyVer, 'python.exe');
+        if (fsSync.existsSync(p)) {
+          candidates.push({label:`Windows ${pyVer}`, command:p, args:[], executable:p});
+        }
+      }
+    }
+  } else {
+    candidates.push({label:'System python3', command:'python3', args:[], executable:'python3'});
+    candidates.push({label:'System python', command:'python', args:[], executable:'python'});
   }
+
   const unique = new Map<string, PythonCandidate>();
   for (const candidate of candidates) unique.set(`${candidate.command}|${candidate.args.join(' ')}`, candidate);
   return [...unique.values()];
@@ -107,21 +135,48 @@ async function runPython(payload: any): Promise<any> {
   });
 }
 
-router.post('/repair', async (_req: Request, res: Response) => {
+router.post('/repair', async (req: Request, res: Response) => {
   resolvedPython = null;
+  req.setTimeout(300000);
+  res.setTimeout(300000);
+  res.setHeader('Content-Type', 'application/json');
+
   const candidates = pythonCandidates();
-  const py = candidates.find(c => c.label === 'Gina g_env') || candidates[0];
+  let py: PythonCandidate | undefined = candidates.find(c => {
+    if (path.isAbsolute(c.command)) return fsSync.existsSync(c.command);
+    return true;
+  });
+  if (!py) py = candidates[0];
+
+  if (!py || (path.isAbsolute(py.command) && !fsSync.existsSync(py.command))) {
+    return res.status(200).json({
+      ok: false,
+      error: `No viable Python interpreter found. Ensure Python is installed in C:\\Gina_AI\\g_env or available in system PATH. Checked: ${candidates.map(c => c.command).join(', ')}`,
+      needsManualSetup: true
+    });
+  }
+
   try {
-    const out = await execFileAsync(py.command, [...py.args, SETUP_DEPS_SCRIPT], { cwd: GINA_ROOT, windowsHide: true, timeout: 180000, maxBuffer: 10 * 1024 * 1024 });
-    const check = await resolvePython();
-    res.json({ ok: true, message: 'Audio dependencies repaired successfully.', output: String(out.stdout || '').trim(), python: check.executable });
+    const out = await execFileAsync(py.command, [...py.args, SETUP_DEPS_SCRIPT], { cwd: GINA_ROOT, windowsHide: true, timeout: 240000, maxBuffer: 10 * 1024 * 1024 });
+    const check = await resolvePython().catch(() => null);
+    return res.json({
+      ok: Boolean(check),
+      message: check ? 'Audio dependencies repaired successfully.' : 'Repair script executed. Verifying interpreter...',
+      output: String(out.stdout || '').trim(),
+      python: check?.executable || py.command
+    });
   } catch (err: any) {
-    res.status(500).json({ ok: false, error: err?.message || 'Repair script execution failed.', stderr: err?.stderr || '' });
+    return res.status(200).json({
+      ok: false,
+      error: err?.message || 'Repair script execution failed.',
+      stderr: String(err?.stderr || '').trim()
+    });
   }
 });
 
 router.get('/diagnostics', async (_req: Request, res: Response) => {
   const db = await import('../audio/VoiceDatabase.js');
+  res.setHeader('Content-Type', 'application/json');
   try {
     const python = await resolvePython();
     const version = await execFileAsync(python.command, [...python.args, CHECK_ENV_SCRIPT], { cwd: GINA_ROOT, windowsHide: true, timeout: 20000, maxBuffer: 1024 * 1024 });
@@ -130,7 +185,7 @@ router.get('/diagnostics', async (_req: Request, res: Response) => {
   } catch (error: any) {
     let dbCheck:any = null;
     try { dbCheck = db.testDatabase(); } catch (dbError:any) { dbCheck = {ok:false, error:String(dbError?.message || dbError)}; }
-    res.status(503).json({ ok:false, databasePath: dbCheck?.path || db.CURRENT_DB_PATH, databaseWritable: dbCheck?.writable ?? false, databaseError: dbCheck?.error || null, error:error?.message || 'Unified audio dependencies are not available.', candidates: pythonCandidates().map(c => ({label:c.label, command:c.command, args:c.args})) });
+    res.json({ ok:false, databasePath: dbCheck?.path || db.CURRENT_DB_PATH, databaseWritable: dbCheck?.writable ?? false, databaseError: dbCheck?.error || null, error:error?.message || 'Unified audio dependencies are not available.', candidates: pythonCandidates().map(c => ({label:c.label, command:c.command, args:c.args})) });
   }
 });
 
