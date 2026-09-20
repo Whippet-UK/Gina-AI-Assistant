@@ -29,6 +29,13 @@ The former broad request “making Gina reliable and genuinely autonomous” is 
   - **Validation:** Python syntax and targeted TypeScript transpile checks are required; live Windows/ComfyUI/ACE-Step acceptance remains external.
 
 ## 🟥 Completed Requests
+- [x] **2026-09-20 — Phase 56: Unified Audio, APNG & Local AI UX**
+  - Added local Bark + XTTS v2 generation, hybrid/stitched timelines, XTTS clone upload validation, searchable SQLite voice metadata, favourites and preview generation.
+  - Added GIF Studio APNG export, explicit image ADD ONLY / PRESERVE SOURCE editing, wider Local AI layout and whole-PC electricity/cost telemetry.
+  - Added deterministic web-app build routing so Gina can scaffold a new local project without an existing workspace.
+  - Added `scripts/setup_audio_deps.py` and `scripts/unified_audio_backend.py`.
+  - **Validation:** Python syntax, TypeScript/TSX syntax and FFmpeg APNG smoke test passed; full npm/Vite build remains external because this archive has no installed `node_modules`.
+
 - [x] **2026-09-13 — Infrastructure: Add StreamInject Source Audio Stripping Pass**
   - Added the `--strip-audio` render flag and a pre-slice FFmpeg stream-copy pass (`-vcodec copy -an`) covering intro, gameplay, outro, and green-screen overlay inputs, with scratch-file substitution before timeline assembly.
   - Propagated `stripAudio` through the StreamInject Express route/job ledger and `StreamInjectService`, then added the Step 4 `stripAudioToggle` dashboard control and request payload mapping.
@@ -85,3 +92,34 @@ The former broad request “making Gina reliable and genuinely autonomous” is 
   - Qwen Vision remains the boot/default model and uses the local multimodal projector; Coder mode unloads the projector and raises the effective context to 16K.
   - Added Image Studio High Precision routing to FLUX.1 Lite + UMT5 and migrated active video routing to Wan 2.1 1.3B BF16.
   - Updated active project documentation and version to v1.19.3.
+
+- [x] **2026-09-20 — Phase 57: Voice Generator & Local AI Preview Restore**
+  - Renamed the Unified Audio navigation/page labels to Voice Generator / Voice Audio Generation.
+  - Fixed first-run SQLite directory creation and Python interpreter mismatch for TTS/Bark/pydub.
+  - Added audio diagnostics and restored Local AI Interactive Preview + visible auto-growing prompt composer.
+
+
+
+## Phase 58 — Voice Engine Repair & Fluid Layout — 2026-09-20
+
+- Added deterministic Windows Python discovery for the Voice Generator. The setup script persists the exact `sys.executable` used to install TTS/Bark/pydub under `.gina/audio_python.json`; the Node route checks that binding, Gina `g_env`, `python`, and the Windows Python Launcher.
+- Added detailed audio diagnostics including candidate interpreters, import paths, database path and database writability.
+- Hardened the voice SQLite path with writable-directory detection and a local `.gina/data/audio` fallback if the primary `data/audio` location cannot be opened.
+- Added post-generation physical audio manipulation: `pitch_shift_semitones` (-12 to +12), `formant_shift` (0.5 to 1.5), and pitch-preserving `speed_factor` (0.5x to 2.0x), using local SciPy processing before final WAV/MP3/FLAC export. SciPy STFT/iSTFT and resampling are used for the local signal-processing stages.
+- Refactored the master application wrapper to full-width fluid layout and Local AI / Voice Generator workspaces to responsive 12-column grids, removing the previous 1500px master constraint and fixed Local AI column widths.
+- Kept the Local AI Interactive Preview and auto-growing prompt composer intact.
+
+### Phase 58 Validation
+- Python syntax compile: PASS for `scripts/setup_audio_deps.py` and `scripts/unified_audio_backend.py`.
+- TypeScript syntax transpilation: PASS for changed TS/TSX files.
+- ZIP integrity: PASS.
+- Full Windows runtime/audio-model generation remains to be exercised on the user's machine because the installed Python/Node environment is outside this isolated build workspace.
+
+
+## Phase 59 — Voice Engine Runtime Repair & Fluid Layout — 2026-09-20
+- [x] Attach/Send composer overlap removed and action space reserved.
+- [x] Local AI chat/preview height now fills the available viewport instead of stopping well above the bottom edge.
+- [x] Audio setup repairs broken imports, installs Torch/Torchaudio/TorchCodec before Coqui TTS, and validates the final interpreter.
+- [x] Main Windows launcher runs audio setup in the active `g_env`.
+- [x] Bark CPU offload enabled for the 8 GB VRAM profile.
+- [x] SQLite database-file probe with automatic `.gina/data/audio` fallback.
