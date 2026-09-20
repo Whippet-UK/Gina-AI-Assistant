@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { AudioLines, ChevronDown, Dice5, Download, Heart, Lock, Plus, Play, Search, Sparkles, Trash2, Upload, Wand2, Wrench } from 'lucide-react';
+import { AudioLines, ChevronDown, Dice5, Download, Heart, Loader2, Lock, Plus, Play, Search, Sparkles, Square, Trash2, Upload, Volume2, Wand2, Wrench } from 'lucide-react';
 
 interface VoiceRecord {
   voice_id:string; speaker_name:string; gender:string; age_group:string; primary_language:string; accent_dialect:string;
@@ -50,6 +50,9 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
   const [result, setResult] = useState<{url:string; path:string; bytes:number; seed:number}|null>(null);
   const [batchResults, setBatchResults] = useState<Array<{url:string;path:string;bytes:number;seed:number}>>([]);
   const [previewUrl, setPreviewUrl] = useState<string|null>(null);
+  const [previewingVoiceId, setPreviewingVoiceId] = useState<string|null>(null);
+  const [playingVoiceId, setPlayingVoiceId] = useState<string|null>(null);
+  const audioRef = useRef<HTMLAudioElement|null>(null);
   const [activeRowId, setActiveRowId] = useState('row_1');
   const textareaRefs = useRef<Record<string, HTMLTextAreaElement|null>>({});
 
@@ -151,13 +154,45 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
     catch (e:any) { setError(e?.message || 'Unable to update favorite.'); }
   };
 
+  const stopPreview = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setPlayingVoiceId(null);
+  };
+
   const previewVoice = async (voice:VoiceRecord) => {
     setError(null);
+    if (playingVoiceId === voice.voice_id) {
+      stopPreview();
+      return;
+    }
+
+    if (voice.preview_audio_url) {
+      setPreviewUrl(voice.preview_audio_url);
+      setPlayingVoiceId(voice.voice_id);
+      if (audioRef.current) {
+        audioRef.current.src = voice.preview_audio_url;
+        audioRef.current.play().catch(() => {});
+      }
+      return;
+    }
+
+    setPreviewingVoiceId(voice.voice_id);
     try {
       const r = await fetch('/api/audio/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({voice_id:voice.voice_id,engine:voice.engine_compatibility.includes('bark') ? 'bark' : 'xtts_v2',voice_preset:voice.bark_prompt_path || voice.speaker_name,speaker:voice.speaker_name,speaker_wav:voice.xtts_embedding_path || undefined})});
-      const d = await r.json(); if (!r.ok || !d.ok) throw new Error(d.error || 'Preview failed.');
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || 'Preview failed.');
       setPreviewUrl(d.url);
+      setPlayingVoiceId(voice.voice_id);
+      setVoices(prev => prev.map(v => v.voice_id === voice.voice_id ? { ...v, preview_audio_url: d.url } : v));
+      if (audioRef.current) {
+        audioRef.current.src = d.url;
+        audioRef.current.play().catch(() => {});
+      }
     } catch (e:any) { setError(e?.message || 'Voice preview failed.'); }
+    finally { setPreviewingVoiceId(null); }
   };
 
   const addRow = () => setRows(prev => [...prev,{id:`row_${Date.now()}_${Math.random().toString(36).slice(2,5)}`,text:'',engine:'xtts_v2',voicePreset:'xtts_ana_florence',language:'en'}]);
@@ -262,7 +297,96 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
         {batchResults.length > 0 && <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3"><div className="text-[9px] uppercase tracking-widest text-emerald-300 font-bold mb-2">Batch Matrix · {batchResults.length} variation{batchResults.length===1?'':'s'}</div><div className="grid grid-cols-1 md:grid-cols-2 gap-2">{batchResults.map((item,index)=><div key={`${item.seed}-${index}`} className="rounded border border-slate-800 bg-slate-950 p-2"><div className="flex items-center justify-between text-[8px] font-mono text-slate-500"><span>Variation {index+1} · Seed {item.seed}</span><a href={item.url} download className="text-emerald-300 flex items-center gap-1"><Download className="w-3 h-3"/>Save</a></div><audio controls src={item.url} className="w-full mt-2"/></div>)}</div></div>}
       </div>
 
-      <aside className="col-span-12 xl:col-span-4 rounded-lg border border-slate-800 bg-slate-900/50 p-3 min-w-0"><div className="flex items-center justify-between mb-3"><div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Voice Database</div><Search className="w-3.5 h-3.5 text-slate-600"/></div><div className="flex gap-1 mb-2">{(['system','cloned','community'] as const).map(c=><button key={c} onClick={()=>setVoiceCategory(c)} className={`flex-1 py-1.5 rounded border text-[8px] font-bold uppercase ${voiceCategory===c?'border-emerald-400 text-emerald-300':'border-slate-700 text-slate-500'}`}>{c==='cloned'?'My Cloned Voices':c==='community'?'Shared':'System Presets'}</button>)}</div><input value={voiceSearch} onChange={e=>setVoiceSearch(e.target.value)} placeholder="Search speaker, accent or tone…" className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-300 mb-3"/><div className="space-y-1.5 max-h-[420px] overflow-y-auto custom-scrollbar">{filteredVoices.map(v=><div key={v.voice_id} className={`p-2 rounded border ${voiceId===v.voice_id?'border-emerald-500/40 bg-emerald-500/5':'border-slate-800 bg-slate-950'}`}><div className="flex items-start gap-2"><button onClick={()=>setVoiceId(v.voice_id)} className="flex-1 text-left min-w-0"><div className="text-xs text-slate-200 font-semibold truncate">{v.speaker_name}</div><div className="text-[8px] text-slate-600 truncate">{v.gender} · {v.age_group} · {v.primary_language} · {v.accent_dialect}</div><div className="flex flex-wrap gap-1 mt-1">{v.engine_compatibility.map(e=><span key={e} className={`px-1 rounded text-[7px] font-bold uppercase ${e==='xtts'?'bg-emerald-500/15 text-emerald-300':'bg-sky-500/15 text-sky-300'}`}>{e==='xtts'?'XTTS':'BARK'}</span>)}{v.tone_tags.slice(0,3).map(t=><span key={t} className="px-1 rounded bg-slate-800 text-slate-500 text-[7px]">{t}</span>)}</div></button><button title="Preview voice" onClick={()=>void previewVoice(v)} className="p-1.5 rounded border border-slate-700 text-slate-400"><Play className="w-3 h-3"/></button><button title="Favorite" onClick={()=>void toggleFavorite(v)} className={`p-1.5 rounded border ${v.favorite?'border-amber-400/50 text-amber-300':'border-slate-700 text-slate-600'}`}><Heart className="w-3 h-3" fill={v.favorite?'currentColor':'none'}/></button></div></div>)}{!filteredVoices.length&&<div className="text-[9px] text-slate-600 text-center py-8">No matching voices.</div>}</div>{engine==='xtts_v2'&&<div {...drop.getRootProps()} className={`mt-3 rounded-lg border border-dashed p-4 text-center cursor-pointer ${drop.isDragActive?'border-emerald-400 bg-emerald-500/10':'border-slate-700 bg-slate-950'}`}><input {...drop.getInputProps()}/><Upload className="w-5 h-5 mx-auto text-emerald-300"/><div className="text-[9px] font-bold text-slate-300 mt-2">Drop 3–10s XTTS reference</div><div className="text-[8px] text-slate-600 mt-1">WAV or MP3 · clean speech · stored locally</div>{clonePath&&<div className="text-[8px] text-emerald-300 mt-2 truncate">Clone ready: {clonePath.split(/[\\/]/).pop()}</div>}</div>}{engine==='xtts_v2'&&<select value={language} onChange={e=>setLanguage(e.target.value)} className="mt-3 w-full bg-slate-950 border border-slate-800 rounded px-2 py-2 text-[9px] text-slate-300">{LANGUAGES.map(l=><option key={l}>{l}</option>)}</select>}{previewUrl&&<div className="mt-3"><audio controls src={previewUrl} className="w-full"/></div>}</aside>
+      <aside className="col-span-12 xl:col-span-4 rounded-lg border border-slate-800 bg-slate-900/50 p-3 min-w-0">
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Voice Database</div>
+          <Search className="w-3.5 h-3.5 text-slate-600"/>
+        </div>
+        <div className="flex gap-1 mb-2">
+          {(['system','cloned','community'] as const).map(c => (
+            <button key={c} onClick={()=>setVoiceCategory(c)} className={`flex-1 py-1.5 rounded border text-[8px] font-bold uppercase ${voiceCategory===c?'border-emerald-400 text-emerald-300':'border-slate-700 text-slate-500'}`}>
+              {c==='cloned'?'My Cloned Voices':c==='community'?'Shared':'System Presets'}
+            </button>
+          ))}
+        </div>
+        <input value={voiceSearch} onChange={e=>setVoiceSearch(e.target.value)} placeholder="Search speaker, accent or tone…" className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-300 mb-3"/>
+        <div className="space-y-1.5 max-h-[420px] overflow-y-auto custom-scrollbar">
+          {filteredVoices.map(v => (
+            <div key={v.voice_id} className={`p-2 rounded border ${voiceId===v.voice_id?'border-emerald-500/40 bg-emerald-500/5':'border-slate-800 bg-slate-950'}`}>
+              <div className="flex items-start gap-2">
+                <button onClick={()=>setVoiceId(v.voice_id)} className="flex-1 text-left min-w-0">
+                  <div className="text-xs text-slate-200 font-semibold truncate">{v.speaker_name}</div>
+                  <div className="text-[8px] text-slate-600 truncate">{v.gender} · {v.age_group} · {v.primary_language} · {v.accent_dialect}</div>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {v.engine_compatibility.map(e => (
+                      <span key={e} className={`px-1 rounded text-[7px] font-bold uppercase ${e==='xtts'?'bg-emerald-500/15 text-emerald-300':'bg-sky-500/15 text-sky-300'}`}>
+                        {e==='xtts'?'XTTS':'BARK'}
+                      </span>
+                    ))}
+                    {v.tone_tags.slice(0,3).map(t => (
+                      <span key={t} className="px-1 rounded bg-slate-800 text-slate-500 text-[7px]">{t}</span>
+                    ))}
+                  </div>
+                </button>
+                <button
+                  title={previewingVoiceId === v.voice_id ? "Generating preview..." : playingVoiceId === v.voice_id ? "Stop preview" : "Preview voice"}
+                  onClick={() => void previewVoice(v)}
+                  disabled={previewingVoiceId === v.voice_id}
+                  className={`p-1.5 rounded border transition-colors ${
+                    playingVoiceId === v.voice_id
+                      ? 'border-emerald-400 bg-emerald-500/20 text-emerald-300 animate-pulse'
+                      : previewingVoiceId === v.voice_id
+                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                      : 'border-slate-700 text-slate-400 hover:text-emerald-300 hover:border-emerald-500/40'
+                  }`}
+                >
+                  {previewingVoiceId === v.voice_id ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : playingVoiceId === v.voice_id ? (
+                    <Square className="w-3 h-3 fill-emerald-300" />
+                  ) : (
+                    <Play className="w-3 h-3" />
+                  )}
+                </button>
+                <button title="Favorite" onClick={()=>void toggleFavorite(v)} className={`p-1.5 rounded border ${v.favorite?'border-amber-400/50 text-amber-300':'border-slate-700 text-slate-600'}`}>
+                  <Heart className="w-3 h-3" fill={v.favorite?'currentColor':'none'}/>
+                </button>
+              </div>
+            </div>
+          ))}
+          {!filteredVoices.length && <div className="text-[9px] text-slate-600 text-center py-8">No matching voices.</div>}
+        </div>
+        {engine==='xtts_v2' && (
+          <div {...drop.getRootProps()} className={`mt-3 rounded-lg border border-dashed p-4 text-center cursor-pointer ${drop.isDragActive?'border-emerald-400 bg-emerald-500/10':'border-slate-700 bg-slate-950'}`}>
+            <input {...drop.getInputProps()}/>
+            <Upload className="w-5 h-5 mx-auto text-emerald-300"/>
+            <div className="text-[9px] font-bold text-slate-300 mt-2">Drop 3–10s XTTS reference</div>
+            <div className="text-[8px] text-slate-600 mt-1">WAV or MP3 · clean speech · stored locally</div>
+            {clonePath && <div className="text-[8px] text-emerald-300 mt-2 truncate">Clone ready: {clonePath.split(/[\\/]/).pop()}</div>}
+          </div>
+        )}
+        {engine==='xtts_v2' && (
+          <select value={language} onChange={e=>setLanguage(e.target.value)} className="mt-3 w-full bg-slate-950 border border-slate-800 rounded px-2 py-2 text-[9px] text-slate-300">
+            {LANGUAGES.map(l=><option key={l}>{l}</option>)}
+          </select>
+        )}
+        <div className="mt-3 border-t border-slate-800/80 pt-2.5">
+          {playingVoiceId && (
+            <div className="flex items-center justify-between text-[9px] text-emerald-300 mb-1.5 font-medium">
+              <span className="flex items-center gap-1.5"><Volume2 className="w-3.5 h-3.5 animate-pulse text-emerald-400" /> Playing: {voices.find(x => x.voice_id === playingVoiceId)?.speaker_name || 'Voice sample'}</span>
+              <button onClick={stopPreview} className="text-slate-400 hover:text-rose-300 text-[8px] uppercase tracking-wider">Stop</button>
+            </div>
+          )}
+          <audio
+            ref={audioRef}
+            controls
+            src={previewUrl || undefined}
+            onEnded={() => setPlayingVoiceId(null)}
+            onPause={() => setPlayingVoiceId(null)}
+            className={`w-full ${previewUrl ? 'block' : 'hidden'}`}
+          />
+        </div>
+      </aside>
     </div>
   </section>;
 };

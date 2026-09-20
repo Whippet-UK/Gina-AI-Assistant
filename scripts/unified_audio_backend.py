@@ -16,7 +16,46 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
-# Ensure transformers backwards-compatibility for Coqui XTTS (BeamSearchScorer and LogitsWarper)
+# Ensure PyTorch 2.6+ backwards compatibility with Bark and XTTS checkpoints (weights_only & numpy globals)
+try:
+    import torch
+    # 1. Allowlist safe numpy scalars/arrays in PyTorch 2.4+
+    try:
+        import numpy as np
+        safe_objs = []
+        for mod in [np, getattr(np, "core", None), getattr(np, "_core", None)]:
+            if mod:
+                for attr in ["scalar", "_reconstruct", "multiarray", "dtype"]:
+                    val = getattr(mod, attr, None)
+                    if val is not None and val not in safe_objs:
+                        safe_objs.append(val)
+        if hasattr(torch.serialization, "add_safe_globals") and safe_objs:
+            torch.serialization.add_safe_globals(safe_objs)
+    except Exception:
+        pass
+
+    # 2. Monkey-patch torch.load to default weights_only=False for local audio models
+    if not getattr(torch, "_gina_weights_only_patched", False):
+        _orig_torch_load = torch.load
+
+        def _patched_torch_load(*args, **kwargs):
+            if "weights_only" not in kwargs:
+                kwargs["weights_only"] = False
+            try:
+                return _orig_torch_load(*args, **kwargs)
+            except Exception as exc:
+                err_msg = str(exc)
+                if ("WeightsUnpickler" in err_msg or "weights_only" in err_msg or "Unsupported global" in err_msg) and kwargs.get("weights_only", True):
+                    kwargs["weights_only"] = False
+                    return _orig_torch_load(*args, **kwargs)
+                raise
+
+        torch.load = _patched_torch_load
+        torch._gina_weights_only_patched = True
+except Exception:
+    pass
+
+# Ensure transformers backwards-compatibility for Coqui XTTS (BeamSearchScorer, LogitsWarper, and isin_mps_friendly)
 try:
     import transformers
     if not hasattr(transformers, "BeamSearchScorer"):
@@ -31,6 +70,30 @@ try:
             transformers.LogitsWarper = LogitsWarper
         except Exception:
             pass
+
+    def _isin_mps_friendly_shim(elements, test_elements):
+        try:
+            import torch
+            if not torch.is_tensor(test_elements):
+                test_elements = torch.tensor(test_elements, device=elements.device)
+            if getattr(elements.device, "type", None) == "mps":
+                return (elements[..., None] == test_elements.reshape(-1)).any(-1)
+            return torch.isin(elements, test_elements)
+        except Exception:
+            return False
+
+    if not hasattr(transformers, "isin_mps_friendly"):
+        setattr(transformers, "isin_mps_friendly", _isin_mps_friendly_shim)
+
+    try:
+        import transformers.pytorch_utils as ptu
+        if not hasattr(ptu, "isin_mps_friendly"):
+            setattr(ptu, "isin_mps_friendly", _isin_mps_friendly_shim)
+    except Exception:
+        pass
+
+    if "transformers.pytorch_utils" in sys.modules:
+        setattr(sys.modules["transformers.pytorch_utils"], "isin_mps_friendly", _isin_mps_friendly_shim)
 except Exception:
     pass
 

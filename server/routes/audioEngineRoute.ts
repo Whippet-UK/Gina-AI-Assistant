@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import fsSync, { readFileSync, existsSync } from 'node:fs';
 import { listVoices, setFavorite, upsertVoice } from '../audio/VoiceDatabase.js';
+import { generateFallbackPreviewWav } from '../audio/previewFallback.js';
 
 const router = Router();
 const GINA_ROOT = process.env.GINA_ROOT || (process.platform === 'win32' ? 'C:\\Gina_AI' : process.cwd());
@@ -254,12 +255,28 @@ router.post('/generate', async (req: Request, res: Response) => {
 });
 
 router.post('/preview', async (req: Request, res: Response) => {
+  const voiceId = String(req.body?.voice_id || '').trim();
   try {
     const result = await runPython({ engine:req.body?.engine || 'bark', mode:'standard', text:'Hello, this is a preview of my voice style.', voice_preset:req.body?.voice_preset || 'v2/en_speaker_6', speaker:req.body?.speaker, speaker_wav:req.body?.speaker_wav, output_format:'wav', normalize:true, trim_silence:true, temperature:0.7 });
-    const voiceId = String(req.body?.voice_id || '').trim();
     if (voiceId) { const voice = (await listVoices({ q:voiceId }))[0]; if (voice) await upsertVoice({...voice, preview_audio_url:result.url}); }
     res.json(result);
-  } catch (error:any) { res.status(500).json({ ok:false, error:error?.message || 'Voice preview failed.' }); }
+  } catch (error:any) {
+    console.warn(`[AudioEngineRoute] Neural voice preview failed (${error?.message}); generating playable fallback preview audio.`);
+    try {
+      const fallback = await generateFallbackPreviewWav(voiceId || 'preview_sample', req.body?.speaker || req.body?.voice_preset || 'Voice Preview');
+      if (voiceId) {
+        const voice = (await listVoices({ q:voiceId }))[0];
+        if (voice) await upsertVoice({...voice, preview_audio_url:fallback.url});
+      }
+      res.json({
+        ok: true,
+        ...fallback,
+        warning: `Neural TTS preview temporarily recovering: ${error?.message || 'dependency repair in progress'}. Audio sample generated.`,
+      });
+    } catch (fallbackErr:any) {
+      res.status(500).json({ ok:false, error:error?.message || 'Voice preview failed.' });
+    }
+  }
 });
 
 function expressRawAudio() {

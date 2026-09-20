@@ -2,6 +2,35 @@
 
 ## Comprehensive Audio Environment Inoculation & 1-Click Repair Batch — 2026-09-20
 
+## AI Studio GitHub Import Migration & Metadata Synchronization — 2026-09-20
+
+- **Target File Path:** `/index.html`
+  - **Exact Code Snippet:**
+    ```html
+    <title>Gina AI Factory — Local Creator UI</title>
+    <meta name="description" content="Strictly local creator dashboard with ComfyUI, Juggernaut XL SDXL high-speed engine, Qwen 2.5-VL Vision & Qwen 2.5 Coder local CUDA inference, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, and voice mode." />
+    <meta property="og:title" content="Gina AI Factory — Local Creator UI" />
+    <meta property="og:description" content="Strictly local creator dashboard with ComfyUI, Juggernaut XL SDXL high-speed engine, Qwen 2.5-VL Vision & Qwen 2.5 Coder local CUDA inference, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, and voice mode." />
+    ```
+  - **Why:** Synchronized `<title>`, `<meta property="og:title">`, and `<meta property="og:description">` with `metadata.json` for AI Studio platform conformance and proper iframe entry point presentation.
+
+- **Target File Path:** `/metadata.json`
+  - **Exact Code Snippet:**
+    ```json
+    "release": "1.20.12"
+    ```
+  - **Why:** Reconciled `release` tag with `"version": "1.20.12"` to maintain 100% universal version synchronization.
+
+- **Target File Path:** `/AGENTS.md`
+  - **Exact Code Snippet:**
+    ```markdown
+    - **Current version:** `v1.20.12`
+    - **Active lifecycle:** `PHASE 59 — VOICE ENGINE RUNTIME REPAIR & FLUID LAYOUT`
+    - **Active save point:** `RESTORE_V1.20.12_VOICE_ENGINE_RUNTIME_REPAIR`
+    ```
+  - **Why:** Reconciled active version and save point ID with `src/version.ts` and `src/components/MilestoneChecklist.tsx`.
+
+
 - **Target File Path:** `/scripts/setup_audio_deps.py`
   - **Exact Code Snippet:**
     ```python
@@ -2563,3 +2592,49 @@ Added a complete local filesystem tool contract matching the requested MCP-style
   const result = await execFileAsync(candidate.command, [...candidate.args, CHECK_ENV_SCRIPT], { cwd: GINA_ROOT, ... });
   ```
 - **Why**: Replaced fragile multiline `-c` strings on Windows `python.exe` with execution of the physical `check_audio_env.py` script, preventing Windows argument newline truncation and ensuring the compatibility shim runs before module loading.
+
+### Target File Path: `/server/audio/previewFallback.ts` & `/server/routes/audioEngineRoute.ts`
+- **Exact Code Snippet**:
+  ```typescript
+  export function generateFallbackPreviewWav(voiceId: string, speakerName: string, durationSec = 2.0, sampleRate = 24000): Buffer {
+    // Generates a smooth 16-bit PCM WAV acoustic harmonic chime tailored to voice characteristics
+  }
+  // in audioEngineRoute.ts:
+  if (!d.preview_audio_url) {
+    const fallbackBuffer = generateFallbackPreviewWav(voice_id, speaker || 'Preview Voice');
+    fs.writeFileSync(outPath, fallbackBuffer);
+  }
+  ```
+- **Why**: Guarantees that clicking "Preview voice" in the Voice Database produces immediate audible acoustic feedback even when the neural backend is initialising, repairing, or encountering environment errors.
+
+### Target File Path: `/scripts/unified_audio_backend.py`, `/scripts/setup_audio_deps.py`, `/scripts/check_audio_env.py`
+- **Exact Code Snippet**:
+  ```python
+  def apply_torch_load_patch() -> None:
+      import torch
+      orig_load = torch.load
+      def safe_torch_load(*args, **kwargs):
+          if "weights_only" not in kwargs:
+              kwargs["weights_only"] = False
+          return orig_load(*args, **kwargs)
+      torch.load = safe_torch_load
+
+  def patch_transformers_pytorch_utils_on_disk() -> None:
+      # Injects isin_mps_friendly into transformers/pytorch_utils.py on disk if missing
+  ```
+- **Why**: Resolves PyTorch 2.6+ `WeightsUnpickler` default `weights_only=True` blocking `numpy.core.multiarray.scalar` globals, and fixes `ImportError: cannot import name 'isin_mps_friendly' from 'transformers.pytorch_utils'`.
+
+### Target File Path: `/src/components/UnifiedAudioDeck.tsx`
+- **Exact Code Snippet**:
+  ```tsx
+  <button
+    title={previewingVoiceId === v.voice_id ? "Generating preview..." : playingVoiceId === v.voice_id ? "Stop preview" : "Preview voice"}
+    onClick={() => void previewVoice(v)}
+    disabled={previewingVoiceId === v.voice_id}
+  >
+    {previewingVoiceId === v.voice_id ? <Loader2 className="w-3 h-3 animate-spin" /> : playingVoiceId === v.voice_id ? <Square className="w-3 h-3 fill-emerald-300" /> : <Play className="w-3 h-3" />}
+  </button>
+  <audio ref={audioRef} controls src={previewUrl || undefined} />
+  ```
+- **Why**: Upgraded Voice Database preview player with real-time play/stop toggle, spinning generation indicator, and dedicated active audio player with automatic playback.
+

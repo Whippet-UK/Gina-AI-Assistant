@@ -132,6 +132,48 @@ def apply_transformers_shim() -> None:
         pass
 
 
+def apply_torch_load_patch() -> None:
+    """Ensure PyTorch 2.6+ backwards compatibility with Bark and Coqui XTTS checkpoints.
+
+    Allowlist safe numpy objects and ensure weights_only defaults to False for local models.
+    """
+    try:
+        import torch
+        try:
+            import numpy as np
+            safe_objs = []
+            for mod in [np, getattr(np, "core", None), getattr(np, "_core", None)]:
+                if mod:
+                    for attr in ["scalar", "_reconstruct", "multiarray", "dtype"]:
+                        val = getattr(mod, attr, None)
+                        if val is not None and val not in safe_objs:
+                            safe_objs.append(val)
+            if hasattr(torch.serialization, "add_safe_globals") and safe_objs:
+                torch.serialization.add_safe_globals(safe_objs)
+        except Exception:
+            pass
+
+        if not getattr(torch, "_gina_weights_only_patched", False):
+            _orig_load = torch.load
+
+            def _patched_load(*args, **kwargs):
+                if "weights_only" not in kwargs:
+                    kwargs["weights_only"] = False
+                try:
+                    return _orig_load(*args, **kwargs)
+                except Exception as exc:
+                    err_msg = str(exc)
+                    if ("WeightsUnpickler" in err_msg or "weights_only" in err_msg or "Unsupported global" in err_msg) and kwargs.get("weights_only", True):
+                        kwargs["weights_only"] = False
+                        return _orig_load(*args, **kwargs)
+                    raise
+
+            torch.load = _patched_load
+            torch._gina_weights_only_patched = True
+    except Exception:
+        pass
+
+
 def apply_pytorch_utils_shim() -> None:
     """Ensure transformers.pytorch_utils exports isin_mps_friendly.
 
@@ -139,24 +181,27 @@ def apply_pytorch_utils_shim() -> None:
     transformers releases have moved or dropped it at different points.
     """
     try:
-        import transformers.pytorch_utils as ptu
-    except Exception:
-        return
-
-    if hasattr(ptu, "isin_mps_friendly"):
-        return
-
-    try:
         import torch
-
-        def isin_mps_friendly(elements, test_elements):
+        def _isin_mps(elements, test_elements):
             if not torch.is_tensor(test_elements):
                 test_elements = torch.tensor(test_elements, device=elements.device)
-            if elements.device.type == "mps":
+            if getattr(elements.device, "type", None) == "mps":
                 return (elements[..., None] == test_elements.reshape(-1)).any(-1)
             return torch.isin(elements, test_elements)
 
-        ptu.isin_mps_friendly = isin_mps_friendly
+        import transformers
+        if not hasattr(transformers, "isin_mps_friendly"):
+            setattr(transformers, "isin_mps_friendly", _isin_mps)
+
+        try:
+            import transformers.pytorch_utils as ptu
+            if not hasattr(ptu, "isin_mps_friendly"):
+                setattr(ptu, "isin_mps_friendly", _isin_mps)
+        except Exception:
+            pass
+
+        if "transformers.pytorch_utils" in sys.modules:
+            setattr(sys.modules["transformers.pytorch_utils"], "isin_mps_friendly", _isin_mps)
     except Exception:
         pass
 
@@ -225,6 +270,22 @@ def patch_xtts_layers_on_disk() -> None:
         "                def finalize(self, *args, **kwargs): return args[0] if args else None\n"
     )
 
+    safe_isin_replacement = (
+        "try:\n"
+        "    from transformers.pytorch_utils import isin_mps_friendly\n"
+        "except Exception:\n"
+        "    try:\n"
+        "        import torch\n"
+        "        def isin_mps_friendly(elements, test_elements):\n"
+        "            if not torch.is_tensor(test_elements):\n"
+        "                test_elements = torch.tensor(test_elements, device=elements.device)\n"
+        "            if getattr(elements.device, 'type', None) == 'mps':\n"
+        "                return (elements[..., None] == test_elements.reshape(-1)).any(-1)\n"
+        "            return torch.isin(elements, test_elements)\n"
+        "    except Exception:\n"
+        "        def isin_mps_friendly(elements, test_elements): return False\n"
+    )
+
     safe_import_header = (
         "# --- Gina XTTS Backwards-Compatibility Shim ---\n"
         "try:\n"
@@ -271,16 +332,83 @@ def patch_xtts_layers_on_disk() -> None:
                         if not changed:
                             text = safe_import_header + text
                             changed = True
+
+                    if "isin_mps_friendly" in text and "def isin_mps_friendly" not in text:
+                        isin_pattern = "from transformers.pytorch_utils import isin_mps_friendly"
+                        if isin_pattern in text:
+                            text = text.replace(isin_pattern, safe_isin_replacement)
+                            changed = True
+
                     if changed:
                         py_file.write_text(text, encoding="utf-8")
                 except Exception:
                     pass
 
 
+def patch_transformers_pytorch_utils_on_disk() -> None:
+    """Directly patch transformers/pytorch_utils.py on disk so isin_mps_friendly is physically present."""
+    snippet = (
+        "\n# --- Gina XTTS Backwards-Compatibility Shim ---\n"
+        "try:\n"
+        "    if 'isin_mps_friendly' not in globals():\n"
+        "        import torch\n"
+        "        def isin_mps_friendly(elements, test_elements):\n"
+        "            if not torch.is_tensor(test_elements):\n"
+        "                test_elements = torch.tensor(test_elements, device=elements.device)\n"
+        "            if getattr(elements.device, 'type', None) == 'mps':\n"
+        "                return (elements[..., None] == test_elements.reshape(-1)).any(-1)\n"
+        "            return torch.isin(elements, test_elements)\n"
+        "except Exception:\n"
+        "    pass\n"
+        "# ------------------------------------------------\n"
+    )
+    for sp_dir in get_all_site_packages_dirs():
+        ptu_path = sp_dir / "transformers" / "pytorch_utils.py"
+        if ptu_path.is_file():
+            try:
+                text = ptu_path.read_text(encoding="utf-8", errors="ignore")
+                if "def isin_mps_friendly" not in text:
+                    ptu_path.write_text(text + snippet, encoding="utf-8")
+            except Exception:
+                pass
+
+
 def install_sitecustomize_and_pth() -> None:
-    """Persist the transformers compatibility shim in site-packages via sitecustomize.py and .pth."""
+    """Persist the transformers & PyTorch 2.6 compatibility shim in site-packages via sitecustomize.py and .pth."""
     sc_snippet = (
-        "\n# Gina AI Factory - XTTS transformers compatibility shim\n"
+        "\n# Gina AI Factory - XTTS & PyTorch 2.6 compatibility shim\n"
+        "try:\n"
+        "    import torch\n"
+        "    try:\n"
+        "        import numpy as np\n"
+        "        safe_objs = []\n"
+        "        for mod in [np, getattr(np, 'core', None), getattr(np, '_core', None)]:\n"
+        "            if mod:\n"
+        "                for attr in ['scalar', '_reconstruct', 'multiarray', 'dtype']:\n"
+        "                    val = getattr(mod, attr, None)\n"
+        "                    if val is not None and val not in safe_objs:\n"
+        "                        safe_objs.append(val)\n"
+        "        if hasattr(torch.serialization, 'add_safe_globals') and safe_objs:\n"
+        "            torch.serialization.add_safe_globals(safe_objs)\n"
+        "    except Exception:\n"
+        "        pass\n"
+        "    if not getattr(torch, '_gina_weights_only_patched', False):\n"
+        "        _orig_torch_load = torch.load\n"
+        "        def _patched_load(*args, **kwargs):\n"
+        "            if 'weights_only' not in kwargs:\n"
+        "                kwargs['weights_only'] = False\n"
+        "            try:\n"
+        "                return _orig_torch_load(*args, **kwargs)\n"
+        "            except Exception as _exc:\n"
+        "                _m = str(_exc)\n"
+        "                if ('WeightsUnpickler' in _m or 'weights_only' in _m or 'Unsupported global' in _m) and kwargs.get('weights_only', True):\n"
+        "                    kwargs['weights_only'] = False\n"
+        "                    return _orig_torch_load(*args, **kwargs)\n"
+        "                raise\n"
+        "        torch.load = _patched_load\n"
+        "        torch._gina_weights_only_patched = True\n"
+        "except Exception:\n"
+        "    pass\n"
         "try:\n"
         "    import transformers\n"
         "    if not hasattr(transformers, 'BeamSearchScorer'):\n"
@@ -310,12 +438,29 @@ def install_sitecustomize_and_pth() -> None:
         "            transformers.LogitsWarper = LogitsWarper\n"
         "        if hasattr(transformers, '_extra_objects') and isinstance(transformers._extra_objects, dict):\n"
         "            transformers._extra_objects['LogitsWarper'] = transformers.LogitsWarper\n"
+        "    def _isin_mps(elements, test_elements):\n"
+        "        try:\n"
+        "            import torch\n"
+        "            if not torch.is_tensor(test_elements):\n"
+        "                test_elements = torch.tensor(test_elements, device=elements.device)\n"
+        "            if getattr(elements.device, 'type', None) == 'mps':\n"
+        "                return (elements[..., None] == test_elements.reshape(-1)).any(-1)\n"
+        "            return torch.isin(elements, test_elements)\n"
+        "        except Exception: return False\n"
+        "    if not hasattr(transformers, 'isin_mps_friendly'):\n"
+        "        setattr(transformers, 'isin_mps_friendly', _isin_mps)\n"
+        "    try:\n"
+        "        import transformers.pytorch_utils as ptu\n"
+        "        if not hasattr(ptu, 'isin_mps_friendly'):\n"
+        "            setattr(ptu, 'isin_mps_friendly', _isin_mps)\n"
+        "    except Exception:\n"
+        "        pass\n"
         "except Exception:\n"
         "    pass\n"
     )
 
     pth_one_liner = (
-        "import sys; exec(\"try:\\n import transformers\\n b=getattr(transformers,'BeamSearchScorer',None)\\n if not b:\\n  try:\\n   from transformers.generation.beam_search import BeamSearchScorer as b\\n  except Exception:\\n   class b: pass\\n  transformers.BeamSearchScorer=b\\n  if hasattr(transformers,'_extra_objects'): transformers._extra_objects['BeamSearchScorer']=b\\nexcept Exception: pass\")\n"
+        "import sys; exec(\"try:\\n import torch\\n if not getattr(torch,'_gina_weights_only_patched',False):\\n  _l=torch.load\\n  def _pl(*a,**k):\\n   if 'weights_only' not in k: k['weights_only']=False\\n   try: return _l(*a,**k)\\n   except Exception as e:\\n    if ('WeightsUnpickler' in str(e) or 'Unsupported global' in str(e)) and k.get('weights_only',True): k['weights_only']=False; return _l(*a,**k)\\n    raise\\n  torch.load=_pl; torch._gina_weights_only_patched=True\\nexcept Exception: pass\\ntry:\\n import transformers\\n b=getattr(transformers,'BeamSearchScorer',None)\\n if not b:\\n  try:\\n   from transformers.generation.beam_search import BeamSearchScorer as b\\n  except Exception:\\n   class b: pass\\n  transformers.BeamSearchScorer=b\\n  if hasattr(transformers,'_extra_objects'): transformers._extra_objects['BeamSearchScorer']=b\\nexcept Exception: pass\")\n"
     )
 
     for sp_dir in get_all_site_packages_dirs():
@@ -325,7 +470,7 @@ def install_sitecustomize_and_pth() -> None:
                 sc_file.write_text(sc_snippet.lstrip(), encoding="utf-8")
             else:
                 existing = sc_file.read_text(encoding="utf-8", errors="ignore")
-                if "BeamSearchScorer" not in existing:
+                if "BeamSearchScorer" not in existing or "_gina_weights_only_patched" not in existing:
                     sc_file.write_text(existing + sc_snippet, encoding="utf-8")
 
             pth_file = sp_dir / "gina_xtts_shim.pth"
@@ -338,7 +483,9 @@ def install_sitecustomize_and_pth() -> None:
 def main() -> int:
     # 1. First-pass: Apply in-place disk repairs and runtime shims
     patch_xtts_layers_on_disk()
+    patch_transformers_pytorch_utils_on_disk()
     install_sitecustomize_and_pth()
+    apply_torch_load_patch()
     apply_transformers_shim()
     apply_pytorch_utils_shim()
 
