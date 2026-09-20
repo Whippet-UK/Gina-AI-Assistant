@@ -15,9 +15,9 @@
 ---
 
 ## 📌 Project Overview
-- **Current version:** `v1.20.7`
-- **Active lifecycle:** `PHASE 55 — BROADER CODE REVIEW & AUTONOMY HARDENING`
-- **Active save point:** `RESTORE_V1.20.7_STREAMINJECT_INPAINT_WATERMARK_ERASER`
+- **Current version:** `v1.20.11`
+- **Active lifecycle:** `PHASE 59 — VOICE ENGINE RUNTIME REPAIR & FLUID LAYOUT`
+- **Active save point:** `RESTORE_V1.20.11_VOICE_ENGINE_RUNTIME_REPAIR_FLUID_LAYOUT`
 - **Phase 41:** Gina Agent runs are persisted under `.gina/agent-runs`, expose live Server-Sent Events, can reconnect after browser refresh, and support explicit cancellation.
 - **Phase 44:** Qwen Coder accepts text/code files and project ZIPs; project ZIPs are imported into dedicated workspaces, automatically inspected without executing uploaded code, and support up to 100MB / 10,000 files.
 - **Phase 46:** A mandatory update-integrity checklist is loaded into agent startup context; active Wan 2.1 UI references were reconciled and a deterministic integrity gate is available before success reporting.
@@ -29,6 +29,8 @@
 - **Phase 53:** Project-wide request, metadata, milestone, checklist, and active-vocabulary reconciliation was completed before the current StreamInject infrastructure request.
 - **Phase 54:** StreamInject source audio stripping is implemented end-to-end with a zero-GPU FFmpeg stream-copy pre-pass and synchronized dashboard/API/engine controls.
 - **Phase 55:** StreamInject static watermark removal is implemented as a CPU-only OpenCV Telea inpainting pre-pass with percentage-controlled bounding coordinates and synchronized dashboard/API/Python controls.
+- **Phase 56:** Unified local Bark + XTTS v2 audio generation is self-hosted under `scripts/unified_audio_backend.py` with SQLite voice metadata, clone uploads, hybrid stitching and local model caching; GIF Studio exports APNG; reference-image edits support explicit ADD ONLY / PRESERVE SOURCE mode; Local AI whole-PC power telemetry reports system draw and £/hr + p/hr; web-app build requests are deterministic operational coding tasks even without a pre-existing workspace.
+- **Phase 57:** Voice Generator replaces the Unified Audio tab label and page title; the SQLite voice database creates `data\audio` before opening so first-run startup cannot fail on a missing directory; the audio broker selects a Python interpreter that can actually import `TTS`, `bark` and `pydub`; `/api/audio/diagnostics` exposes the resolved environment; Local AI restores the split Interactive Preview for HTML/web/text responses and keeps the ChatGPT-style prompt composer visible and auto-growing.
 - **Phase 55:** Broader code review hardened the autonomous repair loop, job-scoped cancellation, project-map targets, retired-engine vocabulary, ACE-Step endpoint alignment, and duplicate image-input surface; live acceptance remains explicitly external where hardware/services are required.
 - **Phase 50:** Production-grade AutonomousResearchEngine (local RAG + DuckDuckGo web research with API signature caching), multi-stage AutonomousRepairLoop pipeline (REQUEST → UNDERSTAND → PLAN → INSPECT → RESEARCH → EDIT → VALIDATE → REPAIR → SCAN → DIFF → COMMIT), and GitHubLifecycleManager for automated branches, atomic commits, diffing, and PR metadata generation.
 - **Active video engine:** Wan 2.1 1.3B BF16. LTX is historical/retired from active production UI vocabulary.
@@ -698,3 +700,28 @@ Rules:
 - Added `/server/browser/LocalBrowserService.ts` — **lines 1–207**.
 - `/server.ts` — import line 56; runtime instance line 100; routes added directly after the existing `/api/web/browser/open` route (`/api/browser/local/status`, `/api/browser/local/dump`).
 
+
+
+
+## Phase 58 — Voice Engine Repair & Fluid Layout — 2026-09-20
+
+- Added deterministic Windows Python discovery for the Voice Generator. The setup script persists the exact `sys.executable` used to install TTS/Bark/pydub under `.gina/audio_python.json`; the Node route checks that binding, Gina `g_env`, `python`, and the Windows Python Launcher.
+- Added detailed audio diagnostics including candidate interpreters, import paths, database path and database writability.
+- Hardened the voice SQLite path with writable-directory detection and a local `.gina/data/audio` fallback if the primary `data/audio` location cannot be opened.
+- Added post-generation physical audio manipulation: `pitch_shift_semitones` (-12 to +12), `formant_shift` (0.5 to 1.5), and pitch-preserving `speed_factor` (0.5x to 2.0x), using local SciPy processing before final WAV/MP3/FLAC export. SciPy STFT/iSTFT and resampling are used for the local signal-processing stages.
+- Refactored the master application wrapper to full-width fluid layout and Local AI / Voice Generator workspaces to responsive 12-column grids, removing the previous 1500px master constraint and fixed Local AI column widths.
+- Kept the Local AI Interactive Preview and auto-growing prompt composer intact.
+
+### Phase 58 Validation
+- Python syntax compile: PASS for `scripts/setup_audio_deps.py` and `scripts/unified_audio_backend.py`.
+- TypeScript syntax transpilation: PASS for changed TS/TSX files.
+- ZIP integrity: PASS.
+- Full Windows runtime/audio-model generation remains to be exercised on the user's machine because the installed Python/Node environment is outside this isolated build workspace.
+
+
+## Phase 59 — Voice Engine Runtime Repair & Fluid Layout — 2026-09-20
+- Local AI prompt actions were separated so Attach and Send no longer overlap; the composer now reserves action space and the chat/preview region expands to the viewport.
+- `scripts/setup_audio_deps.py` now detects broken imports as well as missing modules, repairs Torch/Torchaudio/TorchCodec before Coqui TTS, and verifies imports after repair.
+- `Start_Factory.bat` runs the audio dependency audit inside the active `g_env`, eliminating the recurring package/interpreter mismatch.
+- Bark now enables CPU offload alongside small-model mode for the 8 GB VRAM target.
+- Voice SQLite probes the actual file and falls back to `.gina/data/audio` if the primary database cannot be opened.

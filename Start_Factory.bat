@@ -42,6 +42,19 @@ if errorlevel 1 (
   exit /b 1
 )
 
+REM Repair the local Bark + XTTS environment in the same interpreter that
+REM runs the Gina server. This prevents the recurring "No module named TTS/bark"
+REM mismatch where packages were installed into a different Python.
+echo [0/5] Checking Gina voice engine Python dependencies...
+python scripts\setup_audio_deps.py
+if errorlevel 1 (
+  echo [WARN] Voice engine dependency audit failed.
+  echo        Gina will still start, but the VOICE GENERATOR may remain offline.
+  echo        Re-run this launcher after fixing the Python/pip error above.
+) else (
+  echo    Voice engine Python environment is READY.
+)
+
 echo [0/5] Checking Gina npm dependencies...
 if not exist "%GINA_ROOT%\node_modules\jszip\package.json" (
   echo    jszip is missing. Installing dependencies from package.json...
@@ -113,7 +126,7 @@ if not errorlevel 1 (
   pause
   exit /b 1
 )
-start "Gina Dashboard" cmd /k "cd /d \"%GINA_ROOT%\" && call g_env\Scripts\activate.bat && set \"NODE_OPTIONS=--max-old-space-size=8192\" & npm.cmd run dev"
+start "Gina Dashboard" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && set NODE_OPTIONS=--max-old-space-size=8192 && npm.cmd run dev"
 
 echo.
 echo [4/5] Waiting for Gina at %GINA_URL% ...

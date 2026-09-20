@@ -64,6 +64,7 @@ import JSZip from "jszip";
 
 // Note: Added the explicit .js extension to prevent standard ES module path resolution errors
 import imageRoutes from './server/routes/imageRoute.ts';
+import audioEngineRoute from './server/routes/audioEngineRoute.ts';
 
 const app = express();
 const isWin = process.platform === "win32";
@@ -355,6 +356,8 @@ app.use(express.json({ limit: "50mb" }));
 
 // Mount your new optimized image prompt router layer here:
 app.use("/api/llm", imageRoutes);
+app.use('/api/audio', audioEngineRoute);
+app.use('/media/unified-audio', express.static(path.resolve(GINA_ROOT, 'media', 'unified_audio')));
 
 // Record every API failure centrally so the dashboard has the same diagnostic
 // information that would otherwise only appear in the terminal. Route handlers
@@ -744,32 +747,34 @@ app.get("/api/telemetry", async (_req, res) => {
   const freeRAMGB = os.freemem() / 1024 ** 3;
   const totalVRAM = gpu.available ? gpu.memoryTotalMB : 8192;
   const usedVRAM = gpu.available ? gpu.memoryUsedMB : 0;
-  let gpuPower = 0;
-  if (gpu.available && Number.isFinite(gpu.powerW) && gpu.powerW > 0) {
-    gpuPower = Math.round(gpu.powerW);
-  } else if (gpu.available) {
-    gpuPower = (gpu.utilizationPercent && gpu.utilizationPercent > 10) ? 210 : 35;
-  } else {
-    gpuPower = 45; // Baseline idle power for RTX 3070 Ti system when nvidia-smi query is unavailable
-  }
-
+  const gpuPower = gpu.available && Number.isFinite(gpu.powerW) && gpu.powerW > 0
+    ? Math.round(gpu.powerW)
+    : gpu.available ? ((gpu.utilizationPercent || 0) > 10 ? 210 : 35) : 45;
+  const aida = aida64Telemetry.getSnapshot();
+  const powerSensors = (aida?.sensors || []).filter((sensor:any) => /power|watt/i.test(`${sensor.label} ${sensor.id} ${sensor.unit}`));
+  const findPower = (patterns:RegExp[]) => {
+    const hit = powerSensors.find((sensor:any) => patterns.some(pattern => pattern.test(`${sensor.label} ${sensor.id}`)));
+    const value = Number(hit?.value);
+    return Number.isFinite(value) && value > 0 ? Math.round(value) : null;
+  };
+  const cpuPowerW = findPower([/cpu.*(?:package|power|ppt|tdc)/i, /(?:package|ppt).*cpu/i]);
+  const boardPowerW = findPower([/motherboard.*power/i, /board.*power/i, /system.*power/i]);
+  const systemSensorPowerW = findPower([/total.*system.*power/i, /system.*(?:input|power)/i, /wall.*power/i]);
+  const otherHardwareW = Math.max(20, Math.round(Number(boardPowerW || 0) || 35));
+  const componentDcW = Math.max(0, Math.round((cpuPowerW || 0) + gpuPower + otherHardwareW));
+  const psuEfficiency = Math.max(0.80, Math.min(0.98, Number(process.env.GINA_PSU_EFFICIENCY || 0.90)));
+  const estimatedWallW = Math.max(0, Math.round((componentDcW || 35) / psuEfficiency));
+  const systemPowerW = systemSensorPowerW || estimatedWallW;
+  const powerSource = systemSensorPowerW ? 'AIDA64 system/wall power sensor' : (aida?.connected ? 'AIDA64 component telemetry + PSU efficiency estimate' : 'NVIDIA/OS component telemetry + PSU efficiency estimate');
   res.json({
-    gpuAvailable: gpu.available,
-    gpuName: gpu.available ? gpu.name : "NVIDIA GeForce RTX 3070 Ti (8GB)",
-    gpuDriver: gpu.available ? gpu.driver : null,
-    vramUsedMB: usedVRAM,
-    vramTotalMB: totalVRAM,
-    gpuTempC: gpu.available ? gpu.temperatureC : 48,
-    gpuUtilizationPercent: gpu.available ? gpu.utilizationPercent : 0,
-    gpuPowerW: gpuPower,
-    cpuThreadsActive: os.loadavg ? Math.min(os.cpus().length, Math.max(0, Math.round(os.loadavg()[0]))) : 0,
-    cpuThreadsCap: os.cpus().length,
-    ramUsedGB: Number((totalRAMGB - freeRAMGB).toFixed(2)),
-    ramTotalGB: Number(totalRAMGB.toFixed(2)),
-    thermalBrakeActive: gpu.available ? gpu.temperatureC >= 85 : false
+    gpuAvailable: gpu.available, gpuName: gpu.available ? gpu.name : "NVIDIA GeForce RTX 3070 Ti (8GB)", gpuDriver: gpu.available ? gpu.driver : null,
+    vramUsedMB: usedVRAM, vramTotalMB: totalVRAM, gpuTempC: gpu.available ? gpu.temperatureC : 48,
+    gpuUtilizationPercent: gpu.available ? gpu.utilizationPercent : 0, gpuPowerW: gpuPower,
+    cpuPowerW, otherHardwarePowerW: otherHardwareW, componentDcPowerW: componentDcW, psuEfficiency, estimatedWallPowerW: estimatedWallW, systemPowerW, powerSource, aida64PowerSensorCount: powerSensors.length,
+    cpuThreadsActive: os.loadavg ? Math.min(os.cpus().length, Math.max(0, Math.round(os.loadavg()[0]))) : 0, cpuThreadsCap: os.cpus().length,
+    ramUsedGB: Number((totalRAMGB - freeRAMGB).toFixed(2)), ramTotalGB: Number(totalRAMGB.toFixed(2)), thermalBrakeActive: gpu.available ? gpu.temperatureC >= 85 : false
   });
 });
-
 
 app.get('/api/runtime/telemetry', (_req, res) => {
   res.json(runtimeTelemetry.getSnapshot());
@@ -1022,7 +1027,7 @@ async function runPublicNetworkTest() {
       const response = await fetch(target.url, {
         method: 'GET',
         redirect: 'follow',
-        headers: { 'User-Agent': 'Gina-AI-Factory/1.20.7 network diagnostic' },
+        headers: { 'User-Agent': 'Gina-AI-Factory/1.20.8 network diagnostic' },
         signal: AbortSignal.timeout(8000)
       });
       return { name: target.name, url: target.url, ok: response.ok, status: response.status, latencyMs: Date.now() - t0 };
@@ -2452,6 +2457,42 @@ app.post('/api/llm/upload-attachment', express.raw({ type: '*/*', limit: '100mb'
   }
 });
 
+app.post('/api/llm/save-code-file', async (req, res) => {
+  try {
+    const filename = path.basename(String(req.body?.filename || 'gina-generated.txt')).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const content = String(req.body?.content || '');
+    const directory = String(req.body?.directory || '.gina/generated-code').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    if (!content) return res.status(400).json({ ok:false, error:'Generated code content is empty.' });
+    if (!filename || filename === '.' || filename === '..') return res.status(400).json({ ok:false, error:'Invalid generated filename.' });
+    if (directory.split('/').some(part => part === '..' || part === '.')) return res.status(400).json({ ok:false, error:'Invalid generated-code directory.' });
+    const root = path.resolve(GINA_ROOT, directory);
+    const target = path.resolve(root, filename);
+    if (!target.startsWith(root + path.sep)) throw new Error('Generated file path escaped the Gina workspace.');
+    await fs.mkdir(root, { recursive:true });
+    await fs.writeFile(target, content, 'utf8');
+    const bytes = Buffer.byteLength(content, 'utf8');
+    res.json({ ok:true, path:target, bytes, url:`/api/llm/generated-code/${encodeURIComponent(path.relative(GINA_ROOT, target).replace(/\\/g, '/'))}` });
+  } catch (error:any) {
+    recordDashboardError(error?.message || 'Failed to save generated code.', { source:'local-ai-save-code', method:req.method, url:req.originalUrl, status:400, stack:error?.stack });
+    res.status(400).json({ ok:false, error:error?.message || 'Failed to save generated code.' });
+  }
+});
+
+app.get('/api/llm/generated-code/:encodedPath(*)', async (req, res) => {
+  try {
+    const relative = decodeURIComponent(String(req.params.encodedPath || '')).replace(/\\/g, '/');
+    if (!relative || relative.split('/').some(part => part === '..')) return res.status(400).end();
+    const target = path.resolve(GINA_ROOT, relative);
+    const generatedRoot = path.resolve(GINA_ROOT, '.gina', 'generated-code');
+    if (!target.startsWith(generatedRoot + path.sep)) return res.status(403).end();
+    const stat = await fs.stat(target);
+    if (!stat.isFile()) return res.status(404).end();
+    res.download(target, path.basename(target));
+  } catch (error:any) {
+    res.status(404).end();
+  }
+});
+
 app.post("/api/llm/describe-image", async (req, res) => {
   try {
     const filename = path.basename(String(req.body?.filename || '').trim());
@@ -2556,12 +2597,16 @@ async function queueAiToolImageGeneration(prompt: string, attachment?: { localPa
   if (!definition.bindings.some(b => b.key === 'prompt')) throw new Error(`Workflow '${workflowId}' has no prompt binding.`);
   if (useReference && !definition.bindings.some(b => b.key === 'input_image')) throw new Error(`Workflow '${workflowId}' cannot accept a reference image.`);
 
+  const additiveEdit = useReference && /\b(?:add|overlay|append|place|put)\b/i.test(prompt) && /\b(?:without|don't|do not|keep|preserve|unchanged|only)\b/i.test(prompt);
+  const safePrompt = additiveEdit
+    ? `SOURCE PRESERVATION CONTRACT: Preserve the supplied reference image exactly wherever no new element is requested. Do not redesign, restyle, move, recolor, remove, or alter the existing subject/background. ADD ONLY the requested elements. ${prompt.trim()}`
+    : prompt.trim();
   const parameters: Record<string, any> = {
-    prompt: prompt.trim(), width: visionEngine ? 1024 : 1024, height: visionEngine ? 1024 : 600,
+    prompt: safePrompt, negative_prompt: additiveEdit ? 'Do not alter the existing subject, whippet, fur, pose, camera, background, lighting, composition, colours, or existing objects. Do not remove or replace anything. No global restyling.' : '', width: visionEngine ? 1024 : 1024, height: visionEngine ? 1024 : 600,
     steps: visionEngine ? 20 : 4, sampler: visionEngine ? 'dpmpp_2m' : 'euler', scheduler: visionEngine ? 'karras' : 'simple',
-    denoise: useReference ? 0.70 : 1, seed: Math.floor(Math.random() * 4294967295),
+    denoise: additiveEdit ? 0.32 : (useReference ? 0.70 : 1), seed: Math.floor(Math.random() * 4294967295),
     ...(useReference ? { input_image: path.basename(attachment!.localPath) } : {}),
-    __generationAudit: { source:'phase-34-router', intent:useReference?'image-modification':'image-generation', engine, llmModel:llmStatus.modelName, visionProjector:llmStatus.mmprojPath ? path.basename(llmStatus.mmprojPath) : null, workflowId, generationModel:policy.generationModel, lane:policy.lane }
+    __generationAudit: { source:'phase-34-router', intent:useReference?'image-modification':'image-generation', additiveEdit, engine, llmModel:llmStatus.modelName, visionProjector:llmStatus.mmprojPath ? path.basename(llmStatus.mmprojPath) : null, workflowId, generationModel:policy.generationModel, lane:policy.lane }
   };
   if (useReference) {
     const root = path.resolve(COMFY_ROOT, 'input'); const candidate = path.resolve(attachment!.localPath);
@@ -3498,7 +3543,7 @@ const GIF_STUDIO_MEDIA_ROOT = path.join(GINA_ROOT, 'media', 'gif_studio');
 const GIF_STUDIO_INPUT_ROOT = path.join(COMFY_ROOT, 'input', 'gina_gif_studio');
 const GIF_STUDIO_MAX_UPLOAD_BYTES = 220 * 1024 * 1024;
 const GIF_STUDIO_VIDEO_EXTENSIONS = new Set(['.mp4','.mov','.webm','.mkv']);
-const GIF_STUDIO_IMAGE_EXTENSIONS = new Set(['.png','.jpg','.jpeg','.webp','.bmp']);
+const GIF_STUDIO_IMAGE_EXTENSIONS = new Set(['.png','.jpg','.jpeg','.webp','.bmp','.gif','.apng']);
 
 function safeGifStudioName(filename: string) {
   return path.basename(String(filename || 'asset')).replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^[-_.]+/, '').slice(0, 120) || 'asset';
@@ -4419,7 +4464,7 @@ async function runGifAssetProcessingJob(job: any) {
   return jobManager.get(job.id);
 }
 
-async function resolveStoredJobOutput(job: any, preferredFormat?: 'gif'|'mp4') {
+async function resolveStoredJobOutput(job: any, preferredFormat?: 'gif'|'mp4'|'apng') {
   const outputs: any[] = Array.isArray(job?.outputs) ? job.outputs : [];
   // A completed job can carry more than one stored output (Sequential Story saves
   // both a final .mp4 and a final .gif). Previously this always took whichever
@@ -4428,7 +4473,7 @@ async function resolveStoredJobOutput(job: any, preferredFormat?: 'gif'|'mp4') {
   // .mp4 export. Prefer the output whose extension matches what was asked for.
   const matchesExt = (o: any, ext: string) => new RegExp(`\\.${ext}$`, 'i').test(String(o?.file?.filename || ''));
   const first = (preferredFormat && outputs.find(o => matchesExt(o, preferredFormat)))
-    || outputs.find((o:any) => /\.(mp4|gif|webm|webp|mov|mkv|avi)$/i.test(String(o?.file?.filename || '')));
+    || outputs.find((o:any) => /\.(mp4|gif|apng|webm|webp|mov|mkv|avi)$/i.test(String(o?.file?.filename || '')));
   if (!first?.file?.filename) throw new Error('Stored job output is unavailable.');
   const candidate = path.resolve(GIF_STUDIO_MEDIA_ROOT, path.basename(String(first.file.filename)));
   const root = path.resolve(GIF_STUDIO_MEDIA_ROOT);
@@ -4982,7 +5027,7 @@ app.post('/api/gif-studio/upload', express.raw({ type:'*/*', limit:'220mb' }), a
   try {
     const originalName = safeGifStudioName(decodeURIComponent(String(req.headers['x-gina-filename'] || 'asset')));
     const ext = path.extname(originalName).toLowerCase();
-    if (!GIF_STUDIO_VIDEO_EXTENSIONS.has(ext) && !GIF_STUDIO_IMAGE_EXTENSIONS.has(ext)) return res.status(400).json({ok:false,error:'GIF Studio accepts MP4, MOV, WEBM, MKV, PNG, JPG/JPEG, WEBP or BMP.'});
+    if (!GIF_STUDIO_VIDEO_EXTENSIONS.has(ext) && !GIF_STUDIO_IMAGE_EXTENSIONS.has(ext)) return res.status(400).json({ok:false,error:'GIF Studio accepts MP4, MOV, WEBM, MKV, PNG, JPG/JPEG, WEBP, BMP, GIF or APNG.'});
     const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || []);
     if (!buffer.length) return res.status(400).json({ok:false,error:'Uploaded file is empty.'});
     if (buffer.length > GIF_STUDIO_MAX_UPLOAD_BYTES) return res.status(413).json({ok:false,error:'GIF Studio upload exceeds the 220 MB local limit.'});
@@ -5069,7 +5114,8 @@ app.post('/api/gif-studio/export', async (req,res) => {
   try {
     const job = jobManager.get(String(req.body?.jobId || ''));
     if (!job || !['gif_studio','gif_story'].includes(job.workflowId) || job.status !== 'COMPLETED') return res.status(409).json({ok:false,error:'GIF Studio processing job is not complete.'});
-    const format = String(req.body?.format || 'gif').toLowerCase() === 'mp4' ? 'mp4' : 'gif';
+    const requestedFormat = String(req.body?.format || 'gif').toLowerCase();
+    const format = requestedFormat === 'mp4' ? 'mp4' : requestedFormat === 'apng' ? 'apng' : 'gif';
     const media = job.promptId ? await resolveJobOutputFile(job) : await resolveStoredJobOutput(job, format);
     await fs.mkdir(GIF_STUDIO_MEDIA_ROOT,{recursive:true});
     const id = `export_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
@@ -5096,6 +5142,13 @@ app.post('/api/gif-studio/export', async (req,res) => {
       args.push('-c:v','libx264','-preset','veryfast','-crf',String(crf),'-pix_fmt','yuv420p');
       if (needsExtension) args.push('-t',String(targetDurationSeconds));
       args.push(outputPath);
+      await execFileAsync('ffmpeg',args,{windowsHide:true,timeout:encodeTimeout,maxBuffer:2*1024*1024});
+    } else if (format === 'apng') {
+      const fpsValue = Math.max(1, Math.min(60, Number(req.body?.fps || 12)));
+      const vf = filter ? `${filter},fps=${fpsValue},format=rgba` : `fps=${fpsValue},format=rgba`;
+      const args = ['-y', ...loopArgs, '-i', inputPath, '-vf', vf];
+      if (needsExtension) args.push('-t',String(targetDurationSeconds));
+      args.push('-plays','0','-f','apng',outputPath);
       await execFileAsync('ffmpeg',args,{windowsHide:true,timeout:encodeTimeout,maxBuffer:2*1024*1024});
     } else {
       const colors = Math.round(64 + compression * 1.92);

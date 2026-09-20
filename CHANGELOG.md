@@ -1,4 +1,126 @@
-# v1.20.7 — Phase 56 — UI Sizing, Web Timeout, Image Transfer & Electricity Cost Telemetry
+# v1.20.11 — Phase 59 — Voice Engine Runtime Repair & Fluid Layout
+
+- **Local AI composer:** Attach is now a dedicated control beside Send instead of sharing the Send button's absolute position; the composer reserves action space so the two buttons cannot overlap.
+- **Local AI height:** Chat/Interactive Preview now expands against the viewport instead of stopping roughly 20% above the bottom on tall displays.
+- **Voice dependencies:** `setup_audio_deps.py` now detects broken imports (not just missing module specs), repairs Torch/Torchaudio/TorchCodec before Coqui TTS, verifies every import after installation, and the main Windows launcher runs the audit in the active `g_env`.
+- **Bark 8 GB:** Enables Suno's CPU offload flag in addition to small-model mode.
+- **Voice database:** SQLite now probes the actual database file and automatically falls back to `.gina/data/audio` when the primary database cannot be opened, rather than surfacing `unable to open database file`.
+- **Validation:** This release must pass Python syntax, TypeScript transpilation, SQLite fallback/open tests, and a production Vite build before packaging.
+
+# v1.20.9 — Phase 57 — Voice Generator & Local AI Preview Restore
+
+## 2026-09-20
+
+- **`src/App.tsx`** — Renamed the navigation tab from `UNIFIED AUDIO` to `VOICE GENERATOR` and the workspace title from `Unified Audio Generation` to `Voice Audio Generation`.
+- **`src/components/UnifiedAudioDeck.tsx`** — Renamed the audio workspace labels to Voice Audio Generation and added a live `/api/audio/diagnostics` status strip showing the actual Python interpreter, SQLite path, and dependency state.
+- **`server/audio/VoiceDatabase.ts`** — Creates `data\audio` before opening `voices.sqlite`, fixing first-run `unable to open database file` failures.
+- **`server/routes/audioEngineRoute.ts`** — Audio generation now resolves a Python interpreter only after confirming it can import `TTS`, `bark`, and `pydub`, avoiding the prior interpreter/environment mismatch. Added `/api/audio/diagnostics`.
+- **`scripts/setup_audio_deps.py`** — Always prints the interpreter and resolved import locations after dependency setup, and fails the audit if an import still cannot actually load.
+- **`server.ts`** — Restored the Local AI generated-code save/download broker used by the interactive preview.
+- **`src/components/LocalLlmStudio.tsx`** — Restored the split `Interactive Preview` panel for HTML, web sources, markdown links and generated code; restored rich link/code rendering and code save/download controls; restored the auto-growing prompt textarea ref/effect; and changed the right panel to grow instead of clipping the composer so the prompt input remains visible.
+- **`src/version.ts`, `metadata.json`, `AGENTS.md`, `docs/AI_UPDATE_CHECKLIST.md`, `docs/EDIT_REQUESTS.md`, `src/components/MilestoneChecklist.tsx`** — Advanced lifecycle/version to Phase 57 / v1.20.9 with a new active restore point.
+
+## Phase 57 edited-file line references
+
+- `src/App.tsx` — lines 205, 284.
+- `src/components/UnifiedAudioDeck.tsx` — lines 44, 64–70, 154–167.
+- `server/audio/VoiceDatabase.ts` — lines 31–37.
+- `server/routes/audioEngineRoute.ts` — lines 10–74.
+- `scripts/setup_audio_deps.py` — lines 41–57.
+- `server.ts` — lines 2460–2490.
+- `src/components/LocalLlmStudio.tsx` — lines 135–225, 1160–1249, 1420.
+- `src/version.ts` — lines 1–4.
+- `metadata.json` — line 3.
+- `AGENTS.md` — lines 18–33.
+- `docs/AI_UPDATE_CHECKLIST.md` — lines 4–18.
+- `docs/EDIT_REQUESTS.md` — lines 96–99.
+- `src/components/MilestoneChecklist.tsx` — lines 66–67, 124–125.
+
+## Verification
+- Python syntax: PASS (`setup_audio_deps.py`, `unified_audio_backend.py`).
+- TypeScript/TSX syntax transpile: PASS for `LocalLlmStudio.tsx`, `UnifiedAudioDeck.tsx`, `App.tsx`, `server.ts`, `audioEngineRoute.ts`, `VoiceDatabase.ts`.
+- Full Vite build was not claimed because the project archive does not include installed `node_modules`; dependency resolution/build must be completed in the user's Windows Gina environment.
+
+# v1.20.8 — Phase 56 — Unified Audio, APNG & Local AI UX
+
+## Implementation update — 2026-09-20
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx` — **lines 139–153, 914–960, 1200–1282, 1318–1340**.
+  - **Exact Code Snippets:** `grid-cols-[360px_minmax(0,1fr)]`, `systemPowerW`, `promptInputRef` auto-sizing from `44px` to `200px`, and the floating send/stop button.
+  - **Why:** Widened the Local AI control rail, constrained both desktop columns with `min-w-0/overflow-hidden`, stopped header/control overlap, made the prompt capsule auto-grow, and changed electricity telemetry from GPU-only to whole-PC/system draw with explicit `£/hr` and `p/hr` units.
+
+- **Target File Path:** `/src/components/PromptStudio.tsx` — **lines 165–176, 500–585, 1100–1145**.
+  - **Exact Code Snippets:** `additiveEditOnly`, `SOURCE PRESERVATION`, `effectiveDenoise = ... additiveRequested ? 0.32`, and `ADD ONLY · PRESERVE SOURCE`.
+  - **Why:** Reference edits now have an explicit additive-only mode that preserves the uploaded image and requests only the newly described elements instead of inviting a full scene rewrite.
+
+- **Target File Path:** `/server.ts` — **lines 66–67, 357–360, 745–779, 2564–2574, 5081–5135**.
+  - **Exact Code Snippets:** `app.use('/api/audio', audioEngineRoute)`, `/media/unified-audio` static serving, `systemPowerW`/AIDA64 power-sensor aggregation, `additiveEdit` source-preservation contract, and the `apng` FFmpeg export branch.
+  - **Why:** Added the unified audio API, whole-PC wattage/cost telemetry, additive image-edit enforcement, and first-class APNG export.
+
+- **Target File Path:** `/server/agent/IntentRouter.ts` — **lines 1–61**; `/server/capabilities/CapabilityRegistry.ts` — **lines 1–134**; `/server/agent/AgentPromptPolicy.ts` — **lines 1–35**.
+  - **Exact Code Snippets:** `WEB_APP_BUILD`, `web-app-build` capability rule, and expanded operational verbs including `build`, `scaffold`, and `develop`.
+  - **Why:** Explicit web-app build requests now enter the operational coding path instead of being answered as tutorials.
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx` — **runProjectAgent path handling**.
+  - **Exact Code Snippet:** `const executionRoot = agentWorkspace || 'C:\\Gina_AI';`.
+  - **Why:** A new web-app project no longer requires an already-existing workspace before Gina can start the local coding agent.
+
+- **Target File Path:** `/server/llm/LocalLlmManager.ts` — **lines 30–295**.
+  - **Exact Code Snippet:** `LOCAL_AUTONOMY_MANDATE`.
+  - **Why:** Operational coding requests receive an explicit local-tool mandate and tool failure is treated as `FAILED`, not capability absence.
+
+- **Target File Path:** `/server/agent/MediaIntentRouter.ts` — **lines 1–56**.
+  - **Exact Code Snippet:** additive-edit detection for `add|overlay|append|place|put` plus `preserve|unchanged|only` language.
+  - **Why:** Add-only media requests are classified as modifications instead of being routed as generic generation.
+
+- **Target File Path:** `/server/routes/audioEngineRoute.ts` — **lines 1–124**.
+  - **Exact Code Snippet:** `/generate`, `/voice-clone`, `/voices`, `/preview`, and streamed audio response handling.
+  - **Why:** Provides the local Express bridge, 3–10 second clone validation, voice management API, model runner and audio streaming.
+
+- **Target File Path:** `/server/audio/VoiceDatabase.ts` — **lines 1–99**.
+  - **Exact Code Snippet:** SQLite `voices` schema and seeded System Presets.
+  - **Why:** Adds persistent searchable voice metadata, favourites and the System/Cloned/Community categories without introducing a separate database service.
+
+- **Target File Path:** `/scripts/unified_audio_backend.py` — **lines 1–221**.
+  - **Exact Code Snippet:** Bark/XTTS routing, hybrid timeline stitching, XTTS tag sanitization, seed/temperature/penalty handling and WAV/MP3/FLAC post-processing.
+  - **Why:** Provides the actual local generation pipeline and first-run model download path. Bark is configured for Suno small-model mode to respect Gina's 8GB VRAM cage.
+
+- **Target File Path:** `/scripts/setup_audio_deps.py` — **lines 1–51**.
+  - **Exact Code Snippet:** `importlib.util.find_spec()` audit followed by `pip install` only for missing imports.
+  - **Why:** Prevents duplicate/redundant Python dependency installation.
+
+- **Target File Path:** `/src/components/UnifiedAudioDeck.tsx` — **lines 1–175**.
+  - **Exact Code Snippet:** engine/mode toggles, hybrid rows, Bark tag palette, clone dropzone, 16-language selector, hyperparameters, batch matrix, output hub and voice manager.
+  - **Why:** Adds the complete React control surface for the local Bark + XTTS v2 engine.
+
+- **Target File Path:** `/src/components/GifStudio.tsx` — **lines 300–340, 542–563**; `/server.ts` APNG export lines above.
+  - **Exact Code Snippet:** `exportFormat('apng')`, APNG preview/export selector and APNG download link.
+  - **Why:** GIF Studio can now create and save animated PNG exports from its processed media.
+
+- **Target File Path:** `/src/components/RuntimeTelemetryPanel.tsx` — **lines 25–137**; `/src/App.tsx` — **lines 189–292**; `/src/types.ts` — **line 2**.
+  - **Exact Code Snippet:** `effectiveSystemPowerW`, whole-PC cost display, and `UnifiedAudioDeck` navigation.
+  - **Why:** Whole-PC wattage/cost is reflected in the global telemetry panel and the new Unified Audio workspace is directly accessible from the main navigation.
+
+- **Target File Path:** `/Start_Factory.bat` — **lines 62, 116**.
+  - **Exact Code Snippet:** `cmd /k "cd /d %GINA_ROOT% && ..."`.
+  - **Why:** Removed the invalid backslash-escaped quote sequence that can produce the Windows `The filename, directory name, or volume label syntax is incorrect.` startup message.
+
+- **Target File Path:** `/package.json` — **dependencies**.
+  - **Exact Code Snippet:** `"react-dropzone": "^14.3.8"`.
+  - **Why:** Supplies the required functional XTTS voice-clone dropzone.
+  - **Installation command:** `npm install react-dropzone`.
+
+- **Project metadata synchronization:** `/package.json`, `/src/version.ts`, `/metadata.json`, `/index.html`, `/README.md`, `/docs/INDEX.md`, `/docs/AI_UPDATE_CHECKLIST.md`, `/AGENTS.md`, `/docs/EDIT_REQUESTS.md`, `/server/agent/McpServerAdapter.ts`, and `/src/components/MilestoneChecklist.tsx` were advanced to **v1.20.8 / Phase 56** and the new active restore point `RESTORE_V1.20.8_UNIFIED_AUDIO_APNG_LOCAL_AI_UX`.
+
+## Verification
+
+- Python syntax compilation: **PASS** (`scripts/setup_audio_deps.py`, `scripts/unified_audio_backend.py`).
+- TypeScript/TSX syntactic transpile diagnostics: **PASS — 0 syntax diagnostics across all modified TypeScript/TSX files**.
+- FFmpeg capability checks: **PASS** (`drawtext` filter and `apng` muxer detected).
+- APNG smoke export: **PASS** — FFmpeg produced a valid PNG/APNG output.
+- Full `npm run build`: **NOT RUN TO COMPLETION** because the supplied workspace has no installed `node_modules`; `vite` is therefore unavailable. An attempted dependency install timed out. No dependency lockfile was generated by the update.
+
+# v1.20.8 — Phase 56 — Unified Audio, APNG & Local AI UX
 
 - **Target File Path:** `/src/components/LocalLlmStudio.tsx`
   - **Exact Code Snippet:**
@@ -2165,3 +2287,28 @@ Added a complete local filesystem tool contract matching the requested MCP-style
 
 
 
+
+
+## Phase 58 — Voice Engine Repair & Fluid Layout — 2026-09-20
+
+### Changed / Added Files
+- `/scripts/setup_audio_deps.py` — **lines 43–47**: persists the exact `sys.executable` used for TTS/Bark/pydub installation to `.gina/audio_python.json`.
+- `/server/routes/audioEngineRoute.ts` — **lines 14–68, 87–94**: deterministic Python interpreter discovery/binding, Windows Python Launcher fallback, detailed candidate/import diagnostics, and database writability reporting.
+- `/server/audio/VoiceDatabase.ts` — **lines 21–54, 126**: writable primary/fallback database location selection and real SQLite open probe.
+- `/scripts/unified_audio_backend.py` — **lines 74–178, 290–292, 320**: local pitch, formant and pitch-preserving playback-rate processing, wired into final exports.
+- `/src/components/UnifiedAudioDeck.tsx` — **lines 42–46, 133, 174–210**: physical audio controls and responsive 12-column Voice Generator layout.
+- `/src/App.tsx` — **line 232**: master wrapper changed from the 1500px fixed ceiling to a full-width fluid viewport scaffold.
+- `/src/index.css` — **lines 10–22**: global width/overflow scaffolding prevents page-wide horizontal overflow.
+- `/src/components/LocalLlmStudio.tsx` — **lines 975–1046, 1143–1145**: Local AI outer and Chat/Interactive Preview workspaces converted to responsive 12-column structure while retaining the prompt composer and preview.
+- `/src/components/MilestoneChecklist.tsx` — **lines 66–68**: Phase 56/57 syntax corrected and Phase 58 registered; Phase 57 marked completed.
+- `/src/version.ts` — **lines 1–4** and `/metadata.json` — **line 3**: version/save-point advanced to v1.20.10 / Phase 58.
+- `/AGENTS.md`, `/docs/AI_UPDATE_CHECKLIST.md`, `/docs/EDIT_REQUESTS.md` — Phase 58 runtime truth, integrity contract and request tracking updated.
+
+### Phase 58 Validation
+- Python syntax compile: **PASS** for `scripts/setup_audio_deps.py` and `scripts/unified_audio_backend.py`.
+- TypeScript transpilation: **PASS** for `App.tsx`, `LocalLlmStudio.tsx`, `UnifiedAudioDeck.tsx`, and `MilestoneChecklist.tsx`.
+- Node TypeScript syntax: **PASS** for `VoiceDatabase.ts` and `audioEngineRoute.ts`.
+- SQLite smoke test: **PASS** — database directory creation, open probe and six system voice presets.
+- Physical audio post-processing smoke test: **PASS** — pitch/formant/time-stretch pipeline produced a valid WAV.
+- ZIP integrity: **PASS**.
+- Full Windows runtime/audio-model generation remains to be exercised on the user's machine because the installed Python/Node environment is outside this isolated build workspace.

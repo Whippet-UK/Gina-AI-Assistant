@@ -1,14 +1,15 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "1.20.7",
+  "version": "1.20.11",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.cjs",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "setup:audio": "python scripts/setup_audio_deps.py"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
@@ -22,7 +23,8 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "recharts": "^3.10.1",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "react-dropzone": "^14.3.8"
   },
   "devDependencies": {
     "@types/d3": "^7.4.3",

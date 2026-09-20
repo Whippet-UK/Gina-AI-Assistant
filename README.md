@@ -1,4 +1,4 @@
-# Gina AI Factory — v1.20.7
+# Gina AI Factory — v1.20.8
 
 
 ## v1.20.6 — StreamInject Source Audio Stripping Engine (2026-09-13)
@@ -205,6 +205,13 @@ Every autonomous project edit is governed by `docs/AI_UPDATE_CHECKLIST.md`. Gina
 ## Internet research
 Gina is local-first and can use controlled public-internet research for current documentation, releases, troubleshooting and other freshness-sensitive tasks. Set `GINA_WEB_ACCESS=false` to disable it. An optional `BRAVE_SEARCH_API_KEY` enables Brave Search API with DuckDuckGo fallback. See `docs/setup/GINA_WEB_RESEARCH.md`.
 
+
+## v1.20.8 / Phase 56 — Unified Audio, APNG & Local AI UX
+
+- Unified Bark + XTTS v2 local audio engine, voice database, cloning dropzone and stitched timeline UI.
+- Local AI layout widened and whole-PC electricity cost telemetry now reports system draw with explicit £/hr and p/hr units.
+- Image reference editing gained explicit ADD ONLY / PRESERVE SOURCE mode.
+- GIF Studio gained APNG export.
 
 ## v1.20.7 / Phase 55 — Broader Code Review & Autonomy Hardening
 - Audited Music, Agent, AIDA64, Image, Video, GIF, StreamInject, Assets, Jobs, and Local AI surfaces for partially wired/stale assumptions.
