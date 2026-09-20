@@ -72,6 +72,9 @@ function normalizeChatMessages(messages: ChatMessage[], hardFallback = false): C
 function isRecoverableTemplateError(message:string){const text=String(message||'').toLowerCase();return text.includes('conversation roles must alternate')||text.includes('unable to generate parser')||text.includes('automatic parser generation failed')||text.includes('jinja exception');}
 function isContextError(message:string){const text=String(message||'').toLowerCase();return text.includes('context size')||text.includes('context length')||text.includes('too many tokens')||text.includes('prompt is too long');}
 
+const LOCAL_AUTONOMY_MANDATE = `LOCAL AUTONOMY MANDATE — UNCONDITIONAL:
+You are connected to a live Win32 server broker with full local filesystem permissions. You possess the real tools edit_file, write_file, and execute_command through Gina's autonomous broker. You are forbidden from stating that you cannot modify files, run commands, or validate local code when the runtime has registered those capabilities. If a user asks you to update, change, fix, build, create, modify, or repair code/files/project content, you MUST choose the corresponding broker action tool and execute it. An instructional answer is an error for an operational request. A tool execution failure means status FAILED and must trigger diagnosis, patching, and re-validation; it is never proof that the capability is unavailable. Never claim success until the tool result and validation confirm it.`;
+
 export class LocalLlmManager {
   private child: ChildProcessWithoutNullStreams | null = null;
   private ready=false;
@@ -244,6 +247,11 @@ export class LocalLlmManager {
   async chat(messages:ChatMessage[],options?:{temperature?:number;maxTokens?:number;suite?:string;telemetrySource?:PromptTelemetrySource;webProvider?:string|null;includeAgentSkills?:boolean;contextBreakdown?:Record<string,number>;iteration?:number;toolCalls?:number},attachments:ImageAttachment[]=[]){
     await this.agentSkillsLoadPromise;
     const skillAwareMessages = Array.isArray(messages) ? [...messages] : [];
+    const latestUserText = [...skillAwareMessages].reverse().find(message => message?.role === 'user');
+    const operationalContext = this.engine === 'qwen-coder' || /\b(?:edit|modify|change|update|patch|repair|fix|implement|refactor|rewrite|replace|remove|delete|create|make|build|scaffold|develop|write|save)\b[\s\S]{0,220}\b(?:code|file|component|function|project|repo|repository|react|typescript|javascript|server|ui|app|website|dashboard)\b/i.test(String(latestUserText?.content || ''));
+    if (operationalContext && !skillAwareMessages.some(message => message?.role === 'system' && String(message.content || '').includes('LOCAL AUTONOMY MANDATE'))) {
+      skillAwareMessages.unshift({ role:'system', content: LOCAL_AUTONOMY_MANDATE });
+    }
     if (options?.includeAgentSkills !== false) {
       const skillPrompt = getActiveAgentSkillsPrompt();
       if (!skillAwareMessages.some(message => message?.role === 'system' && String(message.content || '').includes('=== ACTIVE AGENT SKILLS'))) {

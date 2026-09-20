@@ -3,7 +3,8 @@ export type RuntimeIntent = 'web-research'|'network-diagnostic'|'code-task'|'fil
 export interface IntentRoute { intent: RuntimeIntent; confidence: number; requiresProjectContext: boolean; requiresSkills: boolean; requiresWeb: boolean; reason: string; operational: boolean; explicitTargets?: string[]; }
 
 const INSTRUCTIONAL_PREFIX = /^(?:how|why|what is|what are|explain|tell me how|show me how|can you explain|could you explain)\b/i;
-const OPERATIONAL_VERB = /\b(?:edit|modify|change|update|patch|repair|fix|implement|refactor|rewrite|replace|remove|delete|create|make|write|save|rename|move|copy|add|append|prepend)\b/i;
+const OPERATIONAL_VERB = /\b(?:edit|modify|change|update|patch|repair|fix|implement|refactor|rewrite|replace|remove|delete|create|make|build|scaffold|develop|write|save|rename|move|copy|add|append|prepend)\b/i;
+const WEB_APP_BUILD = /\b(?:build|scaffold|develop|create|make|generate)\b[^\n]{0,180}\b(?:web app|website|react app|react dashboard|frontend|full[- ]stack app|vite app|dashboard|web application)\b/i;
 const FILE_TARGET = /(?:^|[\s"'])(?:[A-Za-z]:[\\/]|\.?\.?[\\/]|(?:src|server|docs|scripts|public|app|components|tests?)\/)[^\s"'`]+|\b[\w.-]+\.(?:ts|tsx|js|jsx|mjs|cjs|json|md|css|html|py|bat|ps1|txt)\b/i;
 
 // Live-web signals are deliberately expressed as intent combinations, not single
@@ -43,6 +44,7 @@ function isOperationalCodeRequest(q:string): boolean {
 
 export function routeRuntimeIntent(text: string): IntentRoute {
   const q=String(text||'').trim();
+  if (WEB_APP_BUILD.test(q) && !INSTRUCTIONAL_PREFIX.test(q)) return {intent:'code-task',confidence:.999,requiresProjectContext:false,requiresSkills:true,requiresWeb:false,operational:true,reason:'Explicit web application build request'};
   if (isWebResearchRequest(q))
     return {intent:'web-research',confidence:.995,requiresProjectContext:false,requiresSkills:false,requiresWeb:true,operational:true,reason:'Explicit/current public-web request'};
   if (/\b(?:ping|network access|internet access|internet connection|network connection|connectivity|test (?:the )?(?:network|internet)|online access)\b/i.test(q))

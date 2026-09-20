@@ -10,7 +10,7 @@ export interface GinaMediaRoute {
 }
 
 const QUESTION_OR_ANALYSIS = /^(?:what|why|how|can you|could you|would you|tell me|explain|describe|analyse|analyze|identify|read|summari[sz]e)\b/i;
-const VIDEO_NOUN = /\b(video|videos|movie|film|clip|footage|animation|animated)\b/i;
+const VIDEO_NOUN = /\b(video|videos|movie|film|clip|footage|animation|animated|gif|apng)\b/i;
 const IMAGE_NOUN = /\b(image|picture|photo|photograph|artwork|illustration|portrait|wallpaper|logo|icon|bezel|watch face|scene|product shot|product photography|visual)\b/i;
 const CREATE_VERB = /\b(create|generate|make|draw|render|produce|design|visuali[sz]e|paint|illustrate|depict|show me|give me|provide me|send me|animate|animate me)\b/i;
 const EDIT_VERB = /\b(edit|modify|change|alter|transform|retouch|remove|add|replace|restyle|improve|redo|rework|work off|use)\b/i;
@@ -43,7 +43,9 @@ export function detectMediaIntent(text: string, hasImageAttachment = false): Gin
   const descriptiveStatement = DESCRIPTIVE_STATEMENT.test(normalized);
   const bareImagePrompt = !questionOrAnalysis && !descriptiveStatement && !videoNoun && imageNoun && normalized.length >= 20 && !QUESTION_MARK.test(normalized);
 
-  const modify = hasImageAttachment && editVerb && (referencePhrase || !questionOrAnalysis) && !videoNoun;
+  const additiveEdit = /\b(?:add|overlay|append|place|put)\b/i.test(normalized) && /\b(?:without|don't|do not|keep|preserve|unchanged|only)\b/i.test(normalized);
+  const modify = hasImageAttachment && editVerb && (referencePhrase || !questionOrAnalysis) && (!videoNoun || additiveEdit);
+  if (additiveEdit && hasImageAttachment && editVerb) return { intent:'image-modification', create:false, modify:true, explicit:true, confidence:'high', reason:'additive reference edit — preserve source and add requested elements' };
   const create = !modify && !questionOrAnalysis && (imageCreation || geographicVisual || directVisualRequest || bareImagePrompt);
 
   if (videoCreation) return { intent:'video-generation', create:false, modify:false, explicit:true, confidence:'high', reason:'explicit video generation request' };

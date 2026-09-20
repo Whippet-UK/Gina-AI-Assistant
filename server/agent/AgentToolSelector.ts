@@ -36,6 +36,7 @@ const ALWAYS_CONTEXT = ['inspect_capabilities','inspect_project_context','read_t
 
 export function selectAgentTools(userPrompt: string, intent = 'code-task', previousActions: string[] = []): ToolSelection {
   const text = String(userPrompt || '').trim();
+  const isWebAppBuild = /\b(?:build|create|develop|scaffold|generate|make)\b/i.test(text) && /\b(?:web\s*app|website|dashboard|frontend|full[- ]stack|react|next(?:\.js)?|vite)\b/i.test(text);
   const scores = new Map<string, { score:number; reasons:string[]; risk:ToolCandidate['risk'] }>();
   const add = (action:string, score:number, reason:string, risk:ToolCandidate['risk']) => {
     const existing = scores.get(action) || { score:0, reasons:[], risk };
@@ -56,6 +57,7 @@ export function selectAgentTools(userPrompt: string, intent = 'code-task', previ
   if (intent === 'file-operation' || intent === 'code-task') for (const a of ['read_text_file','edit_file','validate_project','project_integrity_check']) add(a, 14, 'runtime intent', a.includes('edit') ? 'write' : 'read');
   if (intent === 'knowledge-query') for (const a of ['knowledge_search','remember','recall_memory']) add(a, 20, 'runtime intent', 'read');
   if (intent === 'capability-query') for (const a of ['inspect_capabilities','inspect_system']) add(a, 20, 'runtime intent', 'system');
+  if (isWebAppBuild) for (const a of ['scaffold_web_app','write_file','edit_file','execute_command','validate_project','project_integrity_check']) add(a, 30, 'web application build contract', a === 'execute_command' || a === 'validate_project' ? 'execute' : (a === 'scaffold_web_app' || a === 'write_file' || a === 'edit_file' ? 'write' : 'read'));
 
   // Prevent immediate repetition unless the previous call was a read needed for a write.
   for (const action of previousActions.slice(-2)) {
@@ -76,7 +78,7 @@ export function selectAgentTools(userPrompt: string, intent = 'code-task', previ
     'network-diagnostic':['network_test'],
     'knowledge-query':['knowledge_search','remember','recall_memory'],
     'capability-query':['inspect_capabilities','inspect_system'],
-    'code-task':['read_text_file','read_file','read_multiple_files','search_files','get_file_info','edit_file','patch_file','write_file','create_directory','directory_tree','list_directory','list_directory_with_sizes','execute_command','validate_project','project_integrity_check','git_status','git_diff','git_workspace_diff','git_log','git_branch','git_commit'],
+    'code-task':['read_text_file','read_file','read_multiple_files','search_files','get_file_info','edit_file','patch_file','write_file','create_directory','directory_tree','list_directory','list_directory_with_sizes','scaffold_web_app','execute_command','validate_project','project_integrity_check','git_status','git_diff','git_workspace_diff','git_log','git_branch','git_commit'],
     'file-operation':['read_text_file','read_file','read_multiple_files','search_files','get_file_info','edit_file','patch_file','write_file','create_directory','directory_tree','list_directory','list_directory_with_sizes','move_file'],
   };
   const filtered = domainAllow[intent] ? ranked.filter(x => domainAllow[intent]!.includes(x.action)) : ranked;

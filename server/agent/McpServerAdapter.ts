@@ -90,7 +90,7 @@ export class McpServerAdapter {
     try {
       switch (request.method) {
         case 'initialize':
-          return jsonRpc(id, { protocolVersion: PROTOCOL_VERSION, capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'Gina AI Factory MCP Server', version: '1.20.7' } });
+          return jsonRpc(id, { protocolVersion: PROTOCOL_VERSION, capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'Gina AI Factory MCP Server', version: '1.20.8' } });
         case 'notifications/initialized':
           return id === null ? undefined : jsonRpc(id, {});
         case 'ping':

@@ -7,7 +7,7 @@ export interface AgentPromptPolicy {
 }
 
 const PATH_RE = /(?:[A-Za-z]:[\\/][^\s"'`]+|(?:\.?\.?[\\/]|(?:src|server|docs|scripts|public|app|components|tests?)[\\/])[^\s"'`]+|\b[\w.-]+\.(?:ts|tsx|js|jsx|mjs|cjs|json|md|css|html|py|bat|ps1|txt)\b)/gi;
-const ACTION_RE = /\b(?:edit|modify|change|update|patch|repair|fix|implement|refactor|rewrite|replace|remove|delete|create|make|write|save|rename|move|copy|add|append|prepend|run|execute|test|build|commit|push|clone)\b/i;
+const ACTION_RE = /\b(?:edit|modify|change|update|patch|repair|fix|implement|refactor|rewrite|replace|remove|delete|create|make|build|scaffold|develop|write|save|rename|move|copy|add|append|prepend|run|execute|test|commit|push|clone)\b/i;
 const EXPLAIN_RE = /^(?:how|why|what is|what are|explain|tell me how|show me how|can you explain|could you explain)\b/i;
 
 export function extractExplicitTargets(text:string): string[] {
