@@ -119,6 +119,52 @@ async function resolvePython(): Promise<PythonCandidate> {
 let lastPythonCheckTime = 0;
 let lastPythonCheckError = '';
 
+export interface ActiveAudioJob {
+  id: string;
+  startTime: number;
+  status: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled';
+  stage: string;
+  message: string;
+  percent: number;
+  device: string;
+  vramWarning: boolean;
+  row: number;
+  totalRows: number;
+  engine: string;
+  logs: string[];
+  childProcess?: any;
+  result?: any;
+  error?: string;
+}
+
+let activeAudioJob: ActiveAudioJob | null = null;
+const sseClients: Set<Response> = new Set();
+
+function broadcastAudioEvent(event: string, data: any) {
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.write(payload);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}
+
+function pushAudioLog(text: string) {
+  const line = text.trim();
+  if (!line) return;
+  const timestamp = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  const formatted = `[${timestamp}] ${line}`;
+  if (activeAudioJob) {
+    activeAudioJob.logs.push(formatted);
+    if (activeAudioJob.logs.length > 250) {
+      activeAudioJob.logs.splice(0, activeAudioJob.logs.length - 250);
+    }
+  }
+  broadcastAudioEvent('log', { text: formatted, raw: line, timestamp });
+}
+
 async function getUsablePython(): Promise<PythonCandidate | null> {
   if (resolvedPython) return resolvedPython;
   const now = Date.now();
@@ -136,21 +182,157 @@ async function getUsablePython(): Promise<PythonCandidate | null> {
 
 async function runPython(payload: any): Promise<any> {
   await fs.mkdir(AUDIO_ROOT, { recursive: true });
+  const python = await resolvePython();
   return new Promise((resolve, reject) => {
-    resolvePython().then((python) => {
-      const child = spawn(python.command, [...python.args, SCRIPT], { cwd: GINA_ROOT, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
-      let stdout = ''; let stderr = '';
-      child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
-      child.stdout.on('data', chunk => { stdout += chunk; }); child.stderr.on('data', chunk => { stderr += chunk; });
-      child.on('error', reject);
-      child.on('close', code => {
-        let parsed: any = null;
-        try { parsed = JSON.parse(stdout.trim().split(/\r?\n/).filter(Boolean).pop() || '{}'); } catch {}
-        if (code !== 0 || !parsed?.ok) return reject(new Error(parsed?.error || stderr.trim() || `Unified audio backend exited with code ${code}`));
-        resolve(parsed);
-      });
+    const env = {
+      ...process.env,
+      COQUI_TOS_AGREED: '1',
+      PYTHONUNBUFFERED: '1',
+      PYTHONIOENCODING: 'utf-8',
+      SUNO_USE_SMALL_MODELS: 'True',
+      SUNO_OFFLOAD_CPU: 'True',
+    };
+
+    const child = spawn(python.command, [...python.args, SCRIPT], {
+      cwd: GINA_ROOT,
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env,
+    });
+
+    const totalRows = Array.isArray(payload.timeline) && payload.timeline.length > 0 ? payload.timeline.length : 1;
+    const initialEngine = payload.engine || (Array.isArray(payload.timeline) && payload.timeline[0]?.engine) || 'bark';
+
+    activeAudioJob = {
+      id: `audio_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      startTime: Date.now(),
+      status: 'running',
+      stage: 'initializing',
+      message: 'Initializing local audio synthesis engine...',
+      percent: 3,
+      device: 'auto',
+      vramWarning: false,
+      row: 1,
+      totalRows,
+      engine: initialEngine,
+      logs: [],
+      childProcess: child,
+    };
+
+    pushAudioLog(`Starting audio synthesis (mode: ${payload.mode || 'standard'}, engine: ${initialEngine}, total rows: ${totalRows})`);
+    broadcastAudioEvent('status', {
+      id: activeAudioJob.id,
+      status: 'running',
+      stage: activeAudioJob.stage,
+      message: activeAudioJob.message,
+      percent: activeAudioJob.percent,
+      device: activeAudioJob.device,
+      vramWarning: activeAudioJob.vramWarning,
+      row: activeAudioJob.row,
+      totalRows: activeAudioJob.totalRows,
+      engine: activeAudioJob.engine,
+      startTime: activeAudioJob.startTime,
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let stderrBuffer = '';
+
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk;
+    });
+
+    child.stderr.on('data', (chunk: string) => {
+      stderr += chunk;
+      stderrBuffer += chunk;
+      const lines = stderrBuffer.split(/\r?\n/);
+      stderrBuffer = lines.pop() || '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (trimmed.startsWith('GINA_AUDIO_PROGRESS:')) {
+          try {
+            const prog = JSON.parse(trimmed.slice('GINA_AUDIO_PROGRESS:'.length));
+            if (activeAudioJob && activeAudioJob.status === 'running') {
+              if (prog.stage) activeAudioJob.stage = prog.stage;
+              if (typeof prog.percent === 'number') activeAudioJob.percent = prog.percent;
+              if (prog.message) activeAudioJob.message = prog.message;
+              if (prog.device) activeAudioJob.device = prog.device;
+              if (typeof prog.vram_warning === 'boolean') activeAudioJob.vramWarning = prog.vram_warning;
+              if (typeof prog.row === 'number') activeAudioJob.row = prog.row;
+              if (typeof prog.total_rows === 'number') activeAudioJob.totalRows = prog.total_rows;
+              if (prog.engine) activeAudioJob.engine = prog.engine;
+              pushAudioLog(`▶ ${prog.message}`);
+              broadcastAudioEvent('progress', {
+                id: activeAudioJob.id,
+                stage: activeAudioJob.stage,
+                percent: activeAudioJob.percent,
+                message: activeAudioJob.message,
+                device: activeAudioJob.device,
+                vramWarning: activeAudioJob.vramWarning,
+                row: activeAudioJob.row,
+                totalRows: activeAudioJob.totalRows,
+                engine: activeAudioJob.engine,
+              });
+            }
+          } catch {}
+        } else {
+          pushAudioLog(trimmed);
+        }
+      }
+    });
+
+    child.on('error', (err) => {
+      if (activeAudioJob) {
+        activeAudioJob.status = 'failed';
+        activeAudioJob.error = err.message;
+        pushAudioLog(`✖ Process spawn error: ${err.message}`);
+        broadcastAudioEvent('failed', { id: activeAudioJob.id, error: err.message });
+      }
+      reject(err);
+    });
+
+    child.on('close', (code) => {
+      let parsed: any = null;
+      try {
+        parsed = JSON.parse(stdout.trim().split(/\r?\n/).filter(Boolean).pop() || '{}');
+      } catch {}
+
+      if (activeAudioJob && activeAudioJob.status === 'running') {
+        if (code === 0 && parsed?.ok) {
+          activeAudioJob.status = 'completed';
+          activeAudioJob.percent = 100;
+          activeAudioJob.message = 'Audio synthesis completed successfully.';
+          activeAudioJob.result = parsed;
+          pushAudioLog('✔ Audio generation completed successfully.');
+          broadcastAudioEvent('completed', { id: activeAudioJob.id, result: parsed });
+        } else {
+          activeAudioJob.status = 'failed';
+          const err = parsed?.error || stderr.trim() || `Unified audio backend exited with code ${code}`;
+          activeAudioJob.error = err;
+          pushAudioLog(`✖ Audio generation failed: ${err}`);
+          broadcastAudioEvent('failed', { id: activeAudioJob.id, error: err });
+        }
+      }
+
+      if (activeAudioJob?.status === 'cancelled') {
+        return reject(new Error('Audio generation was cancelled.'));
+      }
+
+      if (code !== 0 || !parsed?.ok) {
+        return reject(new Error(parsed?.error || stderr.trim() || `Unified audio backend exited with code ${code}`));
+      }
+      resolve(parsed);
+    });
+
+    try {
       child.stdin.end(JSON.stringify(payload));
-    }).catch(reject);
+    } catch (stdinErr: any) {
+      reject(stdinErr);
+    }
   });
 }
 
@@ -251,7 +433,107 @@ router.post('/voice-clone', expressRawAudio(), async (req: Request, res: Respons
   } catch (error:any) { res.status(500).json({ ok:false, error:error?.message || 'Voice clone upload failed.' }); }
 });
 
+router.get('/active-status', (_req: Request, res: Response) => {
+  if (!activeAudioJob) {
+    return res.json({ ok: true, active: false, job: null });
+  }
+  const isRunning = activeAudioJob.status === 'running';
+  const elapsedSec = Math.floor((Date.now() - activeAudioJob.startTime) / 1000);
+  res.json({
+    ok: true,
+    active: isRunning,
+    job: {
+      id: activeAudioJob.id,
+      status: activeAudioJob.status,
+      stage: activeAudioJob.stage,
+      message: activeAudioJob.message,
+      percent: activeAudioJob.percent,
+      device: activeAudioJob.device,
+      vramWarning: activeAudioJob.vramWarning,
+      row: activeAudioJob.row,
+      totalRows: activeAudioJob.totalRows,
+      engine: activeAudioJob.engine,
+      startTime: activeAudioJob.startTime,
+      elapsedSec,
+      logs: activeAudioJob.logs.slice(-50),
+      result: activeAudioJob.result,
+      error: activeAudioJob.error,
+    },
+  });
+});
+
+router.get('/events', (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  sseClients.add(res);
+
+  if (activeAudioJob) {
+    const elapsedSec = Math.floor((Date.now() - activeAudioJob.startTime) / 1000);
+    res.write(`event: status\ndata: ${JSON.stringify({
+      id: activeAudioJob.id,
+      status: activeAudioJob.status,
+      stage: activeAudioJob.stage,
+      message: activeAudioJob.message,
+      percent: activeAudioJob.percent,
+      device: activeAudioJob.device,
+      vramWarning: activeAudioJob.vramWarning,
+      row: activeAudioJob.row,
+      totalRows: activeAudioJob.totalRows,
+      engine: activeAudioJob.engine,
+      elapsedSec,
+      logs: activeAudioJob.logs.slice(-30),
+    })}\n\n`);
+  } else {
+    res.write(`event: status\ndata: ${JSON.stringify({ status: 'idle' })}\n\n`);
+  }
+
+  const keepAlive = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch {
+      clearInterval(keepAlive);
+    }
+  }, 15000);
+
+  req.on('close', () => {
+    clearInterval(keepAlive);
+    sseClients.delete(res);
+  });
+});
+
+router.post('/cancel', (_req: Request, res: Response) => {
+  if (!activeAudioJob || activeAudioJob.status !== 'running') {
+    return res.json({ ok: true, message: 'No active audio generation to cancel.' });
+  }
+
+  const job = activeAudioJob;
+  job.status = 'cancelled';
+  job.message = 'Audio generation was cancelled by user.';
+  pushAudioLog('⚠ Audio generation was cancelled by user.');
+
+  if (job.childProcess) {
+    try {
+      const pid = job.childProcess.pid;
+      if (process.platform === 'win32' && pid) {
+        spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true });
+      } else {
+        job.childProcess.kill('SIGTERM');
+      }
+    } catch (err: any) {
+      console.error('Failed to terminate child audio process:', err);
+    }
+  }
+
+  broadcastAudioEvent('cancelled', { id: job.id, message: 'Generation cancelled.' });
+  res.json({ ok: true, message: 'Audio generation cancelled.' });
+});
+
 router.post('/generate', async (req: Request, res: Response) => {
+  req.setTimeout(600000);
+  res.setTimeout(600000);
   try {
     const payload = { ...req.body };
     if (payload.voiceClonePath) {
@@ -271,7 +553,9 @@ router.post('/generate', async (req: Request, res: Response) => {
       return;
     }
     res.json(result);
-  } catch (error:any) { res.status(500).json({ ok:false, error:error?.message || 'Unified audio generation failed.' }); }
+  } catch (error:any) {
+    res.status(500).json({ ok:false, error:error?.message || 'Unified audio generation failed.', logs: activeAudioJob?.logs || [] });
+  }
 });
 
 router.post('/preview', async (req: Request, res: Response) => {

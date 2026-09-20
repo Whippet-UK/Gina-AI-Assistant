@@ -1,6 +1,35 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { AudioLines, ChevronDown, Dice5, Download, Heart, Loader2, Lock, Plus, Play, Search, Sparkles, Square, Trash2, Upload, Volume2, Wand2, Wrench } from 'lucide-react';
+import {
+  AudioLines,
+  ChevronDown,
+  ChevronUp,
+  Dice5,
+  Download,
+  Heart,
+  Loader2,
+  Lock,
+  Plus,
+  Play,
+  Search,
+  Sparkles,
+  Square,
+  Trash2,
+  Upload,
+  Volume2,
+  Wand2,
+  Wrench,
+  Terminal,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  RotateCcw,
+  Cpu,
+  Zap,
+  Clock,
+  Copy,
+  Check
+} from 'lucide-react';
 
 interface VoiceRecord {
   voice_id:string; speaker_name:string; gender:string; age_group:string; primary_language:string; accent_dialect:string;
@@ -9,11 +38,34 @@ interface VoiceRecord {
 }
 interface Row { id:string; text:string; engine:'bark'|'xtts_v2'; voicePreset:string; language:string; }
 
+interface ActiveJobState {
+  id?: string;
+  status?: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled';
+  stage?: string;
+  message?: string;
+  percent?: number;
+  device?: string;
+  vramWarning?: boolean;
+  row?: number;
+  totalRows?: number;
+  engine?: string;
+  startTime?: number;
+  elapsedSec?: number;
+  logs?: string[];
+  result?: any;
+  error?: string;
+}
+
 const LANGUAGES = ['en','es','fr','de','it','pt','pl','tr','ru','nl','cs','ar','zh-cn','ja','ko','hu'];
 const BARK_TAGS = ['[laughter]','[giggle]','[sigh]','[gasp]','[clears throat]','[hesitation]','[whispers]','[music]','[applause]','[laughter in background]','...'];
 const DEFAULT_ROWS: Row[] = [{ id:'row_1', text:'', engine:'xtts_v2', voicePreset:'xtts_ana_florence', language:'en' }];
 
 function makeSeed() { return Math.floor(Math.random() * 2147483647); }
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
 
 export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|'RULE', message:string) => void }> = ({ onAddLog }) => {
   const [engine, setEngine] = useState<'bark'|'xtts_v2'>('xtts_v2');
@@ -55,6 +107,16 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
   const audioRef = useRef<HTMLAudioElement|null>(null);
   const [activeRowId, setActiveRowId] = useState('row_1');
   const textareaRefs = useRef<Record<string, HTMLTextAreaElement|null>>({});
+
+  // Real-time live audio execution state & telemetry
+  const [activeJob, setActiveJob] = useState<ActiveJobState | null>(null);
+  const [jobLogs, setJobLogs] = useState<string[]>([]);
+  const [elapsedSec, setElapsedSec] = useState<number>(0);
+  const [showLogs, setShowLogs] = useState<boolean>(true);
+  const [copiedLog, setCopiedLog] = useState<boolean>(false);
+  const [freeingVram, setFreeingVram] = useState<boolean>(false);
+  const [vramFreedMessage, setVramFreedMessage] = useState<string | null>(null);
+  const logContainerRef = useRef<HTMLDivElement | null>(null);
 
   const fetchDiagnostics = useCallback(async () => {
     try {
@@ -154,6 +216,185 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
     catch (e:any) { setError(e?.message || 'Unable to update favorite.'); }
   };
 
+  const checkActiveStatus = useCallback(async () => {
+    try {
+      const r = await fetch('/api/audio/active-status');
+      const d = await r.json();
+      if (d.ok && d.active && d.job) {
+        setGenerating(true);
+        setActiveJob(d.job);
+        setElapsedSec(d.job.elapsedSec || 0);
+        if (Array.isArray(d.job.logs) && d.job.logs.length) {
+          setJobLogs(d.job.logs);
+        }
+      }
+    } catch {
+      // Ignore network errors on background poll
+    }
+  }, []);
+
+  useEffect(() => {
+    void checkActiveStatus();
+
+    let eventSource: EventSource | null = null;
+    let reconnectTimeout: any = null;
+
+    const connectSSE = () => {
+      try {
+        eventSource = new EventSource('/api/audio/events');
+
+        eventSource.addEventListener('status', (e: MessageEvent) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.status === 'running') {
+              setActiveJob(data);
+              setGenerating(true);
+              if (typeof data.elapsedSec === 'number') setElapsedSec(data.elapsedSec);
+              if (Array.isArray(data.logs) && data.logs.length) {
+                setJobLogs(data.logs);
+              }
+            }
+          } catch {
+            // ignore parse error
+          }
+        });
+
+        eventSource.addEventListener('progress', (e: MessageEvent) => {
+          try {
+            const data = JSON.parse(e.data);
+            setActiveJob(prev => ({
+              ...prev,
+              ...data,
+              status: 'running',
+            }));
+            if (data.message) {
+              const formatted = `[${new Date().toLocaleTimeString()}] ${data.message}`;
+              setJobLogs(prev => [...prev.slice(-80), formatted]);
+            }
+          } catch {
+            // ignore
+          }
+        });
+
+        eventSource.addEventListener('log', (e: MessageEvent) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.line) {
+              const formatted = `[${new Date().toLocaleTimeString()}] ${data.line}`;
+              setJobLogs(prev => [...prev.slice(-80), formatted]);
+            }
+          } catch {
+            // ignore
+          }
+        });
+
+        eventSource.addEventListener('completed', (e: MessageEvent) => {
+          try {
+            const data = JSON.parse(e.data);
+            setActiveJob(prev => ({ ...prev, ...data, status: 'completed', percent: 100 }));
+            setGenerating(false);
+            setJobLogs(prev => [...prev.slice(-80), `[${new Date().toLocaleTimeString()}] ✔ Audio generation completed.`]);
+          } catch {
+            setGenerating(false);
+          }
+        });
+
+        eventSource.addEventListener('failed', (e: MessageEvent) => {
+          try {
+            const data = JSON.parse(e.data);
+            setActiveJob(prev => ({ ...prev, ...data, status: 'failed' }));
+            setError(data.error || 'Audio generation failed.');
+            setGenerating(false);
+            setJobLogs(prev => [...prev.slice(-80), `[${new Date().toLocaleTimeString()}] ❌ Failed: ${data.error || 'Unknown error'}`]);
+          } catch {
+            setGenerating(false);
+          }
+        });
+
+        eventSource.addEventListener('cancelled', () => {
+          setActiveJob(prev => ({ ...prev, status: 'cancelled', message: 'Cancelled by user.' }));
+          setGenerating(false);
+          setJobLogs(prev => [...prev.slice(-80), `[${new Date().toLocaleTimeString()}] ⚠ Generation cancelled.`]);
+        });
+
+        eventSource.onerror = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          reconnectTimeout = setTimeout(connectSSE, 4000);
+        };
+      } catch {
+        reconnectTimeout = setTimeout(connectSSE, 5000);
+      }
+    };
+
+    connectSSE();
+
+    return () => {
+      if (eventSource) eventSource.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    };
+  }, [checkActiveStatus]);
+
+  useEffect(() => {
+    if (!generating) return;
+    const interval = setInterval(() => {
+      setElapsedSec(s => s + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [generating]);
+
+  useEffect(() => {
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [jobLogs]);
+
+  const cancelGeneration = async () => {
+    try {
+      onAddLog?.('WARN', 'Requesting audio generation cancellation...');
+      await fetch('/api/audio/cancel', { method: 'POST' });
+      setGenerating(false);
+      setActiveJob(prev => prev ? { ...prev, status: 'cancelled', message: 'Cancelled by user.' } : null);
+      setJobLogs(prev => [...prev.slice(-80), `[${new Date().toLocaleTimeString()}] ⚠ Cancelled by user.`]);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to cancel audio generation.');
+    }
+  };
+
+  const handleFreeGpuVram = async () => {
+    setFreeingVram(true);
+    setVramFreedMessage(null);
+    try {
+      onAddLog?.('INFO', 'Purging ComfyUI model cache to recover GPU VRAM...');
+      const r = await fetch('/api/comfy/clear-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unload_models: true, free_memory: true })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.success) {
+        setVramFreedMessage('GPU VRAM freed successfully! ComfyUI models evicted from VRAM.');
+        onAddLog?.('SEC', 'GPU VRAM recovered: ComfyUI cache unloaded.');
+      } else {
+        setVramFreedMessage(d.message || d.error || 'VRAM purge request completed.');
+      }
+      await fetchDiagnostics();
+    } catch (e: any) {
+      setVramFreedMessage(`Free VRAM error: ${e?.message || e}`);
+    } finally {
+      setFreeingVram(false);
+    }
+  };
+
+  const handleCopyLogs = () => {
+    const textToCopy = jobLogs.join('\n');
+    navigator.clipboard?.writeText(textToCopy);
+    setCopiedLog(true);
+    setTimeout(() => setCopiedLog(false), 2000);
+  };
+
   const stopPreview = () => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -199,7 +440,22 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
   const removeRow = (id:string) => setRows(prev => prev.length > 1 ? prev.filter(r => r.id !== id) : prev);
 
   const generate = async () => {
-    setGenerating(true); setError(null); setResult(null); setBatchResults([]);
+    setGenerating(true);
+    setError(null);
+    setResult(null);
+    setBatchResults([]);
+    setElapsedSec(0);
+    const startMsg = `Starting ${engine === 'bark' ? 'Bark' : 'XTTS v2'} synthesis request...`;
+    setJobLogs([`[${new Date().toLocaleTimeString()}] ${startMsg}`]);
+    setActiveJob({
+      status: 'running',
+      stage: 'Connecting',
+      message: 'Dispatching audio job to Python backend...',
+      percent: 5,
+      engine: engine === 'bark' ? 'Bark' : 'XTTS v2',
+      startTime: Date.now(),
+      elapsedSec: 0,
+    });
     try {
       const basePayload:any = { engine, mode, text, timeline:rows, voice_preset:selectedVoice?.bark_prompt_path || selectedVoice?.speaker_name || voiceId, speaker:selectedVoice?.speaker_name, speaker_wav:clonePath || selectedVoice?.xtts_embedding_path || undefined, language, temperature, repetition_penalty:repetitionPenalty, length_penalty:lengthPenalty, seed, seed_locked:seedLocked, strip_tags_on_xtts:stripTags, auto_split_chunks:autoSplit, normalize, trim_silence:trimSilence, pitch_shift_semitones:pitchShiftSemitones, formant_shift:formantShift, speed_factor:speedFactor, enable_streaming:enableStreaming && batchSize === 1, output_format:format };
       const results:any[] = [];
@@ -209,18 +465,39 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
         if (batchMode === 'iterate_voices' && filteredVoices[i]) { payload.voice_preset = filteredVoices[i].bark_prompt_path || filteredVoices[i].speaker_name; payload.speaker = filteredVoices[i].speaker_name; payload.speaker_wav = filteredVoices[i].xtts_embedding_path || payload.speaker_wav; }
         const r = await fetch('/api/audio/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
         if (enableStreaming && batchSize === 1) {
-          if (!r.ok) { const failure = await r.json().catch(() => ({})); throw new Error(failure.error || `Generation failed (HTTP ${r.status})`); }
+          if (!r.ok) {
+            const failure = await r.json().catch(() => ({}));
+            if (Array.isArray(failure.logs) && failure.logs.length) {
+              setJobLogs(failure.logs);
+            }
+            throw new Error(failure.error || `Generation failed (HTTP ${r.status})`);
+          }
           const blob = await r.blob();
           const url = URL.createObjectURL(blob);
           results.push({ok:true,url,path:'streamed',bytes:blob.size,seed:Number(payload.seed)});
         } else {
-          const d = await r.json(); if (!r.ok || !d.ok) throw new Error(d.error || `Generation failed (HTTP ${r.status})`);
+          const d = await r.json();
+          if (!r.ok || !d.ok) {
+            if (Array.isArray(d?.logs) && d.logs.length) {
+              setJobLogs(d.logs);
+            }
+            throw new Error(d?.error || `Generation failed (HTTP ${r.status})`);
+          }
           results.push(d);
         }
       }
-      const first = results[0]; setResult(first); setBatchResults(results); onAddLog?.('SEC', `Unified Audio generated ${results.length} variation${results.length===1?'':'s'} using ${engine === 'bark' ? 'Bark' : 'XTTS v2'}.`);
-    } catch (e:any) { setError(e?.message || 'Unified audio generation failed.'); }
-    finally { setGenerating(false); }
+      const first = results[0];
+      setResult(first);
+      setBatchResults(results);
+      setActiveJob(prev => ({ ...(prev || {}), status: 'completed', percent: 100, message: 'Audio synthesis complete!' }));
+      onAddLog?.('SEC', `Unified Audio generated ${results.length} variation${results.length===1?'':'s'} using ${engine === 'bark' ? 'Bark' : 'XTTS v2'}.`);
+    } catch (e:any) {
+      const errorMsg = e?.message || 'Unified audio generation failed.';
+      setError(errorMsg);
+      setActiveJob(prev => ({ ...(prev || {}), status: 'failed', error: errorMsg }));
+    } finally {
+      setGenerating(false);
+    }
   };
 
   return <section className="rounded-xl border border-slate-800 bg-slate-950/95 p-5 shadow-xl space-y-5">
@@ -292,8 +569,227 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
 
         <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3"><div className="flex items-center justify-between"><div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Batch Variations</div><div className="flex items-center gap-2"><input type="range" min="1" max="4" value={batchSize} onChange={e=>setBatchSize(Number(e.target.value))}/><span className="text-xs font-mono text-emerald-300">{batchSize}</span><select value={batchMode} onChange={e=>setBatchMode(e.target.value as any)} className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-[9px] text-slate-300"><option value="iterate_seeds">Iterate Seeds</option><option value="iterate_voices">Iterate Voices</option></select></div></div></div>
 
-        {error && <div className="p-3 rounded border border-rose-500/30 bg-rose-500/5 text-xs text-rose-300">{error}</div>}
-        <button onClick={()=>void generate()} disabled={generating || !(mode==='standard'?text.trim():rows.some(r=>r.text.trim()))} className="w-full py-3 rounded-lg bg-emerald-500 text-slate-950 font-bold uppercase tracking-widest text-[10px] disabled:opacity-30 flex items-center justify-center gap-2">{generating?<><Sparkles className="w-4 h-4 animate-pulse"/> Generating locally…</>:<><Wand2 className="w-4 h-4"/> Generate Audio</>}</button>
+        {error && (
+          <div className="p-3 rounded-lg border border-rose-500/40 bg-rose-500/10 text-xs text-rose-200 space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-rose-300">Generation Failed</div>
+                  <div className="text-[11px] text-rose-200/90 mt-0.5 break-words font-mono">{error}</div>
+                </div>
+              </div>
+              <button
+                onClick={() => setError(null)}
+                className="text-slate-400 hover:text-rose-200 text-[9px] uppercase tracking-wider shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+            {(error.toLowerCase().includes('module') || error.toLowerCase().includes('import') || error.toLowerCase().includes('torch') || error.toLowerCase().includes('tts') || error.toLowerCase().includes('bark')) && (
+              <div className="pt-2 border-t border-rose-500/20 flex items-center justify-between">
+                <span className="text-[10px] text-rose-300">Missing Python audio dependencies detected.</span>
+                <button
+                  onClick={() => void handleRepair()}
+                  disabled={repairing}
+                  className="px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-[9px] font-bold text-rose-100 flex items-center gap-1 cursor-pointer"
+                >
+                  <Wrench className={`w-3 h-3 ${repairing ? 'animate-spin' : ''}`} />
+                  {repairing ? 'Repairing...' : 'Run Auto Repair'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Live Audio Generation & Diagnostics Monitor */}
+        {(generating || (activeJob && (activeJob.status === 'running' || activeJob.status === 'completed' || activeJob.status === 'failed' || activeJob.status === 'cancelled'))) && (
+          <div className="rounded-xl border border-emerald-500/30 bg-slate-900/90 p-4 space-y-3 shadow-lg">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+              <div className="flex items-center gap-2">
+                {generating ? (
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  </span>
+                ) : activeJob?.status === 'completed' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                ) : activeJob?.status === 'cancelled' ? (
+                  <XCircle className="w-4 h-4 text-amber-400" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-rose-400" />
+                )}
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-200">
+                  {generating ? 'SYNTHESIZING AUDIO' : activeJob?.status === 'completed' ? 'SYNTHESIS COMPLETE' : activeJob?.status === 'cancelled' ? 'SYNTHESIS CANCELLED' : 'SYNTHESIS STOPPED'}
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-[8px] font-bold uppercase text-slate-300 font-mono">
+                  {activeJob?.engine || (engine === 'bark' ? 'BARK' : 'XTTS v2')}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {activeJob?.device && (
+                  <span className={`px-2 py-0.5 rounded border text-[8px] font-mono flex items-center gap-1 ${
+                    activeJob.device === 'cuda'
+                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                      : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                  }`}>
+                    {activeJob.device === 'cuda' ? <Zap className="w-3 h-3 text-emerald-400" /> : <Cpu className="w-3 h-3 text-amber-400" />}
+                    {activeJob.device === 'cuda' ? 'CUDA GPU' : 'CPU MODE'}
+                  </span>
+                )}
+                <span className="text-[10px] font-mono text-slate-300 flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-slate-500" />
+                  {formatTime(elapsedSec)}
+                </span>
+                {generating && (
+                  <button
+                    onClick={cancelGeneration}
+                    className="px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Progress Bar & Stage description */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="text-slate-300 font-medium truncate">
+                  {activeJob?.message || (generating ? 'Running voice synthesis backend...' : 'Ready.')}
+                </span>
+                <span className="font-mono font-bold text-emerald-400 shrink-0 ml-2">
+                  {Math.round(activeJob?.percent ?? (generating ? 10 : 0))}%
+                </span>
+              </div>
+              <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+                <div
+                  className={`h-full transition-all duration-300 ${
+                    activeJob?.status === 'failed'
+                      ? 'bg-rose-500'
+                      : activeJob?.status === 'cancelled'
+                      ? 'bg-amber-500'
+                      : 'bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400'
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(3, activeJob?.percent ?? (generating ? 15 : 0)))}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[8px] font-mono text-slate-500">
+                <span>Stage: {activeJob?.stage || (generating ? 'Processing' : 'Idle')}</span>
+                {activeJob?.totalRows ? (
+                  <span>Row {activeJob.row || 1} of {activeJob.totalRows}</span>
+                ) : (
+                  <span>Format: {format.toUpperCase()} · Seed: {seedLocked ? seed : 'Auto'}</span>
+                )}
+              </div>
+            </div>
+
+            {/* VRAM Pressure Warning and One-Click Cache Purge */}
+            {(activeJob?.vramWarning || activeJob?.device === 'cpu') && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-[10px] text-amber-200">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                  <div className="flex items-start gap-2 flex-1">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold text-amber-300">GPU VRAM Constrained · Running Safely on CPU</div>
+                      <div className="text-[9px] text-amber-200/80 mt-0.5">
+                        ComfyUI or background models currently occupy ~7.5 GB of your 8 GB VRAM. Generation is executing on CPU to prevent CUDA OOM crash.
+                      </div>
+                      {vramFreedMessage && (
+                        <div className="mt-1 text-[9px] text-emerald-300 font-mono">{vramFreedMessage}</div>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleFreeGpuVram}
+                    disabled={freeingVram}
+                    className="px-2.5 py-1.5 rounded bg-amber-500/25 hover:bg-amber-500/35 border border-amber-500/50 text-amber-100 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
+                  >
+                    <RotateCcw className={`w-3 h-3 ${freeingVram ? 'animate-spin' : ''}`} />
+                    {freeingVram ? 'Freeing VRAM...' : 'Free GPU VRAM (Unload ComfyUI)'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Real-time Process Terminal Log Box */}
+            <div className="rounded-lg border border-slate-800 bg-slate-950 p-2 text-[10px]">
+              <div className="flex items-center justify-between border-b border-slate-800/80 pb-1.5 mb-1.5">
+                <button
+                  onClick={() => setShowLogs(prev => !prev)}
+                  className="flex items-center gap-1.5 text-slate-400 hover:text-slate-200 font-mono text-[9px] font-bold uppercase tracking-wider cursor-pointer"
+                >
+                  <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                  Live Process Terminal Output ({jobLogs.length} lines)
+                  {showLogs ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={handleCopyLogs}
+                    className="px-2 py-0.5 rounded border border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200 text-[8px] font-mono flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedLog ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    {copiedLog ? 'Copied' : 'Copy'}
+                  </button>
+                  <button
+                    onClick={() => setJobLogs([])}
+                    className="px-2 py-0.5 rounded border border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200 text-[8px] font-mono cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              {showLogs && (
+                <div
+                  ref={logContainerRef}
+                  className="max-h-40 overflow-y-auto font-mono text-[9px] text-slate-400 space-y-1 custom-scrollbar bg-slate-950/80 p-2 rounded border border-slate-900"
+                >
+                  {jobLogs.length === 0 ? (
+                    <div className="text-slate-600 italic">Waiting for process output events...</div>
+                  ) : (
+                    jobLogs.map((log, idx) => (
+                      <div
+                        key={idx}
+                        className={`leading-relaxed break-all ${
+                          log.includes('❌') || log.includes('Error') || log.includes('Traceback') || log.includes('FAILED')
+                            ? 'text-rose-400'
+                            : log.includes('⚠') || log.includes('WARNING') || log.includes('warning')
+                            ? 'text-amber-400'
+                            : log.includes('✔') || log.includes('Saved') || log.includes('complete')
+                            ? 'text-emerald-300'
+                            : 'text-slate-300'
+                        }`}
+                      >
+                        {log}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <button
+          onClick={() => void generate()}
+          disabled={generating || !(mode === 'standard' ? text.trim() : rows.some(r => r.text.trim()))}
+          className="w-full py-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold uppercase tracking-widest text-[10px] disabled:opacity-30 flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-lg"
+        >
+          {generating ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+              Generating Audio ({formatTime(elapsedSec)} · {activeJob?.stage || 'Synthesizing'} {Math.round(activeJob?.percent || 0)}%)
+            </>
+          ) : (
+            <>
+              <Wand2 className="w-4 h-4" />
+              Generate Audio
+            </>
+          )}
+        </button>
+
         {batchResults.length > 0 && <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3"><div className="text-[9px] uppercase tracking-widest text-emerald-300 font-bold mb-2">Batch Matrix · {batchResults.length} variation{batchResults.length===1?'':'s'}</div><div className="grid grid-cols-1 md:grid-cols-2 gap-2">{batchResults.map((item,index)=><div key={`${item.seed}-${index}`} className="rounded border border-slate-800 bg-slate-950 p-2"><div className="flex items-center justify-between text-[8px] font-mono text-slate-500"><span>Variation {index+1} · Seed {item.seed}</span><a href={item.url} download className="text-emerald-300 flex items-center gap-1"><Download className="w-3 h-3"/>Save</a></div><audio controls src={item.url} className="w-full mt-2"/></div>)}</div></div>}
       </div>
 

@@ -2696,20 +2696,45 @@ Added a complete local filesystem tool contract matching the requested MCP-style
 ### Target File Path: `/server/routes/audioEngineRoute.ts`
 - **Exact Code Snippet**:
   ```typescript
-  async function getUsablePython(): Promise<PythonCandidate | null> {
-    if (resolvedPython) return resolvedPython;
-    const now = Date.now();
-    if (now - lastPythonCheckTime < 10000 && lastPythonCheckError) return null;
-    lastPythonCheckTime = now;
-    try { return await resolvePython(); } catch (err: any) { lastPythonCheckError = err?.message || String(err); return null; }
-  }
-  // in router.post('/preview'):
-  const python = await getUsablePython();
-  if (!python) {
-    const fallback = await generateFallbackPreviewWav(voiceId || 'preview_sample', speakerName);
-    return res.json({ ok: true, ...fallback, mode: 'acoustic_sample' });
-  }
+  // Real-time SSE event broadcast channel & process cancellation
+  router.get('/events', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    // streams 'progress', 'log', 'completed', 'failed', 'cancelled'
+  });
+  router.post('/cancel', (req, res) => {
+    if (activeAudioProcess && activeAudioJob?.status === 'running') {
+      // Windows taskkill /F /T /PID or process kill
+      killProcessTree(activeAudioProcess.pid);
+    }
+  });
   ```
-- **Why**: Proactively checks for a functional Python TTS environment with throttle caching and routes directly to the acoustic harmonic preview generator when uninitialized, eliminating unhandled backend error logs.
+- **Why**: Eliminates silent audio generation hangs by streaming granular stderr/stdout progress from Python to the client via Server-Sent Events, exposing an authoritative `/api/audio/active-status` endpoint, and enabling immediate cancellation of stuck jobs.
+
+### Target File Path: `/scripts/unified_audio_backend.py` & `/scripts/setup_audio_deps.py`
+- **Exact Code Snippet**:
+  ```python
+  os.environ["COQUI_TOS_AGREED"] = "1"
+  def emit_progress(percent: float, stage: str, message: str, **kwargs) -> None:
+      data = {"percent": round(percent, 1), "stage": stage, "message": message, **kwargs}
+      sys.stderr.write(f"GINA_AUDIO_PROGRESS:{json.dumps(data)}\n")
+      sys.stderr.flush()
+  ```
+- **Why**: Sets `COQUI_TOS_AGREED=1` to prevent XTTS v2 from hanging indefinitely on interactive stdin license agreement prompts, and emits structured machine-readable progress telemetry across model loading, sentence splitting, synthesis, and post-processing stages.
+
+### Target File Path: `/src/components/UnifiedAudioDeck.tsx`
+- **Exact Code Snippet**:
+  ```tsx
+  <div className="rounded-xl border border-emerald-500/30 bg-slate-900/90 p-4 space-y-3 shadow-lg">
+    {/* Live Audio Generation & Diagnostics Monitor */}
+    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-200">
+      {generating ? 'SYNTHESIZING AUDIO' : ...}
+    </span>
+    {/* Real-time process terminal stream, progress bar, cancel control, and VRAM purge */}
+  </div>
+  ```
+- **Why**: Replaces silent generation state with a responsive, real-time Live Generation & Diagnostics Monitor showing the active synthesis stage, percentage progress bar, live stopwatch, CPU/CUDA hardware badge, collapsible live process output logs with copy/clear controls, user cancellation button, and an automatic GPU VRAM advisor with one-click ComfyUI cache purge.
+
 
 

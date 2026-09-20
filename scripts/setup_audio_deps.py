@@ -16,6 +16,8 @@ import sys
 import sysconfig
 from pathlib import Path
 
+os.environ.setdefault("COQUI_TOS_AGREED", "1")
+
 # NOTE: coqui-tts's own metadata declares `transformers>=4.57`, but the XTTS
 # layers this app actually imports (isin_mps_friendly, BeamSearchScorer,
 # LogitsWarper) only exist in the 4.4x line. Installing "coqui-tts" unpinned
