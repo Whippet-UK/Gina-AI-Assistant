@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { AudioLines, ChevronDown, Dice5, Download, Heart, Lock, Plus, Play, Search, Sparkles, Trash2, Upload, Wand2 } from 'lucide-react';
+import { AudioLines, ChevronDown, Dice5, Download, Heart, Lock, Plus, Play, Search, Sparkles, Trash2, Upload, Wand2, Wrench } from 'lucide-react';
 
 interface VoiceRecord {
   voice_id:string; speaker_name:string; gender:string; age_group:string; primary_language:string; accent_dialect:string;
@@ -43,6 +43,8 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
   const [batchSize, setBatchSize] = useState(1);
   const [batchMode, setBatchMode] = useState<'iterate_seeds'|'iterate_voices'>('iterate_seeds');
   const [generating, setGenerating] = useState(false);
+  const [repairing, setRepairing] = useState(false);
+  const [repairLog, setRepairLog] = useState<string|null>(null);
   const [error, setError] = useState<string|null>(null);
   const [audioDiagnostics, setAudioDiagnostics] = useState<{ok:boolean; python?:string; databasePath?:string; imports?:string[]; error?:string} | null>(null);
   const [result, setResult] = useState<{url:string; path:string; bytes:number; seed:number}|null>(null);
@@ -50,6 +52,36 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
   const [previewUrl, setPreviewUrl] = useState<string|null>(null);
   const [activeRowId, setActiveRowId] = useState('row_1');
   const textareaRefs = useRef<Record<string, HTMLTextAreaElement|null>>({});
+
+  const fetchDiagnostics = useCallback(async () => {
+    try {
+      const r = await fetch('/api/audio/diagnostics', { cache:'no-store' });
+      const d = await r.json().catch(() => ({}));
+      setAudioDiagnostics({ ok: r.ok && Boolean(d.ok), ...d });
+    } catch (e: any) {
+      setAudioDiagnostics({ ok: false, error: e?.message || 'Audio diagnostics request failed.' });
+    }
+  }, []);
+
+  const handleRepair = async () => {
+    setRepairing(true);
+    setRepairLog(null);
+    try {
+      onAddLog?.('INFO', 'Running Unified Audio dependency repair...');
+      const res = await fetch('/api/audio/repair', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Repair failed.');
+      onAddLog?.('SEC', 'Unified Audio dependencies repaired successfully.');
+      setRepairLog(data.message || 'Repaired successfully.');
+      await fetchDiagnostics();
+    } catch (err: any) {
+      const msg = err?.message || 'Repair script execution failed.';
+      onAddLog?.('WARN', `Audio repair error: ${msg}`);
+      setRepairLog(`Repair error: ${msg}`);
+    } finally {
+      setRepairing(false);
+    }
+  };
 
   const loadVoices = useCallback(async () => {
     try {
@@ -63,13 +95,8 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
   useEffect(() => { void loadVoices(); }, [loadVoices]);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch('/api/audio/diagnostics', { cache:'no-store' })
-      .then(async r => { const d = await r.json().catch(() => ({})); return { ok:r.ok && Boolean(d.ok), ...d }; })
-      .then(d => { if (!cancelled) setAudioDiagnostics(d); })
-      .catch(e => { if (!cancelled) setAudioDiagnostics({ok:false,error:e?.message || 'Audio diagnostics request failed.'}); });
-    return () => { cancelled = true; };
-  }, []);
+    void fetchDiagnostics();
+  }, [fetchDiagnostics]);
 
   const selectedVoice = useMemo(() => voices.find(v => v.voice_id === voiceId) || null, [voices, voiceId]);
   const filteredVoices = useMemo(() => voices.filter(v => {
@@ -168,7 +195,24 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
         {audioDiagnostics?.databasePath && <span className="text-slate-600 truncate" title={audioDiagnostics.databasePath}>DB: {audioDiagnostics.databasePath}</span>}
         {audioDiagnostics?.imports?.length ? <span className="text-slate-600 truncate" title={audioDiagnostics.imports.join(' · ')}>Python imports: {audioDiagnostics.imports.map(x=>x.split(/[\\/]/).pop()).join(' · ')}</span> : null}
       </div>
-      {!audioDiagnostics?.ok && <div className="mt-1 text-amber-200/80 break-words">{audioDiagnostics?.error || 'Checking TTS, Bark and pydub…'}</div>}
+      {!audioDiagnostics?.ok && (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-amber-200/80 break-words flex-1">{audioDiagnostics?.error || 'Checking TTS, Bark and pydub…'}</div>
+          <button
+            onClick={() => void handleRepair()}
+            disabled={repairing}
+            className="px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            <Wrench className={`w-3.5 h-3.5 ${repairing ? 'animate-spin' : ''}`} />
+            {repairing ? 'Repairing Dependencies...' : 'Run Auto Repair'}
+          </button>
+        </div>
+      )}
+      {repairLog && (
+        <div className="mt-1.5 text-[9px] text-slate-400 font-mono border-t border-slate-800/80 pt-1.5">
+          {repairLog}
+        </div>
+      )}
     </div>
 
     <div className="grid grid-cols-12 gap-5 min-w-0">

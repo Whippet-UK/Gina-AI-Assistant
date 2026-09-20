@@ -16,6 +16,24 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+# Ensure transformers backwards-compatibility for Coqui XTTS (BeamSearchScorer and LogitsWarper)
+try:
+    import transformers
+    if not hasattr(transformers, "BeamSearchScorer"):
+        try:
+            from transformers.generation.beam_search import BeamSearchScorer
+            transformers.BeamSearchScorer = BeamSearchScorer
+        except Exception:
+            pass
+    if not hasattr(transformers, "LogitsWarper"):
+        try:
+            from transformers.generation.logits_process import LogitsWarper
+            transformers.LogitsWarper = LogitsWarper
+        except Exception:
+            pass
+except Exception:
+    pass
+
 ROOT = Path(os.environ.get("GINA_ROOT", r"C:\Gina_AI"))
 OUTPUT_ROOT = ROOT / "media" / "unified_audio"
 OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)

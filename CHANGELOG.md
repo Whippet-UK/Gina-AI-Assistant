@@ -2,6 +2,65 @@
 
 ## AI Studio Container & TypeScript Build Migration Update — 2026-09-20
 
+- **Target File Path:** `/scripts/unified_audio_backend.py`
+  - **Exact Code Snippet:**
+    ```python
+    try:
+        import transformers
+        if not hasattr(transformers, "BeamSearchScorer"):
+            from transformers.generation.beam_search import BeamSearchScorer
+            transformers.BeamSearchScorer = BeamSearchScorer
+        if not hasattr(transformers, "LogitsWarper"):
+            from transformers.generation.logits_process import LogitsWarper
+            transformers.LogitsWarper = LogitsWarper
+    except Exception:
+        pass
+    ```
+  - **Why:** Resolved `ImportError: cannot import name 'BeamSearchScorer' from 'transformers'` when importing `GPT` from `TTS.tts.layers.xtts.gpt` on newer `transformers` versions (>=4.44/4.48). Dynamically maps `BeamSearchScorer` and `LogitsWarper` from `transformers.generation` to `transformers` top-level so XTTS v2 operates cleanly on modern transformer distributions.
+
+- **Target File Path:** `/scripts/setup_audio_deps.py`
+  - **Exact Code Snippet:**
+    ```python
+    "transformers": [sys.executable, "-m", "pip", "install", "transformers>=4.33.0,<=4.43.4"],
+    "TTS": [sys.executable, "-m", "pip", "install", "coqui-tts"],
+    def import_ok(module_name: str) -> tuple[bool, str]:
+        # ...
+        if module_name == "TTS":
+            try:
+                from TTS.tts.layers.xtts.gpt import GPT
+            except Exception as xtts_err:
+                return False, f"XTTS layer error: {xtts_err}"
+    ```
+  - **Why:** Pinned `transformers` to `>=4.33.0,<=4.43.4` (the native tested baseline for `coqui-tts` and Bark). Added XTTS deep layer verification in `import_ok("TTS")` so corrupted or mismatched dependencies trigger automatic repair. Added automatic replacement of deprecated `TTS` with `coqui-tts`.
+
+- **Target File Path:** `/server/routes/audioEngineRoute.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    const CHECK_SCRIPT = `...transformers BeamSearchScorer/LogitsWarper compatibility patch...; import TTS, bark, pydub; ...`;
+    router.post('/repair', async (_req: Request, res: Response) => {
+      resolvedPython = null;
+      const out = await execFileAsync(py.command, [...py.args, setupScript], ...);
+      const check = await resolvePython();
+      res.json({ ok: true, message: 'Audio dependencies repaired successfully.', python: check.executable });
+    });
+    ```
+  - **Why:** Applied the `BeamSearchScorer` compatibility shim to the Python candidate evaluation script, enhanced traceback formatting to surface the actual root cause rather than truncated stack frames, and added `/api/audio/repair` to allow on-demand dependency auditing and auto-repair.
+
+- **Target File Path:** `/src/components/UnifiedAudioDeck.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    {!audioDiagnostics?.ok && (
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-amber-200/80 break-words flex-1">{audioDiagnostics?.error || 'Checking TTS, Bark and pydub…'}</div>
+        <button onClick={() => void handleRepair()} disabled={repairing} className="px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+          <Wrench className={`w-3.5 h-3.5 ${repairing ? 'animate-spin' : ''}`} />
+          {repairing ? 'Repairing Dependencies...' : 'Run Auto Repair'}
+        </button>
+      </div>
+    )}
+    ```
+  - **Why:** Added a one-click "Run Auto Repair" button to the Voice Generator diagnostics banner so users can repair and re-audit their local audio environment directly from the interface.
+
 - **Target File Path:** `/scripts/setup_audio_deps.py`
   - **Exact Code Snippet:**
     ```python

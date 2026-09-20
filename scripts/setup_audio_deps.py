@@ -15,12 +15,32 @@ REQUIRED = {
     # Note: Do NOT install torchcodec; its binary C++ ABI conflicts with Windows PyTorch DLLs
     # (causing "torch_get_const_data_ptr" Entry Point Not Found dialogs).
     "torch": [sys.executable, "-m", "pip", "install", "torch", "torchaudio"],
+    "transformers": [sys.executable, "-m", "pip", "install", "transformers>=4.33.0,<=4.43.4"],
     "TTS": [sys.executable, "-m", "pip", "install", "coqui-tts"],
-    "transformers": [sys.executable, "-m", "pip", "install", "transformers>=4.31"],
     "scipy": [sys.executable, "-m", "pip", "install", "scipy"],
     "pydub": [sys.executable, "-m", "pip", "install", "pydub"],
     "bark": [sys.executable, "-m", "pip", "install", "git+https://github.com/suno-ai/bark.git"],
 }
+
+
+def apply_transformers_shim() -> None:
+    """Polyfill BeamSearchScorer and LogitsWarper for XTTS if modern transformers moved them."""
+    try:
+        import transformers
+        if not hasattr(transformers, "BeamSearchScorer"):
+            try:
+                from transformers.generation.beam_search import BeamSearchScorer
+                transformers.BeamSearchScorer = BeamSearchScorer
+            except Exception:
+                pass
+        if not hasattr(transformers, "LogitsWarper"):
+            try:
+                from transformers.generation.logits_process import LogitsWarper
+                transformers.LogitsWarper = LogitsWarper
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 def purge_incompatible_packages() -> None:
@@ -40,7 +60,14 @@ def import_ok(module_name: str) -> tuple[bool, str]:
     try:
         if importlib.util.find_spec(module_name) is None:
             return False, "module not found"
+        apply_transformers_shim()
         module = __import__(module_name)
+        if module_name == "TTS":
+            # Deep check XTTS layers specifically to verify gpt.py is sound
+            try:
+                from TTS.tts.layers.xtts.gpt import GPT  # noqa: F401
+            except Exception as xtts_err:
+                return False, f"XTTS layer error: {xtts_err}"
         return True, str(getattr(module, "__file__", "built-in"))
     except Exception as exc:
         return False, str(exc)
@@ -56,6 +83,7 @@ def install(command: list[str]) -> None:
 def main() -> int:
     # First, purge known conflicting packages like torchcodec that trigger DLL entry point popups
     purge_incompatible_packages()
+    apply_transformers_shim()
 
     # A package can exist but still fail at import time because of a broken or
     # partially upgraded dependency. Treat that as missing so the repair pass
@@ -68,10 +96,13 @@ def main() -> int:
             print(f"[Unified Audio] {name} needs repair: {detail}")
     if broken:
         print("[Unified Audio] Repairing imports:", ", ".join(broken))
-        # Torch must be available before Coqui/Bark are imported.
-        order = [name for name in ("torch", "TTS", "transformers", "scipy", "pydub", "bark") if name in broken]
+        # Ensure transformers is installed before TTS so BeamSearchScorer is present
+        order = [name for name in ("torch", "transformers", "TTS", "scipy", "pydub", "bark") if name in broken]
         for name in order:
             print(f"[Unified Audio] Installing/repairing {name}...")
+            if name == "TTS":
+                # Ensure legacy unmaintained TTS is replaced with coqui-tts
+                subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "TTS"], check=False)
             install(REQUIRED[name])
     else:
         print("[Unified Audio] All required Python imports are already healthy.")
