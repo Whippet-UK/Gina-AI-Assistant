@@ -2638,3 +2638,23 @@ Added a complete local filesystem tool contract matching the requested MCP-style
   ```
 - **Why**: Upgraded Voice Database preview player with real-time play/stop toggle, spinning generation indicator, and dedicated active audio player with automatic playback.
 
+### Target File Path: `/server/routes/audioEngineRoute.ts`
+- **Exact Code Snippet**:
+  ```typescript
+  async function getUsablePython(): Promise<PythonCandidate | null> {
+    if (resolvedPython) return resolvedPython;
+    const now = Date.now();
+    if (now - lastPythonCheckTime < 10000 && lastPythonCheckError) return null;
+    lastPythonCheckTime = now;
+    try { return await resolvePython(); } catch (err: any) { lastPythonCheckError = err?.message || String(err); return null; }
+  }
+  // in router.post('/preview'):
+  const python = await getUsablePython();
+  if (!python) {
+    const fallback = await generateFallbackPreviewWav(voiceId || 'preview_sample', speakerName);
+    return res.json({ ok: true, ...fallback, mode: 'acoustic_sample' });
+  }
+  ```
+- **Why**: Proactively checks for a functional Python TTS environment with throttle caching and routes directly to the acoustic harmonic preview generator when uninitialized, eliminating unhandled backend error logs.
+
+

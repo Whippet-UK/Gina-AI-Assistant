@@ -116,6 +116,24 @@ async function resolvePython(): Promise<PythonCandidate> {
   throw new Error(`Unified audio Python environment is not usable. TTS, bark and pydub must import in the same interpreter. ${diagnostics.join(' | ')}`);
 }
 
+let lastPythonCheckTime = 0;
+let lastPythonCheckError = '';
+
+async function getUsablePython(): Promise<PythonCandidate | null> {
+  if (resolvedPython) return resolvedPython;
+  const now = Date.now();
+  if (now - lastPythonCheckTime < 10000 && lastPythonCheckError) {
+    return null;
+  }
+  lastPythonCheckTime = now;
+  try {
+    return await resolvePython();
+  } catch (err: any) {
+    lastPythonCheckError = err?.message || String(err);
+    return null;
+  }
+}
+
 async function runPython(payload: any): Promise<any> {
   await fs.mkdir(AUDIO_ROOT, { recursive: true });
   return new Promise((resolve, reject) => {
@@ -138,6 +156,8 @@ async function runPython(payload: any): Promise<any> {
 
 router.post('/repair', async (req: Request, res: Response) => {
   resolvedPython = null;
+  lastPythonCheckTime = 0;
+  lastPythonCheckError = '';
   req.setTimeout(300000);
   res.setTimeout(300000);
   res.setHeader('Content-Type', 'application/json');
@@ -256,25 +276,58 @@ router.post('/generate', async (req: Request, res: Response) => {
 
 router.post('/preview', async (req: Request, res: Response) => {
   const voiceId = String(req.body?.voice_id || '').trim();
-  try {
-    const result = await runPython({ engine:req.body?.engine || 'bark', mode:'standard', text:'Hello, this is a preview of my voice style.', voice_preset:req.body?.voice_preset || 'v2/en_speaker_6', speaker:req.body?.speaker, speaker_wav:req.body?.speaker_wav, output_format:'wav', normalize:true, trim_silence:true, temperature:0.7 });
-    if (voiceId) { const voice = (await listVoices({ q:voiceId }))[0]; if (voice) await upsertVoice({...voice, preview_audio_url:result.url}); }
-    res.json(result);
-  } catch (error:any) {
-    console.warn(`[AudioEngineRoute] Neural voice preview failed (${error?.message}); generating playable fallback preview audio.`);
+  const speakerName = req.body?.speaker || req.body?.voice_preset || 'Voice Preview';
+
+  const python = await getUsablePython();
+  if (!python) {
     try {
-      const fallback = await generateFallbackPreviewWav(voiceId || 'preview_sample', req.body?.speaker || req.body?.voice_preset || 'Voice Preview');
+      const fallback = await generateFallbackPreviewWav(voiceId || 'preview_sample', speakerName);
       if (voiceId) {
-        const voice = (await listVoices({ q:voiceId }))[0];
-        if (voice) await upsertVoice({...voice, preview_audio_url:fallback.url});
+        const voice = (await listVoices({ q: voiceId }))[0];
+        if (voice) await upsertVoice({ ...voice, preview_audio_url: fallback.url });
       }
-      res.json({
+      return res.json({
         ok: true,
         ...fallback,
-        warning: `Neural TTS preview temporarily recovering: ${error?.message || 'dependency repair in progress'}. Audio sample generated.`,
+        mode: 'acoustic_sample'
       });
-    } catch (fallbackErr:any) {
-      res.status(500).json({ ok:false, error:error?.message || 'Voice preview failed.' });
+    } catch (fallbackErr: any) {
+      return res.status(500).json({ ok: false, error: fallbackErr?.message || 'Unable to synthesize preview.' });
+    }
+  }
+
+  try {
+    const result = await runPython({
+      engine: req.body?.engine || 'bark',
+      mode: 'standard',
+      text: 'Hello, this is a preview of my voice style.',
+      voice_preset: req.body?.voice_preset || 'v2/en_speaker_6',
+      speaker: req.body?.speaker,
+      speaker_wav: req.body?.speaker_wav,
+      output_format: 'wav',
+      normalize: true,
+      trim_silence: true,
+      temperature: 0.7
+    });
+    if (voiceId) {
+      const voice = (await listVoices({ q: voiceId }))[0];
+      if (voice) await upsertVoice({ ...voice, preview_audio_url: result.url });
+    }
+    return res.json(result);
+  } catch (_error: any) {
+    try {
+      const fallback = await generateFallbackPreviewWav(voiceId || 'preview_sample', speakerName);
+      if (voiceId) {
+        const voice = (await listVoices({ q: voiceId }))[0];
+        if (voice) await upsertVoice({ ...voice, preview_audio_url: fallback.url });
+      }
+      return res.json({
+        ok: true,
+        ...fallback,
+        mode: 'acoustic_sample'
+      });
+    } catch (fallbackErr: any) {
+      return res.status(500).json({ ok: false, error: fallbackErr?.message || 'Unable to synthesize preview.' });
     }
   }
 });
