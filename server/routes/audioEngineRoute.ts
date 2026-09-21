@@ -5,7 +5,6 @@ import path from 'path';
 import fs from 'fs/promises';
 import fsSync, { readFileSync, existsSync } from 'node:fs';
 import { listVoices, setFavorite, upsertVoice } from '../audio/VoiceDatabase.js';
-import { generateFallbackPreviewWav } from '../audio/previewFallback.js';
 
 const router = Router();
 const GINA_ROOT = process.env.GINA_ROOT || (process.platform === 'win32' ? 'C:\\Gina_AI' : process.cwd());
@@ -116,230 +115,48 @@ async function resolvePython(): Promise<PythonCandidate> {
   throw new Error(`Unified audio Python environment is not usable. TTS, bark and pydub must import in the same interpreter. ${diagnostics.join(' | ')}`);
 }
 
-let lastPythonCheckTime = 0;
-let lastPythonCheckError = '';
-
-export interface ActiveAudioJob {
-  id: string;
-  startTime: number;
-  status: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled';
-  stage: string;
-  message: string;
-  percent: number;
-  device: string;
-  vramWarning: boolean;
-  row: number;
-  totalRows: number;
-  engine: string;
-  logs: string[];
-  childProcess?: any;
-  result?: any;
-  error?: string;
-}
-
-let activeAudioJob: ActiveAudioJob | null = null;
-const sseClients: Set<Response> = new Set();
-
-function broadcastAudioEvent(event: string, data: any) {
-  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const client of sseClients) {
-    try {
-      client.write(payload);
-    } catch {
-      sseClients.delete(client);
-    }
-  }
-}
-
-function pushAudioLog(text: string) {
-  const line = text.trim();
-  if (!line) return;
-  const timestamp = new Date().toLocaleTimeString('en-GB', { hour12: false });
-  const formatted = `[${timestamp}] ${line}`;
-  if (activeAudioJob) {
-    activeAudioJob.logs.push(formatted);
-    if (activeAudioJob.logs.length > 250) {
-      activeAudioJob.logs.splice(0, activeAudioJob.logs.length - 250);
-    }
-  }
-  broadcastAudioEvent('log', { text: formatted, raw: line, timestamp });
-}
-
-async function getUsablePython(): Promise<PythonCandidate | null> {
-  if (resolvedPython) return resolvedPython;
-  const now = Date.now();
-  if (now - lastPythonCheckTime < 10000 && lastPythonCheckError) {
-    return null;
-  }
-  lastPythonCheckTime = now;
-  try {
-    return await resolvePython();
-  } catch (err: any) {
-    lastPythonCheckError = err?.message || String(err);
-    return null;
-  }
-}
-
-async function runPython(payload: any): Promise<any> {
+async function runPython(payload: any, onProgress?: (event: any) => void): Promise<any> {
   await fs.mkdir(AUDIO_ROOT, { recursive: true });
-  const python = await resolvePython();
   return new Promise((resolve, reject) => {
-    const env = {
-      ...process.env,
-      COQUI_TOS_AGREED: '1',
-      PYTHONUNBUFFERED: '1',
-      PYTHONIOENCODING: 'utf-8',
-      SUNO_USE_SMALL_MODELS: 'True',
-      SUNO_OFFLOAD_CPU: 'True',
-    };
-
-    const child = spawn(python.command, [...python.args, SCRIPT], {
-      cwd: GINA_ROOT,
-      windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env,
-    });
-
-    const totalRows = Array.isArray(payload.timeline) && payload.timeline.length > 0 ? payload.timeline.length : 1;
-    const initialEngine = payload.engine || (Array.isArray(payload.timeline) && payload.timeline[0]?.engine) || 'bark';
-
-    activeAudioJob = {
-      id: `audio_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      startTime: Date.now(),
-      status: 'running',
-      stage: 'initializing',
-      message: 'Initializing local audio synthesis engine...',
-      percent: 3,
-      device: 'auto',
-      vramWarning: false,
-      row: 1,
-      totalRows,
-      engine: initialEngine,
-      logs: [],
-      childProcess: child,
-    };
-
-    pushAudioLog(`Starting audio synthesis (mode: ${payload.mode || 'standard'}, engine: ${initialEngine}, total rows: ${totalRows})`);
-    broadcastAudioEvent('status', {
-      id: activeAudioJob.id,
-      status: 'running',
-      stage: activeAudioJob.stage,
-      message: activeAudioJob.message,
-      percent: activeAudioJob.percent,
-      device: activeAudioJob.device,
-      vramWarning: activeAudioJob.vramWarning,
-      row: activeAudioJob.row,
-      totalRows: activeAudioJob.totalRows,
-      engine: activeAudioJob.engine,
-      startTime: activeAudioJob.startTime,
-    });
-
-    let stdout = '';
-    let stderr = '';
-    let stderrBuffer = '';
-
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-
-    child.stdout.on('data', (chunk: string) => {
-      stdout += chunk;
-    });
-
-    child.stderr.on('data', (chunk: string) => {
-      stderr += chunk;
-      stderrBuffer += chunk;
-      const lines = stderrBuffer.split(/\r?\n/);
-      stderrBuffer = lines.pop() || '';
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        if (trimmed.startsWith('GINA_AUDIO_PROGRESS:')) {
+    resolvePython().then((python) => {
+      const child = spawn(python.command, [...python.args, SCRIPT], { cwd: GINA_ROOT, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      let stdout = ''; let stderr = ''; let lineBuffer = '';
+      child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+      child.stdout.on('data', chunk => {
+        stdout += chunk;
+        lineBuffer += chunk;
+        const lines = lineBuffer.split(/\r?\n/);
+        lineBuffer = lines.pop() || '';
+        for (const line of lines) {
           try {
-            const prog = JSON.parse(trimmed.slice('GINA_AUDIO_PROGRESS:'.length));
-            if (activeAudioJob && activeAudioJob.status === 'running') {
-              if (prog.stage) activeAudioJob.stage = prog.stage;
-              if (typeof prog.percent === 'number') activeAudioJob.percent = prog.percent;
-              if (prog.message) activeAudioJob.message = prog.message;
-              if (prog.device) activeAudioJob.device = prog.device;
-              if (typeof prog.vram_warning === 'boolean') activeAudioJob.vramWarning = prog.vram_warning;
-              if (typeof prog.row === 'number') activeAudioJob.row = prog.row;
-              if (typeof prog.total_rows === 'number') activeAudioJob.totalRows = prog.total_rows;
-              if (prog.engine) activeAudioJob.engine = prog.engine;
-              pushAudioLog(`▶ ${prog.message}`);
-              broadcastAudioEvent('progress', {
-                id: activeAudioJob.id,
-                stage: activeAudioJob.stage,
-                percent: activeAudioJob.percent,
-                message: activeAudioJob.message,
-                device: activeAudioJob.device,
-                vramWarning: activeAudioJob.vramWarning,
-                row: activeAudioJob.row,
-                totalRows: activeAudioJob.totalRows,
-                engine: activeAudioJob.engine,
-              });
-            }
-          } catch {}
-        } else {
-          pushAudioLog(trimmed);
+            const event = JSON.parse(line);
+            if (event?.type === 'progress') onProgress?.(event);
+          } catch { /* final JSON is parsed after process exit */ }
         }
-      }
-    });
-
-    child.on('error', (err) => {
-      if (activeAudioJob) {
-        activeAudioJob.status = 'failed';
-        activeAudioJob.error = err.message;
-        pushAudioLog(`✖ Process spawn error: ${err.message}`);
-        broadcastAudioEvent('failed', { id: activeAudioJob.id, error: err.message });
-      }
-      reject(err);
-    });
-
-    child.on('close', (code) => {
-      let parsed: any = null;
-      try {
-        parsed = JSON.parse(stdout.trim().split(/\r?\n/).filter(Boolean).pop() || '{}');
-      } catch {}
-
-      if (activeAudioJob && activeAudioJob.status === 'running') {
-        if (code === 0 && parsed?.ok) {
-          activeAudioJob.status = 'completed';
-          activeAudioJob.percent = 100;
-          activeAudioJob.message = 'Audio synthesis completed successfully.';
-          activeAudioJob.result = parsed;
-          pushAudioLog('✔ Audio generation completed successfully.');
-          broadcastAudioEvent('completed', { id: activeAudioJob.id, result: parsed });
-        } else {
-          activeAudioJob.status = 'failed';
-          const err = parsed?.error || stderr.trim() || `Unified audio backend exited with code ${code}`;
-          activeAudioJob.error = err;
-          pushAudioLog(`✖ Audio generation failed: ${err}`);
-          broadcastAudioEvent('failed', { id: activeAudioJob.id, error: err });
+      });
+      child.stderr.on('data', chunk => { stderr += chunk; });
+      child.on('error', reject);
+      child.on('close', code => {
+        if (lineBuffer.trim()) {
+          try { const event = JSON.parse(lineBuffer.trim()); if (event?.type === 'progress') onProgress?.(event); } catch {}
         }
-      }
-
-      if (activeAudioJob?.status === 'cancelled') {
-        return reject(new Error('Audio generation was cancelled.'));
-      }
-
-      if (code !== 0 || !parsed?.ok) {
-        return reject(new Error(parsed?.error || stderr.trim() || `Unified audio backend exited with code ${code}`));
-      }
-      resolve(parsed);
-    });
-
-    try {
+        let parsed: any = null;
+        try { parsed = JSON.parse(stdout.trim().split(/\r?\n/).filter(Boolean).pop() || '{}'); } catch {}
+        if (code !== 0 || !parsed?.ok) {
+          const detail = String(parsed?.error || '').trim();
+          const diagnostic = String(stderr || '').trim();
+          const combined = detail && diagnostic && !detail.includes(diagnostic) ? `${detail} · ${diagnostic.split(/\r?\n/).slice(-3).join(' · ')}` : (detail || diagnostic);
+          return reject(new Error(combined || `Unified audio backend exited with code ${code}`));
+        }
+        resolve(parsed);
+      });
       child.stdin.end(JSON.stringify(payload));
-    } catch (stdinErr: any) {
-      reject(stdinErr);
-    }
+    }).catch(reject);
   });
 }
 
 router.post('/repair', async (req: Request, res: Response) => {
   resolvedPython = null;
-  lastPythonCheckTime = 0;
-  lastPythonCheckError = '';
   req.setTimeout(300000);
   res.setTimeout(300000);
   res.setHeader('Content-Type', 'application/json');
@@ -433,107 +250,32 @@ router.post('/voice-clone', expressRawAudio(), async (req: Request, res: Respons
   } catch (error:any) { res.status(500).json({ ok:false, error:error?.message || 'Voice clone upload failed.' }); }
 });
 
-router.get('/active-status', (_req: Request, res: Response) => {
-  if (!activeAudioJob) {
-    return res.json({ ok: true, active: false, job: null });
-  }
-  const isRunning = activeAudioJob.status === 'running';
-  const elapsedSec = Math.floor((Date.now() - activeAudioJob.startTime) / 1000);
-  res.json({
-    ok: true,
-    active: isRunning,
-    job: {
-      id: activeAudioJob.id,
-      status: activeAudioJob.status,
-      stage: activeAudioJob.stage,
-      message: activeAudioJob.message,
-      percent: activeAudioJob.percent,
-      device: activeAudioJob.device,
-      vramWarning: activeAudioJob.vramWarning,
-      row: activeAudioJob.row,
-      totalRows: activeAudioJob.totalRows,
-      engine: activeAudioJob.engine,
-      startTime: activeAudioJob.startTime,
-      elapsedSec,
-      logs: activeAudioJob.logs.slice(-50),
-      result: activeAudioJob.result,
-      error: activeAudioJob.error,
-    },
-  });
-});
-
-router.get('/events', (req: Request, res: Response) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache, no-transform');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders?.();
-
-  sseClients.add(res);
-
-  if (activeAudioJob) {
-    const elapsedSec = Math.floor((Date.now() - activeAudioJob.startTime) / 1000);
-    res.write(`event: status\ndata: ${JSON.stringify({
-      id: activeAudioJob.id,
-      status: activeAudioJob.status,
-      stage: activeAudioJob.stage,
-      message: activeAudioJob.message,
-      percent: activeAudioJob.percent,
-      device: activeAudioJob.device,
-      vramWarning: activeAudioJob.vramWarning,
-      row: activeAudioJob.row,
-      totalRows: activeAudioJob.totalRows,
-      engine: activeAudioJob.engine,
-      elapsedSec,
-      logs: activeAudioJob.logs.slice(-30),
-    })}\n\n`);
-  } else {
-    res.write(`event: status\ndata: ${JSON.stringify({ status: 'idle' })}\n\n`);
-  }
-
-  const keepAlive = setInterval(() => {
-    try {
-      res.write(': ping\n\n');
-    } catch {
-      clearInterval(keepAlive);
+router.post('/generate-stream', async (req: Request, res: Response) => {
+  try {
+    const payload = { ...req.body, enable_streaming: false };
+    if (payload.voiceClonePath) {
+      const candidate = path.resolve(String(payload.voiceClonePath));
+      if (!candidate.startsWith(CLONE_ROOT + path.sep) && !candidate.startsWith(AUDIO_ROOT + path.sep)) throw new Error('Voice clone path is outside Gina audio storage.');
+      payload.speaker_wav = candidate;
     }
-  }, 15000);
-
-  req.on('close', () => {
-    clearInterval(keepAlive);
-    sseClients.delete(res);
-  });
-});
-
-router.post('/cancel', (_req: Request, res: Response) => {
-  if (!activeAudioJob || activeAudioJob.status !== 'running') {
-    return res.json({ ok: true, message: 'No active audio generation to cancel.' });
+    res.status(200);
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+    const send = (value: any) => { if (!res.writableEnded) res.write(`${JSON.stringify(value)}\n`); };
+    send({ type:'progress', stage:'QUEUED', percent:0, message:'Starting local audio generation…' });
+    const result = await runPython(payload, event => send(event));
+    send({ type:'result', ...result });
+    res.end();
+  } catch (error:any) {
+    if (!res.headersSent) return res.status(500).json({ ok:false, error:error?.message || 'Unified audio generation failed.' });
+    res.write(`${JSON.stringify({ type:'error', ok:false, error:error?.message || 'Unified audio generation failed.' })}\n`);
+    res.end();
   }
-
-  const job = activeAudioJob;
-  job.status = 'cancelled';
-  job.message = 'Audio generation was cancelled by user.';
-  pushAudioLog('⚠ Audio generation was cancelled by user.');
-
-  if (job.childProcess) {
-    try {
-      const pid = job.childProcess.pid;
-      if (process.platform === 'win32' && pid) {
-        spawn('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true });
-      } else {
-        job.childProcess.kill('SIGTERM');
-      }
-    } catch (err: any) {
-      console.error('Failed to terminate child audio process:', err);
-    }
-  }
-
-  broadcastAudioEvent('cancelled', { id: job.id, message: 'Generation cancelled.' });
-  res.json({ ok: true, message: 'Audio generation cancelled.' });
 });
 
 router.post('/generate', async (req: Request, res: Response) => {
-  req.setTimeout(600000);
-  res.setTimeout(600000);
   try {
     const payload = { ...req.body };
     if (payload.voiceClonePath) {
@@ -553,67 +295,20 @@ router.post('/generate', async (req: Request, res: Response) => {
       return;
     }
     res.json(result);
-  } catch (error:any) {
-    res.status(500).json({ ok:false, error:error?.message || 'Unified audio generation failed.', logs: activeAudioJob?.logs || [] });
-  }
+  } catch (error:any) { res.status(500).json({ ok:false, error:error?.message || 'Unified audio generation failed.' }); }
 });
 
 router.post('/preview', async (req: Request, res: Response) => {
-  const voiceId = String(req.body?.voice_id || '').trim();
-  const speakerName = req.body?.speaker || req.body?.voice_preset || 'Voice Preview';
-
-  const python = await getUsablePython();
-  if (!python) {
-    try {
-      const fallback = await generateFallbackPreviewWav(voiceId || 'preview_sample', speakerName);
-      if (voiceId) {
-        const voice = (await listVoices({ q: voiceId }))[0];
-        if (voice) await upsertVoice({ ...voice, preview_audio_url: fallback.url });
-      }
-      return res.json({
-        ok: true,
-        ...fallback,
-        mode: 'acoustic_sample'
-      });
-    } catch (fallbackErr: any) {
-      return res.status(500).json({ ok: false, error: fallbackErr?.message || 'Unable to synthesize preview.' });
-    }
-  }
-
   try {
-    const result = await runPython({
-      engine: req.body?.engine || 'bark',
-      mode: 'standard',
-      text: 'Hello, this is a preview of my voice style.',
-      voice_preset: req.body?.voice_preset || 'v2/en_speaker_6',
-      speaker: req.body?.speaker,
-      speaker_wav: req.body?.speaker_wav,
-      output_format: 'wav',
-      normalize: true,
-      trim_silence: true,
-      temperature: 0.7
-    });
-    if (voiceId) {
-      const voice = (await listVoices({ q: voiceId }))[0];
-      if (voice) await upsertVoice({ ...voice, preview_audio_url: result.url });
+    const previewEngine = req.body?.engine || 'bark';
+    if (previewEngine === 'xtts_v2' && !req.body?.speaker_wav && !req.body?.speaker) {
+      return res.status(400).json({ ok:false, error:'XTTS preview needs either a named XTTS system speaker or a 3–10 second reference recording.' });
     }
-    return res.json(result);
-  } catch (_error: any) {
-    try {
-      const fallback = await generateFallbackPreviewWav(voiceId || 'preview_sample', speakerName);
-      if (voiceId) {
-        const voice = (await listVoices({ q: voiceId }))[0];
-        if (voice) await upsertVoice({ ...voice, preview_audio_url: fallback.url });
-      }
-      return res.json({
-        ok: true,
-        ...fallback,
-        mode: 'acoustic_sample'
-      });
-    } catch (fallbackErr: any) {
-      return res.status(500).json({ ok: false, error: fallbackErr?.message || 'Unable to synthesize preview.' });
-    }
-  }
+    const result = await runPython({ engine:previewEngine, mode:'standard', text:'Hello. This is a voice preview for Gina. The selected voice is ready for speech generation.', voice_preset:req.body?.voice_preset || 'v2/en_speaker_6', speaker:req.body?.speaker, speaker_wav:req.body?.speaker_wav, output_format:'wav', normalize:true, trim_silence:true, temperature:0.7 });
+    const voiceId = String(req.body?.voice_id || '').trim();
+    if (voiceId) { const voice = (await listVoices({ q:voiceId }))[0]; if (voice) await upsertVoice({...voice, preview_audio_url:result.url}); }
+    res.json(result);
+  } catch (error:any) { res.status(500).json({ ok:false, error:error?.message || 'Voice preview failed.' }); }
 });
 
 function expressRawAudio() {
