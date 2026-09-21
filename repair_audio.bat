@@ -20,9 +20,6 @@ if not exist "%GINA_ROOT%\g_env\Scripts\activate.bat" (
 
 echo [1/4] Activating Gina Python environment...
 call "%GINA_ROOT%\g_env\Scripts\activate.bat"
-if exist "%GINA_ROOT%\g_env\Lib\site-packages\gina_xtts_shim.pth" (
-  del /f /q "%GINA_ROOT%\g_env\Lib\site-packages\gina_xtts_shim.pth" 2>nul
-)
 
 echo.
 echo [2/4] Removing conflicting torchcodec / deprecated TTS...

@@ -42,11 +42,6 @@ if errorlevel 1 (
   exit /b 1
 )
 
-REM Ensure any leftover eager startup shims are removed to protect ComfyUI CUDA allocator
-if exist "%GINA_ROOT%\g_env\Lib\site-packages\gina_xtts_shim.pth" (
-  del /f /q "%GINA_ROOT%\g_env\Lib\site-packages\gina_xtts_shim.pth" 2>nul
-)
-
 REM Repair the local Bark + XTTS environment in the same interpreter that
 REM runs the Gina server. This prevents the recurring "No module named TTS/bark"
 REM mismatch where packages were installed into a different Python.
@@ -77,7 +72,7 @@ if not exist "%GINA_ROOT%\node_modules\jszip\package.json" (
 echo [1/4] Starting ComfyUI (only if port 8188 is free)...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$c=Get-NetTCPConnection -LocalPort 8188 -State Listen -ErrorAction SilentlyContinue; if($c){exit 0}else{exit 1}"
 if errorlevel 1 (
-  start "ComfyUI - Gina Backend" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && set PYTORCH_CUDA_ALLOC_CONF= && python ComfyUI_windows_portable\ComfyUI\main.py --lowvram --fp8_e4m3fn-text-enc --preview-method latent2rgb --disable-cuda-malloc"
+  start "ComfyUI - Gina Backend" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && %GINA_ROOT%\g_env\Scripts\python.exe ComfyUI_windows_portable\ComfyUI\main.py --lowvram --fp8_e4m3fn-text-enc --preview-method latent2rgb --disable-cuda-malloc"
 ) else (
   echo    ComfyUI is already running; reusing it.
 )

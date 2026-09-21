@@ -1,0 +1,5 @@
+# Optional high-quality local background removal.
+# Gina automatically falls back to OpenCV GrabCut when rembg is unavailable.
+rembg[cpu]>=2.0.60
+opencv-python>=4.8
+Pillow>=10.0

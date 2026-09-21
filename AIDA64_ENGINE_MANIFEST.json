@@ -1,0 +1,11 @@
+{
+  "version": "1.9.6",
+  "requested_features": 68,
+  "registered_features": 68,
+  "all_registered_as_implemented": true,
+  "all_registered_as_state_aware": true,
+  "timeline": true,
+  "renderer_hooks": true,
+  "deterministic_seeded_effects": true,
+  "kornia_added": false
+}
