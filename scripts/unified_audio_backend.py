@@ -12,68 +12,12 @@ import random
 import re
 import sys
 import tempfile
+import warnings
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
-# Ensure non-interactive Coqui license agreement is set so downloads never prompt on stdin
-os.environ.setdefault("COQUI_TOS_AGREED", "1")
-
-def emit_progress(stage: str, percent: int, message: str, **extra: Any) -> None:
-    """Emit structured real-time progress message to stderr for Node.js SSE broker."""
-    try:
-        data = {
-            "type": "progress",
-            "stage": stage,
-            "percent": max(0, min(100, int(percent))),
-            "message": str(message),
-            **extra
-        }
-        sys.stderr.write(f"GINA_AUDIO_PROGRESS:{json.dumps(data)}\n")
-        sys.stderr.flush()
-    except Exception:
-        pass
-
-# Ensure PyTorch 2.6+ backwards compatibility with Bark and XTTS checkpoints (weights_only & numpy globals)
-try:
-    import torch
-    # 1. Allowlist safe numpy scalars/arrays in PyTorch 2.4+
-    try:
-        import numpy as np
-        safe_objs = []
-        for mod in [np, getattr(np, "core", None), getattr(np, "_core", None)]:
-            if mod:
-                for attr in ["scalar", "_reconstruct", "multiarray", "dtype"]:
-                    val = getattr(mod, attr, None)
-                    if val is not None and val not in safe_objs:
-                        safe_objs.append(val)
-        if hasattr(torch.serialization, "add_safe_globals") and safe_objs:
-            torch.serialization.add_safe_globals(safe_objs)
-    except Exception:
-        pass
-
-    # 2. Monkey-patch torch.load to default weights_only=False for local audio models
-    if not getattr(torch, "_gina_weights_only_patched", False):
-        _orig_torch_load = torch.load
-
-        def _patched_torch_load(*args, **kwargs):
-            if "weights_only" not in kwargs:
-                kwargs["weights_only"] = False
-            try:
-                return _orig_torch_load(*args, **kwargs)
-            except Exception as exc:
-                err_msg = str(exc)
-                if ("WeightsUnpickler" in err_msg or "weights_only" in err_msg or "Unsupported global" in err_msg) and kwargs.get("weights_only", True):
-                    kwargs["weights_only"] = False
-                    return _orig_torch_load(*args, **kwargs)
-                raise
-
-        torch.load = _patched_torch_load
-        torch._gina_weights_only_patched = True
-except Exception:
-    pass
-
-# Ensure transformers backwards-compatibility for Coqui XTTS (BeamSearchScorer, LogitsWarper, and isin_mps_friendly)
+# Ensure transformers backwards-compatibility for Coqui XTTS (BeamSearchScorer and LogitsWarper)
 try:
     import transformers
     if not hasattr(transformers, "BeamSearchScorer"):
@@ -88,30 +32,6 @@ try:
             transformers.LogitsWarper = LogitsWarper
         except Exception:
             pass
-
-    def _isin_mps_friendly_shim(elements, test_elements):
-        try:
-            import torch
-            if not torch.is_tensor(test_elements):
-                test_elements = torch.tensor(test_elements, device=elements.device)
-            if getattr(elements.device, "type", None) == "mps":
-                return (elements[..., None] == test_elements.reshape(-1)).any(-1)
-            return torch.isin(elements, test_elements)
-        except Exception:
-            return False
-
-    if not hasattr(transformers, "isin_mps_friendly"):
-        setattr(transformers, "isin_mps_friendly", _isin_mps_friendly_shim)
-
-    try:
-        import transformers.pytorch_utils as ptu
-        if not hasattr(ptu, "isin_mps_friendly"):
-            setattr(ptu, "isin_mps_friendly", _isin_mps_friendly_shim)
-    except Exception:
-        pass
-
-    if "transformers.pytorch_utils" in sys.modules:
-        setattr(sys.modules["transformers.pytorch_utils"], "isin_mps_friendly", _isin_mps_friendly_shim)
 except Exception:
     pass
 
@@ -121,6 +41,22 @@ OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 
 TAG_RE = re.compile(r"\[[^\]]*\]")
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
+
+# Bark currently triggers PyTorch's legacy weight_norm deprecation warning on
+# otherwise successful generation. Keep the terminal useful: real exceptions
+# and stderr remain visible, but this known non-fatal warning is suppressed.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*torch\.nn\.utils\.weight_norm.*deprecated.*",
+    category=FutureWarning,
+)
+
+
+def emit_progress(stage: str, percent: int, message: str, **extra: Any) -> None:
+    """Emit one machine-readable progress event without disturbing final JSON."""
+    event = {"type": "progress", "stage": stage, "percent": max(0, min(100, int(percent))), "message": message}
+    event.update({k: v for k, v in extra.items() if v is not None})
+    print(json.dumps(event, ensure_ascii=False), flush=True)
 
 
 def clamp(value: Any, low: float, high: float, default: float) -> float:
@@ -141,42 +77,17 @@ def clean_text(text: str, engine: str, strip_tags: bool) -> str:
 def choose_device(torch_module: Any) -> str:
     requested = os.environ.get("GINA_AUDIO_DEVICE", "auto").lower()
     if requested in {"cpu", "cuda"}:
-        dev = requested if requested != "cuda" or torch_module.cuda.is_available() else "cpu"
-        emit_progress("device_selected", 5, f"Device configured: {dev.upper()}", device=dev)
-        return dev
+        return requested if requested != "cuda" or torch_module.cuda.is_available() else "cpu"
     if not torch_module.cuda.is_available():
-        emit_progress("device_selected", 5, "Device: CPU (CUDA is not available)", device="cpu")
         return "cpu"
     try:
         free, total = torch_module.cuda.mem_get_info()
-        free_gb = free / (1024**3)
-        total_gb = total / (1024**3)
-        used_gb = total_gb - free_gb
         # Keep a conservative reserve for the 8GB Gina VRAM cage and ComfyUI/LLM coexistence.
         if free >= 2.4 * 1024**3 and total >= 6 * 1024**3:
-            emit_progress(
-                "device_selected",
-                5,
-                f"Device: CUDA ({torch_module.cuda.get_device_name(0)}) · {free_gb:.1f} GB free VRAM available",
-                device="cuda",
-                free_gb=round(free_gb, 2),
-                total_gb=round(total_gb, 2),
-            )
             return "cuda"
-        else:
-            emit_progress(
-                "device_selected",
-                5,
-                f"Device: CPU · GPU VRAM is {used_gb:.1f}/{total_gb:.1f} GB ({int((used_gb/total_gb)*100)}% used). Running on CPU to protect against Out-Of-Memory crash.",
-                device="cpu",
-                vram_warning=True,
-                used_gb=round(used_gb, 2),
-                total_gb=round(total_gb, 2),
-            )
-            return "cpu"
-    except Exception as exc:
-        emit_progress("device_selected", 5, f"Device fallback to CPU: {exc}", device="cpu")
-        return "cpu"
+    except Exception:
+        pass
+    return "cpu"
 
 
 
@@ -324,61 +235,100 @@ def apply_audio_postprocess(wav_path: Path, output_format: str, normalize: bool,
     audio.export(str(target_path), format=fmt, codec=codec)
 
 
-def bark_generate(text: str, options: dict[str, Any], output_wav: Path, row_idx: int = 1, total_rows: int = 1) -> None:
+def bark_generate(text: str, options: dict[str, Any], output_wav: Path, progress_base: int = 0, progress_span: int = 100, row_index: int | None = None, total_rows: int | None = None) -> None:
     # Suno's official package supports small-model mode, important on Gina's 8GB GPU.
     os.environ.setdefault("SUNO_USE_SMALL_MODELS", "True")
     os.environ.setdefault("SUNO_OFFLOAD_CPU", "True")
     import numpy as np
     import torch
-    from bark import SAMPLE_RATE, generate_audio, preload_models
-    from scipy.io.wavfile import write as write_wav
 
-    seed = int(options.get("seed", -1))
-    locked = bool(options.get("seed_locked", False))
-    if seed < 0 or not locked:
-        seed = random.randint(0, 2**31 - 1)
-    random.seed(seed)
-    np.random.seed(seed % (2**32 - 1))
+    # PyTorch 2.6 changed torch.load() to default to weights_only=True.
+    # Bark's official checkpoints contain objects (including NumPy scalar
+    # types) that require the legacy unpickler. Bark is only used here with
+    # its trusted official Suno checkpoints, so explicitly opt out of the
+    # safe default for this one-shot Bark process rather than weakening
+    # torch.load globally for the rest of Gina.
+    original_torch_load = torch.load
+
+    def bark_torch_load(*args: Any, **kwargs: Any):
+        if "weights_only" not in kwargs:
+            kwargs["weights_only"] = False
+        try:
+            return original_torch_load(*args, **kwargs)
+        except TypeError as exc:
+            # Older PyTorch releases do not accept weights_only. Keep this
+            # compatibility fallback narrowly scoped to that older signature.
+            if "weights_only" in str(exc) and "unexpected keyword" in str(exc).lower():
+                kwargs.pop("weights_only", None)
+                return original_torch_load(*args, **kwargs)
+            raise
+
+    torch.load = bark_torch_load
     try:
-        torch.manual_seed(seed)
-    except Exception:
-        pass
+        from bark import SAMPLE_RATE, generate_audio, preload_models
+        from scipy.io.wavfile import write as write_wav
+    
+        try:
+            from bark.generation import ALLOWED_PROMPTS
+        except Exception:
+            ALLOWED_PROMPTS = set()
+    
+        seed = int(options.get("seed", -1))
+        locked = bool(options.get("seed_locked", False))
+        if seed < 0 or not locked:
+            seed = random.randint(0, 2**31 - 1)
+        random.seed(seed)
+        np.random.seed(seed % (2**32 - 1))
+        try:
+            torch.manual_seed(seed)
+        except Exception:
+            pass
+        emit_progress("LOADING BARK", progress_base + int(progress_span * 0.15), "Loading Bark audio models…", engine="bark", row=row_index, total_rows=total_rows)
+        preload_models()
+        emit_progress("GENERATING BARK", progress_base + int(progress_span * 0.35), "Generating Bark speech / non-verbal audio…", engine="bark", row=row_index, total_rows=total_rows)
+        temperature = clamp(options.get("temperature"), 0.1, 1.2, 0.7)
+        voice = str(options.get("voice_preset") or "v2/en_speaker_6")
+        # In hybrid timelines a row can be set to Bark while inheriting a voice
+        # that was actually picked for XTTS (e.g. "Ana Florence") -- those names
+        # aren't valid Bark history prompts and Bark has no fallback of its own,
+        # it just raises. Validate before calling generate_audio() so a mismatched
+        # voice degrades to Bark's default speaker instead of failing the row.
+        is_valid_bark_prompt = (
+            voice in ALLOWED_PROMPTS
+            or voice.startswith("v2/")
+            or os.path.isfile(voice)
+        )
+        if not is_valid_bark_prompt:
+            print(
+                f"[Unified Audio] '{voice}' is not a Bark voice preset "
+                f"(it looks like an XTTS speaker name) -- falling back to v2/en_speaker_6 for this row.",
+                file=sys.stderr,
+            )
+            voice = "v2/en_speaker_6"
+        audio = generate_audio(text, history_prompt=voice, text_temp=temperature, waveform_temp=temperature)
+        emit_progress("WRITING BARK", progress_base + int(progress_span * 0.82), "Writing Bark waveform…", engine="bark", row=row_index, total_rows=total_rows)
+        write_wav(str(output_wav), SAMPLE_RATE, audio)
+    
+    finally:
+        # Do not leave the relaxed loader in the long-lived server process.
+        torch.load = original_torch_load
 
-    emit_progress("bark_preload", 15, f"[Row {row_idx}/{total_rows}] Loading Suno Bark neural models into memory...", engine="bark", row=row_idx, total_rows=total_rows)
-    t_load_start = __import__("time").time()
-    preload_models()
-    t_load_elapsed = __import__("time").time() - t_load_start
-
-    temperature = clamp(options.get("temperature"), 0.1, 1.2, 0.7)
-    voice = str(options.get("voice_preset") or "v2/en_speaker_6")
-    preview_snippet = (text[:40] + "...") if len(text) > 40 else text
-    emit_progress("bark_synthesizing", 30, f"[Row {row_idx}/{total_rows}] Generating Bark audio: \"{preview_snippet}\" (voice: {voice})...", engine="bark", row=row_idx, total_rows=total_rows)
-    t_gen_start = __import__("time").time()
-    audio = generate_audio(text, history_prompt=voice, text_temp=temperature, waveform_temp=temperature)
-    t_gen_elapsed = __import__("time").time() - t_gen_start
-    write_wav(str(output_wav), SAMPLE_RATE, audio)
-    duration_s = len(audio) / SAMPLE_RATE
-    emit_progress("bark_done", 45, f"[Row {row_idx}/{total_rows}] Bark completed {duration_s:.1f}s of speech in {t_gen_elapsed:.1f}s.", engine="bark", row=row_idx, total_rows=total_rows, audio_duration=duration_s, gen_time=round(t_gen_elapsed, 1))
-
-
-def xtts_generate(text: str, options: dict[str, Any], output_wav: Path, row_idx: int = 1, total_rows: int = 1) -> None:
+def xtts_generate(text: str, options: dict[str, Any], output_wav: Path, progress_base: int = 0, progress_span: int = 100, row_index: int | None = None, total_rows: int | None = None) -> None:
     import torch
     from TTS.api import TTS
 
     device = choose_device(torch)
-    emit_progress("xtts_load", 20, f"[Row {row_idx}/{total_rows}] Loading Coqui XTTS v2 multilingual model on {device.upper()}...", engine="xtts_v2", row=row_idx, total_rows=total_rows)
-    t_load_start = __import__("time").time()
+    emit_progress("LOADING XTTS", progress_base + int(progress_span * 0.15), "Loading XTTS v2 voice model…", engine="xtts_v2", row=row_index, total_rows=total_rows)
     model = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
-    t_load_elapsed = __import__("time").time() - t_load_start
-
     language = str(options.get("language") or "en")
     speaker_wav = options.get("speaker_wav")
     speaker = options.get("speaker")
-    if not speaker_wav and not speaker:
-        # XTTS requires a speaker reference for cloning or a known speaker ID.
-        speaker = str(options.get("voice_preset") or "Ana Florence")
-    preview_snippet = (text[:40] + "...") if len(text) > 40 else text
-    emit_progress("xtts_synthesizing", 40, f"[Row {row_idx}/{total_rows}] Synthesizing XTTS v2 speech ({language}, speaker: {speaker or 'custom clone'}): \"{preview_snippet}\"...", engine="xtts_v2", row=row_idx, total_rows=total_rows)
+    if speaker_wav:
+        speaker_wav = str(speaker_wav)
+        if not os.path.isfile(speaker_wav):
+            raise FileNotFoundError(f"XTTS voice reference was not found: {speaker_wav}")
+    elif not speaker:
+        raise ValueError("XTTS v2 needs either a named system speaker or a real 3–10 second voice reference. Select an XTTS system voice or upload a voice sample.")
     kwargs: dict[str, Any] = {
         "text": text,
         "file_path": str(output_wav),
@@ -392,10 +342,9 @@ def xtts_generate(text: str, options: dict[str, Any], output_wav: Path, row_idx:
         kwargs["speaker_wav"] = speaker_wav
     else:
         kwargs["speaker"] = speaker
-    t_gen_start = __import__("time").time()
+    emit_progress("GENERATING XTTS", progress_base + int(progress_span * 0.38), "Generating the main spoken voice with XTTS v2…", engine="xtts_v2", row=row_index, total_rows=total_rows)
     model.tts_to_file(**kwargs)
-    t_gen_elapsed = __import__("time").time() - t_gen_start
-    emit_progress("xtts_done", 65, f"[Row {row_idx}/{total_rows}] XTTS v2 synthesized in {t_gen_elapsed:.1f}s.", engine="xtts_v2", row=row_idx, total_rows=total_rows, gen_time=round(t_gen_elapsed, 1))
+    emit_progress("WRITING XTTS", progress_base + int(progress_span * 0.82), "XTTS voice render complete; writing waveform…", engine="xtts_v2", row=row_index, total_rows=total_rows)
 
 
 def synthesize_row(row: dict[str, Any], global_options: dict[str, Any], workdir: Path, index: int, total_rows: int = 1) -> Path:
@@ -405,18 +354,14 @@ def synthesize_row(row: dict[str, Any], global_options: dict[str, Any], workdir:
     if not text:
         raise ValueError(f"Timeline row {index + 1} contains no synthesizable text.")
     wav = workdir / f"row_{index:04d}.wav"
-    row_num = index + 1
-    pct = 10 + int(60 * (index / max(1, total_rows)))
-    preview_snippet = (text[:35] + "...") if len(text) > 35 else text
-    emit_progress("synthesizing_row", pct, f"Processing Timeline Row {row_num} of {total_rows} ({engine.upper()}): \"{preview_snippet}\"", row=row_num, total_rows=total_rows, engine=engine)
     if engine in {"bark", "bark_v2"}:
-        bark_generate(text, options, wav, row_idx=row_num, total_rows=total_rows)
+        bark_generate(text, options, wav, progress_base=int(index * 100 / total_rows), progress_span=max(1, int(100 / total_rows)), row_index=index + 1, total_rows=total_rows)
     elif engine in {"xtts", "xtts_v2"}:
-        xtts_generate(text, options, wav, row_idx=row_num, total_rows=total_rows)
+        xtts_generate(text, options, wav, progress_base=int(index * 100 / total_rows), progress_span=max(1, int(100 / total_rows)), row_index=index + 1, total_rows=total_rows)
     else:
         raise ValueError(f"Unsupported audio engine '{engine}'. Use Bark or XTTS v2.")
     if not wav.exists() or wav.stat().st_size == 0:
-        raise RuntimeError(f"Audio engine '{engine}' returned an empty file for timeline row {row_num}.")
+        raise RuntimeError(f"Audio engine '{engine}' returned an empty file for timeline row {index + 1}.")
     return wav
 
 
@@ -444,34 +389,36 @@ def main(payload: dict[str, Any]) -> dict[str, Any]:
     timeline = payload.get("timeline") if isinstance(payload.get("timeline"), list) else []
     workdir = Path(tempfile.mkdtemp(prefix="gina_audio_"))
     try:
+        emit_progress("QUEUED", 2, "Audio generation started…", engine=engine, mode=mode)
         from pydub import AudioSegment
+        emit_progress("PREPARING", 8, "Preparing local audio pipeline…", engine=engine, mode=mode)
         pieces: list[Path] = []
         if mode in {"hybrid", "stitched", "hybrid_stitched", "hybrid/stitched"}:
             if not timeline:
                 raise ValueError("Hybrid/Stitched mode requires at least one timeline row.")
-            emit_progress("timeline_start", 10, f"Starting Hybrid/Stitched synthesis of {len(timeline)} rows...", total_rows=len(timeline), mode=mode)
+            total_rows = len(timeline)
             for index, row in enumerate(timeline):
-                pieces.append(synthesize_row(dict(row), options, workdir, index, total_rows=len(timeline)))
-            emit_progress("stitching", 75, f"Stitching {len(pieces)} timeline rows with gap pacing...", total_rows=len(timeline))
+                emit_progress("TIMELINE", int(index * 100 / total_rows), f"Processing timeline row {index + 1} of {total_rows}…", engine=str(row.get("engine") or engine), row=index + 1, total_rows=total_rows)
+                pieces.append(synthesize_row(dict(row), options, workdir, index, total_rows))
             combined = AudioSegment.empty()
             gap_ms = max(0, min(5000, int(payload.get("row_gap_ms", 120))))
             for index, piece in enumerate(pieces):
                 combined += AudioSegment.from_wav(piece)
                 if index < len(pieces) - 1 and gap_ms:
                     combined += AudioSegment.silent(duration=gap_ms)
+            emit_progress("STITCHING", 88, "Stitching XTTS speech and Bark non-verbal rows…", engine=engine, mode=mode)
             source_wav = workdir / "stitched.wav"
             combined.export(str(source_wav), format="wav")
         else:
             if not text:
                 raise ValueError("Standard mode requires text.")
-            emit_progress("standard_start", 10, f"Starting Standard synthesis ({engine.upper()})...", engine=engine, mode=mode)
-            source_wav = synthesize_row({"text": text, **options}, options, workdir, 0, total_rows=1)
+            source_wav = synthesize_row({"text": text, **options}, options, workdir, 0, 1)
 
+        emit_progress("POST-PROCESSING", 92, "Applying final audio manipulation and export…", engine=engine, mode=mode)
         filename = f"gina_audio_{int(__import__('time').time() * 1000)}.{output_format}"
         target = OUTPUT_ROOT / filename
-        emit_progress("postprocessing", 88, f"Applying audio post-processing (format: {output_format.upper()}, normalization, silence trim)...")
         apply_audio_postprocess(source_wav, output_format, bool(options["normalize"]), bool(options["trim_silence"]), float(options["pitch_shift_semitones"]), float(options["formant_shift"]), float(options["speed_factor"]), target)
-        emit_progress("complete", 100, "Audio generation complete!", filename=filename, bytes=target.stat().st_size)
+        emit_progress("COMPLETE", 100, "Audio generation complete.", engine=engine, mode=mode, url=f"/media/unified-audio/{filename}")
         return {
             "ok": True,
             "engine": engine,
@@ -496,19 +443,8 @@ def main(payload: dict[str, Any]) -> dict[str, Any]:
 
 if __name__ == "__main__":
     try:
-        raw_input = sys.stdin.read()
-        if not raw_input.strip():
-            raise ValueError("No JSON payload received on stdin.")
-        payload = json.loads(raw_input)
-        result = main(payload)
-        sys.stderr.flush()
-        print(json.dumps(result, ensure_ascii=False))
-        sys.stdout.flush()
+        payload = json.loads(sys.stdin.read())
+        print(json.dumps(main(payload), ensure_ascii=False))
     except Exception as exc:
-        import traceback
-        tb = traceback.format_exc()
-        emit_progress("failed", 0, f"Error: {exc}", error=str(exc), traceback=tb)
-        sys.stderr.flush()
-        print(json.dumps({"ok": False, "error": str(exc), "traceback": tb}))
-        sys.stdout.flush()
+        print(json.dumps({"ok": False, "error": str(exc)}))
         raise SystemExit(1)

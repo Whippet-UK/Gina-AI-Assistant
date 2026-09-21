@@ -132,48 +132,6 @@ def apply_transformers_shim() -> None:
         pass
 
 
-def apply_torch_load_patch() -> None:
-    """Ensure PyTorch 2.6+ backwards compatibility with Bark and Coqui XTTS checkpoints.
-
-    Allowlist safe numpy objects and ensure weights_only defaults to False for local models.
-    """
-    try:
-        import torch
-        try:
-            import numpy as np
-            safe_objs = []
-            for mod in [np, getattr(np, "core", None), getattr(np, "_core", None)]:
-                if mod:
-                    for attr in ["scalar", "_reconstruct", "multiarray", "dtype"]:
-                        val = getattr(mod, attr, None)
-                        if val is not None and val not in safe_objs:
-                            safe_objs.append(val)
-            if hasattr(torch.serialization, "add_safe_globals") and safe_objs:
-                torch.serialization.add_safe_globals(safe_objs)
-        except Exception:
-            pass
-
-        if not getattr(torch, "_gina_weights_only_patched", False):
-            _orig_load = torch.load
-
-            def _patched_load(*args, **kwargs):
-                if "weights_only" not in kwargs:
-                    kwargs["weights_only"] = False
-                try:
-                    return _orig_load(*args, **kwargs)
-                except Exception as exc:
-                    err_msg = str(exc)
-                    if ("WeightsUnpickler" in err_msg or "weights_only" in err_msg or "Unsupported global" in err_msg) and kwargs.get("weights_only", True):
-                        kwargs["weights_only"] = False
-                        return _orig_load(*args, **kwargs)
-                    raise
-
-            torch.load = _patched_load
-            torch._gina_weights_only_patched = True
-    except Exception:
-        pass
-
-
 def apply_pytorch_utils_shim() -> None:
     """Ensure transformers.pytorch_utils exports isin_mps_friendly.
 
@@ -181,27 +139,24 @@ def apply_pytorch_utils_shim() -> None:
     transformers releases have moved or dropped it at different points.
     """
     try:
+        import transformers.pytorch_utils as ptu
+    except Exception:
+        return
+
+    if hasattr(ptu, "isin_mps_friendly"):
+        return
+
+    try:
         import torch
-        def _isin_mps(elements, test_elements):
+
+        def isin_mps_friendly(elements, test_elements):
             if not torch.is_tensor(test_elements):
                 test_elements = torch.tensor(test_elements, device=elements.device)
-            if getattr(elements.device, "type", None) == "mps":
+            if elements.device.type == "mps":
                 return (elements[..., None] == test_elements.reshape(-1)).any(-1)
             return torch.isin(elements, test_elements)
 
-        import transformers
-        if not hasattr(transformers, "isin_mps_friendly"):
-            setattr(transformers, "isin_mps_friendly", _isin_mps)
-
-        try:
-            import transformers.pytorch_utils as ptu
-            if not hasattr(ptu, "isin_mps_friendly"):
-                setattr(ptu, "isin_mps_friendly", _isin_mps)
-        except Exception:
-            pass
-
-        if "transformers.pytorch_utils" in sys.modules:
-            setattr(sys.modules["transformers.pytorch_utils"], "isin_mps_friendly", _isin_mps)
+        ptu.isin_mps_friendly = isin_mps_friendly
     except Exception:
         pass
 
@@ -270,22 +225,6 @@ def patch_xtts_layers_on_disk() -> None:
         "                def finalize(self, *args, **kwargs): return args[0] if args else None\n"
     )
 
-    safe_isin_replacement = (
-        "try:\n"
-        "    from transformers.pytorch_utils import isin_mps_friendly\n"
-        "except Exception:\n"
-        "    try:\n"
-        "        import torch\n"
-        "        def isin_mps_friendly(elements, test_elements):\n"
-        "            if not torch.is_tensor(test_elements):\n"
-        "                test_elements = torch.tensor(test_elements, device=elements.device)\n"
-        "            if getattr(elements.device, 'type', None) == 'mps':\n"
-        "                return (elements[..., None] == test_elements.reshape(-1)).any(-1)\n"
-        "            return torch.isin(elements, test_elements)\n"
-        "    except Exception:\n"
-        "        def isin_mps_friendly(elements, test_elements): return False\n"
-    )
-
     safe_import_header = (
         "# --- Gina XTTS Backwards-Compatibility Shim ---\n"
         "try:\n"
@@ -332,93 +271,50 @@ def patch_xtts_layers_on_disk() -> None:
                         if not changed:
                             text = safe_import_header + text
                             changed = True
-
-                    if "isin_mps_friendly" in text and "def isin_mps_friendly" not in text:
-                        isin_pattern = "from transformers.pytorch_utils import isin_mps_friendly"
-                        if isin_pattern in text:
-                            text = text.replace(isin_pattern, safe_isin_replacement)
-                            changed = True
-
                     if changed:
                         py_file.write_text(text, encoding="utf-8")
                 except Exception:
                     pass
 
 
-def patch_transformers_pytorch_utils_on_disk() -> None:
-    """Directly patch transformers/pytorch_utils.py on disk so isin_mps_friendly is physically present."""
-    snippet = (
-        "\n# --- Gina XTTS Backwards-Compatibility Shim ---\n"
-        "try:\n"
-        "    if 'isin_mps_friendly' not in globals():\n"
-        "        import torch\n"
-        "        def isin_mps_friendly(elements, test_elements):\n"
-        "            if not torch.is_tensor(test_elements):\n"
-        "                test_elements = torch.tensor(test_elements, device=elements.device)\n"
-        "            if getattr(elements.device, 'type', None) == 'mps':\n"
-        "                return (elements[..., None] == test_elements.reshape(-1)).any(-1)\n"
-        "            return torch.isin(elements, test_elements)\n"
-        "except Exception:\n"
-        "    pass\n"
-        "# ------------------------------------------------\n"
-    )
-    for sp_dir in get_all_site_packages_dirs():
-        ptu_path = sp_dir / "transformers" / "pytorch_utils.py"
-        if ptu_path.is_file():
-            try:
-                text = ptu_path.read_text(encoding="utf-8", errors="ignore")
-                if "def isin_mps_friendly" not in text:
-                    ptu_path.write_text(text + snippet, encoding="utf-8")
-            except Exception:
-                pass
+def remove_global_sitecustomize_shim() -> None:
+    """Remove the global sitecustomize.py/.pth transformers shim.
 
-
-def remove_eager_torch_shims() -> None:
-    """Remove eager .pth and sitecustomize.py shims from site-packages.
-
-    Eagerly importing torch during Python interpreter startup via .pth or sitecustomize
-    causes PyTorch C++ static CUDAAllocatorConfig to parse early with default settings.
-    When ComfyUI subsequently initializes, PyTorch crashes with:
-    RuntimeError: config[i] == get()->name() INTERNAL ASSERT FAILED ...
-    Allocator backend parsed at runtime != allocator backend parsed at load time
-
-    All needed shims are applied in-place on disk to transformers and TTS layers,
-    and torch.load is patched directly inside unified_audio_backend.py when needed.
+    This used to install a compatibility patch into every site-packages
+    directory via sitecustomize.py/.pth. That's loaded automatically by
+    every Python process using this interpreter -- including ComfyUI,
+    which shares this venv -- and caused an early, silent `import torch`
+    before ComfyUI could configure its own CUDA allocator, producing
+    unrelated "Allocator backend parsed at runtime != allocator backend
+    parsed at load time" crashes on ComfyUI startup. Nothing needs the
+    global version: apply_transformers_shim()/apply_pytorch_utils_shim()
+    already patch this script's own process in-place when needed.
     """
     for sp_dir in get_all_site_packages_dirs():
-        # 1. Remove gina_xtts_shim.pth
-        pth_file = sp_dir / "gina_xtts_shim.pth"
-        if pth_file.is_file():
-            try:
+        try:
+            pth_file = sp_dir / "gina_xtts_shim.pth"
+            if pth_file.exists():
                 pth_file.unlink()
-                print(f"[Unified Audio] Removed eager startup shim: {pth_file}")
-            except Exception as exc:
-                print(f"[Unified Audio] Notice: Failed to remove {pth_file}: {exc}")
 
-        # 2. Clean sitecustomize.py
-        sc_file = sp_dir / "sitecustomize.py"
-        if sc_file.is_file():
-            try:
-                text = sc_file.read_text(encoding="utf-8", errors="ignore")
-                if any(k in text for k in ("BeamSearchScorer", "_gina_weights_only_patched", "XTTS & PyTorch 2.6", "isin_mps_friendly")):
-                    lines = [line for line in text.splitlines() if not any(k in line for k in ("_gina_weights_only_patched", "BeamSearchScorer", "LogitsWarper", "isin_mps_friendly", "XTTS & PyTorch 2.6", "gina_xtts_shim"))]
-                    cleaned = chr(10).join(lines).strip()
-                    if not cleaned or (cleaned.startswith("#") and len(cleaned.splitlines()) <= 2):
-                        sc_file.unlink()
-                        print(f"[Unified Audio] Removed eager sitecustomize: {sc_file}")
+            sc_file = sp_dir / "sitecustomize.py"
+            if sc_file.exists():
+                existing = sc_file.read_text(encoding="utf-8", errors="ignore")
+                if "Gina AI Factory - XTTS transformers compatibility shim" in existing:
+                    marker = "\n# Gina AI Factory - XTTS transformers compatibility shim\n"
+                    idx = existing.find(marker.strip("\n"))
+                    before = existing[:idx].rstrip() if idx != -1 else ""
+                    if before:
+                        sc_file.write_text(before + "\n", encoding="utf-8")
                     else:
-                        sc_file.write_text(cleaned + chr(10), encoding="utf-8")
-                        print(f"[Unified Audio] Sanitized sitecustomize: {sc_file}")
-            except Exception as exc:
-                print(f"[Unified Audio] Notice: Failed to sanitize {sc_file}: {exc}")
+                        sc_file.unlink()
+        except Exception:
+            pass
 
 
 def main() -> int:
     # 1. First-pass: Apply in-place disk repairs and runtime shims
     patch_xtts_layers_on_disk()
-    patch_transformers_pytorch_utils_on_disk()
-    remove_eager_torch_shims()
-    apply_torch_load_patch()
+    remove_global_sitecustomize_shim()
     apply_transformers_shim()
     apply_pytorch_utils_shim()
 
