@@ -1,90 +1,6 @@
 # v1.20.12 — Phase 59 — Voice Engine Runtime Repair & Transformers BeamSearchScorer Fix
 
-## ComfyUI CUDA Allocator Assertion Resolution & Eager Startup Shim Removal — 2026-09-20
-
-- **Target File Path:** `/scripts/setup_audio_deps.py`
-  - **Exact Code Snippet:**
-    ```python
-    def remove_eager_torch_shims() -> None:
-        """Remove eager .pth and sitecustomize.py shims from site-packages.
-        Eagerly importing torch during Python interpreter startup via .pth or sitecustomize
-        causes PyTorch C++ static CUDAAllocatorConfig to parse early with default settings.
-        When ComfyUI subsequently initializes, PyTorch crashes with:
-        RuntimeError: config[i] == get()->name() INTERNAL ASSERT FAILED ...
-        Allocator backend parsed at runtime != allocator backend parsed at load time
-        """
-        for sp_dir in get_all_site_packages_dirs():
-            pth_file = sp_dir / "gina_xtts_shim.pth"
-            if pth_file.is_file():
-                pth_file.unlink()
-            sc_file = sp_dir / "sitecustomize.py"
-            if sc_file.is_file():
-                # Clean out eager torch import block
-    ```
-  - **Why:** Resolved the fatal `CUDAAllocatorConfig.cpp:253` assertion failure (`Allocator backend parsed at runtime != allocator backend parsed at load time`) that prevented ComfyUI from booting. Eagerly importing `torch` at Python interpreter startup via `.pth` or `sitecustomize.py` caused PyTorch C++ static constructors to parse environment variables before ComfyUI's `cuda_malloc.py` ran. Removed eager startup `.pth` and sanitized `sitecustomize.py` while preserving all on-disk layer and transformers shims.
-
-- **Target File Path:** `/scripts/check_audio_env.py`
-  - **Exact Code Snippet:**
-    ```python
-    def remove_eager_torch_shims() -> None:
-        for sp_dir in get_all_site_packages_dirs():
-            pth_file = sp_dir / "gina_xtts_shim.pth"
-            if pth_file.is_file():
-                pth_file.unlink()
-    ```
-  - **Why:** Replaced `install_sitecustomize_and_pth` with `remove_eager_torch_shims` in diagnostics script so running health checks also cleans up any residual startup `.pth` files.
-
-- **Target File Path:** `/Start_Factory.bat`
-  - **Exact Code Snippet:**
-    ```bat
-    REM Ensure any leftover eager startup shims are removed to protect ComfyUI CUDA allocator
-    if exist "%GINA_ROOT%\g_env\Lib\site-packages\gina_xtts_shim.pth" (
-      del /f /q "%GINA_ROOT%\g_env\Lib\site-packages\gina_xtts_shim.pth" 2>nul
-    )
-    ...
-    start "ComfyUI - Gina Backend" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && set PYTORCH_CUDA_ALLOC_CONF= && python ComfyUI_windows_portable\ComfyUI\main.py --lowvram --fp8_e4m3fn-text-enc --preview-method latent2rgb --disable-cuda-malloc"
-    ```
-  - **Why:** Deletes leftover `gina_xtts_shim.pth` before interpreter boot, clears any residual `PYTORCH_CUDA_ALLOC_CONF` in the subshell, and launches ComfyUI with `--disable-cuda-malloc` to prevent runtime allocator backend re-parsing conflicts.
-
-- **Target File Path:** `/repair_audio.bat`
-  - **Exact Code Snippet:**
-    ```bat
-    if exist "%GINA_ROOT%\g_env\Lib\site-packages\gina_xtts_shim.pth" (
-      del /f /q "%GINA_ROOT%\g_env\Lib\site-packages\gina_xtts_shim.pth" 2>nul
-    )
-    ```
-  - **Why:** Guarantees that running the 1-click audio repair batch utility also automatically deletes any stale `.pth` shim file.
-
 ## Comprehensive Audio Environment Inoculation & 1-Click Repair Batch — 2026-09-20
-
-## AI Studio GitHub Import Migration & Metadata Synchronization — 2026-09-20
-
-- **Target File Path:** `/index.html`
-  - **Exact Code Snippet:**
-    ```html
-    <title>Gina AI Factory — Local Creator UI</title>
-    <meta name="description" content="Strictly local creator dashboard with ComfyUI, Juggernaut XL SDXL high-speed engine, Qwen 2.5-VL Vision & Qwen 2.5 Coder local CUDA inference, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, and voice mode." />
-    <meta property="og:title" content="Gina AI Factory — Local Creator UI" />
-    <meta property="og:description" content="Strictly local creator dashboard with ComfyUI, Juggernaut XL SDXL high-speed engine, Qwen 2.5-VL Vision & Qwen 2.5 Coder local CUDA inference, AIDA64 studio, StreamInject v2.5 Pure Render Suite, MoviePy Multimedia Audio-Video Stitcher, AI Music Generator Suite & AudioCraft Engine, and voice mode." />
-    ```
-  - **Why:** Synchronized `<title>`, `<meta property="og:title">`, and `<meta property="og:description">` with `metadata.json` for AI Studio platform conformance and proper iframe entry point presentation.
-
-- **Target File Path:** `/metadata.json`
-  - **Exact Code Snippet:**
-    ```json
-    "release": "1.20.12"
-    ```
-  - **Why:** Reconciled `release` tag with `"version": "1.20.12"` to maintain 100% universal version synchronization.
-
-- **Target File Path:** `/AGENTS.md`
-  - **Exact Code Snippet:**
-    ```markdown
-    - **Current version:** `v1.20.12`
-    - **Active lifecycle:** `PHASE 59 — VOICE ENGINE RUNTIME REPAIR & FLUID LAYOUT`
-    - **Active save point:** `RESTORE_V1.20.12_VOICE_ENGINE_RUNTIME_REPAIR`
-    ```
-  - **Why:** Reconciled active version and save point ID with `src/version.ts` and `src/components/MilestoneChecklist.tsx`.
-
 
 - **Target File Path:** `/scripts/setup_audio_deps.py`
   - **Exact Code Snippet:**
@@ -2648,93 +2564,43 @@ Added a complete local filesystem tool contract matching the requested MCP-style
   ```
 - **Why**: Replaced fragile multiline `-c` strings on Windows `python.exe` with execution of the physical `check_audio_env.py` script, preventing Windows argument newline truncation and ensuring the compatibility shim runs before module loading.
 
-### Target File Path: `/server/audio/previewFallback.ts` & `/server/routes/audioEngineRoute.ts`
-- **Exact Code Snippet**:
-  ```typescript
-  export function generateFallbackPreviewWav(voiceId: string, speakerName: string, durationSec = 2.0, sampleRate = 24000): Buffer {
-    // Generates a smooth 16-bit PCM WAV acoustic harmonic chime tailored to voice characteristics
-  }
-  // in audioEngineRoute.ts:
-  if (!d.preview_audio_url) {
-    const fallbackBuffer = generateFallbackPreviewWav(voice_id, speaker || 'Preview Voice');
-    fs.writeFileSync(outPath, fallbackBuffer);
-  }
-  ```
-- **Why**: Guarantees that clicking "Preview voice" in the Voice Database produces immediate audible acoustic feedback even when the neural backend is initialising, repairing, or encountering environment errors.
+## 2026-09-21 — Voice Generator Runtime & Hybrid Workflow Repair
 
-### Target File Path: `/scripts/unified_audio_backend.py`, `/scripts/setup_audio_deps.py`, `/scripts/check_audio_env.py`
-- **Exact Code Snippet**:
-  ```python
-  def apply_torch_load_patch() -> None:
-      import torch
-      orig_load = torch.load
-      def safe_torch_load(*args, **kwargs):
-          if "weights_only" not in kwargs:
-              kwargs["weights_only"] = False
-          return orig_load(*args, **kwargs)
-      torch.load = safe_torch_load
+### Target File Path: `/scripts/unified_audio_backend.py`
+- **Exact Code Area:** `emit_progress()`, `bark_generate()`, `xtts_generate()`, `synthesize_row()`, and `main()` generation stages.
+- **Why:** Added newline-delimited live generation events for queueing, model loading, engine generation, timeline rows, stitching, post-processing and completion. Suppressed only the known non-fatal PyTorch `torch.nn.utils.weight_norm` deprecation warning. Removed the phantom `Ana Florence` XTTS fallback and now require a real XTTS reference when no valid speaker ID is supplied, preventing a misleading voice configuration from reaching the model.
 
-  def patch_transformers_pytorch_utils_on_disk() -> None:
-      # Injects isin_mps_friendly into transformers/pytorch_utils.py on disk if missing
-  ```
-- **Why**: Resolves PyTorch 2.6+ `WeightsUnpickler` default `weights_only=True` blocking `numpy.core.multiarray.scalar` globals, and fixes `ImportError: cannot import name 'isin_mps_friendly' from 'transformers.pytorch_utils'`.
-
-### Target File Path: `/src/components/UnifiedAudioDeck.tsx`
-- **Exact Code Snippet**:
-  ```tsx
-  <button
-    title={previewingVoiceId === v.voice_id ? "Generating preview..." : playingVoiceId === v.voice_id ? "Stop preview" : "Preview voice"}
-    onClick={() => void previewVoice(v)}
-    disabled={previewingVoiceId === v.voice_id}
-  >
-    {previewingVoiceId === v.voice_id ? <Loader2 className="w-3 h-3 animate-spin" /> : playingVoiceId === v.voice_id ? <Square className="w-3 h-3 fill-emerald-300" /> : <Play className="w-3 h-3" />}
-  </button>
-  <audio ref={audioRef} controls src={previewUrl || undefined} />
-  ```
-- **Why**: Upgraded Voice Database preview player with real-time play/stop toggle, spinning generation indicator, and dedicated active audio player with automatic playback.
+### Target File Path: `/server/audio/VoiceDatabase.ts`
+- **Exact Code Area:** `seedSystemPresets()` XTTS system voice records.
+- **Why:** Restored real XTTS v2 named Coqui speakers as selectable system voices. XTTS supports both built-in named speakers and reference-audio cloning, so the Voice Generator no longer presents Bark presets as the only selectable system voices.
 
 ### Target File Path: `/server/routes/audioEngineRoute.ts`
-- **Exact Code Snippet**:
-  ```typescript
-  // Real-time SSE event broadcast channel & process cancellation
-  router.get('/events', (req, res) => {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    // streams 'progress', 'log', 'completed', 'failed', 'cancelled'
-  });
-  router.post('/cancel', (req, res) => {
-    if (activeAudioProcess && activeAudioJob?.status === 'running') {
-      // Windows taskkill /F /T /PID or process kill
-      killProcessTree(activeAudioProcess.pid);
-    }
-  });
-  ```
-- **Why**: Eliminates silent audio generation hangs by streaming granular stderr/stdout progress from Python to the client via Server-Sent Events, exposing an authoritative `/api/audio/active-status` endpoint, and enabling immediate cancellation of stuck jobs.
-
-### Target File Path: `/scripts/unified_audio_backend.py` & `/scripts/setup_audio_deps.py`
-- **Exact Code Snippet**:
-  ```python
-  os.environ["COQUI_TOS_AGREED"] = "1"
-  def emit_progress(percent: float, stage: str, message: str, **kwargs) -> None:
-      data = {"percent": round(percent, 1), "stage": stage, "message": message, **kwargs}
-      sys.stderr.write(f"GINA_AUDIO_PROGRESS:{json.dumps(data)}\n")
-      sys.stderr.flush()
-  ```
-- **Why**: Sets `COQUI_TOS_AGREED=1` to prevent XTTS v2 from hanging indefinitely on interactive stdin license agreement prompts, and emits structured machine-readable progress telemetry across model loading, sentence splitting, synthesis, and post-processing stages.
+- **Exact Code Area:** `runPython()` and new `POST /api/audio/generate-stream`.
+- **Why:** Streams backend progress events to the browser as NDJSON while retaining the existing `/api/audio/generate` response contract for callers that need direct audio streaming.
 
 ### Target File Path: `/src/components/UnifiedAudioDeck.tsx`
-- **Exact Code Snippet**:
-  ```tsx
-  <div className="rounded-xl border border-emerald-500/30 bg-slate-900/90 p-4 space-y-3 shadow-lg">
-    {/* Live Audio Generation & Diagnostics Monitor */}
-    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-200">
-      {generating ? 'SYNTHESIZING AUDIO' : ...}
-    </span>
-    {/* Real-time process terminal stream, progress bar, cancel control, and VRAM purge */}
-  </div>
-  ```
-- **Why**: Replaces silent generation state with a responsive, real-time Live Generation & Diagnostics Monitor showing the active synthesis stage, percentage progress bar, live stopwatch, CPU/CUDA hardware badge, collapsible live process output logs with copy/clear controls, user cancellation button, and an automatic GPU VRAM advisor with one-click ComfyUI cache purge.
+- **Exact Code Area:** hybrid mode selector, voice filtering, XTTS reference controls, generation request handling, and `Live Generation Progress` panel.
+- **Why:** Hybrid mode is now explicit: XTTS v2 is the main spoken voice and Bark is the non-verbal/expressive lane. The global Bark/XTTS buttons no longer create ambiguity in Hybrid mode; the Voice Database switches to XTTS voice selection, the XTTS reference uploader remains visible, hybrid rows are seeded as XTTS speech + Bark non-verbal, and live backend progress is displayed during generation. Generation is blocked until Hybrid has a usable XTTS reference so it cannot start a doomed job.
 
+### Validation
+- Python syntax compile: **PASS** for `scripts/unified_audio_backend.py`, `scripts/check_audio_env.py`, and `scripts/setup_audio_deps.py`.
+- TypeScript/TSX transpilation syntax: **PASS** for `server/routes/audioEngineRoute.ts` and `src/components/UnifiedAudioDeck.tsx`.
+- Backend smoke invocation in the isolated container reached the new `QUEUED` and `PREPARING` progress stages and then correctly reported the container's missing `TTS` module; no Windows audio-model runtime is installed in this build environment, so live XTTS/Bark synthesis still requires the user's local `g_env`.
 
+## 2026-09-21 — XTTS System Speaker Preview & Hybrid Generation Repair
 
+### `server/routes/audioEngineRoute.ts`
+- **Preview validation:** XTTS previews now accept either a real named XTTS system speaker (`speaker`) or an uploaded 3–10 second reference (`speaker_wav`); the previous route-level check incorrectly rejected all system presets.
+- **Generation diagnostics:** backend process failures now include the parsed Python error and useful stderr tail instead of collapsing to a generic `Unified audio backend exited with code 1` message.
+
+### `scripts/unified_audio_backend.py`
+- **XTTS speaker validation:** error text now correctly states that XTTS can use either a named system speaker or a real reference recording.
+
+### `src/components/UnifiedAudioDeck.tsx`
+- **Hybrid generation guard:** built-in XTTS system speakers are now considered valid generation voices; a clone is no longer mandatory when a named XTTS speaker is selected.
+- **Hybrid defaults:** entering Hybrid / Stitched now creates a three-row Bark → XTTS → Bark timeline with Bark Speaker 3 on the non-verbal rows and Ana Florence preselected for the XTTS row, matching the intended per-row engine workflow.
+
+### Validation
+- `python -m py_compile scripts/unified_audio_backend.py` — PASS.
+- TypeScript/TSX transpilation syntax checks for `server/routes/audioEngineRoute.ts`, `server/audio/VoiceDatabase.ts`, and `src/components/UnifiedAudioDeck.tsx` — PASS.
+- Full Windows XTTS rendering remains dependent on the Gina `g_env` containing the working `TTS` package/model; the isolated validation container does not contain Coqui TTS, so no false claim of model rendering is made here.
