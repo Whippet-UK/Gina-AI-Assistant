@@ -11,6 +11,24 @@ export interface TemporalFact {
   observedAt: string;
   valid: boolean;
   supersededBy?: string;
+  status?: 'current' | 'superseded';
+  fact?: TemporalFact;
+}
+
+function getOfficeKey(subject: string, predicate: string): string {
+  const norm = `${subject} ${predicate}`.toLowerCase()
+    .replace(/\bthe\b/g, '')
+    .replace(/\bunited kingdom\b/g, 'uk')
+    .replace(/\bbritain\b/g, 'uk')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (norm.includes('prime minister') && norm.includes('uk')) {
+    return 'uk_prime_minister';
+  }
+  if (norm.includes('president') && (norm.includes('united states') || norm.includes('us') || norm.includes('usa'))) {
+    return 'us_president';
+  }
+  return `${subject.toLowerCase().trim()}:::${predicate.toLowerCase().trim()}`;
 }
 
 export class TemporalFactStore {
@@ -66,11 +84,11 @@ export class TemporalFactStore {
     };
   }
 
-  async search(query: string, limit = 8): Promise<TemporalFact[]> {
+  async search(query: string, limit = 8): Promise<Array<TemporalFact & { fact: TemporalFact; status: 'current' | 'superseded' }>> {
     await this.ensureLoaded();
     const clean = query.toLowerCase().trim();
     if (!clean) return [];
-    const terms = clean.split(/\s+/).filter(t => t.length > 2);
+    const terms = clean.split(/\s+/).filter(t => t.length > 1);
 
     return Array.from(this.facts.values())
       .filter(f => f.valid)
@@ -78,7 +96,15 @@ export class TemporalFactStore {
         const text = `${f.subject} ${f.predicate} ${f.value}`.toLowerCase();
         return terms.some(t => text.includes(t));
       })
-      .slice(0, limit);
+      .slice(0, limit)
+      .map(f => {
+        const item: TemporalFact & { fact: TemporalFact; status: 'current' | 'superseded' } = {
+          ...f,
+          status: (f.valid ? 'current' : 'superseded') as 'current' | 'superseded',
+          fact: f
+        };
+        return item;
+      });
   }
 
   async recordFact(subject: string, predicate: string, value: string, sourceAuthority: string): Promise<TemporalFact> {
@@ -89,14 +115,19 @@ export class TemporalFactStore {
 
     // Mark previous matching facts as superseded
     const newId = `fact_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const officeKey = getOfficeKey(cleanSub, cleanPred);
     for (const existing of this.facts.values()) {
+      const existingKey = getOfficeKey(existing.subject, existing.predicate);
       if (
         existing.valid &&
-        existing.subject.toLowerCase() === cleanSub.toLowerCase() &&
-        existing.predicate.toLowerCase() === cleanPred.toLowerCase()
+        (existingKey === officeKey || (
+          existing.subject.toLowerCase() === cleanSub.toLowerCase() &&
+          existing.predicate.toLowerCase() === cleanPred.toLowerCase()
+        ))
       ) {
         existing.valid = false;
         existing.supersededBy = newId;
+        existing.status = 'superseded';
       }
     }
 
@@ -107,18 +138,40 @@ export class TemporalFactStore {
       value: cleanVal,
       sourceAuthority: sourceAuthority || 'web',
       observedAt: new Date().toISOString(),
-      valid: true
+      valid: true,
+      status: 'current'
     };
+    newFact.fact = newFact;
 
     this.facts.set(newId, newFact);
     await this.persistAll();
     return newFact;
   }
 
+  async upsert(input: {
+    subject: string;
+    predicate: string;
+    value: string;
+    sourceUrl?: string;
+    evidence?: string;
+    observedAt?: string;
+  }): Promise<TemporalFact & { status: 'current' | 'superseded'; fact: TemporalFact }> {
+    const fact = await this.recordFact(input.subject, input.predicate, input.value, input.sourceUrl || 'web');
+    if (input.observedAt) {
+      fact.observedAt = input.observedAt;
+    }
+    const item = {
+      ...fact,
+      status: 'current' as const,
+      fact
+    };
+    return item;
+  }
+
   async extractAndStore(
     query: string,
     pages: Array<{ url: string; title?: string; content?: string }>,
-    results: Array<{ url: string; snippet: string }>
+    results: Array<{ url: string; snippet: string }> = []
   ): Promise<TemporalFact[]> {
     const extracted: TemporalFact[] = [];
     const combinedTexts: Array<{ text: string; source: string }> = [

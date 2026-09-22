@@ -427,7 +427,10 @@ def main() -> int:
             print(f"[Unified Audio] Installing/repairing {name}...")
             if name == "TTS":
                 subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "TTS"], check=False)
-            install(REQUIRED[name])
+            success = install(REQUIRED[name])
+            if not success and name == "bark":
+                print("[Unified Audio] Retrying bark installation with suno-bark from PyPI...")
+                install([sys.executable, "-m", "pip", "install", "suno-bark"])
 
         # Re-apply shims after pip install
         patch_xtts_layers_on_disk()

@@ -33,6 +33,7 @@ REM needs. Installing it with --no-deps stops pip's resolver from silently
 REM upgrading transformers back past 4.4x and undoing the pin below.
 python -m pip install "transformers==4.44.2" pydub scipy
 python -m pip install --no-deps coqui-tts
+python -m pip install suno-bark
 python -m pip install "transformers==4.44.2"
 
 echo.

@@ -153,6 +153,48 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
           vram: 6200,
           node: 'SamplerCustomAdvanced (Node #10)',
           err: 'VRAM pressure during optional high-precision image generation'
+        },
+        geneva_fp8: {
+          name: 'Geneva 1.12B FP8',
+          workflow: 'geneva_flow',
+          vram: 5100,
+          node: 'CheckpointLoader (Node #1)',
+          err: 'VRAM pressure during FP8 weights allocation'
+        },
+        qwen_coder_7b: {
+          name: 'Qwen Coder 7B Q5_K_M',
+          workflow: 'local_llm_coder',
+          vram: 5100,
+          node: 'llama.cpp CUDA offload',
+          err: 'VRAM allocation spike on 28 pinned GPU layers'
+        },
+        qwen35_9b: {
+          name: 'Qwen 3.5 9B Q4_K_M',
+          workflow: 'local_llm_qwen35',
+          vram: 6100,
+          node: 'llama.cpp CUDA offload',
+          err: 'VRAM pressure near 7372 MB cage boundary'
+        },
+        bark_audio: {
+          name: 'Bark Small Text-to-Audio / SFX',
+          workflow: 'unified_audio',
+          vram: 1800,
+          node: 'Bark Small Engine',
+          err: 'Transient CPU/GPU allocation spike during Bark speech synthesis'
+        },
+        xtts_v2_audio: {
+          name: 'XTTS v2 Voice Cloning',
+          workflow: 'unified_audio',
+          vram: 2100,
+          node: 'Coqui XTTS v2 Engine',
+          err: 'VRAM allocation spike during speaker conditioning embedding calculation'
+        },
+        rife_vfi: {
+          name: 'RIFE 4.7 Flow Interpolation',
+          workflow: 'rife_vfi',
+          vram: 1600,
+          node: 'RIFE Tensor Engine',
+          err: 'VRAM spike during 4x optical flow tensor computation'
         }
       };
 
@@ -821,7 +863,7 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
                     )}
                     {m.status === 'WARN' && (
                       <span className="inline-flex items-center gap-1 text-amber-400 font-bold text-[10px]">
-                        <AlertTriangle className="w-3 h-3" /> CAP FRAMES &lt;=73
+                        <AlertTriangle className="w-3 h-3" /> {m.modelId.includes('video') ? 'CAP FRAMES <=73' : m.modelId.includes('audio') ? 'CPU OFFLOAD PREFERRED' : 'MONITOR HEADROOM'}
                       </span>
                     )}
                     {m.status === 'CRITICAL' && (

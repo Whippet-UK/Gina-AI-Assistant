@@ -17,23 +17,132 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
-# Ensure transformers backwards-compatibility for Coqui XTTS (BeamSearchScorer and LogitsWarper)
-try:
-    import transformers
-    if not hasattr(transformers, "BeamSearchScorer"):
-        try:
-            from transformers.generation.beam_search import BeamSearchScorer
-            transformers.BeamSearchScorer = BeamSearchScorer
-        except Exception:
-            pass
-    if not hasattr(transformers, "LogitsWarper"):
-        try:
-            from transformers.generation.logits_process import LogitsWarper
-            transformers.LogitsWarper = LogitsWarper
-        except Exception:
-            pass
-except Exception:
-    pass
+# Set critical environment variables before any ML package imports
+os.environ.setdefault("COQUI_TOS_AGREED", "1")
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("SUNO_USE_SMALL_MODELS", "True")
+os.environ.setdefault("SUNO_OFFLOAD_CPU", "True")
+
+# Suppress known benign deprecation and hub rate warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message=r".*torch\.nn\.utils\.weight_norm.*deprecated.*")
+warnings.filterwarnings("ignore", message=r".*torch\.cuda\.amp\.autocast.*")
+warnings.filterwarnings("ignore", message=r".*unauthenticated requests to the HF Hub.*")
+
+class FallbackBeamSearchScorer:
+    """Fallback BeamSearchScorer satisfying XTTS GPT layer requirements when modern transformers omits it."""
+    def __init__(self, batch_size: int = 1, max_length: int = 512, num_beams: int = 1, device: str = "cpu",
+                 length_penalty: float = 1.0, do_early_stopping: bool = False, num_beam_hyps_to_keep: int = 1,
+                 num_beam_groups: int = 1, **kwargs) -> None:
+        self.batch_size = batch_size
+        self.num_beams = num_beams
+        self.device = device
+        self.length_penalty = length_penalty
+        self.do_early_stopping = do_early_stopping
+        self.num_beam_hyps_to_keep = num_beam_hyps_to_keep
+        self.num_beam_groups = num_beam_groups
+        self._beam_hyps = [[] for _ in range(max(1, batch_size))]
+        self._done = [False for _ in range(max(1, batch_size))]
+
+    def is_done(self) -> bool:
+        return all(self._done)
+
+    def process(self, input_ids, next_scores, next_tokens, next_indices, **kwargs):
+        return {
+            "next_beam_scores": next_scores,
+            "next_beam_tokens": next_tokens,
+            "next_beam_indices": next_indices,
+        }
+
+    def finalize(self, input_ids, final_beam_scores, **kwargs):
+        return input_ids
+
+
+class FallbackLogitsWarper:
+    """Fallback LogitsWarper for XTTS sequence generation."""
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    def __call__(self, input_ids, scores):
+        return scores
+
+
+def apply_transformers_shim() -> None:
+    """Ensure transformers exports BeamSearchScorer and LogitsWarper for XTTS GPT layers."""
+    try:
+        import transformers
+    except Exception:
+        return
+
+    bss = getattr(transformers, "BeamSearchScorer", None)
+    if bss is None:
+        for mod_path in ("transformers.generation.beam_search", "transformers.generation", "transformers.generation.utils"):
+            try:
+                m = __import__(mod_path, fromlist=["BeamSearchScorer"])
+                bss = getattr(m, "BeamSearchScorer", None)
+                if bss is not None:
+                    break
+            except Exception:
+                continue
+    if bss is None:
+        bss = FallbackBeamSearchScorer
+
+    lw = getattr(transformers, "LogitsWarper", None)
+    if lw is None:
+        for mod_path in ("transformers.generation.logits_process", "transformers.generation", "transformers.generation.utils"):
+            try:
+                m = __import__(mod_path, fromlist=["LogitsWarper"])
+                lw = getattr(m, "LogitsWarper", None)
+                if lw is not None:
+                    break
+            except Exception:
+                continue
+    if lw is None:
+        lw = FallbackLogitsWarper
+
+    try:
+        setattr(transformers, "BeamSearchScorer", bss)
+        setattr(transformers, "LogitsWarper", lw)
+        if hasattr(transformers, "_extra_objects") and isinstance(transformers._extra_objects, dict):
+            transformers._extra_objects["BeamSearchScorer"] = bss
+            transformers._extra_objects["LogitsWarper"] = lw
+        for gen_mod_name in ("transformers.generation", "transformers.generation.utils", "transformers.generation.beam_search"):
+            try:
+                gmod = sys.modules.get(gen_mod_name)
+                if gmod is None:
+                    gmod = __import__(gen_mod_name, fromlist=["BeamSearchScorer"])
+                if not hasattr(gmod, "BeamSearchScorer"):
+                    setattr(gmod, "BeamSearchScorer", bss)
+                if not hasattr(gmod, "LogitsWarper"):
+                    setattr(gmod, "LogitsWarper", lw)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def apply_pytorch_utils_shim() -> None:
+    """Ensure transformers.pytorch_utils exports isin_mps_friendly."""
+    try:
+        import transformers.pytorch_utils as ptu
+        if not hasattr(ptu, "isin_mps_friendly"):
+            import torch
+
+            def isin_mps_friendly(elements, test_elements):
+                if not torch.is_tensor(test_elements):
+                    test_elements = torch.tensor(test_elements, device=elements.device)
+                if elements.device.type == "mps":
+                    return (elements[..., None] == test_elements.reshape(-1)).any(-1)
+                return torch.isin(elements, test_elements)
+
+            ptu.isin_mps_friendly = isin_mps_friendly
+    except Exception:
+        pass
+
+apply_transformers_shim()
+apply_pytorch_utils_shim()
 
 ROOT = Path(os.environ.get("GINA_ROOT", r"C:\Gina_AI"))
 OUTPUT_ROOT = ROOT / "media" / "unified_audio"
@@ -41,15 +150,6 @@ OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 
 TAG_RE = re.compile(r"\[[^\]]*\]")
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
-
-# Bark currently triggers PyTorch's legacy weight_norm deprecation warning on
-# otherwise successful generation. Keep the terminal useful: real exceptions
-# and stderr remain visible, but this known non-fatal warning is suppressed.
-warnings.filterwarnings(
-    "ignore",
-    message=r".*torch\.nn\.utils\.weight_norm.*deprecated.*",
-    category=FutureWarning,
-)
 
 
 def emit_progress(stage: str, percent: int, message: str, **extra: Any) -> None:
@@ -67,10 +167,34 @@ def clamp(value: Any, low: float, high: float, default: float) -> float:
     return max(low, min(high, n))
 
 
+BARK_TAG_MAP = {
+    r"\[applaud[s]?\]": "[applause]",
+    r"\[clapping\]": "[applause]",
+    r"\[cheer(ing|s)?\]": "[applause]",
+    r"\[laughter in background\]": "[laughter]",
+    r"\[giggle[s]?\]": "[laughter]",
+    r"\[chuckle[s]?\]": "[laughter]",
+    r"\[gasping\]": "[gasps]",
+    r"\[gasp\]": "[gasps]",
+    r"\[sighing\]": "[sighs]",
+    r"\[sigh\]": "[sighs]",
+    r"\[whisper(ing)?\]": "[whispers]",
+    r"\[cough(ing)?\]": "[clears throat]",
+    r"\[throat[- ]clear(ing)?\]": "[clears throat]",
+    r"\[clear(s)?[- ]throat\]": "[clears throat]",
+    r"\[singing\]": "♪",
+    r"\[song\]": "♪",
+}
+
+
 def clean_text(text: str, engine: str, strip_tags: bool) -> str:
     value = str(text or "").strip()
     if engine.lower() in {"xtts", "xtts_v2", "xtts v2"} and strip_tags:
         value = TAG_RE.sub("", value)
+    elif engine.lower() in {"bark", "suno_bark"}:
+        # Standardize non-verbal tags to Bark's exact native token vocabulary
+        for pattern, replacement in BARK_TAG_MAP.items():
+            value = re.sub(pattern, replacement, value, flags=re.IGNORECASE)
     return re.sub(r"\s+", " ", value).strip()
 
 
@@ -287,25 +411,48 @@ def bark_generate(text: str, options: dict[str, Any], output_wav: Path, progress
         preload_models()
         emit_progress("GENERATING BARK", progress_base + int(progress_span * 0.35), "Generating Bark speech / non-verbal audio…", engine="bark", row=row_index, total_rows=total_rows)
         temperature = clamp(options.get("temperature"), 0.1, 1.2, 0.7)
-        voice = str(options.get("voice_preset") or "v2/en_speaker_6")
-        # In hybrid timelines a row can be set to Bark while inheriting a voice
-        # that was actually picked for XTTS (e.g. "Ana Florence") -- those names
-        # aren't valid Bark history prompts and Bark has no fallback of its own,
-        # it just raises. Validate before calling generate_audio() so a mismatched
-        # voice degrades to Bark's default speaker instead of failing the row.
-        is_valid_bark_prompt = (
-            voice in ALLOWED_PROMPTS
-            or voice.startswith("v2/")
-            or os.path.isfile(voice)
+        voice = str(options.get("voice_preset") or "v2/en_speaker_6").strip()
+
+        # Check if text is purely non-verbal tags or if user requested pure acoustic/SFX generation
+        non_tag_text = TAG_RE.sub("", text).strip()
+        is_pure_nonverbal = len(re.sub(r"[^\w]", "", non_tag_text)) == 0
+        wants_unconditioned = (
+            voice.lower() in {"none", "unconditioned", "pure_sfx", "sfx", "ambient", "no_speaker", "acoustic"}
+            or options.get("pure_sfx") is True
+            or options.get("clean_nonverbal") is True
+            or (is_pure_nonverbal and options.get("force_voice") is not True)
         )
-        if not is_valid_bark_prompt:
-            print(
-                f"[Unified Audio] '{voice}' is not a Bark voice preset "
-                f"(it looks like an XTTS speaker name) -- falling back to v2/en_speaker_6 for this row.",
-                file=sys.stderr,
+
+        history_prompt: str | None = None
+        prompt_desc = "unconditioned pure SFX"
+        if not wants_unconditioned:
+            # In hybrid timelines a row can be set to Bark while inheriting a voice
+            # that was actually picked for XTTS (e.g. "Ana Florence") -- those names
+            # aren't valid Bark history prompts and Bark has no fallback of its own,
+            # it just raises. Validate before calling generate_audio() so a mismatched
+            # voice degrades to Bark's default speaker instead of failing the row.
+            if not voice.startswith("v2/") and not os.path.isfile(voice) and not voice.endswith(".npz"):
+                if re.match(r"^[a-z]{2}_speaker_\d+$", voice):
+                    voice = f"v2/{voice}"
+
+            is_valid_bark_prompt = (
+                voice in ALLOWED_PROMPTS
+                or voice.startswith("v2/")
+                or os.path.isfile(voice)
+                or voice.endswith(".npz")
             )
-            voice = "v2/en_speaker_6"
-        audio = generate_audio(text, history_prompt=voice, text_temp=temperature, waveform_temp=temperature)
+            if not is_valid_bark_prompt:
+                print(
+                    f"[Unified Audio] '{voice}' is not a Bark voice preset "
+                    f"(it looks like an XTTS speaker name) -- falling back to v2/en_speaker_6 for this row.",
+                    file=sys.stderr,
+                )
+                voice = "v2/en_speaker_6"
+            history_prompt = voice
+            prompt_desc = voice
+
+        emit_progress("GENERATING BARK", progress_base + int(progress_span * 0.35), f"Generating Bark speech / audio ({prompt_desc})…", engine="bark", row=row_index, total_rows=total_rows)
+        audio = generate_audio(text, history_prompt=history_prompt, text_temp=temperature, waveform_temp=temperature)
         emit_progress("WRITING BARK", progress_base + int(progress_span * 0.82), "Writing Bark waveform…", engine="bark", row=row_index, total_rows=total_rows)
         write_wav(str(output_wav), SAMPLE_RATE, audio)
     
@@ -319,16 +466,57 @@ def xtts_generate(text: str, options: dict[str, Any], output_wav: Path, progress
 
     device = choose_device(torch)
     emit_progress("LOADING XTTS", progress_base + int(progress_span * 0.15), "Loading XTTS v2 voice model…", engine="xtts_v2", row=row_index, total_rows=total_rows)
-    model = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
-    language = str(options.get("language") or "en")
+    use_gpu = (device == "cuda")
+    try:
+        model = TTS("tts_models/multilingual/multi-dataset/xtts_v2", gpu=use_gpu)
+    except TypeError:
+        model = TTS("tts_models/multilingual/multi-dataset/xtts_v2")
+        if hasattr(model, "to") and not use_gpu and device != "cpu":
+            try:
+                model.to(device)
+            except Exception:
+                pass
+
+    language = str(options.get("language") or "en").lower().strip()
+    lang_map = {
+        "english": "en", "spanish": "es", "french": "fr", "german": "de",
+        "italian": "it", "portuguese": "pt", "polish": "pl", "turkish": "tr",
+        "russian": "ru", "dutch": "nl", "czech": "cs", "arabic": "ar",
+        "chinese": "zh-cn", "japanese": "ja", "hungarian": "hu", "korean": "ko", "hindi": "hi"
+    }
+    language = lang_map.get(language, language)
+
     speaker_wav = options.get("speaker_wav")
     speaker = options.get("speaker")
+
+    avail_speakers = []
+    if hasattr(model, "speakers") and model.speakers:
+        avail_speakers = list(model.speakers)
+    elif hasattr(model, "synthesizer") and hasattr(model.synthesizer, "tts_speakers") and model.synthesizer.tts_speakers:
+        avail_speakers = list(model.synthesizer.tts_speakers)
+
     if speaker_wav:
         speaker_wav = str(speaker_wav)
         if not os.path.isfile(speaker_wav):
             raise FileNotFoundError(f"XTTS voice reference was not found: {speaker_wav}")
-    elif not speaker:
-        raise ValueError("XTTS v2 needs either a named system speaker or a real 3–10 second voice reference. Select an XTTS system voice or upload a voice sample.")
+    elif speaker:
+        speaker_str = str(speaker).strip()
+        if avail_speakers:
+            if speaker_str not in avail_speakers:
+                match = next((s for s in avail_speakers if s.lower() == speaker_str.lower() or s.lower().replace(" ", "_") == speaker_str.lower().replace(" ", "_")), None)
+                if match:
+                    speaker = match
+                else:
+                    print(f"[Unified Audio] Speaker '{speaker_str}' not in XTTS speakers list. Falling back to '{avail_speakers[0]}'.", file=sys.stderr)
+                    speaker = avail_speakers[0]
+            else:
+                speaker = speaker_str
+    else:
+        if avail_speakers:
+            speaker = avail_speakers[0]
+        else:
+            speaker = "Ana Florence"
+
     kwargs: dict[str, Any] = {
         "text": text,
         "file_path": str(output_wav),
@@ -343,7 +531,16 @@ def xtts_generate(text: str, options: dict[str, Any], output_wav: Path, progress
     else:
         kwargs["speaker"] = speaker
     emit_progress("GENERATING XTTS", progress_base + int(progress_span * 0.38), "Generating the main spoken voice with XTTS v2…", engine="xtts_v2", row=row_index, total_rows=total_rows)
-    model.tts_to_file(**kwargs)
+    try:
+        model.tts_to_file(**kwargs)
+    except TypeError:
+        kwargs.pop("repetition_penalty", None)
+        kwargs.pop("length_penalty", None)
+        try:
+            model.tts_to_file(**kwargs)
+        except TypeError:
+            kwargs.pop("temperature", None)
+            model.tts_to_file(**kwargs)
     emit_progress("WRITING XTTS", progress_base + int(progress_span * 0.82), "XTTS voice render complete; writing waveform…", engine="xtts_v2", row=row_index, total_rows=total_rows)
 
 
@@ -443,8 +640,20 @@ def main(payload: dict[str, Any]) -> dict[str, Any]:
 
 if __name__ == "__main__":
     try:
-        payload = json.loads(sys.stdin.read())
-        print(json.dumps(main(payload), ensure_ascii=False))
+        raw_input = sys.stdin.read()
+        if not raw_input.strip():
+            raise ValueError("No input payload received on stdin.")
+        payload = json.loads(raw_input)
+        result = main(payload)
+        print(json.dumps(result, ensure_ascii=False), flush=True)
     except Exception as exc:
-        print(json.dumps({"ok": False, "error": str(exc)}))
+        import traceback
+        err_payload = {
+            "ok": False,
+            "error": str(exc),
+            "traceback": traceback.format_exc(),
+        }
+        print(json.dumps(err_payload, ensure_ascii=False), flush=True)
+        sys.stdout.flush()
+        sys.stderr.flush()
         raise SystemExit(1)

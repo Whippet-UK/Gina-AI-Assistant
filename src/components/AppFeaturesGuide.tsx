@@ -25,7 +25,8 @@ import {
   Database,
   Layers,
   FileCode,
-  HardDrive
+  HardDrive,
+  AudioLines
 } from 'lucide-react';
 
 export const AppFeaturesGuide: React.FC = () => {
@@ -279,6 +280,79 @@ export const AppFeaturesGuide: React.FC = () => {
         'Thermal Governance: GIF/video processing targets 60°C and escalates to the 85°C emergency brake when required.',
         'Live NVML D3.js Telemetry: Real-time graphs displaying VRAM usage, GPU core temperature, and system RAM across tabs.'
       ]
+    },
+    {
+      id: 'voice_audio_generator',
+      title: 'Unified Voice Generator (Bark + XTTS v2)',
+      icon: AudioLines,
+      color: 'text-pink-400',
+      bgColor: 'bg-pink-500/10',
+      borderColor: 'border-pink-500/30',
+      badge: 'Bark + XTTS v2 · Dual Engine',
+      category: 'Voice & Audio Engine',
+      shortDesc: 'Unified local speech, 3–10s voice cloning, sound effects, SQLite voice catalog, and multi-speaker timeline sequencing.',
+      details: [
+        'Dual-Engine Architecture: Bark for natural conversational speech, prosody, and rich non-verbal SFX tags ([applause], [laughter], [sighs], etc.); XTTS v2 for 3–10s voice cloning with zero training.',
+        'SQLite Voice Catalog & Sharing: Persistent SQLite database at data/audio/voices.db with System Presets, Custom/Cloned voices, and Shared Community presets with dynamic category publishing.',
+        'Dual-Engine Compatibility: Cloned and custom voice presets can be bound to both XTTS v2 and Bark pipelines without dropping out of engine selectors.',
+        'Zero-GPU & VRAM Safety: Built-in SUNO_OFFLOAD_CPU and SUNO_USE_SMALL_MODELS flags ensuring concurrent generation without overflowing the 8GB RTX 3070 Ti ceiling.',
+        'Interactive Multi-Speaker Timeline: Mix Bark and XTTS voices across sequenced script rows with automatic PyDub stitching and cross-fade export.',
+        'Non-Verbal SFX Synthesis: Bark sound effects engine mapping bracketed tags with fallback unconditioned generation for pure SFX.'
+      ]
+    },
+    {
+      id: 'gif_studio_isolated',
+      title: 'GIF & APNG Conversion Studio (Isolated FFmpeg)',
+      icon: Film,
+      color: 'text-amber-400',
+      bgColor: 'bg-amber-500/10',
+      borderColor: 'border-amber-500/30',
+      badge: 'Isolated FFmpeg · 0 MB VRAM',
+      category: 'Media Processing',
+      shortDesc: 'High-quality GIF and animated PNG conversion with custom FPS, resolution scaling, text overlays, and palettegen optimization.',
+      details: [
+        'Isolated Asset Pipeline: Uses dedicated FFmpeg binary runs with two-pass palettegen filtergraph, completely isolated from ComfyUI VRAM overhead.',
+        'Dual Animated Format Export: Exports both standard web GIF and 24-bit alpha-channel Animated PNG (APNG).',
+        'Speed & Frame Rate Governance: Fine-grained controls for playback speed (0.25x to 4x), target FPS (5 to 30), and resolution presets.',
+        'Dynamic Watermarks & Text Overlays: Configurable font sizes, colors, and positioning with instant preview.',
+        'Zero ComfyUI Dependency: Prevents video queue blocking by running asset conversions asynchronously on the CPU.'
+      ]
+    },
+    {
+      id: 'streaminject_audio_watermark',
+      title: 'StreamInject Audio Stripping & Telea Watermark Inpainting',
+      icon: Film,
+      color: 'text-purple-400',
+      bgColor: 'bg-purple-500/10',
+      borderColor: 'border-purple-500/30',
+      badge: 'FFmpeg + OpenCV Telea',
+      category: 'Video Post-Production',
+      shortDesc: 'Zero-GPU audio stripping and CPU-only OpenCV Telea inpainting pre-pass for static watermark removal.',
+      details: [
+        'Zero-GPU Stream-Copy Stripping: Instantaneous removal of background game or broadcast audio streams using -an -c:v copy without re-encoding.',
+        'CPU-Bounded Telea Inpainting: Standalone OpenCV Fast Marching Telea algorithm targeting bounded coordinate boxes.',
+        'Percentage-Controlled Inpainting Box: Interactive X%, Y%, W%, H% bounding box with live visual preview overlay.',
+        'Non-Destructive Pre-Pass: Generates intermediate sanitized video files preserving original raw footage on disk.',
+        'Multi-Zone Compositing: Integrates seamlessly into StreamInject 6-track audio/video mixing and HUD layout overlays.'
+      ]
+    },
+    {
+      id: 'whole_pc_power_telemetry',
+      title: 'Whole-PC Power & Energy Cost Telemetry',
+      icon: Zap,
+      color: 'text-yellow-400',
+      bgColor: 'bg-yellow-500/10',
+      borderColor: 'border-yellow-500/30',
+      badge: 'Live Wall Draw · £/hr & p/hr',
+      category: 'System Telemetry',
+      shortDesc: 'Real-time whole-system power estimation combining GPU, CPU, and motherboard baselines with live electricity cost tracking.',
+      details: [
+        'Whole-System Power Estimation: Aggregates real-time NVIDIA NVML GPU draw, CPU package power, and base system idle wattage.',
+        'Live Tariff Calculation: Configurable electricity price per kWh (default £0.28/kWh) with simultaneous £/hr and pence/hr (p/hr) display.',
+        'Model Inference Energy Footprint: Correlates power spikes with specific model loads (SDXL, Wan 2.1, Qwen 2.5-VL).',
+        'Rolling 30-Second History: Continuous SVG power timeline displaying instant load changes and thermal escalation.',
+        'Zero VRAM Footprint: Background Node.js polling with negligible CPU overhead.'
+      ]
     }
   ];
 
@@ -300,6 +374,17 @@ export const AppFeaturesGuide: React.FC = () => {
     { phase: 15, name: 'High-DPI AIDA64 Frameless Desktop HUD & Sensor Dock', status: 'COMPLETED' },
     { phase: 16, name: 'Multi-GGUF Benchmark Suite & Dynamic VRAM Layer Tuner', status: 'COMPLETED' },
     { phase: 17, name: 'Local Filesystem Knowledge Ingestion & Auto-Indexing Agent', status: 'COMPLETED' },
+    { phase: 30, name: 'StreamInject v2.5 Pure Render Suite & Canvas Builder', status: 'COMPLETED' },
+    { phase: 33, name: 'Qwen 2.5-VL 7B & Juggernaut-XL v9 Ultra-Acceleration', status: 'COMPLETED' },
+    { phase: 49, name: 'Autonomous Project Completion Gate & Persistent Project Map', status: 'COMPLETED' },
+    { phase: 50, name: 'Autonomous Research Engine, Repair Loop & GitHub Lifecycle', status: 'COMPLETED' },
+    { phase: 52, name: 'GIF Studio Isolated FFmpeg Processing & APNG Export', status: 'COMPLETED' },
+    { phase: 54, name: 'StreamInject Source Audio Stripping Engine', status: 'COMPLETED' },
+    { phase: 55, name: 'StreamInject Static Watermark Telea Inpainting', status: 'COMPLETED' },
+    { phase: 56, name: 'Unified Audio Generation (Bark + XTTS v2) & Whole-PC Telemetry', status: 'COMPLETED' },
+    { phase: 57, name: 'Voice Generator Database Ingestion & Local AI Interactive Preview', status: 'COMPLETED' },
+    { phase: 58, name: 'Voice Engine Physical Audio Repair & Fluid 12-Col Layout', status: 'COMPLETED' },
+    { phase: 59, name: 'Voice Engine Runtime Repair & Transformers BeamSearchScorer Fix', status: 'COMPLETED' }
   ];
 
   return (
@@ -348,7 +433,7 @@ export const AppFeaturesGuide: React.FC = () => {
                 activeTab === 'roadmap' ? 'bg-emerald-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              ROADMAP (17 PHASES)
+              ROADMAP ({roadmap.length} PHASES)
             </button>
           </div>
 
@@ -466,9 +551,9 @@ export const AppFeaturesGuide: React.FC = () => {
                   <div className="text-[10px] uppercase font-bold text-amber-400 flex items-center gap-1.5">
                     <Zap className="w-3.5 h-3.5" /> 3. Dedicated Runtimes
                   </div>
-                  <div className="text-slate-300 text-[11px] font-semibold">ComfyUI & llama.cpp</div>
+                  <div className="text-slate-300 text-[11px] font-semibold">ComfyUI, llama.cpp & Audio Backend</div>
                   <p className="text-[10px] text-slate-400 leading-relaxed">
-                    ComfyUI on port 8188 for Juggernaut-XL/FLUX Lite/Wan 2.1/GIF/RIFE workflows; llama-server on port 8080 for Qwen 2.5-VL/Qwen Coder local inference. Mutual cache purges protect the 8GB VRAM budget.
+                    ComfyUI on port 8188 (Juggernaut-XL, FLUX Lite, Wan 2.1, RIFE); llama-server on port 8080 (Qwen 2.5-VL/Coder); Python Unified Audio engine (Bark + XTTS v2) on dynamic RPC. Mutual cache purges protect the 8GB VRAM budget.
                   </p>
                 </div>
 
@@ -491,7 +576,9 @@ export const AppFeaturesGuide: React.FC = () => {
                   <div>• Creator Dashboard: <code className="text-slate-200">http://127.0.0.1:3200</code></div>
                   <div>• ComfyUI WebSocket/REST: <code className="text-slate-200">http://127.0.0.1:8188</code></div>
                   <div>• llama.cpp local GGUF engine: <code className="text-slate-200">http://127.0.0.1:8080/v1</code></div>
+                  <div>• Audio Backend (Bark/XTTS v2): <code className="text-slate-200">scripts/unified_audio_backend.py</code></div>
                   <div>• AIDA64 Memory Mapped File: <code className="text-slate-200">AIDA64_SensorValues (1000ms)</code></div>
+                  <div>• Whole-PC Electricity Cost: <code className="text-slate-200">NVML GPU + Host CPU Draw (£/hr, p/hr)</code></div>
                 </div>
               </div>
             </div>
@@ -506,7 +593,7 @@ export const AppFeaturesGuide: React.FC = () => {
                   <span>Project Lifecycle Stages & Milestone Roadmap</span>
                 </div>
                 <span className="text-[10px] font-mono bg-purple-500/10 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded">
-                  13 of 17 Phases Completed
+                  {roadmap.filter((r) => r.status === 'COMPLETED').length} of {roadmap.length} Milestones Tracked
                 </span>
               </div>
 

@@ -4,7 +4,7 @@ import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs/promises';
 import fsSync, { readFileSync, existsSync } from 'node:fs';
-import { listVoices, setFavorite, upsertVoice } from '../audio/VoiceDatabase.js';
+import { listVoices, setFavorite, upsertVoice, deleteVoice, updateVoiceCategory } from '../audio/VoiceDatabase.js';
 
 const router = Router();
 const GINA_ROOT = process.env.GINA_ROOT || (process.platform === 'win32' ? 'C:\\Gina_AI' : process.cwd());
@@ -41,6 +41,19 @@ function formatPythonError(error: any): string {
   if (errorLine) return errorLine;
   const tail = lines.slice(-3).join(' · ');
   return tail.length > 350 ? (lines[lines.length - 1] || tail.slice(-350)) : tail;
+}
+
+function cleanStderr(raw: string): string {
+  const lines = String(raw || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const relevant = lines.filter(l =>
+    !l.includes('unauthenticated requests to the HF Hub') &&
+    !l.includes('FutureWarning:') &&
+    !l.includes('UserWarning:') &&
+    !l.includes('torch.cuda.amp.autocast') &&
+    !l.includes('HF_TOKEN') &&
+    !l.match(/^\d+%.*\[.*it\/s\]/)
+  );
+  return relevant.join('\n').trim();
 }
 
 function pythonCandidates(): PythonCandidate[] {
@@ -92,7 +105,15 @@ function pythonCandidates(): PythonCandidate[] {
 
 async function interpreterCheck(candidate: PythonCandidate): Promise<{ok:boolean; error?:string; executable?:string}> {
   try {
-    const result = await execFileAsync(candidate.command, [...candidate.args, CHECK_ENV_SCRIPT], { cwd: GINA_ROOT, windowsHide: true, timeout: 25000, maxBuffer: 1024 * 1024 });
+    const env = {
+      ...process.env,
+      COQUI_TOS_AGREED: '1',
+      PYTHONUNBUFFERED: '1',
+      PYTHONIOENCODING: 'utf-8',
+      HF_HUB_DISABLE_SYMLINKS_WARNING: '1',
+      TOKENIZERS_PARALLELISM: 'false',
+    };
+    const result = await execFileAsync(candidate.command, [...candidate.args, CHECK_ENV_SCRIPT], { cwd: GINA_ROOT, windowsHide: true, timeout: 25000, maxBuffer: 1024 * 1024, env });
     const lines = String(result.stdout || '').trim().split(/\r?\n/).filter(Boolean);
     return {ok:true, executable:lines[0] || candidate.executable || candidate.command};
   } catch (error:any) {
@@ -119,7 +140,17 @@ async function runPython(payload: any, onProgress?: (event: any) => void): Promi
   await fs.mkdir(AUDIO_ROOT, { recursive: true });
   return new Promise((resolve, reject) => {
     resolvePython().then((python) => {
-      const child = spawn(python.command, [...python.args, SCRIPT], { cwd: GINA_ROOT, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      const env = {
+        ...process.env,
+        COQUI_TOS_AGREED: '1',
+        PYTHONUNBUFFERED: '1',
+        PYTHONIOENCODING: 'utf-8',
+        HF_HUB_DISABLE_SYMLINKS_WARNING: '1',
+        TOKENIZERS_PARALLELISM: 'false',
+        SUNO_USE_SMALL_MODELS: 'True',
+        SUNO_OFFLOAD_CPU: 'True',
+      };
+      const child = spawn(python.command, [...python.args, SCRIPT], { cwd: GINA_ROOT, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env });
       let stdout = ''; let stderr = ''; let lineBuffer = '';
       child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
       child.stdout.on('data', chunk => {
@@ -141,12 +172,31 @@ async function runPython(payload: any, onProgress?: (event: any) => void): Promi
           try { const event = JSON.parse(lineBuffer.trim()); if (event?.type === 'progress') onProgress?.(event); } catch {}
         }
         let parsed: any = null;
-        try { parsed = JSON.parse(stdout.trim().split(/\r?\n/).filter(Boolean).pop() || '{}'); } catch {}
+        try {
+          // Look backwards for the last valid JSON line
+          const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
+          for (let i = lines.length - 1; i >= 0; i--) {
+            try {
+              const candidate = JSON.parse(lines[i]);
+              if (candidate && typeof candidate === 'object' && ('ok' in candidate || 'audio_url' in candidate)) {
+                parsed = candidate;
+                break;
+              }
+            } catch {}
+          }
+          if (!parsed && lines.length > 0) {
+            parsed = JSON.parse(lines[lines.length - 1]);
+          }
+        } catch {}
+
         if (code !== 0 || !parsed?.ok) {
           const detail = String(parsed?.error || '').trim();
-          const diagnostic = String(stderr || '').trim();
-          const combined = detail && diagnostic && !detail.includes(diagnostic) ? `${detail} · ${diagnostic.split(/\r?\n/).slice(-3).join(' · ')}` : (detail || diagnostic);
-          return reject(new Error(combined || `Unified audio backend exited with code ${code}`));
+          const diagnostic = cleanStderr(stderr);
+          let errorMsg = detail;
+          if (!errorMsg && diagnostic) {
+            errorMsg = diagnostic.split(/\r?\n/).slice(-3).join(' · ');
+          }
+          return reject(new Error(errorMsg || `Unified audio backend exited with code ${code}`));
         }
         resolve(parsed);
       });
@@ -221,6 +271,78 @@ router.post('/voices/:voiceId/favorite', async (req: Request, res: Response) => 
   catch (error: any) { res.status(500).json({ ok:false, error:error?.message || 'Unable to update favorite.' }); }
 });
 
+router.post('/voices/:voiceId/category', async (req: Request, res: Response) => {
+  try {
+    const { voiceId } = req.params;
+    const category = String(req.body?.category || '').trim() as 'system' | 'cloned' | 'community';
+    if (!['system', 'cloned', 'community'].includes(category)) {
+      return res.status(400).json({ ok: false, error: 'Invalid category: must be system, cloned, or community.' });
+    }
+    const voice = updateVoiceCategory(voiceId, category);
+    if (!voice) return res.status(404).json({ ok: false, error: 'Voice not found.' });
+    res.json({ ok: true, voice });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || 'Failed to update category.' });
+  }
+});
+
+router.post('/voices', async (req: Request, res: Response) => {
+  try {
+    const body = req.body || {};
+    const speaker_name = String(body.speaker_name || '').trim();
+    if (!speaker_name) {
+      return res.status(400).json({ ok: false, error: 'Speaker name is required.' });
+    }
+    const voice_id = String(body.voice_id || `voice_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`);
+    const gender = ['Male', 'Female', 'Non-binary'].includes(body.gender) ? body.gender : 'Non-binary';
+    const age_group = ['Child', 'Young Adult', 'Middle Aged', 'Senior'].includes(body.age_group) ? body.age_group : 'Young Adult';
+    const primary_language = String(body.primary_language || 'en').trim();
+    const accent_dialect = String(body.accent_dialect || 'English').trim();
+    const tone_tags = Array.isArray(body.tone_tags)
+      ? body.tone_tags
+      : (typeof body.tone_tags === 'string' ? body.tone_tags.split(',').map((t: string) => t.trim()).filter(Boolean) : ['Custom']);
+    const engine_compatibility = Array.isArray(body.engine_compatibility) && body.engine_compatibility.length > 0
+      ? body.engine_compatibility
+      : ['xtts', 'bark'];
+    const bark_prompt_path = body.bark_prompt_path ? String(body.bark_prompt_path).trim() : null;
+    const xtts_embedding_path = body.xtts_embedding_path ? String(body.xtts_embedding_path).trim() : null;
+    const category: 'system' | 'cloned' | 'community' = body.category === 'system' ? 'system' : (body.category === 'community' ? 'community' : 'cloned');
+
+    const voice = await upsertVoice({
+      voice_id,
+      speaker_name,
+      gender,
+      age_group,
+      primary_language,
+      accent_dialect,
+      tone_tags,
+      engine_compatibility,
+      xtts_embedding_path,
+      bark_prompt_path,
+      preview_audio_url: body.preview_audio_url || null,
+      category,
+      favorite: Boolean(body.favorite),
+    });
+
+    res.status(201).json({ ok: true, voice });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || 'Failed to save voice.' });
+  }
+});
+
+router.delete('/voices/:voiceId', async (req: Request, res: Response) => {
+  try {
+    const { voiceId } = req.params;
+    const deleted = deleteVoice(voiceId);
+    if (!deleted) {
+      return res.status(404).json({ ok: false, error: 'Voice not found or could not be removed.' });
+    }
+    res.json({ ok: true });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || 'Failed to delete voice.' });
+  }
+});
+
 router.post('/voice-clone', expressRawAudio(), async (req: Request, res: Response) => {
   try {
     const original = safeFilename(decodeURIComponent(String(req.headers['x-gina-filename'] || 'voice-reference.wav')));
@@ -245,7 +367,7 @@ router.post('/voice-clone', expressRawAudio(), async (req: Request, res: Respons
       return res.status(400).json({ok:false,error:`Could not validate the voice sample duration with ffprobe: ${probeError?.message || probeError}`});
     }
     const voiceId = `clone_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
-    const voice = await upsertVoice({ voice_id:voiceId, speaker_name:path.basename(original, ext), gender:'Non-binary', age_group:'Young Adult', primary_language:'en', accent_dialect:'Custom', tone_tags:['Cloned','Custom'], engine_compatibility:['xtts'], xtts_embedding_path:target, bark_prompt_path:null, preview_audio_url:null, category:'cloned', favorite:false });
+    const voice = await upsertVoice({ voice_id:voiceId, speaker_name:path.basename(original, ext), gender:'Non-binary', age_group:'Young Adult', primary_language:'en', accent_dialect:'Custom', tone_tags:['Cloned','Custom'], engine_compatibility:['xtts','bark'], xtts_embedding_path:target, bark_prompt_path:null, preview_audio_url:null, category:'cloned', favorite:false });
     res.status(201).json({ ok:true, path:target, voice });
   } catch (error:any) { res.status(500).json({ ok:false, error:error?.message || 'Voice clone upload failed.' }); }
 });

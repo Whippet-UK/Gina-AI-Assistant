@@ -255,12 +255,20 @@ const initialOomIncidents: OomIncident[] = [
 const oomIncidentsStore: OomIncident[] = [...initialOomIncidents];
 
 const modelMetadataRegistry: Record<string, { name: string; filename: string; vramFootprintMB: number; color: string; runs: number }> = {
-  flux_lite: { name: "FLUX.1 Lite High Precision", filename: "FLUX.1-lite-pure-Q4_0.gguf", vramFootprintMB: 5900, color: "#10b981", runs: 32 },
-  juggernaut_xl_v9: { name: "Juggernaut-XL v9 Photorealism (SDXL)", filename: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors", vramFootprintMB: 6200, color: "#22d3ee", runs: 24 },
-  qwen_25_vl_7b: { name: "Qwen 2.5-VL 7B Q4_K_M + mmproj-F16", filename: "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf", vramFootprintMB: 4700, color: "#f59e0b", runs: 20 },
-  wan_video_21: { name: "Wan 2.1 1.3B BF16", filename: "wan2.1_t2v_1.3B_bf16.safetensors", vramFootprintMB: 5200, color: "#38bdf8", runs: 18 },
-  hunyuan_video: { name: "Hunyuan Video", filename: "hunyuan-video.safetensors", vramFootprintMB: 7100, color: "#f43f5e", runs: 7 },
-  other: { name: "Other / Unquantized", filename: "custom_checkpoint.safetensors", vramFootprintMB: 7500, color: "#eab308", runs: 4 }
+  juggernaut_xl_v9: { name: "Juggernaut-XL v9 Photorealism (SDXL)", filename: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors", vramFootprintMB: 6200, color: "#22d3ee", runs: 42 },
+  flux_lite: { name: "FLUX.1 Lite GGUF (High-Precision)", filename: "FLUX.1-lite-pure-Q4_0.gguf", vramFootprintMB: 5900, color: "#10b981", runs: 32 },
+  wan_video_21: { name: "Wan 2.1 1.3B BF16 (Video)", filename: "wan2.1_t2v_1.3B_bf16.safetensors", vramFootprintMB: 5200, color: "#38bdf8", runs: 28 },
+  hunyuan_video: { name: "Hunyuan Video (3D Attention)", filename: "hunyuan-video.safetensors", vramFootprintMB: 7100, color: "#f43f5e", runs: 12 },
+  geneva_fp8: { name: "Geneva 1.12B FP8", filename: "geneva_1-12b_fp8.safetensors", vramFootprintMB: 4800, color: "#a855f7", runs: 9 },
+  qwen_25_vl_7b: { name: "Qwen 2.5-VL 7B Q4_K_M + mmproj-F16", filename: "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf", vramFootprintMB: 4700, color: "#f59e0b", runs: 38 },
+  qwen_coder_7b: { name: "Qwen Coder 7B Q5_K_M", filename: "qwen2.5-coder-7b-instruct-q5_k_m.gguf", vramFootprintMB: 5100, color: "#6366f1", runs: 25 },
+  qwen35_9b: { name: "Qwen 3.5 9B Q4_K_M + mmproj-BF16", filename: "qwen3.5-9b-instruct-q4_k_m.gguf", vramFootprintMB: 6100, color: "#ec4899", runs: 16 },
+  t5xxl_clip: { name: "T5-XXL FP8 Text Encoder (FLUX)", filename: "t5xxl_fp8_e4m3fn.safetensors", vramFootprintMB: 4900, color: "#06b6d4", runs: 30 },
+  umt5_clip: { name: "UMT5-XXL Scaled Text Encoder (Wan)", filename: "umt5_xxl_fp8_e4m3fn_scaled.safetensors", vramFootprintMB: 5100, color: "#0284c7", runs: 26 },
+  bark_audio: { name: "Bark Small (Text-to-Audio / SFX)", filename: "suno/bark-small", vramFootprintMB: 1800, color: "#d946ef", runs: 22 },
+  xtts_v2_audio: { name: "XTTS v2 (Voice Cloning & TTS)", filename: "coqui/XTTS-v2", vramFootprintMB: 2100, color: "#8b5cf6", runs: 19 },
+  rife_vfi: { name: "RIFE 4.7 Flow Interpolation", filename: "rife47.onnx", vramFootprintMB: 1600, color: "#14b8a6", runs: 14 },
+  other: { name: "Other / Unquantized Checkpoints", filename: "custom_checkpoint.safetensors", vramFootprintMB: 7500, color: "#eab308", runs: 6 }
 };
 
 function recordOomIncident(errorText: string, meta?: { modelId?: string; workflowId?: string; vramMB?: number; nodeId?: string; resolution?: string; isSimulated?: boolean }) {
@@ -3496,8 +3504,8 @@ app.get("/api/diagnostics/oom-frequency", (req, res) => {
   const recommendations = [
     "Hunyuan Video (7.1GB base) accounts for high memory pressure: keep direct generation on the Wan 2.1 1.3B BF16 safe lane for 8GB RTX 3070 Ti hardware.",
     "VAEDecode stage accounts for video memory spikes: Cap frame batches to <=73 frames (3s @ 24fps) or use tiled VAE decoding.",
-    "FLUX.1 Lite GGUF is the optional high-precision image lane; purge shared VRAM before switching into it.",
-    "Automatic eviction hook is active: switching workflows will auto-dispatch /free to prevent dual-model coexistence in VRAM."
+    "Bark Small & XTTS v2 operate safely via SUNO_OFFLOAD_CPU and CPU fallback to protect the 7372 MB VRAM cage.",
+    "FLUX.1 Lite GGUF & SDXL Juggernaut-XL: auto-dispatch /free ensures mutual cache eviction between image, video, LLM, and audio passes."
   ];
 
   res.json({

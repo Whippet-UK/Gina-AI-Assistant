@@ -1,8 +1,8 @@
 import { routeRuntimeIntent } from '../server/agent/IntentRouter.js';
-import { firewallMessages } from '../server/agent/ContextFirewall.js';
+import { firewallMessages, type ChatMessage } from '../server/agent/ContextFirewall.js';
 
 const stale = 'PCIe Paging is a hardware safeguard concept from the active Media and Core Development skills.';
-const messages = [
+const messages: ChatMessage[] = [
   { role: 'system', content: '=== ACTIVE AGENT SKILLS === Audio Core Development Hardware Safeguards PCIe Paging' },
   { role: 'user', content: 'what can you do?' },
   { role: 'assistant', content: stale },

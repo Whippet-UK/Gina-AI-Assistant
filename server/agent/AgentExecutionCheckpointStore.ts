@@ -54,7 +54,7 @@ export class AgentExecutionCheckpointStore {
     }
   }
 
-  async save(checkpoint: ExecutionCheckpoint): Promise<void> {
+  async save(checkpoint: ExecutionCheckpoint): Promise<ExecutionCheckpoint> {
     await this.ensureLoaded();
     const entry: ExecutionCheckpoint = {
       ...checkpoint,
@@ -62,6 +62,7 @@ export class AgentExecutionCheckpointStore {
     };
     this.memoryCache.set(entry.taskId, entry);
     await this.persistAll();
+    return entry;
   }
 
   async get(taskId: string): Promise<ExecutionCheckpoint | null> {

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { AudioLines, ChevronDown, Dice5, Download, Heart, Lock, Plus, Play, Search, Sparkles, Trash2, Upload, Wand2, Wrench } from 'lucide-react';
+import { AudioLines, ChevronDown, Dice5, Download, Heart, Lock, Plus, Play, Search, Sparkles, Trash2, Upload, Wand2, Wrench, UserCheck, X, Settings2, Share2 } from 'lucide-react';
 
 interface VoiceRecord {
   voice_id:string; speaker_name:string; gender:string; age_group:string; primary_language:string; accent_dialect:string;
@@ -10,7 +10,7 @@ interface VoiceRecord {
 interface Row { id:string; text:string; engine:'bark'|'xtts_v2'; voiceId:string; language:string; }
 
 const LANGUAGES = ['en','es','fr','de','it','pt','pl','tr','ru','nl','cs','ar','zh-cn','ja','ko','hu'];
-const BARK_TAGS = ['[laughter]','[giggle]','[sigh]','[gasp]','[clears throat]','[hesitation]','[whispers]','[music]','[applause]','[laughter in background]','...'];
+const BARK_TAGS = ['[applause]','[laughter]','[sighs]','[gasps]','[clears throat]','[hesitation]','[whispers]','[music]','♪','...'];
 const DEFAULT_ROWS: Row[] = [{ id:'row_1', text:'', engine:'bark', voiceId:'bark_en_speaker_6', language:'en' }];
 
 function makeSeed() { return Math.floor(Math.random() * 2147483647); }
@@ -22,8 +22,10 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
   const [rows, setRows] = useState<Row[]>(DEFAULT_ROWS);
   const [voices, setVoices] = useState<VoiceRecord[]>([]);
   const [voiceSearch, setVoiceSearch] = useState('');
-  const [voiceCategory, setVoiceCategory] = useState<'system'|'cloned'|'community'>('system');
+  const [voiceCategory, setVoiceCategory] = useState<'all'|'system'|'cloned'|'community'>('all');
+  const [engineFilter, setEngineFilter] = useState<'all'|'bark'|'xtts_v2'>('all');
   const [voiceId, setVoiceId] = useState('bark_en_speaker_6');
+  const [customBarkPreset, setCustomBarkPreset] = useState('');
   const [language, setLanguage] = useState('en');
   const [clonePath, setClonePath] = useState<string|null>(null);
   const [temperature, setTemperature] = useState(0.7);
@@ -52,6 +54,17 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
   const [batchResults, setBatchResults] = useState<Array<{url:string;path:string;bytes:number;seed:number}>>([]);
   const [previewUrl, setPreviewUrl] = useState<string|null>(null);
   const [activeRowId, setActiveRowId] = useState('row_1');
+  const [showAddVoiceModal, setShowAddVoiceModal] = useState(false);
+  const [newVoiceName, setNewVoiceName] = useState('');
+  const [newVoiceEngine, setNewVoiceEngine] = useState<'bark'|'xtts'|'both'>('xtts');
+  const [newVoiceGender, setNewVoiceGender] = useState('female');
+  const [newVoiceAge, setNewVoiceAge] = useState('adult');
+  const [newVoiceLang, setNewVoiceLang] = useState('en');
+  const [newVoiceAccent, setNewVoiceAccent] = useState('standard');
+  const [newVoiceSpeakerName, setNewVoiceSpeakerName] = useState('');
+  const [newVoiceBarkPrompt, setNewVoiceBarkPrompt] = useState('');
+  const [newVoiceEmbeddingPath, setNewVoiceEmbeddingPath] = useState('');
+  const [addingVoice, setAddingVoice] = useState(false);
   const textareaRefs = useRef<Record<string, HTMLTextAreaElement|null>>({});
 
   const fetchDiagnostics = useCallback(async () => {
@@ -95,26 +108,71 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
 
   const loadVoices = useCallback(async () => {
     try {
-      const query = new URLSearchParams({ category: mode === 'hybrid' ? '' : voiceCategory, q:voiceSearch });
-      const r = await fetch(`/api/audio/voices?${query.toString()}`, { cache:'no-store' });
+      const r = await fetch('/api/audio/voices', { cache:'no-store' });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
       setVoices(Array.isArray(d.voices) ? d.voices : []);
     } catch (e:any) { setError(e?.message || 'Unable to load voice database.'); }
-  }, [voiceCategory, voiceSearch, mode]);
+  }, []);
+
   useEffect(() => { void loadVoices(); }, [loadVoices]);
 
   useEffect(() => {
     void fetchDiagnostics();
   }, [fetchDiagnostics]);
 
+  // Auto-select initial voice if none or incompatible
+  useEffect(() => {
+    if (voices.length > 0 && (!voiceId || !voices.some(v => v.voice_id === voiceId))) {
+      const targetCompat = (engine === 'xtts_v2' || mode === 'hybrid') ? 'xtts' : 'bark';
+      const match = voices.find(v => v.engine_compatibility.includes(targetCompat)) || voices[0];
+      if (match) setVoiceId(match.voice_id);
+    }
+  }, [voices, engine, mode, voiceId]);
+
   const selectedVoice = useMemo(() => voices.find(v => v.voice_id === voiceId) || null, [voices, voiceId]);
   const activeVoiceEngine = mode === 'hybrid' ? 'xtts_v2' : engine;
+
+  const handleEngineChange = (nextEngine: 'bark' | 'xtts_v2') => {
+    setEngine(nextEngine);
+    const targetCompat = nextEngine === 'bark' ? 'bark' : 'xtts';
+    const curr = voices.find(v => v.voice_id === voiceId);
+    if (!curr || !curr.engine_compatibility.includes(targetCompat)) {
+      const match = voices.find(v => v.engine_compatibility.includes(targetCompat));
+      if (match) setVoiceId(match.voice_id);
+    }
+  };
+
   const filteredVoices = useMemo(() => voices.filter(v => {
-    if (activeVoiceEngine === 'bark' && !v.engine_compatibility.includes('bark')) return false;
-    if (activeVoiceEngine === 'xtts_v2' && !v.engine_compatibility.includes('xtts')) return false;
+    if (voiceCategory !== 'all' && v.category !== voiceCategory) return false;
+    if (engineFilter === 'bark' && !v.engine_compatibility.includes('bark')) return false;
+    if (engineFilter === 'xtts_v2' && !v.engine_compatibility.includes('xtts')) return false;
+    if (voiceSearch.trim()) {
+      const q = voiceSearch.toLowerCase();
+      const match = v.speaker_name.toLowerCase().includes(q) ||
+        v.accent_dialect.toLowerCase().includes(q) ||
+        v.tone_tags.some(t => t.toLowerCase().includes(q));
+      if (!match) return false;
+    }
     return true;
-  }), [voices, activeVoiceEngine]);
+  }), [voices, voiceCategory, engineFilter, voiceSearch]);
+
+  const toggleVoiceCategory = async (voice: VoiceRecord) => {
+    try {
+      const nextCategory = voice.category === 'community' ? 'cloned' : 'community';
+      const r = await fetch(`/api/audio/voices/${encodeURIComponent(voice.voice_id)}/category`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: nextCategory })
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || 'Failed to update category');
+      onAddLog?.('INFO', `Voice "${voice.speaker_name}" moved to ${nextCategory === 'community' ? 'Shared' : 'Custom / Clones'}.`);
+      await loadVoices();
+    } catch (e: any) {
+      setError(e?.message || 'Unable to update voice category.');
+    }
+  };
 
   const uploadClone = useCallback(async (file:File) => {
     setError(null);
@@ -124,7 +182,7 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
       if (file.size > 30 * 1024 * 1024) throw new Error('Voice sample is limited to 30 MB.');
       const r = await fetch('/api/audio/voice-clone', { method:'POST', headers:{'Content-Type':file.type || 'application/octet-stream','X-Gina-Filename':encodeURIComponent(file.name)}, body:await file.arrayBuffer() });
       const d = await r.json(); if (!r.ok || !d.ok) throw new Error(d.error || `Upload failed (HTTP ${r.status})`);
-      setClonePath(d.path); setVoiceId(d.voice?.voice_id || ''); setVoiceCategory('system');
+      setClonePath(d.path); setVoiceId(d.voice?.voice_id || ''); setVoiceCategory('cloned');
       await loadVoices();
       onAddLog?.('INFO', `XTTS voice reference '${file.name}' is stored locally and ready for cloning.`);
     } catch (e:any) { setError(e?.message || 'Voice sample upload failed.'); }
@@ -153,6 +211,70 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
     catch (e:any) { setError(e?.message || 'Unable to update favorite.'); }
   };
 
+  const deleteVoice = async (voice: VoiceRecord) => {
+    if (!window.confirm(`Delete voice "${voice.speaker_name}" from database?`)) return;
+    try {
+      const res = await fetch(`/api/audio/voices/${encodeURIComponent(voice.voice_id)}`, { method: 'DELETE' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) throw new Error(d.error || 'Failed to delete voice');
+      onAddLog?.('INFO', `Voice "${voice.speaker_name}" deleted.`);
+      await loadVoices();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to delete voice.');
+    }
+  };
+
+  const createCustomVoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newVoiceName.trim()) { setError('Speaker name is required'); return; }
+    setAddingVoice(true);
+    setError(null);
+    try {
+      const compat: string[] = [];
+      if (newVoiceEngine === 'bark' || newVoiceEngine === 'both') compat.push('bark');
+      if (newVoiceEngine === 'xtts' || newVoiceEngine === 'both') compat.push('xtts');
+
+      const payload = {
+        voice_id: `custom_${Date.now()}_${newVoiceName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`,
+        speaker_name: newVoiceName.trim(),
+        gender: newVoiceGender,
+        age_group: newVoiceAge,
+        primary_language: newVoiceLang,
+        accent_dialect: newVoiceAccent,
+        tone_tags: ['custom'],
+        engine_compatibility: compat,
+        xtts_embedding_path: newVoiceEmbeddingPath.trim() || (clonePath || null),
+        bark_prompt_path: newVoiceBarkPrompt.trim() || null,
+        speaker_name_xtts: newVoiceSpeakerName.trim() || newVoiceName.trim(),
+        preview_audio_url: null,
+        category: 'cloned' as const,
+        favorite: true,
+      };
+
+      const res = await fetch('/api/audio/voices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) throw new Error(d.error || 'Failed to save voice to database.');
+
+      setShowAddVoiceModal(false);
+      setNewVoiceName('');
+      setNewVoiceBarkPrompt('');
+      setNewVoiceEmbeddingPath('');
+      setNewVoiceSpeakerName('');
+      setVoiceCategory('cloned');
+      await loadVoices();
+      setVoiceId(payload.voice_id);
+      onAddLog?.('SEC', `Custom voice "${payload.speaker_name}" registered.`);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to register custom voice.');
+    } finally {
+      setAddingVoice(false);
+    }
+  };
+
   const previewVoice = async (voice:VoiceRecord) => {
     setError(null);
     try {
@@ -166,48 +288,73 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
 
   const addRow = () => setRows(prev => [...prev,{id:`row_${Date.now()}_${Math.random().toString(36).slice(2,5)}`,text:'',engine:'xtts_v2',voiceId:'',language:'en'}]);
   const removeRow = (id:string) => setRows(prev => prev.length > 1 ? prev.filter(r => r.id !== id) : prev);
-  // Voices compatible with a given row's own engine, independent of the
-  // top-level engine toggle -- this is what makes Bark voices selectable
-  // in Hybrid mode even when the global toggle is sitting on XTTS v2.
+
   const voicesForEngine = useCallback((rowEngine:'bark'|'xtts_v2') => {
     const key = rowEngine === 'bark' ? 'bark' : 'xtts';
     return voices.filter(v => v.engine_compatibility.includes(key));
   }, [voices]);
 
-  const hasXttsVoice = rows.some(r => {
-    if (r.engine !== 'xtts_v2') return false;
-    const voice = voices.find(v => v.voice_id === r.voiceId);
-    return Boolean(voice?.speaker_name || voice?.xtts_embedding_path);
-  });
   const canGenerate = mode === 'standard'
     ? Boolean(text.trim())
-    : Boolean(rows.some(r => r.text.trim()) && (clonePath || hasXttsVoice || Boolean(selectedVoice?.speaker_name)));
+    : Boolean(rows.some(r => r.text.trim()));
 
   const generate = async () => {
     setGenerating(true); setError(null); setResult(null); setBatchResults([]);
     setGenerationProgress({stage:'QUEUED', percent:0, message:'Starting local audio generation…'});
     try {
-      const basePayload:any = { engine, mode, text, timeline:rows.map(r=>{
-        const rv = voices.find(v => v.voice_id === r.voiceId) || null;
-        // A row with no explicit voice choice only inherits the globally
-        // selected voice when that voice is actually compatible with this
-        // row's own engine -- otherwise an XTTS voice picked at the top can
-        // silently leak into a Bark row (or vice versa) and blow up that
-        // engine, same as it did before this was fixed.
-        const globalCompatible = selectedVoice && selectedVoice.engine_compatibility.includes(r.engine === 'bark' ? 'bark' : 'xtts') ? selectedVoice : null;
-        const effective = rv || globalCompatible;
-        return {
-          id:r.id, text:r.text, engine:r.engine, language:r.language,
-          voice_preset: effective ? (effective.bark_prompt_path || effective.speaker_name) : undefined,
-          speaker: effective ? effective.speaker_name : undefined,
-          speaker_wav: effective ? (effective.xtts_embedding_path || undefined) : undefined,
-        };
-      }), voice_preset:selectedVoice?.bark_prompt_path || selectedVoice?.speaker_name || voiceId, speaker:selectedVoice?.speaker_name, speaker_wav:clonePath || selectedVoice?.xtts_embedding_path || undefined, language, temperature, repetition_penalty:repetitionPenalty, length_penalty:lengthPenalty, seed, seed_locked:seedLocked, strip_tags_on_xtts:stripTags, auto_split_chunks:autoSplit, normalize, trim_silence:trimSilence, pitch_shift_semitones:pitchShiftSemitones, formant_shift:formantShift, speed_factor:speedFactor, enable_streaming:enableStreaming && batchSize === 1, output_format:format };
+      const effectiveVoicePreset = selectedVoice?.bark_prompt_path || (engine === 'bark' ? (customBarkPreset.trim() || (selectedVoice?.category === 'cloned' ? (selectedVoice.gender === 'Male' ? 'v2/en_speaker_0' : 'v2/en_speaker_6') : (selectedVoice?.speaker_name || 'v2/en_speaker_6'))) : undefined);
+      const effectiveSpeaker = selectedVoice?.speaker_name || (engine === 'xtts_v2' && !clonePath ? 'Ana Florence' : undefined);
+      const effectiveSpeakerWav = clonePath || selectedVoice?.xtts_embedding_path || undefined;
+
+      const basePayload:any = {
+        engine,
+        mode,
+        text,
+        voice_id: selectedVoice?.voice_id,
+        timeline: rows.map(r => {
+          const rv = voices.find(v => v.voice_id === r.voiceId) || null;
+          const globalCompatible = selectedVoice && selectedVoice.engine_compatibility.includes(r.engine === 'bark' ? 'bark' : 'xtts') ? selectedVoice : null;
+          const effective = rv || globalCompatible;
+          return {
+            id: r.id,
+            text: r.text,
+            engine: r.engine,
+            voice_id: effective?.voice_id,
+            language: r.language,
+            voice_preset: effective ? (effective.bark_prompt_path || (effective.category === 'cloned' ? (effective.gender === 'Male' ? 'v2/en_speaker_0' : 'v2/en_speaker_6') : effective.speaker_name)) : (r.engine === 'bark' ? 'v2/en_speaker_6' : undefined),
+            speaker: effective ? (effective.speaker_name || undefined) : (r.engine === 'xtts_v2' ? 'Ana Florence' : undefined),
+            speaker_wav: effective ? (effective.xtts_embedding_path || undefined) : undefined,
+          };
+        }),
+        voice_preset: effectiveVoicePreset,
+        speaker: effectiveSpeaker,
+        speaker_wav: effectiveSpeakerWav,
+        language,
+        temperature,
+        repetition_penalty: repetitionPenalty,
+        length_penalty: lengthPenalty,
+        seed,
+        seed_locked: seedLocked,
+        strip_tags_on_xtts: stripTags,
+        auto_split_chunks: autoSplit,
+        normalize,
+        trim_silence: trimSilence,
+        pitch_shift_semitones: pitchShiftSemitones,
+        formant_shift: formantShift,
+        speed_factor: speedFactor,
+        enable_streaming: enableStreaming && batchSize === 1,
+        output_format: format,
+      };
+
       const results:any[] = [];
       for (let i=0; i<Math.max(1,Math.min(4,batchSize)); i++) {
         const payload = {...basePayload};
         if (batchMode === 'iterate_seeds') payload.seed = seedLocked ? seed : (seed < 0 ? makeSeed() : seed + i);
-        if (batchMode === 'iterate_voices' && filteredVoices[i]) { payload.voice_preset = filteredVoices[i].bark_prompt_path || filteredVoices[i].speaker_name; payload.speaker = filteredVoices[i].speaker_name; payload.speaker_wav = filteredVoices[i].xtts_embedding_path || payload.speaker_wav; }
+        if (batchMode === 'iterate_voices' && filteredVoices[i]) {
+          payload.voice_preset = filteredVoices[i].bark_prompt_path || filteredVoices[i].speaker_name;
+          payload.speaker = filteredVoices[i].speaker_name;
+          payload.speaker_wav = filteredVoices[i].xtts_embedding_path || payload.speaker_wav;
+        }
         const useAudioStream = enableStreaming && batchSize === 1;
         const r = await fetch(useAudioStream ? '/api/audio/generate' : '/api/audio/generate-stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
         if (useAudioStream) {
@@ -253,16 +400,56 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
 
   return <section className="rounded-xl border border-slate-800 bg-slate-950/95 p-5 shadow-xl space-y-5">
     <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-800 pb-4">
-      <div><div className="text-[10px] uppercase tracking-[.25em] text-emerald-400 font-bold">Voice Audio Generation Engine</div><h2 className="text-xl font-semibold text-slate-100 mt-1 flex items-center gap-2"><AudioLines className="w-5 h-5 text-emerald-400"/>Bark + XTTS v2 Voice Audio Generation</h2><p className="text-xs text-slate-500 mt-1">Local, self-hosted speech generation, cloning and stitched multi-engine timelines.</p></div>
+      <div>
+        <div className="text-[10px] uppercase tracking-[.25em] text-emerald-400 font-bold">Voice Audio Generation Engine</div>
+        <h2 className="text-xl font-semibold text-slate-100 mt-1 flex items-center gap-2"><AudioLines className="w-5 h-5 text-emerald-400"/>Bark + XTTS v2 Voice Audio Generation</h2>
+        <p className="text-xs text-slate-500 mt-1">Local, self-hosted speech generation, cloning and stitched multi-engine timelines.</p>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
-        {mode === 'hybrid' ? <div className="px-3 py-2 rounded border border-emerald-500/30 bg-emerald-500/10 text-[10px] font-bold uppercase tracking-wider text-emerald-300">Hybrid: XTTS Speech + Bark Non-Verbal</div> : (['bark','xtts_v2'] as const).map(id => <button key={id} onClick={()=>setEngine(id)} className={`px-4 py-2 rounded border text-[10px] font-bold uppercase tracking-wider ${engine===id?'border-emerald-400 bg-emerald-500/15 text-emerald-300':'border-slate-700 bg-slate-900 text-slate-400'}`}>{id==='bark'?'BARK':'XTTS v2'}</button>)}
-        <select value={mode} onChange={e=>{ const next=e.target.value as 'standard'|'hybrid'; setMode(next); if (next==='hybrid') { setEngine('xtts_v2'); setVoiceCategory('system'); setRows(prev => (prev.length === 1 && prev[0].engine === 'bark' && !prev[0].text.trim()) ? [{id:'row_bark_pre',text:'',engine:'bark',voiceId:'bark_en_speaker_3',language}, {id:'row_xtts',text:'',engine:'xtts_v2',voiceId:'xtts_ana_florence',language}, {id:'row_bark_post',text:'',engine:'bark',voiceId:'bark_en_speaker_3',language}] : prev); } }} className="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-[10px] font-bold uppercase text-slate-300"><option value="standard">Standard</option><option value="hybrid">Hybrid / Stitched</option></select>
+        {mode === 'hybrid' ? (
+          <div className="px-3 py-2 rounded border border-emerald-500/30 bg-emerald-500/10 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+            Hybrid: XTTS Speech + Bark Non-Verbal
+          </div>
+        ) : (
+          (['bark','xtts_v2'] as const).map(id => (
+            <button
+              key={id}
+              onClick={()=>handleEngineChange(id)}
+              className={`px-4 py-2 rounded border text-[10px] font-bold uppercase tracking-wider transition-colors ${engine===id?'border-emerald-400 bg-emerald-500/15 text-emerald-300':'border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200'}`}
+            >
+              {id==='bark'?'BARK':'XTTS v2'}
+            </button>
+          ))
+        )}
+        <select
+          value={mode}
+          onChange={e=>{
+            const next = e.target.value as 'standard'|'hybrid';
+            setMode(next);
+            if (next==='hybrid') {
+              setEngine('xtts_v2');
+              setVoiceCategory('system');
+              setRows(prev => (prev.length === 1 && prev[0].engine === 'bark' && !prev[0].text.trim()) ? [
+                {id:'row_bark_pre',text:'',engine:'bark',voiceId:'bark_en_speaker_3',language},
+                {id:'row_xtts',text:'',engine:'xtts_v2',voiceId:'xtts_ana_florence',language},
+                {id:'row_bark_post',text:'',engine:'bark',voiceId:'bark_en_speaker_3',language}
+              ] : prev);
+            }
+          }}
+          className="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-[10px] font-bold uppercase text-slate-300"
+        >
+          <option value="standard">Standard</option>
+          <option value="hybrid">Hybrid / Stitched</option>
+        </select>
       </div>
     </div>
 
+    {/* Audio Diagnostics & Auto-Repair Status */}
     <div className={`rounded-lg border p-3 text-[9px] font-mono ${audioDiagnostics?.ok ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-amber-500/30 bg-amber-500/5'}`}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className={`font-bold uppercase tracking-widest ${audioDiagnostics?.ok ? 'text-emerald-300' : 'text-amber-300'}`}>{audioDiagnostics?.ok ? 'AUDIO ENGINE READY' : 'AUDIO ENGINE NEEDS ATTENTION'}</span>
+        <span className={`font-bold uppercase tracking-widest ${audioDiagnostics?.ok ? 'text-emerald-300' : 'text-amber-300'}`}>
+          {audioDiagnostics?.ok ? 'AUDIO ENGINE READY' : 'AUDIO ENGINE NEEDS ATTENTION'}
+        </span>
         {audioDiagnostics?.python && <span className="text-slate-500 truncate" title={audioDiagnostics.python}>Python: {audioDiagnostics.python}</span>}
         {audioDiagnostics?.databasePath && <span className="text-slate-600 truncate" title={audioDiagnostics.databasePath}>DB: {audioDiagnostics.databasePath}</span>}
         {audioDiagnostics?.imports?.length ? <span className="text-slate-600 truncate" title={audioDiagnostics.imports.join(' · ')}>Python imports: {audioDiagnostics.imports.map(x=>x.split(/[\\/]/).pop()).join(' · ')}</span> : null}
@@ -292,26 +479,249 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
       )}
     </div>
 
+    {/* Mode Description */}
     <div className={`rounded-lg border p-3 ${mode === 'hybrid' ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-slate-800 bg-slate-900/50'}`}>
-      {mode === 'hybrid' ? <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[9px]">
-        <div><div className="font-bold uppercase tracking-widest text-emerald-300">1 · Main voice</div><div className="text-slate-400 mt-1">XTTS v2 speaks the dialogue. Select an XTTS clone on the right or drop a 3–10 second reference recording.</div></div>
-        <div><div className="font-bold uppercase tracking-widest text-sky-300">2 · Non-verbal layer</div><div className="text-slate-400 mt-1">Bark handles rows such as [sigh], [laughter], [gasp], ambience and other expressive/non-verbal cues.</div></div>
-        <div><div className="font-bold uppercase tracking-widest text-slate-300">3 · Stitch</div><div className="text-slate-400 mt-1">Gina renders each row with its own engine, then stitches the timeline into one output. The two buttons are not separate modes in Hybrid.</div></div>
-      </div> : <div className="text-[9px] text-slate-500">Standard mode uses the selected engine for the whole text block. Choose <b className="text-emerald-300">Hybrid / Stitched</b> when XTTS should provide the main voice and Bark should provide non-verbal rows.</div>}
+      {mode === 'hybrid' ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[9px]">
+          <div><div className="font-bold uppercase tracking-widest text-emerald-300">1 · Main voice</div><div className="text-slate-400 mt-1">XTTS v2 speaks the dialogue. Select an XTTS system voice or cloned reference recording.</div></div>
+          <div><div className="font-bold uppercase tracking-widest text-sky-300">2 · Non-verbal layer</div><div className="text-slate-400 mt-1">Bark handles rows such as [sigh], [laughter], [gasp], ambience and other expressive cues.</div></div>
+          <div><div className="font-bold uppercase tracking-widest text-slate-300">3 · Stitch</div><div className="text-slate-400 mt-1">Gina renders each row with its own engine, then stitches the timeline into one output.</div></div>
+        </div>
+      ) : (
+        <div className="text-[9px] text-slate-500">
+          Standard mode generates speech for the full text using {engine === 'bark' ? 'Bark' : 'XTTS v2'}. Select any voice preset or custom voice from the database.
+        </div>
+      )}
     </div>
 
     <div className="grid grid-cols-12 gap-5 min-w-0">
       <div className="col-span-12 xl:col-span-8 space-y-4 min-w-0">
-        <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
-          <div className="flex items-center justify-between mb-2"><span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">{mode==='standard'?'Main Text':'Hybrid Timeline'}</span>{mode==='hybrid'&&<button onClick={addRow} className="px-2 py-1 rounded border border-emerald-500/30 text-emerald-300 text-[9px] flex items-center gap-1"><Plus className="w-3 h-3"/> Add row</button>}</div>
-          {mode==='standard' ? <div><textarea ref={el=>{textareaRefs.current.row_1=el}} value={text} onFocus={()=>setActiveRowId('row_1')} onChange={e=>setText(e.target.value)} rows={9} placeholder={engine==='bark'?'Write expressive dialogue and use the Bark quick-insert cues below…':'Write clean narration or paste your script…'} className="w-full resize-y min-h-[180px] bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 outline-none focus:border-emerald-500/50"/><div className="mt-2 text-[8px] text-slate-600">Sentence splitting: {autoSplit?'ON':'OFF'} · tags stripped on XTTS: {stripTags?'ON':'OFF'}</div></div> : <div className="space-y-2">{rows.map((row,index)=><div key={row.id} className="rounded border border-slate-800 bg-slate-950 p-2"><div className="flex items-center gap-2 mb-2 flex-wrap"><span className="text-[8px] font-mono text-slate-600">ROW {index+1}</span><select value={row.engine} onChange={e=>{const nextEngine=e.target.value as any; setRows(prev=>prev.map(r=>r.id===row.id?{...r,engine:nextEngine,voiceId:''}:r));}} className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[9px] text-slate-300"><option value="bark">Bark</option><option value="xtts_v2">XTTS v2</option></select><select value={row.voiceId} onChange={e=>setRows(prev=>prev.map(r=>r.id===row.id?{...r,voiceId:e.target.value}:r))} className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[9px] text-slate-300 max-w-[140px]"><option value="">Default voice</option>{voicesForEngine(row.engine).map(v=><option key={v.voice_id} value={v.voice_id}>{v.speaker_name}</option>)}</select><select value={row.language} onChange={e=>setRows(prev=>prev.map(r=>r.id===row.id?{...r,language:e.target.value}:r))} className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[9px] text-slate-300">{LANGUAGES.map(l=><option key={l}>{l}</option>)}</select><button onClick={()=>removeRow(row.id)} className="ml-auto text-slate-600 hover:text-rose-300"><Trash2 className="w-3.5 h-3.5"/></button></div><textarea ref={el=>{textareaRefs.current[row.id]=el}} value={row.text} onFocus={()=>setActiveRowId(row.id)} onChange={e=>setRows(prev=>prev.map(r=>r.id===row.id?{...r,text:e.target.value}:r))} rows={3} placeholder={`Sentence block ${index+1}…`} className="w-full bg-slate-900 border border-slate-800 rounded p-2 text-xs text-slate-200 outline-none focus:border-emerald-500/50"/>{row.engine==='bark'&&<div className="mt-2 flex flex-wrap gap-1">{BARK_TAGS.map(tag=><button key={tag} onClick={()=>insertTag(tag,row.id)} className="px-1.5 py-1 rounded bg-slate-900 border border-slate-700 text-[8px] text-sky-300">{tag}</button>)}</div>}</div>)}</div>}
+        
+        {/* Active Voice Selection Card */}
+        <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3.5 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <UserCheck className="w-4 h-4 text-emerald-400"/>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Active Speaker & Voice Binding</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase ${activeVoiceEngine === 'bark' ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30' : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'}`}>
+                {activeVoiceEngine === 'bark' ? 'Bark Voice' : 'XTTS Voice'}
+              </span>
+              <button
+                onClick={() => setShowAddVoiceModal(true)}
+                className="px-2 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-[9px] font-semibold flex items-center gap-1 transition-colors"
+              >
+                <Plus className="w-3 h-3"/> Add Voice
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center pt-1">
+            <div>
+              <label className="block text-[8px] uppercase tracking-wider text-slate-500 mb-1">Select from Database</label>
+              <select
+                value={voiceId}
+                onChange={e => setVoiceId(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-emerald-500/60"
+              >
+                {voicesForEngine(activeVoiceEngine).map(v => (
+                  <option key={v.voice_id} value={v.voice_id}>
+                    {v.speaker_name} ({v.gender} · {v.accent_dialect}) {v.category === 'cloned' ? '★ Custom' : v.category === 'community' ? '✦ Shared' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {activeVoiceEngine === 'bark' ? (
+              <div>
+                <label className="block text-[8px] uppercase tracking-wider text-slate-500 mb-1">Custom Bark Preset Code (Optional)</label>
+                <input
+                  type="text"
+                  value={customBarkPreset}
+                  onChange={e => setCustomBarkPreset(e.target.value)}
+                  placeholder="e.g. v2/en_speaker_9 or v2/es_speaker_0"
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 font-mono placeholder:text-slate-600 outline-none focus:border-sky-500/60"
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="block text-[8px] uppercase tracking-wider text-slate-500 mb-1">Language</label>
+                <select
+                  value={language}
+                  onChange={e => setLanguage(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-emerald-500/60"
+                >
+                  {LANGUAGES.map(l => (
+                    <option key={l} value={l}>{l.toUpperCase()}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {selectedVoice && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[8px] text-slate-500 border-t border-slate-800/80">
+              <span className="text-slate-400 font-semibold">{selectedVoice.speaker_name}</span>
+              <span>•</span>
+              <span>{selectedVoice.gender}</span>
+              <span>•</span>
+              <span>{selectedVoice.age_group}</span>
+              <span>•</span>
+              <span>{selectedVoice.accent_dialect}</span>
+              {selectedVoice.tone_tags.map(t => (
+                <span key={t} className="px-1.5 py-0.5 rounded bg-slate-800/70 text-slate-400">{t}</span>
+              ))}
+              {clonePath && (
+                <span className="ml-auto text-emerald-300 font-mono">Reference: {clonePath.split(/[\\/]/).pop()}</span>
+              )}
+            </div>
+          )}
         </div>
 
-        {engine==='bark' && <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-3"><div className="text-[9px] font-bold uppercase tracking-widest text-sky-300 mb-2">Bark Quick Insert</div><div className="flex flex-wrap gap-1.5">{BARK_TAGS.map(tag=><button key={tag} onClick={()=>insertTag(tag)} className="px-2 py-1 rounded border border-sky-500/20 bg-slate-950 text-[9px] text-sky-300 hover:border-sky-400/40">{tag}</button>)}</div></div>}
+        {/* Text Input Block */}
+        <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+              {mode==='standard'?'Main Text':'Hybrid Timeline'}
+            </span>
+            {mode==='hybrid'&& (
+              <button onClick={addRow} className="px-2 py-1 rounded border border-emerald-500/30 text-emerald-300 text-[9px] flex items-center gap-1">
+                <Plus className="w-3 h-3"/> Add row
+              </button>
+            )}
+          </div>
+          {mode==='standard' ? (
+            <div>
+              <textarea
+                ref={el=>{textareaRefs.current.row_1=el}}
+                value={text}
+                onFocus={()=>setActiveRowId('row_1')}
+                onChange={e=>setText(e.target.value)}
+                rows={9}
+                placeholder={engine==='bark'?'Write expressive dialogue and use the Bark quick-insert cues below…':'Write clean narration or paste your script…'}
+                className="w-full resize-y min-h-[180px] bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-slate-200 outline-none focus:border-emerald-500/50"
+              />
+              <div className="mt-2 text-[8px] text-slate-600">
+                Sentence splitting: {autoSplit?'ON':'OFF'} · tags stripped on XTTS: {stripTags?'ON':'OFF'}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {rows.map((row,index)=>(
+                <div key={row.id} className="rounded border border-slate-800 bg-slate-950 p-2">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <span className="text-[8px] font-mono text-slate-600">ROW {index+1}</span>
+                    <select
+                      value={row.engine}
+                      onChange={e=>{
+                        const nextEngine=e.target.value as any;
+                        setRows(prev=>prev.map(r=>r.id===row.id?{...r,engine:nextEngine,voiceId:''}:r));
+                      }}
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[9px] text-slate-300"
+                    >
+                      <option value="bark">Bark</option>
+                      <option value="xtts_v2">XTTS v2</option>
+                    </select>
+                    <select
+                      value={row.voiceId}
+                      onChange={e=>setRows(prev=>prev.map(r=>r.id===row.id?{...r,voiceId:e.target.value}:r))}
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[9px] text-slate-300 max-w-[140px]"
+                    >
+                      <option value="">Default voice</option>
+                      {voicesForEngine(row.engine).map(v=>(
+                        <option key={v.voice_id} value={v.voice_id}>{v.speaker_name}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={row.language}
+                      onChange={e=>setRows(prev=>prev.map(r=>r.id===row.id?{...r,language:e.target.value}:r))}
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[9px] text-slate-300"
+                    >
+                      {LANGUAGES.map(l=><option key={l}>{l}</option>)}
+                    </select>
+                    <button onClick={()=>removeRow(row.id)} className="ml-auto text-slate-600 hover:text-rose-300">
+                      <Trash2 className="w-3.5 h-3.5"/>
+                    </button>
+                  </div>
+                  <textarea
+                    ref={el=>{textareaRefs.current[row.id]=el}}
+                    value={row.text}
+                    onFocus={()=>setActiveRowId(row.id)}
+                    onChange={e=>setRows(prev=>prev.map(r=>r.id===row.id?{...r,text:e.target.value}:r))}
+                    rows={3}
+                    placeholder={`Sentence block ${index+1}…`}
+                    className="w-full bg-slate-900 border border-slate-800 rounded p-2 text-xs text-slate-200 outline-none focus:border-emerald-500/50"
+                  />
+                  {row.engine==='bark'&& (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {BARK_TAGS.map(tag=>(
+                        <button key={tag} onClick={()=>insertTag(tag,row.id)} className="px-1.5 py-1 rounded bg-slate-900 border border-slate-700 text-[8px] text-sky-300">
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {engine==='bark' && (
+          <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-3">
+            <div className="text-[9px] font-bold uppercase tracking-widest text-sky-300 mb-2">Bark Quick Insert</div>
+            <div className="flex flex-wrap gap-1.5">
+              {BARK_TAGS.map(tag=>(
+                <button key={tag} onClick={()=>insertTag(tag)} className="px-2 py-1 rounded border border-sky-500/20 bg-slate-950 text-[9px] text-sky-300 hover:border-sky-400/40">
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3 space-y-3"><div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Hyperparameters</div><label className="block text-[9px] text-slate-500">Temperature <b className="text-slate-300">{temperature.toFixed(2)}</b><input type="range" min="0.1" max="1.2" step="0.05" value={temperature} onChange={e=>setTemperature(Number(e.target.value))} className="w-full"/></label>{(engine==='xtts_v2' || mode==='hybrid')&&<><label className="block text-[9px] text-slate-500">Repetition Penalty <b className="text-slate-300">{repetitionPenalty.toFixed(2)}</b><input type="range" min="1" max="3" step="0.05" value={repetitionPenalty} onChange={e=>setRepetitionPenalty(Number(e.target.value))} className="w-full"/></label><label className="block text-[9px] text-slate-500">Length Penalty <b className="text-slate-300">{lengthPenalty.toFixed(2)}</b><input type="range" min="-1" max="1" step="0.05" value={lengthPenalty} onChange={e=>setLengthPenalty(Number(e.target.value))} className="w-full"/></label></>}<div className="flex gap-2"><input type="number" value={seed} onChange={e=>setSeed(Number(e.target.value))} className="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-300"/><button title="Randomize seed" onClick={()=>setSeed(makeSeed())} className="p-2 rounded border border-slate-700 text-slate-300"><Dice5 className="w-4 h-4"/></button><button title="Freeze seed" onClick={()=>setSeedLocked(v=>!v)} className={`p-2 rounded border ${seedLocked?'border-emerald-400 text-emerald-300':'border-slate-700 text-slate-500'}`}><Lock className="w-4 h-4"/></button></div></div>
-          <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3 space-y-3"><div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Output Hub</div><div className="flex gap-2">{(['wav','mp3','flac'] as const).map(f=><button key={f} onClick={()=>setFormat(f)} className={`flex-1 py-1.5 rounded border text-[9px] font-bold uppercase ${format===f?'border-emerald-400 text-emerald-300 bg-emerald-500/10':'border-slate-700 text-slate-500'}`}>{f}</button>)}</div><label className="flex items-center gap-2 text-[9px] text-slate-400"><input type="checkbox" checked={normalize} onChange={e=>setNormalize(e.target.checked)}/> Loudness normalization</label><label className="flex items-center gap-2 text-[9px] text-slate-400"><input type="checkbox" checked={trimSilence} onChange={e=>setTrimSilence(e.target.checked)}/> Trim leading/trailing silence</label><label className="flex items-center gap-2 text-[9px] text-slate-400"><input type="checkbox" checked={autoSplit} onChange={e=>setAutoSplit(e.target.checked)}/> Auto-split sentences</label><label className="flex items-center gap-2 text-[9px] text-slate-400"><input type="checkbox" checked={stripTags} onChange={e=>setStripTags(e.target.checked)}/> Auto-strip tags on XTTS</label><label className="flex items-center gap-2 text-[9px] text-slate-400"><input type="checkbox" checked={enableStreaming} onChange={e=>setEnableStreaming(e.target.checked)} disabled={batchSize > 1}/> HTTP audio streaming (single variation)</label></div>
+          <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3 space-y-3">
+            <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Hyperparameters</div>
+            <label className="block text-[9px] text-slate-500">
+              Temperature <b className="text-slate-300">{temperature.toFixed(2)}</b>
+              <input type="range" min="0.1" max="1.2" step="0.05" value={temperature} onChange={e=>setTemperature(Number(e.target.value))} className="w-full"/>
+            </label>
+            {(engine==='xtts_v2' || mode==='hybrid')&& (
+              <>
+                <label className="block text-[9px] text-slate-500">
+                  Repetition Penalty <b className="text-slate-300">{repetitionPenalty.toFixed(2)}</b>
+                  <input type="range" min="1" max="3" step="0.05" value={repetitionPenalty} onChange={e=>setRepetitionPenalty(Number(e.target.value))} className="w-full"/>
+                </label>
+                <label className="block text-[9px] text-slate-500">
+                  Length Penalty <b className="text-slate-300">{lengthPenalty.toFixed(2)}</b>
+                  <input type="range" min="-1" max="1" step="0.05" value={lengthPenalty} onChange={e=>setLengthPenalty(Number(e.target.value))} className="w-full"/>
+                </label>
+              </>
+            )}
+            <div className="flex gap-2">
+              <input type="number" value={seed} onChange={e=>setSeed(Number(e.target.value))} className="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-300"/>
+              <button title="Randomize seed" onClick={()=>setSeed(makeSeed())} className="p-2 rounded border border-slate-700 text-slate-300"><Dice5 className="w-4 h-4"/></button>
+              <button title="Freeze seed" onClick={()=>setSeedLocked(v=>!v)} className={`p-2 rounded border ${seedLocked?'border-emerald-400 text-emerald-300':'border-slate-700 text-slate-500'}`}><Lock className="w-4 h-4"/></button>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3 space-y-3">
+            <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Output Hub</div>
+            <div className="flex gap-2">
+              {(['wav','mp3','flac'] as const).map(f=>(
+                <button key={f} onClick={()=>setFormat(f)} className={`flex-1 py-1.5 rounded border text-[9px] font-bold uppercase ${format===f?'border-emerald-400 text-emerald-300 bg-emerald-500/10':'border-slate-700 text-slate-500'}`}>
+                  {f}
+                </button>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 text-[9px] text-slate-400"><input type="checkbox" checked={normalize} onChange={e=>setNormalize(e.target.checked)}/> Loudness normalization</label>
+            <label className="flex items-center gap-2 text-[9px] text-slate-400"><input type="checkbox" checked={trimSilence} onChange={e=>setTrimSilence(e.target.checked)}/> Trim leading/trailing silence</label>
+            <label className="flex items-center gap-2 text-[9px] text-slate-400"><input type="checkbox" checked={autoSplit} onChange={e=>setAutoSplit(e.target.checked)}/> Auto-split sentences</label>
+            <label className="flex items-center gap-2 text-[9px] text-slate-400"><input type="checkbox" checked={stripTags} onChange={e=>setStripTags(e.target.checked)}/> Auto-strip tags on XTTS</label>
+            <label className="flex items-center gap-2 text-[9px] text-slate-400"><input type="checkbox" checked={enableStreaming} onChange={e=>setEnableStreaming(e.target.checked)} disabled={batchSize > 1}/> HTTP audio streaming (single variation)</label>
+          </div>
         </div>
 
         <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-3 space-y-3">
@@ -320,25 +730,398 @@ export const UnifiedAudioDeck: React.FC<{ onAddLog?: (level:'INFO'|'WARN'|'SEC'|
             <div className="text-[8px] text-slate-500 mt-1">Post-processes the final rendered audio locally, after Bark/XTTS generation.</div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <label className="block text-[9px] text-slate-500">Pitch Tuning <b className="text-slate-300">{pitchShiftSemitones > 0 ? '+' : ''}{pitchShiftSemitones} st</b><input aria-label="Pitch Tuning Slider" type="range" min="-12" max="12" step="1" value={pitchShiftSemitones} onChange={e=>setPitchShiftSemitones(Number(e.target.value))} className="w-full"/><span className="text-[8px] text-slate-600">-12 to +12 semitones</span></label>
-            <label className="block text-[9px] text-slate-500">Formant Shifter <b className="text-slate-300">{formantShift.toFixed(2)}x</b><input aria-label="Formant Shifter" type="range" min="0.5" max="1.5" step="0.01" value={formantShift} onChange={e=>setFormantShift(Number(e.target.value))} className="w-full"/><span className="text-[8px] text-slate-600">0.5x deeper · 1.5x brighter</span></label>
-            <label className="block text-[9px] text-slate-500">Playback Rate <b className="text-slate-300">{speedFactor.toFixed(2)}x</b><input aria-label="Playback Rate" type="range" min="0.5" max="2" step="0.01" value={speedFactor} onChange={e=>setSpeedFactor(Number(e.target.value))} className="w-full"/><span className="text-[8px] text-slate-600">Pitch-preserving time stretch</span></label>
+            <label className="block text-[9px] text-slate-500">
+              Pitch Tuning <b className="text-slate-300">{pitchShiftSemitones > 0 ? '+' : ''}{pitchShiftSemitones} st</b>
+              <input aria-label="Pitch Tuning Slider" type="range" min="-12" max="12" step="1" value={pitchShiftSemitones} onChange={e=>setPitchShiftSemitones(Number(e.target.value))} className="w-full"/>
+              <span className="text-[8px] text-slate-600">-12 to +12 semitones</span>
+            </label>
+            <label className="block text-[9px] text-slate-500">
+              Formant Shifter <b className="text-slate-300">{formantShift.toFixed(2)}x</b>
+              <input aria-label="Formant Shifter" type="range" min="0.5" max="1.5" step="0.01" value={formantShift} onChange={e=>setFormantShift(Number(e.target.value))} className="w-full"/>
+              <span className="text-[8px] text-slate-600">0.5x deeper · 1.5x brighter</span>
+            </label>
+            <label className="block text-[9px] text-slate-500">
+              Playback Rate <b className="text-slate-300">{speedFactor.toFixed(2)}x</b>
+              <input aria-label="Playback Rate" type="range" min="0.5" max="2" step="0.01" value={speedFactor} onChange={e=>setSpeedFactor(Number(e.target.value))} className="w-full"/>
+              <span className="text-[8px] text-slate-600">Pitch-preserving time stretch</span>
+            </label>
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3"><div className="flex items-center justify-between"><div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Batch Variations</div><div className="flex items-center gap-2"><input type="range" min="1" max="4" value={batchSize} onChange={e=>setBatchSize(Number(e.target.value))}/><span className="text-xs font-mono text-emerald-300">{batchSize}</span><select value={batchMode} onChange={e=>setBatchMode(e.target.value as any)} className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-[9px] text-slate-300"><option value="iterate_seeds">Iterate Seeds</option><option value="iterate_voices">Iterate Voices</option></select></div></div></div>
+        <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
+          <div className="flex items-center justify-between">
+            <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Batch Variations</div>
+            <div className="flex items-center gap-2">
+              <input type="range" min="1" max="4" value={batchSize} onChange={e=>setBatchSize(Number(e.target.value))}/>
+              <span className="text-xs font-mono text-emerald-300">{batchSize}</span>
+              <select value={batchMode} onChange={e=>setBatchMode(e.target.value as any)} className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-[9px] text-slate-300">
+                <option value="iterate_seeds">Iterate Seeds</option>
+                <option value="iterate_voices">Iterate Voices</option>
+              </select>
+            </div>
+          </div>
+        </div>
 
-        {generationProgress && (generating || generationProgress.stage === 'COMPLETE' || generationProgress.stage === 'ERROR') && <div className="rounded-lg border border-emerald-500/20 bg-slate-950 p-3 space-y-2">
-          <div className="flex items-center justify-between gap-3"><div className="text-[9px] font-bold uppercase tracking-widest text-emerald-300">Live Generation Progress</div><div className="text-[9px] font-mono text-slate-500">{generationProgress.percent}%</div></div>
-          <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden"><div className="h-full bg-emerald-400 transition-all duration-300" style={{width:`${generationProgress.percent}%`}} /></div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px]"><span className="font-bold text-slate-200">{generationProgress.stage}</span><span className="text-slate-500">{generationProgress.message}</span>{generationProgress.engine && <span className="text-emerald-300">{generationProgress.engine === 'xtts_v2' ? 'XTTS v2' : 'Bark'}</span>}{generationProgress.row && generationProgress.totalRows && <span className="text-slate-600">Row {generationProgress.row}/{generationProgress.totalRows}</span>}</div>
-        </div>}
+        {generationProgress && (generating || generationProgress.stage === 'COMPLETE' || generationProgress.stage === 'ERROR') && (
+          <div className="rounded-lg border border-emerald-500/20 bg-slate-950 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[9px] font-bold uppercase tracking-widest text-emerald-300">Live Generation Progress</div>
+              <div className="text-[9px] font-mono text-slate-500">{generationProgress.percent}%</div>
+            </div>
+            <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+              <div className="h-full bg-emerald-400 transition-all duration-300" style={{width:`${generationProgress.percent}%`}} />
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px]">
+              <span className="font-bold text-slate-200">{generationProgress.stage}</span>
+              <span className="text-slate-500">{generationProgress.message}</span>
+              {generationProgress.engine && <span className="text-emerald-300">{generationProgress.engine === 'xtts_v2' ? 'XTTS v2' : 'Bark'}</span>}
+              {generationProgress.row && generationProgress.totalRows && <span className="text-slate-600">Row {generationProgress.row}/{generationProgress.totalRows}</span>}
+            </div>
+          </div>
+        )}
+
         {error && <div className="p-3 rounded border border-rose-500/30 bg-rose-500/5 text-xs text-rose-300">{error}</div>}
-        <button onClick={()=>void generate()} disabled={generating || !canGenerate} className="w-full py-3 rounded-lg bg-emerald-500 text-slate-950 font-bold uppercase tracking-widest text-[10px] disabled:opacity-30 flex items-center justify-center gap-2">{generating?<><Sparkles className="w-4 h-4 animate-pulse"/> Generating locally…</>:<><Wand2 className="w-4 h-4"/> Generate Audio</>}</button>
-        {batchResults.length > 0 && <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3"><div className="text-[9px] uppercase tracking-widest text-emerald-300 font-bold mb-2">Batch Matrix · {batchResults.length} variation{batchResults.length===1?'':'s'}</div><div className="grid grid-cols-1 md:grid-cols-2 gap-2">{batchResults.map((item,index)=><div key={`${item.seed}-${index}`} className="rounded border border-slate-800 bg-slate-950 p-2"><div className="flex items-center justify-between text-[8px] font-mono text-slate-500"><span>Variation {index+1} · Seed {item.seed}</span><a href={item.url} download className="text-emerald-300 flex items-center gap-1"><Download className="w-3 h-3"/>Save</a></div><audio controls src={item.url} className="w-full mt-2"/></div>)}</div></div>}
+
+        <button
+          onClick={()=>void generate()}
+          disabled={generating || !canGenerate}
+          className="w-full py-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold uppercase tracking-widest text-[10px] disabled:opacity-30 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+        >
+          {generating ? <><Sparkles className="w-4 h-4 animate-pulse"/> Generating locally…</> : <><Wand2 className="w-4 h-4"/> Generate Audio</>}
+        </button>
+
+        {batchResults.length > 0 && (
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+            <div className="text-[9px] uppercase tracking-widest text-emerald-300 font-bold mb-2">Batch Matrix · {batchResults.length} variation{batchResults.length===1?'':'s'}</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {batchResults.map((item,index)=>(
+                <div key={`${item.seed}-${index}`} className="rounded border border-slate-800 bg-slate-950 p-2">
+                  <div className="flex items-center justify-between text-[8px] font-mono text-slate-500">
+                    <span>Variation {index+1} · Seed {item.seed}</span>
+                    <a href={item.url} download className="text-emerald-300 flex items-center gap-1 hover:underline"><Download className="w-3 h-3"/>Save</a>
+                  </div>
+                  <audio controls src={item.url} className="w-full mt-2"/>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      <aside className="col-span-12 xl:col-span-4 rounded-lg border border-slate-800 bg-slate-900/50 p-3 min-w-0"><div className="flex items-center justify-between mb-3"><div><div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Voice Database</div><div className="text-[8px] text-slate-600 mt-0.5">{activeVoiceEngine === 'xtts_v2' ? 'XTTS voice selection' : 'Bark voice preset'}</div></div><Search className="w-3.5 h-3.5 text-slate-600"/></div><div className="flex gap-1 mb-2">{(['system','cloned','community'] as const).map(c=><button key={c} onClick={()=>setVoiceCategory(c)} className={`flex-1 py-1.5 rounded border text-[8px] font-bold uppercase ${voiceCategory===c?'border-emerald-400 text-emerald-300':'border-slate-700 text-slate-500'}`}>{c==='cloned'?'My Cloned Voices':c==='community'?'Shared':'System Presets'}</button>)}</div><input value={voiceSearch} onChange={e=>setVoiceSearch(e.target.value)} placeholder="Search speaker, accent or tone…" className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-300 mb-3"/><div className="space-y-1.5 max-h-[420px] overflow-y-auto custom-scrollbar">{filteredVoices.map(v=><div key={v.voice_id} className={`p-2 rounded border ${voiceId===v.voice_id?'border-emerald-500/40 bg-emerald-500/5':'border-slate-800 bg-slate-950'}`}><div className="flex items-start gap-2"><button onClick={()=>setVoiceId(v.voice_id)} className="flex-1 text-left min-w-0"><div className="text-xs text-slate-200 font-semibold truncate">{v.speaker_name}</div><div className="text-[8px] text-slate-600 truncate">{v.gender} · {v.age_group} · {v.primary_language} · {v.accent_dialect}</div><div className="flex flex-wrap gap-1 mt-1">{v.engine_compatibility.map(e=><span key={e} className={`px-1 rounded text-[7px] font-bold uppercase ${e==='xtts'?'bg-emerald-500/15 text-emerald-300':'bg-sky-500/15 text-sky-300'}`}>{e==='xtts'?'XTTS':'BARK'}</span>)}{v.tone_tags.slice(0,3).map(t=><span key={t} className="px-1 rounded bg-slate-800 text-slate-500 text-[7px]">{t}</span>)}</div></button><button title={v.engine_compatibility.includes('xtts') && !v.xtts_embedding_path && !v.speaker_name ? 'XTTS requires a speaker or reference recording' : 'Preview voice'} disabled={v.engine_compatibility.includes('xtts') && !v.xtts_embedding_path && !v.speaker_name} onClick={()=>void previewVoice(v)} className="p-1.5 rounded border border-slate-700 text-slate-400"><Play className="w-3 h-3"/></button><button title="Favorite" onClick={()=>void toggleFavorite(v)} className={`p-1.5 rounded border ${v.favorite?'border-amber-400/50 text-amber-300':'border-slate-700 text-slate-600'}`}><Heart className="w-3 h-3" fill={v.favorite?'currentColor':'none'}/></button></div></div>)}{!filteredVoices.length&&<div className="text-[9px] text-slate-600 text-center py-8">No matching voices.</div>}</div>{(engine==='xtts_v2' || mode==='hybrid')&&<div {...drop.getRootProps()} className={`mt-3 rounded-lg border border-dashed p-4 text-center cursor-pointer ${drop.isDragActive?'border-emerald-400 bg-emerald-500/10':'border-slate-700 bg-slate-950'}`}><input {...drop.getInputProps()}/><Upload className="w-5 h-5 mx-auto text-emerald-300"/><div className="text-[9px] font-bold text-slate-300 mt-2">Drop 3–10s XTTS reference</div><div className="text-[8px] text-slate-600 mt-1">WAV or MP3 · clean speech · stored locally</div>{clonePath&&<div className="text-[8px] text-emerald-300 mt-2 truncate">Clone ready: {clonePath.split(/[\\/]/).pop()}</div>}</div>}{(engine==='xtts_v2' || mode==='hybrid')&&<select value={language} onChange={e=>setLanguage(e.target.value)} className="mt-3 w-full bg-slate-950 border border-slate-800 rounded px-2 py-2 text-[9px] text-slate-300">{LANGUAGES.map(l=><option key={l}>{l}</option>)}</select>}{previewUrl&&<div className="mt-3"><audio controls src={previewUrl} className="w-full"/></div>}</aside>
+      {/* Voice Database Aside */}
+      <aside className="col-span-12 xl:col-span-4 rounded-lg border border-slate-800 bg-slate-900/50 p-3 min-w-0 flex flex-col">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">Voice Database</div>
+            <div className="text-[8px] text-slate-600 mt-0.5">{voices.length} voices registered</div>
+          </div>
+          <button
+            onClick={() => setShowAddVoiceModal(true)}
+            className="px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-bold flex items-center gap-1 transition-colors"
+          >
+            <Plus className="w-3 h-3"/> New Voice
+          </button>
+        </div>
+
+        {/* Engine Filter Tabs */}
+        <div className="flex gap-1 mb-2">
+          {(['all', 'bark', 'xtts_v2'] as const).map(f => (
+            <button
+              key={f}
+              onClick={() => setEngineFilter(f)}
+              className={`flex-1 py-1 rounded border text-[8px] font-bold uppercase transition-colors ${engineFilter === f ? 'border-emerald-400 text-emerald-300 bg-emerald-500/15' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}
+            >
+              {f === 'all' ? 'All' : f === 'bark' ? 'Bark' : 'XTTS v2'}
+            </button>
+          ))}
+        </div>
+
+        {/* Category Tabs */}
+        <div className="flex gap-1 mb-2">
+          {(['all', 'system', 'cloned', 'community'] as const).map(c => (
+            <button
+              key={c}
+              onClick={() => setVoiceCategory(c)}
+              className={`flex-1 py-1.5 rounded border text-[8px] font-bold uppercase transition-colors ${voiceCategory === c ? 'border-emerald-400 text-emerald-300 bg-emerald-500/15' : 'border-slate-800 text-slate-500 hover:text-slate-300'}`}
+            >
+              {c === 'all' ? 'All' : c === 'cloned' ? 'Custom / Clones' : c === 'community' ? 'Shared' : 'System'}
+            </button>
+          ))}
+        </div>
+
+        {/* Search */}
+        <div className="relative mb-3">
+          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5"/>
+          <input
+            value={voiceSearch}
+            onChange={e=>setVoiceSearch(e.target.value)}
+            placeholder="Search speaker, accent or tone…"
+            className="w-full bg-slate-950 border border-slate-800 rounded pl-8 pr-2 py-1.5 text-xs text-slate-300 placeholder:text-slate-600 outline-none focus:border-emerald-500/50"
+          />
+        </div>
+
+        {/* Voice List */}
+        <div className="space-y-1.5 max-h-[420px] overflow-y-auto custom-scrollbar flex-1">
+          {filteredVoices.map(v => (
+            <div
+              key={v.voice_id}
+              className={`p-2 rounded border transition-colors ${voiceId===v.voice_id?'border-emerald-500/50 bg-emerald-500/10':'border-slate-800 bg-slate-950 hover:border-slate-700'}`}
+            >
+              <div className="flex items-start gap-2">
+                <button
+                  onClick={()=>setVoiceId(v.voice_id)}
+                  className="flex-1 text-left min-w-0 cursor-pointer"
+                >
+                  <div className="text-xs text-slate-200 font-semibold truncate flex items-center gap-1.5">
+                    {v.speaker_name}
+                    {v.category === 'cloned' && <span className="text-[8px] text-amber-400 font-normal">★ Custom</span>}
+                    {v.category === 'community' && <span className="text-[8px] text-emerald-400 font-normal">✦ Shared</span>}
+                  </div>
+                  <div className="text-[8px] text-slate-500 truncate">
+                    {v.gender} · {v.age_group} · {v.primary_language.toUpperCase()} · {v.accent_dialect}
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {v.engine_compatibility.map(e => (
+                      <span key={e} className={`px-1 rounded text-[7px] font-bold uppercase ${e==='xtts'?'bg-emerald-500/15 text-emerald-300':'bg-sky-500/15 text-sky-300'}`}>
+                        {e==='xtts'?'XTTS':'BARK'}
+                      </span>
+                    ))}
+                    {v.bark_prompt_path && (
+                      <span className="px-1 rounded bg-slate-800 text-sky-400 font-mono text-[7px]">
+                        {v.bark_prompt_path}
+                      </span>
+                    )}
+                    {v.tone_tags.slice(0,3).map(t=>(
+                      <span key={t} className="px-1 rounded bg-slate-800 text-slate-500 text-[7px]">{t}</span>
+                    ))}
+                  </div>
+                </button>
+                <button
+                  title={v.engine_compatibility.includes('xtts') && !v.xtts_embedding_path && !v.speaker_name ? 'XTTS requires a speaker or reference recording' : 'Preview voice'}
+                  disabled={v.engine_compatibility.includes('xtts') && !v.xtts_embedding_path && !v.speaker_name}
+                  onClick={()=>void previewVoice(v)}
+                  className="p-1.5 rounded border border-slate-700 text-slate-400 hover:text-slate-200"
+                >
+                  <Play className="w-3 h-3"/>
+                </button>
+                <button
+                  title="Favorite"
+                  onClick={()=>void toggleFavorite(v)}
+                  className={`p-1.5 rounded border ${v.favorite?'border-amber-400/50 text-amber-300':'border-slate-700 text-slate-600'}`}
+                >
+                  <Heart className="w-3 h-3" fill={v.favorite?'currentColor':'none'}/>
+                </button>
+                {(v.category === 'cloned' || v.category === 'community') && (
+                  <button
+                    title={v.category === 'cloned' ? 'Publish voice to Shared / Community Tab' : 'Move voice to Custom / Clones Tab'}
+                    onClick={()=>void toggleVoiceCategory(v)}
+                    className={`p-1.5 rounded border transition-colors ${v.category === 'community' ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10' : 'border-slate-700 text-slate-500 hover:text-slate-200'}`}
+                  >
+                    <Share2 className="w-3 h-3"/>
+                  </button>
+                )}
+                {(v.category === 'cloned' || v.category === 'community') && (
+                  <button
+                    title="Delete voice"
+                    onClick={()=>void deleteVoice(v)}
+                    className="p-1.5 rounded border border-slate-800 text-slate-600 hover:text-rose-400 hover:border-rose-500/40"
+                  >
+                    <Trash2 className="w-3 h-3"/>
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+          {!filteredVoices.length && (
+            <div className="text-[10px] text-slate-500 text-center py-6 px-3 border border-dashed border-slate-800 rounded-lg">
+              {voiceCategory === 'cloned' ? (
+                <div>
+                  <div className="font-semibold text-slate-300 mb-1">No Custom Cloned Voices Yet</div>
+                  <p className="text-slate-500 text-[9px] mb-2">Drop a 3–10s WAV/MP3 voice reference below or click 'New Voice' to create one.</p>
+                </div>
+              ) : voiceCategory === 'community' ? (
+                <div>
+                  <div className="font-semibold text-slate-300 mb-1">No Shared Voices Found</div>
+                  <p className="text-slate-500 text-[9px]">Click the Share icon on any custom cloned voice to publish it to the Shared tab.</p>
+                </div>
+              ) : (
+                <div>No matching voices found.</div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* XTTS Reference Dropzone */}
+        {(engine==='xtts_v2' || mode==='hybrid' || voiceCategory==='cloned') && (
+          <div
+            {...drop.getRootProps()}
+            className={`mt-3 rounded-lg border border-dashed p-4 text-center cursor-pointer transition-colors ${drop.isDragActive?'border-emerald-400 bg-emerald-500/10':'border-slate-700 bg-slate-950 hover:border-slate-600'}`}
+          >
+            <input {...drop.getInputProps()}/>
+            <Upload className="w-5 h-5 mx-auto text-emerald-300"/>
+            <div className="text-[9px] font-bold text-slate-300 mt-2">Drop 3–10s XTTS reference</div>
+            <div className="text-[8px] text-slate-600 mt-1">WAV or MP3 · clean speech · stored locally</div>
+            {clonePath && (
+              <div className="text-[8px] text-emerald-300 mt-2 truncate font-mono">
+                Clone ready: {clonePath.split(/[\\/]/).pop()}
+              </div>
+            )}
+          </div>
+        )}
+
+        {previewUrl && (
+          <div className="mt-3">
+            <audio controls src={previewUrl} className="w-full"/>
+          </div>
+        )}
+      </aside>
     </div>
+
+    {/* Add Custom Voice Modal */}
+    {showAddVoiceModal && (
+      <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4">
+        <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-md w-full p-5 shadow-2xl space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+              <UserCheck className="w-4 h-4 text-emerald-400"/> Add Voice to Database
+            </h3>
+            <button
+              onClick={() => setShowAddVoiceModal(false)}
+              className="text-slate-500 hover:text-slate-300"
+            >
+              <X className="w-4 h-4"/>
+            </button>
+          </div>
+
+          <form onSubmit={e => void createCustomVoice(e)} className="space-y-3">
+            <div>
+              <label className="block text-[9px] uppercase font-bold text-slate-400 mb-1">Speaker / Display Name *</label>
+              <input
+                type="text"
+                required
+                value={newVoiceName}
+                onChange={e => setNewVoiceName(e.target.value)}
+                placeholder="e.g. British Storyteller or Maria"
+                className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[9px] uppercase font-bold text-slate-400 mb-1">Target Engine</label>
+                <select
+                  value={newVoiceEngine}
+                  onChange={e => setNewVoiceEngine(e.target.value as any)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200"
+                >
+                  <option value="xtts">XTTS v2</option>
+                  <option value="bark">Bark</option>
+                  <option value="both">Both Engines</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[9px] uppercase font-bold text-slate-400 mb-1">Language</label>
+                <select
+                  value={newVoiceLang}
+                  onChange={e => setNewVoiceLang(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200"
+                >
+                  {LANGUAGES.map(l => <option key={l} value={l}>{l.toUpperCase()}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block text-[9px] uppercase font-bold text-slate-400 mb-1">Gender</label>
+                <select
+                  value={newVoiceGender}
+                  onChange={e => setNewVoiceGender(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200"
+                >
+                  <option value="female">Female</option>
+                  <option value="male">Male</option>
+                  <option value="neutral">Neutral</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[9px] uppercase font-bold text-slate-400 mb-1">Age</label>
+                <select
+                  value={newVoiceAge}
+                  onChange={e => setNewVoiceAge(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200"
+                >
+                  <option value="youth">Youth</option>
+                  <option value="adult">Adult</option>
+                  <option value="mature">Mature</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[9px] uppercase font-bold text-slate-400 mb-1">Accent</label>
+                <input
+                  type="text"
+                  value={newVoiceAccent}
+                  onChange={e => setNewVoiceAccent(e.target.value)}
+                  placeholder="standard / RP"
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-xs text-slate-200"
+                />
+              </div>
+            </div>
+
+            {(newVoiceEngine === 'bark' || newVoiceEngine === 'both') && (
+              <div>
+                <label className="block text-[9px] uppercase font-bold text-sky-400 mb-1">Bark Prompt Path / Code</label>
+                <input
+                  type="text"
+                  value={newVoiceBarkPrompt}
+                  onChange={e => setNewVoiceBarkPrompt(e.target.value)}
+                  placeholder="e.g. v2/en_speaker_9 or custom path to .npz"
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs font-mono text-slate-200 placeholder:text-slate-600 outline-none focus:border-sky-500"
+                />
+              </div>
+            )}
+
+            {(newVoiceEngine === 'xtts' || newVoiceEngine === 'both') && (
+              <div>
+                <label className="block text-[9px] uppercase font-bold text-emerald-400 mb-1">XTTS Reference WAV Path or Speaker ID</label>
+                <input
+                  type="text"
+                  value={newVoiceEmbeddingPath}
+                  onChange={e => setNewVoiceEmbeddingPath(e.target.value)}
+                  placeholder={clonePath || "e.g. C:\\Gina_AI\\data\\audio\\my_voice.wav"}
+                  className="w-full bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs font-mono text-slate-200 placeholder:text-slate-600 outline-none focus:border-emerald-500"
+                />
+                {clonePath && (
+                  <button
+                    type="button"
+                    onClick={() => setNewVoiceEmbeddingPath(clonePath)}
+                    className="mt-1 text-[8px] text-emerald-400 underline cursor-pointer"
+                  >
+                    Use currently uploaded clone audio ({clonePath.split(/[\\/]/).pop()})
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowAddVoiceModal(false)}
+                className="px-3 py-1.5 rounded border border-slate-700 text-xs text-slate-400 hover:text-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={addingVoice}
+                className="px-4 py-1.5 rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase disabled:opacity-50"
+              >
+                {addingVoice ? 'Saving...' : 'Save Voice'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
   </section>;
 };
