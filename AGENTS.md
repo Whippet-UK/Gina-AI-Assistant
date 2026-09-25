@@ -15,9 +15,11 @@
 ---
 
 ## 📌 Project Overview
-- **Current version:** `v1.20.11`
-- **Active lifecycle:** `PHASE 59 — VOICE ENGINE RUNTIME REPAIR & FLUID LAYOUT`
-- **Active save point:** `RESTORE_V1.20.11_VOICE_ENGINE_RUNTIME_REPAIR_FLUID_LAYOUT`
+- **Current version:** `v1.20.13`
+- **Active lifecycle:** `PHASE 60 — WAN 2.1 VACE MODEL MOUNTING & WHIPPET ANCHOR SMOKE TEST`
+- **Active save point:** `RESTORE_V1.20.13_WAN_VACE_MODEL_MOUNT_AND_WHIPPET_ANCHOR`
+- **Phase 60:** Wan 2.1 VACE 1.3B FP16 (`wan2.1_vace_1.3B_fp16.safetensors`) is indexed and mounted in server prewarm/registry, VideoStudio VACE/Whippet anchor controls, and 12-frame micro-baseline preset.
+- **Phase 59:** Voice Engine Runtime Repair & Transformers BeamSearchScorer Fix.
 - **Phase 41:** Gina Agent runs are persisted under `.gina/agent-runs`, expose live Server-Sent Events, can reconnect after browser refresh, and support explicit cancellation.
 - **Phase 44:** Qwen Coder accepts text/code files and project ZIPs; project ZIPs are imported into dedicated workspaces, automatically inspected without executing uploaded code, and support up to 100MB / 10,000 files.
 - **Phase 46:** A mandatory update-integrity checklist is loaded into agent startup context; active Wan 2.1 UI references were reconciled and a deterministic integrity gate is available before success reporting.
@@ -97,7 +99,7 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 ## 1. Project Overview & URLs
 
 - **App Name**: Gina AI Factory — Local Creator UI
-- **Version**: 1.20.7
+- **Version**: 1.20.13
 - **Local Dashboard URL**: `http://127.0.0.1:3000/` (Express server listens on `0.0.0.0:3000`)
 - **GIF Studio safety rule**: Existing uploaded media conversion must use the isolated FFmpeg asset path; do not route ordinary asset-to-GIF conversion through ComfyUI/VHS. ComfyUI is reserved for generative Wan/story work and optional explicitly requested RIFE stages.
 - **Local ComfyUI Backend URL**: `http://127.0.0.1:8188/`
@@ -124,11 +126,12 @@ Whenever an AI assistant is loaded, booted, or begins a conversation turn:
 - **Image Workflows**: 
   - `sdxl_juggernaut.json` (Juggernaut-XL v9 photorealism, 8-12s generation, low VRAM footprint)
   - `flux_lite_image.json` (FLUX.1 Lite GGUF via `UnetLoaderGGUF`, high-precision optional lane)
-- **Video Workflow**: `wan_video.json` (Wan 2.1 1.3B BF16, H.264 MP4 export)
+- **Video Workflow**: `wan_video.json` (Wan 2.1 1.3B BF16 / VACE 1.3B FP16, H.264 MP4 export)
 - **Installed Checkpoints / Models**:
   - `Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors` (in `models/checkpoints/`)
   - `FLUX.1-lite-pure-Q4_0.gguf` (high-precision FLUX UNet)
   - `wan2.1_t2v_1.3B_bf16.safetensors`
+  - `wan2.1_vace_1.3B_fp16.safetensors`
   - `wan2.1-1.3b.safetensors`
   - `hunyuan-video.safetensors`
   - `geneva_1-12b_fp8.safetensors`

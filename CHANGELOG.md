@@ -1,3 +1,92 @@
+# v1.20.13 — Phase 60 — Wan 2.1 VACE 1.3B FP16 Model Mounting & Whippet Anchor Smoke Test
+
+## Infrastructure Model Indexing & Character Slot Anchor Controls — 2026-09-25
+
+- **Target File Path:** `/server/capabilities/CapabilityManager.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    { id:'wan-vace-1.3b', fileName:'wan2.1_vace_1.3B_fp16.safetensors', category:'checkpoint', relative:'models/checkpoints/wan2.1_vace_1.3B_fp16.safetensors', purpose:'Wan 2.1 VACE 1.3B FP16 video generation model with character/reference control', enabled:true, aliases:['wan2.1_vace.safetensors', 'wan2.1_vace_1.3B.safetensors', 'wan2.1_vace_1.3B_fp16.safetensors'] },
+    ```
+  - **Why:** Registered `wan2.1_vace_1.3B_fp16.safetensors` in `knownModels`, added `vace` heuristic to `classifyModel`, and updated `buildCapabilities` regex to recognize Wan VACE checkpoints.
+
+- **Target File Path:** `/server/comfy/WorkflowParser.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    model: [{ key: 'model', inputs: ['ckpt_name', 'unet_name'], classes: ['CheckpointLoaderSimple', 'CheckpointLoader', 'UNETLoader'] }],
+    ```
+  - **Why:** Included `unet_name` alongside `ckpt_name` in the model binding alias rules so ComfyUI `UNETLoader` nodes are bound to `model` parameters.
+
+- **Target File Path:** `/server.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    wan_vace_13b: { name: "Wan 2.1 VACE 1.3B FP16 (Video Control)", filename: "wan2.1_vace_1.3B_fp16.safetensors", vramFootprintMB: 5400, color: "#38bdf8", runs: 28 },
+    ```
+    ```typescript
+    {
+      id: 'wan_vace_13b', name: 'Wan 2.1 VACE 1.3B FP16', filename: 'wan2.1_vace_1.3B_fp16.safetensors',
+      workflowId: 'wan_video', type: 'video', vramFootprintMB: 5400,
+      description: 'Wan 2.1 VACE 1.3B FP16 video generation model with character slot anchor & reference control (5400 MB footprint).'
+    },
+    ```
+  - **Why:** Indexed VACE in `modelMetadataRegistry` and `AVAILABLE_PREWARM_MODELS`, added `diffusion_models` to candidate search paths in `/api/models/prewarm`, and wired VACE auto-adaptation in `adaptWorkflowForComfySession`.
+
+- **Target File Path:** `/scripts/check_wan21.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    path.join(comfyRoot, 'models', 'checkpoints', 'wan2.1_vace_1.3B_fp16.safetensors'),
+    'C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\checkpoints\\wan2.1_vace_1.3B_fp16.safetensors',
+    ```
+  - **Why:** Added candidate paths for `wan2.1_vace_1.3B_fp16.safetensors` in both portable checkpoints and diffusion_models folders so diagnostic reports verify VACE presence.
+
+- **Target File Path:** `/src/components/VideoStudio.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    <button
+      type="button"
+      onClick={() => {
+        setSelectedModel('wan2.1_vace_1.3B_fp16.safetensors');
+        setEnableCharacterAnchor(true);
+      }}
+      className={`p-3 rounded border text-left transition-all cursor-pointer ${
+        selectedModel === 'wan2.1_vace_1.3B_fp16.safetensors'
+          ? 'bg-sky-500/15 border-sky-400 text-slate-100 shadow-md shadow-sky-500/10'
+          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-slate-200">Wan 2.1 VACE 1.3B FP16</span>
+        <span className="text-[9px] font-mono text-sky-400 font-bold">5400 MB</span>
+      </div>
+      <div className="text-[10px] text-slate-400 mt-1">Character anchor & reference control · 8GB-safe bfloat16</div>
+    </button>
+    ```
+    ```typescript
+    const durationOptions = [
+      { id: '1s_12f', seconds: 1, frames: 12, label: '1.0s Micro · 12 frames', vram: 'Micro-Baseline · 12 frames' },
+      { id: '1s_25f', seconds: 1, frames: 25, label: '1.0s · 25 frames', vram: 'Safest · 512×512' },
+      { id: '2s_49f', seconds: 2, frames: 49, label: '2.0s · 49 frames', vram: 'Safe · 512×512' },
+      { id: '3s_73f', seconds: 3, frames: 73, label: '3.0s · 73 frames', vram: 'Safe ceiling · 512×512 / 512×768' },
+    ];
+    ```
+  - **Why:** Surfaced Wan 2.1 VACE model selector card with 5400 MB footprint, Whippet character slot anchor controls, and refined `durationOptions` with unique IDs so 12-frame and 25-frame 1.0s durations are selectable independently.
+
+- **Target File Path:** `/src/components/GifStudio.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    <option value="wan2.1_vace_1.3B_fp16.safetensors">Wan 2.1 VACE 1.3B FP16 (Reference Control · 5400 MB Footprint)</option>
+    ```
+  - **Why:** Added Wan 2.1 VACE 1.3B FP16 with 5400 MB footprint to GifStudio story model selection dropdown.
+
+- **Target File Path:** `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`, `/src/components/MilestoneChecklist.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    export const APP_VERSION = '1.20.13';
+    export const ACTIVE_SAVE_POINT_ID = 'RESTORE_V1.20.13_WAN_VACE_MODEL_MOUNT_AND_WHIPPET_ANCHOR';
+    export const ACTIVE_LIFECYCLE_PHASE = 60;
+    export const ACTIVE_LIFECYCLE_NAME = 'PHASE 60 — WAN 2.1 VACE MODEL MOUNTING & WHIPPET ANCHOR SMOKE TEST';
+    ```
+  - **Why:** Universal metadata synchronization across all 8 surfaces guaranteeing consistency with Definition of Done gate.
+
 # v1.20.12 — Phase 59 — Voice Engine Runtime Repair & Transformers BeamSearchScorer Fix
 
 ## Comprehensive Audio Environment Inoculation & Voice Management CRUD — 2026-09-21

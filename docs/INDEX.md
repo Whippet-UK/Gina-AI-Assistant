@@ -1,6 +1,6 @@
 # Gina AI Factory — Documentation Index & Architecture Manifest
 
-Welcome to the centralized documentation hub for **Gina AI Factory — Local Creator UI** (v1.20.8).
+Welcome to the centralized documentation hub for **Gina AI Factory — Local Creator UI** (v1.20.13).
 
 ---
 

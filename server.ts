@@ -258,6 +258,7 @@ const modelMetadataRegistry: Record<string, { name: string; filename: string; vr
   juggernaut_xl_v9: { name: "Juggernaut-XL v9 Photorealism (SDXL)", filename: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors", vramFootprintMB: 6200, color: "#22d3ee", runs: 42 },
   flux_lite: { name: "FLUX.1 Lite GGUF (High-Precision)", filename: "FLUX.1-lite-pure-Q4_0.gguf", vramFootprintMB: 5900, color: "#10b981", runs: 32 },
   wan_video_21: { name: "Wan 2.1 1.3B BF16 (Video)", filename: "wan2.1_t2v_1.3B_bf16.safetensors", vramFootprintMB: 5200, color: "#38bdf8", runs: 28 },
+  wan_vace_13b: { name: "Wan 2.1 VACE 1.3B FP16 (Video Control)", filename: "wan2.1_vace_1.3B_fp16.safetensors", vramFootprintMB: 5400, color: "#0ea5e9", runs: 0 },
   hunyuan_video: { name: "Hunyuan Video (3D Attention)", filename: "hunyuan-video.safetensors", vramFootprintMB: 7100, color: "#f43f5e", runs: 12 },
   geneva_fp8: { name: "Geneva 1.12B FP8", filename: "geneva_1-12b_fp8.safetensors", vramFootprintMB: 4800, color: "#a855f7", runs: 9 },
   qwen_25_vl_7b: { name: "Qwen 2.5-VL 7B Q4_K_M + mmproj-F16", filename: "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf", vramFootprintMB: 4700, color: "#f59e0b", runs: 38 },
@@ -3256,6 +3257,11 @@ const AVAILABLE_PREWARM_MODELS: PreWarmModelDef[] = [
     description: 'Native ComfyUI Wan 2.1 text-to-video workflow using local UMT5, Wan VAE and optional CLIP Vision assets.'
   },
   {
+    id: 'wan_vace_13b', name: 'Wan 2.1 VACE 1.3B FP16', filename: 'wan2.1_vace_1.3B_fp16.safetensors',
+    workflowId: 'wan_video', type: 'video', vramFootprintMB: 5400,
+    description: 'Wan 2.1 VACE 1.3B FP16 video generation model with character slot anchor & reference control (5400 MB footprint).'
+  },
+  {
     id: 'musicgen_small', name: 'MusicGen Small (AudioCraft 300M)', filename: 'facebook/musicgen-small',
     workflowId: 'audiocraft_music', type: 'music', vramFootprintMB: 2800,
     description: 'Meta AudioCraft MusicGen 300M model for fast BGM generation and audio composition (cached in models/audio). Runs as an exclusive AudioCraft job.'
@@ -3305,7 +3311,7 @@ app.get("/api/models/prewarm", async (_req, res) => {
           path.join(process.env.GINA_LLM_ROOT || (isWin ? 'C:\\Gina_AI\\models\\llm' : path.join(process.cwd(), 'models', 'llm')), model.filename),
           path.join(MODEL_ROOT, model.filename)
         ]
-      : [path.join(MODEL_ROOT, 'unet', model.filename), path.join(MODEL_ROOT, 'checkpoints', model.filename), path.join(MODEL_ROOT, model.filename)];
+      : [path.join(MODEL_ROOT, 'checkpoints', model.filename), path.join(MODEL_ROOT, 'diffusion_models', model.filename), path.join(MODEL_ROOT, 'unet', model.filename), path.join(MODEL_ROOT, model.filename)];
     let filePath: string | null = null; let fileBytes = 0;
     for (const candidate of candidates) { try { const stat = await fs.stat(candidate); if (stat.isFile()) { filePath=candidate; fileBytes=stat.size; break; } } catch {} }
     return { ...model, filePresent:!!filePath, filePath, fileBytes };
@@ -4553,6 +4559,19 @@ async function adaptWorkflowForComfySession(workflow: any) {
           }
         }
       }
+      // For Wan video workflows: ensure VACE model mapping if VACE is selected
+      if (node?.class_type === 'UNETLoader') {
+        const currentUnet = String(node?.inputs?.unet_name || '');
+        if (/vace/i.test(currentUnet)) {
+          const availableUnets: string[] = objectInfo?.UNETLoader?.input?.required?.unet_name?.[0] || [];
+          const availableCkpts: string[] = objectInfo?.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0] || [];
+          const matched = availableUnets.find(u => /vace/i.test(u)) || availableCkpts.find(c => /vace/i.test(c));
+          if (matched) {
+            console.log(`[Workflow Adapter] Routing Wan UNETLoader unet_name to discovered VACE model '${matched}'`);
+            node.inputs.unet_name = matched;
+          }
+        }
+      }
     }
   } catch {
     // Return original if object_info query is unavailable
@@ -5189,7 +5208,8 @@ function validateWanVideoParameters(parameters: Record<string, any>) {
   }
   if (frames < 9) throw new Error('Wan 2.1 requires at least 9 temporal frames.');
   if (requestedDuration > 3) throw new Error("Wan 2.1 1.3B direct generation is limited to 3 seconds on Gina's 8GB GPU. Use the GIF/Story tools for longer compositions.");
-  return { ...parameters, width, height, frames, batch_size: 1, fps, duration_sec: duration, steps };
+  const model = parameters.model ? String(parameters.model).trim() : 'wan2.1_t2v_1.3B_bf16.safetensors';
+  return { ...parameters, width, height, frames, batch_size: 1, fps, duration_sec: duration, steps, model };
 }
 
 app.post("/api/jobs", async (req, res) => {
