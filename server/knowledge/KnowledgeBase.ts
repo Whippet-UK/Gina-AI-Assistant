@@ -87,7 +87,7 @@ export class KnowledgeBase {
       .slice(0, limit);
   }
 
-  async search(query: string, limit = 8): Promise<Array<{ entry: KnowledgeEntry; score: number }>> {
+  async search(query: string, limit = 8, minScore = 3): Promise<Array<{ entry: KnowledgeEntry; score: number }>> {
     await this.ensureLoaded();
     const clean = query.toLowerCase().trim();
     if (!clean) return [];
@@ -100,9 +100,9 @@ export class KnowledgeBase {
         const titleLower = entry.title.toLowerCase();
         const contentLower = entry.content.toLowerCase();
         for (const term of terms) {
-          if (titleLower.includes(term)) score += 3;
+          if (titleLower.includes(term)) score += 4;
           if (contentLower.includes(term)) score += 1;
-          if (entry.keywords.some(k => k.toLowerCase().includes(term))) score += 2;
+          if (entry.keywords.some(k => k.toLowerCase().includes(term))) score += 3;
         }
         return { entry, score };
       })
@@ -166,7 +166,7 @@ export class KnowledgeBase {
   }
 
   async promptContext(query: string, maxChars = 2400): Promise<string> {
-    const hits = await this.search(query, 5);
+    const hits = await this.search(query, 5, 3);
     if (!hits.length) return '';
 
     let accumulated = '### RELEVANT LEARNED KNOWLEDGE:\n';

@@ -1,3 +1,32 @@
+# v1.20.15 — Phase 62 — Gina Tool Isolation, Context Hygiene & Unified Agent Trace
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx` (lines 118, 1018, 1190-1338, 2061)
+  - **Why:** Partitioned conversation history by active Gina mode, removed the generic keyword-driven web-search fallback, made Web Search / Web App / Code Engine / Image Studio / Video Gen deterministic local tool lanes, and replaced the duplicate activity-history block with the unified Agent Execution Trace. Video generation now returns into the Gina preview/conversation.
+
+- **Target File Path:** `/src/components/AgentExecutionTrace.tsx` (lines 169-297)
+  - **Why:** Added one collapsible execution surface containing real execution events, live agent trace, token-throughput history, VRAM allocation history, context allocation and hardware/safety telemetry without inventing vector or runtime measurements.
+
+- **Target File Path:** `/server.ts` (lines 2919-3017)
+  - **Why:** Added server-authoritative studio-mode isolation. Web App requests are now stripped to the current prompt and sent directly to local HTML generation before media/web/agent arbitration, Web Search is the only UI mode allowed to force live web grounding, and persistent RAG/learned knowledge is no longer injected into ordinary chat/media prompts. PDF handling is also restricted to the general local-chat lane.
+
+- **Target File Path:** `/server/agent/AgentMemoryManager.ts` (lines 15-34)
+  - **Why:** Replaced broad substring recall with relevance-scored memory retrieval so unrelated historical preferences/facts are not automatically injected into operational work.
+
+- **Target File Path:** `/server/knowledge/KnowledgeBase.ts` (lines 90, 168)
+  - **Why:** Raised learned-knowledge retrieval to a relevance threshold and weighted titles/keywords more strongly than incidental body-text matches.
+
+- **Target File Path:** `/server/agent/AgentSkillLoader.ts` (lines 33-41)
+  - **Why:** Made `.gina/docs/agent_skills` authoritative and only falls back to the legacy `docs/agent_skills` tree when the authoritative directory is absent, preventing duplicate/obsolete skill prompts.
+
+- **Target File Path:** `/server/agent/AutonomousRepairLoop.ts` (lines 124-130)
+  - **Why:** Restricted automatic live research to explicit documentation/API/package compatibility requests instead of generic words such as “update”, keeping Code Engine local-first.
+
+## Validation Notes
+
+- Reviewed the edited routing paths, context injection paths, skill loading path and execution-log rendering path against the reported failure modes.
+- No GitHub Actions workflow is present in the repository to provide an automatic compile/test result from this branch; final validation therefore includes source-level consistency checks and the repository's existing TypeScript build contract (`npm run lint` / `npm run build`) for the local workspace.
+- Web App Studio now has a dedicated local artifact contract and cannot enter the autonomous JSON action/recovery loop.
+
 # v1.20.14 — Phase 61 — Local AI Commercial Savings & Performance Telemetry Engine
 
 - **Target File Path:** `/server/proxy/ProxySavingsEngine.ts`

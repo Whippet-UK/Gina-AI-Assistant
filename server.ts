@@ -2916,11 +2916,14 @@ app.post("/api/llm/chat", async (req, res) => {
 
     const nonSystem = validMessages.filter((m:any) => m.role !== 'system');
     const rawLatestUser = [...nonSystem].reverse().find((m:any) => m.role === 'user')?.content || '';
+    const requestedStudioMode = String(req.body?.studioMode || '').trim().toLowerCase();
 
     // PDF requests are handled by the real local PDF writer. If the user pasted a
     // document (CV/resume/text) in the same message, save that document; otherwise
     // save Gina's most recent response. Never claim a PDF exists without verifying it.
-    const wantsPdf = /\bpdf\b/i.test(rawLatestUser) && /\b(save|export|write|put|create|make|convert|generate|download)\b/i.test(rawLatestUser);
+    const wantsPdf = (!requestedStudioMode || requestedStudioMode === 'local-chat') &&
+      /\bpdf\b/i.test(rawLatestUser) &&
+      /\b(save|export|write|put|create|make|convert|generate|download)\b/i.test(rawLatestUser);
     if (wantsPdf) {
       const previousAssistant = [...validMessages].reverse().find((m:any) => m.role === 'assistant')?.content || '';
       const looksLikeDocument = rawLatestUser.length > 700 ||
@@ -2945,6 +2948,31 @@ app.post("/api/llm/chat", async (req, res) => {
       return res.status(400).json({ error: "A user message is required." });
     }
 
+    // Tool-mode isolation: Web App Studio is a dedicated local artifact lane.
+    // It must run before media/web/agent arbitration so an app prompt can never be
+    // hijacked by a keyword such as "image", "search", or "BBC" from prior context.
+    const isWebAppStudio = requestedStudioMode === 'web-app' || String(req.body?.suite || '').trim().toLowerCase() === 'web app studio';
+    if (isWebAppStudio) {
+      const isolatedMessages = [
+        { role:'system', content:'You are Gina Web App Studio. Build the requested interactive web app as a single self-contained HTML document. Return ONLY the complete HTML document, with inline CSS and JavaScript, no markdown fences, no explanation, no web search, no external tool calls.' },
+        { role:'user', content:rawLatestUser.slice(0, 12000) }
+      ];
+      const webAppData = await localLlm.chat(isolatedMessages, {
+        temperature: Number.isFinite(Number(req.body?.temperature)) ? Number(req.body.temperature) : 0.45,
+        maxTokens: Number.isFinite(Number(req.body?.maxTokens)) ? Math.min(4096, Math.max(512, Number(req.body?.maxTokens))) : 3072,
+        suite:'Web App Studio',
+        telemetrySource:'local',
+        includeAgentSkills:false,
+        contextBreakdown:{ system:isolatedMessages[0].content.length, conversation:isolatedMessages[1].content.length, rag:0, learnedKnowledge:0, liveWeb:0, capability:0, skills:0 }
+      });
+      if (webAppData?.choices?.[0]?.message && typeof webAppData.choices[0].message === 'object') {
+        const message=webAppData.choices[0].message;
+        if (typeof message.content === 'string') message.content=sanitizeUserFacingAssistantText(message.content,'web_app');
+      }
+      webAppData.ginaTelemetry={...(webAppData.ginaTelemetry||{}),source:'local',webSearched:false,webProvider:null,browserUsed:false,inference:'local',webSources:[],webAppStudio:true};
+      return res.json(webAppData);
+    }
+
     const rawImageForIntent = Array.isArray(req.body?.attachments) ? req.body.attachments.find((a:any)=>a?.kind==='image' && typeof a.localPath==='string') : null;
     const imageIntent = detectMediaIntent(rawLatestUser, Boolean(rawImageForIntent));
     if (imageIntent.explicit) {
@@ -2964,45 +2992,14 @@ app.post("/api/llm/chat", async (req, res) => {
     // Ground current/time-sensitive requests with a server-side clock plus live web verification.
     // This happens before local inference so the model cannot invent a stale date/time.
     const routedIntent = routeRuntimeIntent(rawLatestUser);
-    // Final server-side live-web arbitration. This is deliberately independent of
-    // the React client and catches natural variants such as "most recent news"
-    // even if a future router regression misses the phrase. It can only promote a
-    // request into web research; it can never promote it into coding or repair.
-    const route = routedIntent.intent === 'general-chat' && /\b(?:news|headline|headlines|breaking news|top stories|latest|most recent|current|today|recent|bbc|reuters|guardian|sky news|cnn)\b/i.test(rawLatestUser)
-      ? { ...routedIntent, intent:'web-research' as const, requiresWeb:true, requiresProjectContext:false, requiresSkills:false, confidence:Math.max(routedIntent.confidence, .97), reason:'Server live-information arbitration' }
+    // Mode arbitration is explicit: Web Search is the only UI lane allowed to
+    // request live web grounding. Generic chat no longer gets web access because
+    // a keyword such as "current" or "search" appeared in an unrelated prompt.
+    const route = requestedStudioMode === 'web-search'
+      ? { ...routedIntent, intent:'web-research' as const, requiresWeb:true, requiresProjectContext:false, requiresSkills:false, operational:false, confidence:1, reason:'Explicit Web Search Studio mode' }
       : routedIntent;
     const capabilityRegistry = getCapabilityIntelligenceRegistry();
     const capabilityPlan = planCapabilityIntent(rawLatestUser, capabilityRegistry);
-
-    // Web App Studio is an artifact-generation lane, not an autonomous coding-agent lane.
-    // The generated app is returned as HTML to the React preview. Do not send this request
-    // through the agent/tool JSON protocol: doing so makes simple HTML generation depend on
-    // the model producing valid tool-call JSON and can surface parser-recovery failures.
-    const isWebAppStudio = String(req.body?.suite || '').trim().toLowerCase() === 'web app studio';
-    if (isWebAppStudio) {
-      const webAppData = await localLlm.chat(validMessages, {
-        temperature: Number.isFinite(Number(req.body?.temperature)) ? Number(req.body.temperature) : 0.45,
-        maxTokens: Number.isFinite(Number(req.body?.maxTokens)) ? Math.min(4096, Math.max(256, Number(req.body.maxTokens))) : 3072,
-        suite: 'Web App Studio',
-        telemetrySource: 'local',
-        includeAgentSkills: false,
-        contextBreakdown: {
-          system: validMessages.filter((m:any)=>m.role==='system').reduce((n:any,m:any)=>n+String(m.content||'').length,0),
-          conversation: validMessages.filter((m:any)=>m.role!=='system').reduce((n:any,m:any)=>n+String(m.content||'').length,0),
-          rag: 0, learnedKnowledge: 0, liveWeb: 0, capability: 0, skills: 0
-        }
-      });
-      if (webAppData?.choices?.[0]?.message && typeof webAppData.choices[0].message === 'object') {
-        const message = webAppData.choices[0].message;
-        if (typeof message.content === 'string') message.content = sanitizeUserFacingAssistantText(message.content, 'web_app');
-      }
-      webAppData.ginaTelemetry = {
-        ...(webAppData.ginaTelemetry || {}),
-        source: 'local', webSearched: false, webProvider: null, browserUsed: false,
-        inference: 'local', webSources: [], webAppStudio: true
-      };
-      return res.json(webAppData);
-    }
 
     // SERVER-SIDE ACTION GATE: never depend on a React client flag to decide whether
     // Gina should act. An explicit operational request is routed to the autonomous
@@ -3015,9 +3012,10 @@ app.post("/api/llm/chat", async (req, res) => {
       });
     }
 
-    const ragGrounding = route.intent === 'general-chat' ? localRag.getGroundingContext(rawLatestUser, 180) : '';
-    const learnedGrounding = !route.requiresWeb && route.intent !== 'network-diagnostic' && route.intent !== 'capability-query'
-      ? await knowledgeBase.promptContext(rawLatestUser, route.intent === 'code-task' || route.intent === 'file-operation' ? 2400 : 1400).catch(() => '')
+    const usesPersistentKnowledge = route.intent === 'knowledge-query' || route.intent === 'code-task' || route.intent === 'file-operation';
+    const ragGrounding = usesPersistentKnowledge ? localRag.getGroundingContext(rawLatestUser, route.intent === 'code-task' || route.intent === 'file-operation' ? 1200 : 600) : '';
+    const learnedGrounding = usesPersistentKnowledge
+      ? await knowledgeBase.promptContext(rawLatestUser, route.intent === 'code-task' || route.intent === 'file-operation' ? 2400 : 1200).catch(() => '')
       : '';
     const suppliedWebGrounding = req.body?.webGrounding && typeof req.body.webGrounding?.text === 'string'
       ? { text:String(req.body.webGrounding.text).slice(0, 18000), webSearched:true, provider:String(req.body.webGrounding.provider || 'verified web search'), engine:String(req.body.webGrounding.engine || 'HTTP fetcher'), sources:Array.isArray(req.body.webGrounding.sources) ? req.body.webGrounding.sources.slice(0,8) : [] }
