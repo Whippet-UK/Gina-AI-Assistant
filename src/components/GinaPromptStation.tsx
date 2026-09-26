@@ -19,14 +19,14 @@ interface GinaPromptStationProps {
 }
 
 interface PromptStationTelemetry {
-  generation: { tokensPerSecond: number; promptTokens: number; completionTokens: number; totalTokens: number; durationMs: number; contextUsedTokens: number; contextWindowTokens: number; source: string };
+  generation: { tokensPerSecond: number; promptTokens: number; completionTokens: number; totalTokens: number; durationMs: number; p95LatencyMs: number | null; contextUsedTokens: number; contextWindowTokens: number; source: string };
   queue: { pending: number; running: number };
   fan: { rpm: number; label: string } | null;
   carbon: { gramsPerKwh: number | null; forecast: number | null; source: string | null };
   mcp: { requestCount: number; errorCount: number; history: Array<{ timestamp: string; action: string; durationMs: number; ok: boolean }> };
 }
 const EMPTY_STATION: PromptStationTelemetry = {
-  generation: { tokensPerSecond: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, durationMs: 0, contextUsedTokens: 0, contextWindowTokens: 0, source: 'local' },
+  generation: { tokensPerSecond: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, durationMs: 0, p95LatencyMs: null, contextUsedTokens: 0, contextWindowTokens: 0, source: 'local' },
   queue: { pending: 0, running: 0 }, fan: null,
   carbon: { gramsPerKwh: null, forecast: null, source: null },
   mcp: { requestCount: 0, errorCount: 0, history: [] }
@@ -202,7 +202,7 @@ export default function GinaPromptStation({ telemetry, logs }: GinaPromptStation
             <RuntimeMetric label="MMLU Multi-Task" value="Not measured" detail="Run a dedicated MMLU suite before displaying a score" />
             <RuntimeMetric label="HumanEval Python" value="Not measured" detail="Run a dedicated HumanEval suite before displaying a score" />
             <RuntimeMetric label="GSM8K Math Logic" value="Not measured" detail="Run a dedicated GSM8K suite before displaying a score" />
-            <RuntimeMetric label="95th Percentile Latency" value={station.generation.durationMs ? `${station.generation.durationMs} ms current` : 'Not measured'} detail="Current turn latency is not a p95 benchmark" />
+            <RuntimeMetric label="95th Percentile Latency" value={station.generation.p95LatencyMs != null ? `${station.generation.p95LatencyMs} ms` : 'Not measured'} detail="Measured from recorded local inference requests" />
           </div>
         </section>
 
