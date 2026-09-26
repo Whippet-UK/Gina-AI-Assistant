@@ -86,6 +86,26 @@ export default function GinaPromptStation({ telemetry, logs }: GinaPromptStation
   }, [logs, response]);
 
   const selectedStep = steps.find(step => expandedItems[step.id]) || steps[0];
+  const mcpChart = useMemo(() => {
+    const now = Date.now();
+    const buckets = Array.from({ length: 9 }, (_, index) => {
+      const end = now - (8 - index) * 5000;
+      const start = end - 5000;
+      return station.mcp.history.filter(item => {
+        const timestamp = Date.parse(item.timestamp);
+        return timestamp >= start && timestamp < end;
+      }).length / 5;
+    });
+    const max = Math.max(1, ...buckets);
+    const points = buckets.map((value, index) => {
+      const x = (index / 8) * 100;
+      const y = 28 - (value / max) * 25;
+      return [x, y] as const;
+    });
+    const line = points.map(([x, y], index) => `${index ? 'L' : 'M'} ${x.toFixed(2)} ${y.toFixed(2)}`).join(' ');
+    return { line, fill: `${line} L 100 29 L 0 29 Z`, max, hasData: buckets.some(value => value > 0) };
+  }, [station.mcp.history]);
+
 
   const sendPrompt = async () => {
     const text = prompt.trim();
@@ -123,11 +143,14 @@ export default function GinaPromptStation({ telemetry, logs }: GinaPromptStation
     }
   };
 
-  const clearScreen = () => {
+  const clearScreen = async () => {
+    try { await fetch('/api/prompt-station/reset', { method: 'POST' }); } catch {}
     setPrompt('');
     setResponse('');
     setExpandedItems({});
-    setStatus('Screen cleared · ready for a new prompt');
+    setVote(null);
+    setStation(EMPTY_STATION);
+    setStatus('History reset · ready for a new prompt');
   };
 
   const copyResponse = async () => {
@@ -212,19 +235,19 @@ export default function GinaPromptStation({ telemetry, logs }: GinaPromptStation
         <section className="bg-[#0B0F17] border border-zinc-900 p-3 rounded-lg flex flex-col gap-2 font-mono">
           <div className="flex justify-between items-center text-[10px]">
             <span className="text-zinc-400 font-medium">● MCP THROUGHPUT VECTORS</span>
-            <span className="text-blue-500 font-bold">Live telemetry channel</span>
+            <span className="text-blue-500 font-bold">{station.mcp.requestCount} measured calls</span>
           </div>
-          <span className="text-[9.5px] text-zinc-500 max-w-2xl leading-normal tracking-tight">The chart is reserved for measured MCP throughput. It does not invent a synthetic data stream when no MCP samples are available.</span>
-          <div className="h-28 w-full bg-[#0C0E12] border border-zinc-900 rounded-lg p-2 mt-1 relative flex flex-col justify-between overflow-hidden">
-            <div className="absolute left-2 top-2 bottom-8 text-[8px] text-zinc-700 flex flex-col justify-between"><span>100%</span><span>75%</span><span>50%</span><span>25%</span></div>
-            <div className="w-full flex-1 flex items-end pl-8 pb-1">
-              <svg viewBox="0 0 100 30" className="w-full h-full overflow-visible" preserveAspectRatio="none" role="img" aria-label="MCP throughput vectors">
-                <path d="M 0 29 L 100 29" fill="none" stroke="#1f2937" strokeWidth="1" />
-              </svg>
-            </div>
-            <div className="flex justify-between items-center border-t border-zinc-900 pt-1 text-[8.5px] text-zinc-600 pl-8"><span>-40s</span><span>No MCP samples</span><span>Now</span></div>
+          <span className="text-[9.5px] text-zinc-500">Measured MCP tool calls over the last 40 seconds; no synthetic samples are generated.</span>
+          <div className="h-28 w-full bg-[#0C0E12] border border-zinc-900 rounded-lg p-2 mt-1 relative overflow-hidden">
+            <div className="absolute left-2 top-2 bottom-8 text-[8px] text-zinc-700 flex flex-col justify-between"><span>{mcpChart.max.toFixed(1)}/s</span><span>{(mcpChart.max * 0.75).toFixed(1)}</span><span>{(mcpChart.max * 0.5).toFixed(1)}</span><span>0</span></div>
+            <svg viewBox="0 0 100 30" className="w-full h-full pl-8" preserveAspectRatio="none" role="img" aria-label="Measured MCP throughput">
+              <path d={mcpChart.fill} fill="#3b82f6" fillOpacity="0.14" />
+              <path d={mcpChart.line} fill="none" stroke="#3b82f6" strokeWidth="1.2" />
+            </svg>
+            <div className="absolute left-10 right-2 bottom-1 flex justify-between text-[8.5px] text-zinc-600"><span>-40s</span><span>{mcpChart.hasData ? 'measured' : 'no calls'}</span><span>Now</span></div>
           </div>
         </section>
+
       </main>
 
       <footer className="w-full bg-[#0B0F17] border-t border-zinc-900 px-4 py-2.5 flex flex-col gap-2 text-[11px] font-mono">
@@ -237,7 +260,7 @@ export default function GinaPromptStation({ telemetry, logs }: GinaPromptStation
             <button type="button" onClick={() => void copyResponse()} disabled={!response} className="p-1 text-zinc-500 hover:text-zinc-300 disabled:text-zinc-800" title="Copy response"><Clipboard className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => setVote(vote === 'up' ? null : 'up')} disabled={!response} className={`p-1 ${vote === 'up' ? 'text-emerald-400' : 'text-zinc-500'} disabled:text-zinc-800`} title="Upvote"><Heart className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => setVote(vote === 'down' ? null : 'down')} disabled={!response} className={`p-1 ${vote === 'down' ? 'text-rose-400' : 'text-zinc-500'} disabled:text-zinc-800`} title="Downvote"><HeartCracked className="w-3.5 h-3.5" /></button>
-            <button type="button" onClick={clearScreen} className="p-1 text-zinc-500 hover:text-rose-400 flex items-center gap-1 border border-zinc-900 px-2 py-0.5 rounded bg-zinc-900/20"><RefreshCw className="w-3 h-3" /> Reset history</button>
+            <button type="button" onClick={() => void clearScreen()} className="p-1 text-zinc-500 hover:text-rose-400 flex items-center gap-1 border border-zinc-900 px-2 py-0.5 rounded bg-zinc-900/20"><RefreshCw className="w-3 h-3" /> Reset history</button>
             <div className="w-4 h-4 rounded-full bg-[#e05638]/10 text-[#e05638] flex items-center justify-center font-bold text-[9px]">✳</div>
           </div>
         </div>
