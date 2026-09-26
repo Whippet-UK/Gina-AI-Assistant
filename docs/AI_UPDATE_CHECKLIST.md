@@ -15,11 +15,11 @@
 - [ ] Inspect the active workspace/project tree and identify the real runtime engine/model for every affected suite.
 - [ ] Search the affected area for retired names, old model filenames, old endpoint names, stale button labels, stale diagnostics, and contradictory documentation.
 
-## 2. Current platform truth (v1.20.13 / Phase 60)
+## 2. Current platform truth (v1.20.11 / Phase 59)
 - [ ] Primary local assistant: Qwen 2.5-VL 7B.
 - [ ] Coding model: Qwen Coder 7B, text-only.
 - [ ] Primary image generation: Juggernaut-XL v9.
-- [ ] Active video generation: Wan 2.1 1.3B BF16 / Wan 2.1 VACE 1.3B FP16 (`wan_video`).
+- [ ] Active video generation: Wan 2.1 1.3B BF16 (`wan_video`).
 - [ ] RIFE is the optional frame-interpolation lane.
 - [ ] FLUX is an explicit alternate/high-precision image lane, not the default video engine.
 - [ ] Internet research is available to the agent through `web_search`, `web_research`, and `web_fetch` when `GINA_WEB_ACCESS=true`.

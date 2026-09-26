@@ -5,10 +5,13 @@
 - Test your modifications locally before marking them complete.
 
 ## 🟩 Open Requests
-(No open requests — all backlog items implemented)
+- [ ] **Infrastructure: Mount and Validate `wan2.1_vace_1.3B_fp16.safetensors`**
+  - **Context:** The file has been manually downloaded to the `models/checkpoints` directory but must be indexed by the server instance.
+  - **Action Required:** Restart the server container via `Start_Factory.bat` to rebuild the ComfyUI checkpoint manifest mapping. Verify the dropdown selector registers the VACE footprint.
+  - **Smoke Test Requirement:** Execute a micro-generation (1.0s target duration, 12 frames raw baseline) using the existing Whippet character image slot anchor to confirm CUDA/bfloat16 tensor allocation succeeds without causing a VRAM out-of-memory crash.
+  
 
 ## 🟨 External Acceptance Testing (not an open coding request)
-- [ ] Phase 60 / v1.20.13 — Run the Wan 2.1 VACE 1.3B FP16 smoke test on the live Windows/ComfyUI installation: verify that the VACE footprint (5400 MB) is indexed in Video Studio and Gif Studio dropdowns, and execute a 1.0s / 12-frame micro-generation with the Whippet character slot anchor to confirm CUDA/bfloat16 allocation succeeds on the 8GB RTX 3070 Ti.
 - [ ] v1.20.4 — Run the GIF Studio frame-sequence fix on the live Windows/FFmpeg installation: upload a multi-frame batch, run the workflow, and confirm the exported GIF/MP4 is one packed animation rather than fragmented per-frame output. Implemented and syntax-checked only; no FFmpeg/GPU environment was available to execute it end-to-end.
 - [ ] Phase 54 — Run the classic-fallback web retrieval loop against various live news and wiki surfaces to verify that the string anchor-splitter handles structural changes across external layout layers.
 - [ ] Phase 52 — Run the existing-media GIF Studio test on the live Windows installation and confirm ComfyUI remains online. This requires the user's local ComfyUI/FFmpeg environment and cannot be truthfully simulated here.
@@ -26,14 +29,6 @@ The former broad request “making Gina reliable and genuinely autonomous” is 
   - **Validation:** Python syntax and targeted TypeScript transpile checks are required; live Windows/ComfyUI/ACE-Step acceptance remains external.
 
 ## 🟥 Completed Requests
-- [x] **2026-09-25 — Phase 60: Mount and Validate `wan2.1_vace_1.3B_fp16.safetensors`**
-  - Registered `wan2.1_vace_1.3B_fp16.safetensors` across server capability classification (`CapabilityManager.ts`), workflow binding aliases (`WorkflowParser.ts`), prewarm inventory (`AVAILABLE_PREWARM_MODELS`), and model metadata registry (`server.ts`).
-  - Added Wan 2.1 VACE 1.3B FP16 selector card and Whippet character slot anchor controls with subject continuity to `VideoStudio.tsx` and story model options in `GifStudio.tsx`.
-  - Added dedicated `micro_1s_12f` baseline preset (1.0s target duration, 12 frames raw baseline, 12 steps) wired to the Whippet character slot anchor for safe CUDA/bfloat16 allocation on the 8GB RTX 3070 Ti.
-  - Reconciled candidate paths in `scripts/check_wan21.ts` to scan both `diffusion_models` and `checkpoints`.
-  - Advanced version to v1.20.13 / Phase 60 with restore point `RESTORE_V1.20.13_WAN_VACE_MODEL_MOUNT_AND_WHIPPET_ANCHOR`.
-  - **Validation:** TypeScript syntax transpilation passed; live Windows/ComfyUI VRAM smoke test is logged as external acceptance test.
-
 - [x] **2026-09-20 — Phase 56: Unified Audio, APNG & Local AI UX**
   - Added local Bark + XTTS v2 generation, hybrid/stitched timelines, XTTS clone upload validation, searchable SQLite voice metadata, favourites and preview generation.
   - Added GIF Studio APNG export, explicit image ADD ONLY / PRESERVE SOURCE editing, wider Local AI layout and whole-PC electricity/cost telemetry.
