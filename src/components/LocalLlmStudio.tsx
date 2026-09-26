@@ -102,7 +102,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   onToggleFullScreen,
   onModeChange
 }) => {
-  const [showEngineConfig, setShowEngineConfig] = useState(true);
+  const [showEngineConfig, setShowEngineConfig] = useState(false);
+  const [showBottomEngineConfig, setShowBottomEngineConfig] = useState(false);
   const [showDetailedTelemetry, setShowDetailedTelemetry] = useState(true);
   const [status, setStatus] = useState<LocalLlmStatus | null>(null);
   const [loading, setLoading] = useState(false);
@@ -168,7 +169,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   const [showElectricityWidget, setShowElectricityWidget] = useState<boolean>(() => {
     try {
       const v = localStorage.getItem('gina_widget_electricity');
-      return v !== null ? v === 'true' : false; // Default compact
+      return v !== null ? v === 'true' : true; // Single-page layout: show power/cost by default
     } catch { return false; }
   });
   const [showCommercialWidget, setShowCommercialWidget] = useState<boolean>(() => {
@@ -947,6 +948,15 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   const [agentStatus, setAgentStatus] = useState<string>('READY');
   const [agentActivity, setAgentActivity] = useState<string[]>([]);
 
+  type ExecutionLogEntry = { id: string; title: string; details: string; status: 'running' | 'complete' | 'error' };
+  const [executionLog, setExecutionLog] = useState<ExecutionLogEntry[]>([]);
+  const pushExecutionLog = useCallback((title: string, details: string, status: ExecutionLogEntry['status'] = 'complete') => {
+    setExecutionLog(prev => [
+      ...prev,
+      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title, details, status }
+    ].slice(-40));
+  }, []);
+
   useEffect(() => {
     try { sessionStorage.setItem('gina_studio_messages', JSON.stringify(messages.slice(-30).map(m => ({ ...m, content: String(m.content || '').slice(0, 12000) })))); } catch {}
   }, [messages]);
@@ -1088,8 +1098,13 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     const text = `${typedText}${attachmentsText}`.trim();
     if (!text || !status?.ready || loading) return;
 
+    pushExecutionLog('User Prompt Received', text.slice(0, 1000), 'running');
+    setAgentStatus('RECEIVED');
+    setAgentActivity(['Prompt received — routing request through Gina capabilities…']);
+
     try {
       if (studioMode === 'web-app') {
+        pushExecutionLog('Web App Workflow', 'Generating the requested self-contained web app artifact.', 'running');
         const nextMessages: ChatMessage[] = [...messages, { role:'user', content:text }];
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null);
         try { await runWebAppArtifact(typedText); }
@@ -1126,6 +1141,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
       }
       const route = await classifyImageIntent(typedText);
       if (route.intent === 'image-generation' || route.intent === 'image-modification') {
+        pushExecutionLog('Image Generation Workflow', 'Routing the request to the local image generation pipeline.', 'running');
         if (route.policyLocked) throw new Error('Qwen Coder is text-only. Switch to Qwen 2.5-VL Vision Mode to use image generation or vision attachments.');
         const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: text }];
         setMessages(nextMessages);
@@ -1160,6 +1176,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
       chatAbortRef.current = controller;
       let webGrounding: any = null;
       if (webIntent) {
+        pushExecutionLog('Web Search', 'Searching current web sources before local response generation.', 'running');
         setAgentStatus('SEARCHING WEB');
         setAgentActivity(['Starting live web search before local generation…']);
         const searchResponse = await fetch('/api/agent/web-search', {
@@ -1180,6 +1197,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
         setAgentStatus('READING WEB RESULTS');
         setAgentActivity([`Live search returned ${results.length} result${results.length === 1 ? '' : 's'}.`, 'Reading verified web results…']);
       } else {
+        pushExecutionLog('Local Inference', 'Generating the response with the configured local model.', 'running');
         setAgentStatus('GENERATING');
         setAgentActivity(['Generating a concise local response…']);
       }
@@ -1247,6 +1265,9 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
         setRuntimeTelemetry(telemetry);
         onAddLog('INFO', `Prompt telemetry: ${Number(telemetry.promptTokens||0).toLocaleString()} prompt tokens · ${Number(telemetry.completionTokens||0).toLocaleString()} completion tokens${telemetry.webSearched ? ` · web: ${telemetry.webProvider || 'verified'}` : ' · local only'}.`);
       }
+      pushExecutionLog('Response Generation', `Response received · ${Number(telemetry?.completionTokens || 0).toLocaleString()} completion tokens · ${Number(telemetry?.durationMs || 0)} ms`, 'complete');
+      setAgentStatus('COMPLETED');
+      setAgentActivity(['Response generated successfully.']);
       setMessages(prev => [
         ...prev,
         {
@@ -1261,6 +1282,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
       setFileAttachError(null);
       if (autoSpeak) void speakText(reply.trim());
     } catch (err: any) {
+      pushExecutionLog('Execution Failed', err?.message || 'Local model request failed.', 'error');
+      setAgentStatus('ERROR');
       if (err?.name === 'AbortError') {
         setError('Local AI generation cancelled.');
         return;
@@ -1655,8 +1678,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
             <div className="flex flex-wrap items-center gap-1.5 min-w-0">
               <button
                 type="button"
-                onClick={() => setShowEngineConfig(v => !v)}
-                className={`px-2.5 py-1 rounded border text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm ${
+                onClick={() => setShowBottomEngineConfig(v => !v)}
+                className={`hidden px-2.5 py-1 rounded border text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm ${
                   showEngineConfig
                     ? 'border-emerald-500/50 bg-emerald-500/20 text-emerald-300 font-extrabold'
                     : 'border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300'
@@ -1868,6 +1891,21 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
                 </div>
               </div>
             )}
+
+              {messages.some(m => m.role === 'assistant') && (() => {
+                const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant');
+                const lastText = lastAssistant?.content || '';
+                return (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950/90 px-2 py-1.5">
+                    <span className="mr-1 text-[8px] font-bold uppercase tracking-widest text-slate-600">RESPONSE</span>
+                    <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(lastText); } catch {} }} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-emerald-500/40 hover:text-emerald-300">Copy</button>
+                    <button type="button" onClick={() => void speakText(lastText)} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-sky-500/40 hover:text-sky-300"><Volume2 className="mr-1 inline h-3 w-3" />Audio</button>
+                    <button type="button" onClick={() => onAddLog('INFO', 'Response marked helpful.')} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-emerald-500/40 hover:text-emerald-300">👍</button>
+                    <button type="button" onClick={() => onAddLog('INFO', 'Response marked not helpful.')} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-rose-500/40 hover:text-rose-300">👎</button>
+                    <button type="button" onClick={() => { const previousUser = [...messages].reverse().find(m => m.role === 'user'); if (previousUser?.content) { setInput(previousUser.content); requestAnimationFrame(() => void sendMessage(previousUser.content)); } }} disabled={loading} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-amber-500/40 hover:text-amber-300"><RotateCw className="mr-1 inline h-3 w-3" />Retry</button>
+                  </div>
+                );
+              })()}
             </div>
             <aside className="col-span-12 xl:col-span-4 min-w-0 overflow-hidden rounded-lg border border-slate-800 bg-slate-950/90 flex flex-col">
               <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
@@ -1887,6 +1925,40 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
               {messages.some(m => m.webSources?.length) && <div className="border-t border-slate-800 p-2 space-y-1.5">{messages.flatMap(m => m.webSources || []).slice(0,6).map((source, i) => <button type="button" key={`${source.url}-${i}`} onClick={() => setActivePreviewContent({type:'web', title:source.title || source.source || source.url, content:source.snippet || source.url, url:source.url})} className="w-full rounded border border-slate-800 bg-slate-900/70 px-2 py-1.5 text-left hover:border-sky-500/30"><div className="flex items-center gap-1 text-[9px] font-semibold text-sky-300 truncate"><Globe2 className="w-2.5 h-2.5 shrink-0" />{source.title || source.url}</div></button>)}</div>}
             </aside>
           </div>
+
+
+          <section className="rounded-lg border border-slate-800 bg-slate-950/90 overflow-hidden">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <Activity className="h-3.5 w-3.5 text-emerald-400" />
+                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-200">Activity Log / Execution History</span>
+                <span className="text-[8px] font-mono text-emerald-400">● LIVE</span>
+              </div>
+              <button type="button" onClick={() => setExecutionLog([])} className="rounded border border-slate-800 bg-slate-900 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-200">Clear Log</button>
+            </div>
+            <div className="divide-y divide-slate-800/80">
+              {executionLog.length === 0 && <div className="px-3 py-3 text-[9px] font-mono text-slate-600">No execution activity yet. Send a prompt to populate the workflow history.</div>}
+              {executionLog.map((entry, index) => (
+                <details key={entry.id} open={entry.status === 'running' && index === executionLog.length - 1} className="group">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 hover:bg-slate-900/70">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <ChevronRight className="h-3 w-3 shrink-0 text-slate-600 transition-transform group-open:rotate-90" />
+                      <span className="text-[9px] font-bold text-slate-200 truncate">{entry.title}</span>
+                      <span className={`text-[8px] font-mono ${entry.status === 'error' ? 'text-rose-400' : entry.status === 'running' ? 'text-amber-300' : 'text-emerald-400'}`}>{entry.status.toUpperCase()}</span>
+                    </div>
+                    <span className="text-[8px] font-mono text-slate-600">step {index + 1}</span>
+                  </summary>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 px-7 pb-2.5">
+                    <pre className="rounded border border-slate-800 bg-slate-900/70 p-2 text-[8px] leading-relaxed text-slate-400 whitespace-pre-wrap">{entry.details}</pre>
+                    <div className="rounded border border-slate-800 bg-slate-900/70 p-2 text-[8px] font-mono text-slate-500">
+                      <div className="mb-1 uppercase tracking-widest text-slate-600">Execution State</div>
+                      <div className="text-slate-300">{entry.status === 'running' ? 'Working…' : entry.status === 'error' ? 'Failed — see details' : 'Completed'}</div>
+                    </div>
+                  </div>
+                </details>
+              ))}
+            </div>
+          </section>
 
           {lastTelemetry && (
             <div className="mt-1.5 flex items-center gap-1.5 text-[8px] font-mono text-slate-600">
@@ -2018,6 +2090,45 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
           ) : null}
 
           {pdfNotice && <div className={`mb-2 p-2 rounded border text-[9px] ${pdfNotice.startsWith('PDF saved:') ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-rose-500/30 bg-rose-500/5 text-rose-300'}`}>{pdfNotice}</div>}
+
+          <section className="rounded-lg border border-slate-800 bg-slate-950/90 overflow-hidden">
+            <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <div className="flex min-w-0 items-center gap-2">
+                <Bot className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[9px] font-bold uppercase tracking-widest text-slate-200">Local Inference Engine</div>
+                  <div className="truncate text-[8px] font-mono text-slate-500">
+                    {status?.engine === 'qwen3.5' ? 'Qwen3.5 9B' : status?.engine === 'qwen-coder' ? 'Qwen Coder 7B' : 'Qwen 2.5-VL 7B'} · {status?.backend || 'CUDA'} · {status?.ready ? 'ONLINE' : 'OFFLINE'} · {status?.contextSize ?? 8192} context
+                  </div>
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowBottomEngineConfig(v => !v)} className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/20">
+                {showBottomEngineConfig ? 'Hide Config' : 'Show Config'}
+              </button>
+            </div>
+            {showBottomEngineConfig && (
+              <div className="border-t border-slate-800 px-3 py-2.5">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <button type="button" onClick={() => void runAction('restart','qwen')} disabled={loading || status?.engine === 'qwen'} className="rounded border border-slate-700 bg-slate-900 p-2 text-left hover:border-emerald-500/40 disabled:opacity-40">
+                    <div className="text-[9px] font-bold text-slate-200">Qwen 2.5-VL 7B</div><div className="text-[7px] text-slate-500">Vision / multimodal</div>
+                  </button>
+                  <button type="button" onClick={() => void runAction('restart','qwen-coder')} disabled={loading || status?.engine === 'qwen-coder'} className="rounded border border-slate-700 bg-slate-900 p-2 text-left hover:border-emerald-500/40 disabled:opacity-40">
+                    <div className="text-[9px] font-bold text-slate-200">Qwen Coder 7B</div><div className="text-[7px] text-amber-300">Text / code</div>
+                  </button>
+                  <button type="button" onClick={() => void runAction('restart','qwen3.5')} disabled={loading || status?.engine === 'qwen3.5'} className="rounded border border-slate-700 bg-slate-900 p-2 text-left hover:border-emerald-500/40 disabled:opacity-40">
+                    <div className="text-[9px] font-bold text-slate-200">Qwen3.5 9B</div><div className="text-[7px] text-sky-300">Multimodal</div>
+                  </button>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => void runAction('start')} disabled={loading || !status?.configured || !!status?.running} className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300 disabled:opacity-40">Start</button>
+                  <button type="button" onClick={() => void runAction('stop')} disabled={loading || !status?.running} className="rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-slate-300 disabled:opacity-40">Stop</button>
+                  <button type="button" onClick={() => void runAction('restart')} disabled={loading || !status?.configured} className="rounded border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-sky-300 disabled:opacity-40">Restart</button>
+                  <span className="self-center text-[8px] font-mono text-slate-600 truncate">{status?.modelPath || 'Local model path unavailable'}</span>
+                </div>
+              </div>
+            )}
+          </section>
+
           <div className="mt-2.5 border-t border-slate-800 pt-2.5">
             <input
               ref={fileInputRef}
