@@ -1242,7 +1242,6 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null); setThinkingSource('local');
         pushExecutionLog('Image Studio','Routing directly to the local ComfyUI image generation pipeline.','running');
         try {
-          if(status?.engine==='qwen-coder') throw new Error('Image Studio requires a vision-capable local engine. Switch from Qwen Coder to Qwen 2.5-VL or Qwen3.5.');
           await sendImageGeneration(typedText);
           pushExecutionLog('Image Studio','Local ComfyUI image job completed and output was returned to the preview.','complete');
         } catch(err:any){ pushExecutionLog('Image Studio',err?.message||'Local image generation failed.','error'); setError(err?.message||'Local image generation failed.'); }
