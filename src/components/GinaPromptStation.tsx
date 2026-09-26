@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ChevronRight, Terminal, FileCode, Clipboard, Heart, HeartCracked,
   RefreshCw, Cpu, Zap, Activity, Copy, Send
@@ -18,12 +18,19 @@ interface GinaPromptStationProps {
   logs: LogEntry[];
 }
 
-const REFERENCE_BENCHMARKS = [
-  { label: 'MMLU Multi-Task', value: 86.4, suffix: '%' },
-  { label: 'HumanEval Python', value: 79.2, suffix: '%' },
-  { label: 'GSM8K Math Logic', value: 91.5, suffix: '%' },
-  { label: '95th Percentile Latency', value: 299, suffix: ' ms' },
-];
+interface PromptStationTelemetry {
+  generation: { tokensPerSecond: number; promptTokens: number; completionTokens: number; totalTokens: number; durationMs: number; contextUsedTokens: number; contextWindowTokens: number; source: string };
+  queue: { pending: number; running: number };
+  fan: { rpm: number; label: string } | null;
+  carbon: { gramsPerKwh: number | null; forecast: number | null; source: string | null };
+  mcp: { requestCount: number; errorCount: number; history: Array<{ timestamp: string; action: string; durationMs: number; ok: boolean }> };
+}
+const EMPTY_STATION: PromptStationTelemetry = {
+  generation: { tokensPerSecond: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, durationMs: 0, contextUsedTokens: 0, contextWindowTokens: 0, source: 'local' },
+  queue: { pending: 0, running: 0 }, fan: null,
+  carbon: { gramsPerKwh: null, forecast: null, source: null },
+  mcp: { requestCount: 0, errorCount: 0, history: [] }
+};
 
 export default function GinaPromptStation({ telemetry, logs }: GinaPromptStationProps) {
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
@@ -33,10 +40,30 @@ export default function GinaPromptStation({ telemetry, logs }: GinaPromptStation
   const [status, setStatus] = useState('Ready · waiting for a prompt');
   const [isSending, setIsSending] = useState(false);
   const [vote, setVote] = useState<'up' | 'down' | null>(null);
+  const [station, setStation] = useState<PromptStationTelemetry>(EMPTY_STATION);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/prompt-station/telemetry', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!cancelled && data?.ok) setStation({ ...EMPTY_STATION, ...data, generation: { ...EMPTY_STATION.generation, ...(data.generation || {}) }, queue: { ...EMPTY_STATION.queue, ...(data.queue || {}) }, carbon: { ...EMPTY_STATION.carbon, ...(data.carbon || {}) }, mcp: { ...EMPTY_STATION.mcp, ...(data.mcp || {}) } });
+      } catch { /* retain the last measured snapshot; never synthesize telemetry */ }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 1500);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, []);
 
   const gpuTemp = Number.isFinite(telemetry.gpuTempC) ? telemetry.gpuTempC : 0;
   const powerDraw = Number(telemetry.estimatedWallPowerW || telemetry.systemPowerW || telemetry.gpuPowerW || 0);
-  const activeJobs = telemetry.thermalBrakeActive ? 1 : 0;
+  const tps = Number(station.generation.tokensPerSecond || 0);
+  const contextUsed = Number(station.generation.contextUsedTokens || 0);
+  const contextMax = Number(station.generation.contextWindowTokens || 0);
+  const efficiency = powerDraw > 0 && tps > 0 ? tps / powerDraw : 0;
+  const carbonRate = powerDraw > 0 && station.carbon.gramsPerKwh != null ? (powerDraw / 1000) * station.carbon.gramsPerKwh : 0;
 
   const steps: LogStep[] = useMemo(() => {
     const mapped = logs.slice(0, 12).map((log, index) => ({
@@ -128,20 +155,20 @@ export default function GinaPromptStation({ telemetry, logs }: GinaPromptStation
 
       <main className="flex-1 p-4 flex flex-col gap-3.5 w-full mx-auto">
         <section className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-[#0B0F17] border border-zinc-900/80 p-3 rounded-lg font-mono">
-          <Metric label="Generation Speed" value="Live API" detail="Streaming rate supplied by Local LLM telemetry" icon={<Activity className="w-3 h-3" />} />
-          <Metric label="Active Context Window" value="Runtime" detail="Use Local LLM context configuration" icon={<Cpu className="w-3 h-3" />} />
-          <Metric label="Queue Depth Pending" value={`${activeJobs} active`} detail={activeJobs ? 'Generation currently active' : 'No active generation job'} icon={<Activity className="w-3 h-3" />} />
-          <Metric label="Core Temperature" value={`${gpuTemp.toFixed(1)} °C`} detail={gpuTemp >= 80 ? 'Thermal warning' : 'Thermal ceiling: 85°C'} icon={<Zap className="w-3 h-3" />} />
+          <Metric label="Generation Speed" value={tps ? `${tps.toFixed(1)} tk/s` : 'Waiting'} detail={station.generation.source === 'local+web' ? 'Measured local completion with live web grounding' : 'Measured local completion rate'} icon={<Activity className="w-3 h-3" />} />
+          <Metric label="Active Context Window Boundaries" value={contextMax ? `${contextUsed.toLocaleString()} / ${contextMax.toLocaleString()}` : 'Waiting'} detail={contextMax ? 'Latest measured request / configured context window' : 'Awaiting local inference telemetry'} icon={<Cpu className="w-3 h-3" />} />
+          <Metric label="Queue Depth Pending" value={`${station.queue.pending} jobs`} detail={station.queue.running ? `${station.queue.running} currently running` : 'No local generation running'} icon={<Activity className="w-3 h-3" />} />
+          <Metric label="Core Engine Temperature" value={`${gpuTemp.toFixed(1)} °C`} detail={gpuTemp >= 80 ? 'THERMAL WARNING' : 'Measured GPU core temperature'} icon={<Zap className="w-3 h-3" />} />
         </section>
 
         {!isConfigHidden && (
           <section className="bg-[#0B0F17] border border-zinc-900/80 p-3 rounded-lg flex flex-col gap-2 font-mono">
             <span className="text-[10px] text-amber-500 tracking-wider uppercase">⚡ ELECTRICITY METRIC GRIDS</span>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 border-t border-zinc-900 pt-2">
-              <RuntimeMetric label="Power Draw Actual" value={powerDraw ? `${powerDraw.toFixed(1)} W` : 'Unavailable'} detail={telemetry.powerSource || 'Hardware telemetry'} />
-              <RuntimeMetric label="Studio Efficiency" value="Live inference" detail="Calculated when LLM telemetry reports token rate" />
-              <RuntimeMetric label="Carbon Equivalent Index" value="Unavailable" detail="No carbon-intensity feed exposed by current telemetry API" />
-              <RuntimeMetric label="Cooling Fan Speed" value="Unavailable" detail="No fan RPM field exposed by current telemetry API" />
+              <RuntimeMetric label="Power Draw Actual" value={powerDraw ? `${powerDraw.toFixed(1)} W` : 'Unavailable'} detail={telemetry.powerSource || 'Measured hardware telemetry'} />
+              <RuntimeMetric label="Studio Compute Efficiency" value={efficiency ? `${efficiency.toFixed(3)} tk/W` : 'Waiting'} detail="Completion throughput divided by measured wall power" />
+              <RuntimeMetric label="Carbon Equivalent" value={carbonRate ? `${carbonRate.toFixed(1)} g/hr` : 'Waiting'} detail={station.carbon.source || 'Live GB carbon-intensity feed unavailable'} />
+              <RuntimeMetric label="Cooling Fan Speed" value={station.fan ? `${station.fan.rpm.toFixed(0)} RPM` : 'Unavailable'} detail={station.fan?.label || 'No measured fan/RPM sensor exposed'} />
             </div>
           </section>
         )}
@@ -149,14 +176,10 @@ export default function GinaPromptStation({ telemetry, logs }: GinaPromptStation
         <section className="bg-[#0B0F17] border border-zinc-900/80 p-3 rounded-lg flex flex-col gap-2 font-mono">
           <span className="text-[10px] text-blue-400 tracking-wider uppercase">📈 COMMERCIAL BENCHMARK TRACKERS</span>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 border-t border-zinc-900 pt-2">
-            {REFERENCE_BENCHMARKS.map(item => (
-              <div key={item.label}>
-                <span className="text-[9px] block text-zinc-500">{item.label}</span>
-                <span className="text-xs text-zinc-200 font-bold">{item.value}{item.suffix}</span>
-                {item.suffix === '%' && <div className="w-full bg-zinc-800 h-1 rounded mt-1 overflow-hidden"><div className="bg-blue-500 h-full" style={{ width: `${item.value}%` }} /></div>}
-                <span className="text-[8.5px] block text-zinc-600">Reference benchmark · not a live test</span>
-              </div>
-            ))}
+            <RuntimeMetric label="MMLU Multi-Task" value="Not measured" detail="Run a dedicated MMLU suite before displaying a score" />
+            <RuntimeMetric label="HumanEval Python" value="Not measured" detail="Run a dedicated HumanEval suite before displaying a score" />
+            <RuntimeMetric label="GSM8K Math Logic" value="Not measured" detail="Run a dedicated GSM8K suite before displaying a score" />
+            <RuntimeMetric label="95th Percentile Latency" value={station.generation.durationMs ? `${station.generation.durationMs} ms current` : 'Not measured'} detail="Current turn latency is not a p95 benchmark" />
           </div>
         </section>
 
