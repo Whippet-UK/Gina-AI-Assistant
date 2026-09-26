@@ -3,4 +3,5 @@
  * The canonical implementation lives in ./LocalLlmManager.
  */
 export { LocalLlmManager } from './LocalLlmManager';
-export type { LocalLlmConfig, LocalLlmStatus, LocalLlmEngine } from './LocalLlmManager';
+export type { LocalLlmConfig, LocalLlmStatus } from './LocalLlmManager';
+export type { LocalLlmEngine } from './LocalLlmModelCatalog';

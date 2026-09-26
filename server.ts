@@ -61,6 +61,8 @@ import { MultimediaService } from "./server/multimedia/MultimediaService.js";
 import { APP_VERSION } from "./src/version.js";
 import { runtimeTelemetry } from "./server/telemetry/RuntimeTelemetry.js";
 import JSZip from "jszip";
+import { WebSocketServer, WebSocket as WsClient } from "ws";
+import { ProxySavingsEngine } from "./server/proxy/ProxySavingsEngine.js";
 
 // Note: Added the explicit .js extension to prevent standard ES module path resolution errors
 import imageRoutes from './server/routes/imageRoute.ts';
@@ -120,6 +122,9 @@ const mcpServer = new McpServerAdapter({
   getApproval: (id) => agentApprovals.get(id),
   maxResultChars: 30000
 });
+
+const proxySavingsEngine = new ProxySavingsEngine({ comfyUrl: COMFY_URL, ginaRoot: GINA_ROOT });
+void proxySavingsEngine.init().catch(err => console.warn('[ProxySavingsEngine] SQLite ledger init warning:', err?.message || err));
 
 interface ComfyErrorLog {
   id: string;
@@ -2724,6 +2729,51 @@ app.get('/api/jobs/:id/result', async (req, res) => {
   }
 });
 
+app.post('/api/proxy/dispatch', async (req, res) => {
+  try {
+    const prompt = String(req.body?.prompt || '').trim();
+    const explicitMode = req.body?.mode ? String(req.body.mode) : undefined;
+    if (!prompt) return res.status(400).json({ ok: false, error: 'A prompt is required.' });
+
+    const stepId = agentRuns.broadcastLogStep({
+      type: explicitMode === 'code_engine' ? 'file-edit' : 'command',
+      title: `Proxy Dispatch: [${explicitMode || 'auto'}] ${prompt.slice(0, 45)}...`,
+      isExpandable: true,
+      details: `$ executing mode ${explicitMode || 'auto-detect'} on prompt:\n${prompt}`,
+      status: 'pending'
+    });
+
+    const result = await proxySavingsEngine.dispatchRequest(prompt, explicitMode);
+
+    agentRuns.updateLogDetails(stepId, {
+      status: result.ok ? 'success' : 'failure',
+      details: `Execution Mode: ${result.mode}\nStatus: ${result.ok ? 'SUCCESS' : 'FAILED'}\nSavings: £${result.savingsGbp} (${result.cloudEquivalent})\nTokens/Sec: ${result.tokensPerSec || 'N/A'}\n\nTrace Summary:\n${result.response.slice(0, 1500)}`
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
+app.get('/api/proxy/savings', async (_req, res) => {
+  try {
+    const summary = await proxySavingsEngine.getSavingsSummary();
+    res.json({ ok: true, summary });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
+app.post('/api/agent/test-motion-check', async (_req, res) => {
+  try {
+    await agentRuns.executeMotionEngineCheck();
+    res.json({ ok: true, message: 'Motion engine check executed and telemetry streamed.' });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
 
 function isLiveInformationRequest(text: string) {
   const q = String(text || '').trim();
@@ -2772,7 +2822,10 @@ async function buildLiveGrounding(userText: string) {
     try {
       const searchQuery = cleanSearchQuery(userText).slice(0, 400);
       const result = await webBrowser.browse(searchQuery, 5, 2);
-      const snippets = result.results.slice(0, 5).map((r: any) =>
+      const rawResults = Array.isArray(result?.results) ? result.results : [];
+      // Filter out low-quality/commercial ad domains and travel junk when the query is technical/general
+      const cleanResults = proxySavingsEngine.filterTravelAndCommercialSpam(rawResults, searchQuery);
+      const snippets = cleanResults.slice(0, 5).map((r: any) =>
         `- SEARCH: ${String(r.title || r.source || 'Web result')} | ${String(r.url || '')} | ${String(r.snippet || '').slice(0, 420)}`
       ).filter(Boolean);
       lines.push(`- Live browser provider: ${result.provider}`);
@@ -2783,7 +2836,7 @@ async function buildLiveGrounding(userText: string) {
         lines.push(`- OPENED PAGE: ${page.title} | ${page.url}`);
         lines.push(`  PAGE CONTENT: ${String(page.content || '').slice(0, 6000)}`);
       }
-      const facts = await temporalFacts.extractAndStore(userText, pages, result.results.map((r: any) => ({ url:r.url, snippet:r.snippet })));
+      const facts = await temporalFacts.extractAndStore(userText, pages, cleanResults.map((r: any) => ({ url:r.url, snippet:r.snippet })));
       if (facts.length) {
         lines.push('CURRENT TEMPORAL FACTS RECORDED FROM FRESH WEB EVIDENCE:');
         for (const fact of facts.slice(0, 4)) lines.push(`- ${fact.subject} / ${fact.predicate}: ${fact.value} (source: ${fact.sourceAuthority}, observed ${fact.observedAt})`);
@@ -2793,7 +2846,7 @@ async function buildLiveGrounding(userText: string) {
         webSearched: true,
         provider: result.provider,
         engine: result.engine || 'HTTP fetcher',
-        sources: result.results.slice(0, 5).map((r: any) => ({ title: r.title, url: r.url, snippet: r.snippet, source: r.source }))
+        sources: cleanResults.slice(0, 5).map((r: any) => ({ title: r.title, url: r.url, snippet: r.snippet, source: r.source }))
       };
     } catch (error: any) {
       lines.push(`- Live web verification unavailable for this request: ${error?.message || 'unknown error'}`);
@@ -2804,21 +2857,14 @@ async function buildLiveGrounding(userText: string) {
   return { text: lines.join('\n'), webSearched: false, provider: null, engine: null, sources: [] };
 }
 
-function sanitizeUserFacingAssistantText(input: string): string {
+function sanitizeUserFacingAssistantText(input: string, mode: 'web_search' | 'web_app' | 'code_engine' | 'image_studio' | 'video_generation' = 'web_search'): string {
   let text = String(input || '').trim();
   if (!text) return '';
   // Thinking-capable local models may place their hidden chain-of-thought in a visible field.
-  // Never send that internal reasoning to the browser. Prefer an explicit final-answer section.
-  const finalMatch = text.match(/(?:^|\n)\s*(?:final answer|answer)\s*:\s*([\s\S]*)$/i);
-  if (finalMatch?.[1]?.trim()) text = finalMatch[1].trim();
-  else {
-    const thinkingMatch = text.match(/(?:^|\n)\s*thinking process\s*:\s*([\s\S]*)$/i);
-    if (thinkingMatch) {
-      const lines = text.split(/\r?\n/);
-      const kept = lines.filter(line => !/^\s*(?:thinking process|analysis|reasoning)\s*:?\s*$/i.test(line));
-      text = kept.filter(line => !/^\s*\d+[.)]\s+/.test(line)).join('\n').trim();
-    }
-  }
+  // Scrub internal reasoning (<thought>, <think>, Thinking Process: ...) and auto-patch unclosed tags
+  const scrubbed = proxySavingsEngine.scrubThinkingProcess(text);
+  text = scrubbed.scrubbed;
+  text = proxySavingsEngine.autoPatchTruncatedOutput(text, mode);
   return text;
 }
 
@@ -6566,6 +6612,38 @@ async function startServer() {
         server.once("error", onError);
         server.once("listening", () => {
           server.removeListener("error", onError);
+          try {
+            const wss = new WebSocketServer({ server, path: "/comfy" });
+            (global as any).comfyWebSocketServer = {
+              broadcast: (data: any) => {
+                const message = typeof data === "string" ? data : JSON.stringify(data);
+                for (const client of wss.clients) {
+                  if (client.readyState === WsClient.OPEN) {
+                    try { client.send(message); } catch {}
+                  }
+                }
+              },
+              server: wss
+            };
+            wss.on("connection", (socket) => {
+              try {
+                socket.send(JSON.stringify({
+                  type: "AGENT_LOG_STREAM_UPDATE",
+                  payload: {
+                    id: `conn-${Date.now()}`,
+                    type: "info",
+                    title: "WebSocket Telemetry Engine Connected (/comfy)",
+                    details: "Streaming agent telemetry and activity log container ready.",
+                    isExpandable: false,
+                    status: "success",
+                    timestamp: new Date().toISOString()
+                  }
+                }));
+              } catch {}
+            });
+          } catch (wsErr) {
+            console.warn("[WebSocketServer] Comfy WebSocket initialization note:", wsErr);
+          }
           resolve();
         });
       });

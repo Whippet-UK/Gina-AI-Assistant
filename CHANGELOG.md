@@ -1,3 +1,141 @@
+# v1.20.12 — Phase 60 — Expandable Telemetry Engine & 5-Mode Commercial Savings Proxy
+
+- **Target File Path:** `/package.json`
+  - **Exact Code Snippet:**
+    ```json
+    "dependencies": {
+      "axios": "^1.20.0",
+      "ws": "^8.21.3"
+    },
+    "devDependencies": {
+      "@types/ws": "^8.18.1"
+    }
+    ```
+  - **Why:** Installed required dependencies for WebSocket streaming telemetry and HTTP proxy forwarding while utilizing Node.js 22 built-in `node:sqlite` (`DatabaseSync`) for native, cross-platform, zero-dependency SQLite execution.
+
+- **Target File Path:** `/server/proxy/ProxySavingsEngine.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    import { DatabaseSync } from 'node:sqlite';
+    // ...
+    this.db = new DatabaseSync(this.dbPath);
+    const stmt = this.db.prepare(
+      `INSERT INTO savings_ledger (id, timestamp, mode, prompt, input_tokens, output_tokens, duration_sec, cost_gbp, cloud_equivalent, details)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    ```
+  - **Why:** Replaced external native C++ `sqlite3` binary binding with Node.js 22 built-in `DatabaseSync` to resolve GLIBC compatibility issues across Linux containers and ensure rock-solid dev server startup.
+
+- **Target File Path:** `/server/agent/AgentRunManager.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    export interface AgentLogPacket {
+      id: string;
+      type: 'command' | 'file-edit' | 'info';
+      title: string;
+      details?: string;
+      isExpandable: boolean;
+      status: 'pending' | 'success' | 'failure';
+      timestamp?: string;
+    }
+
+    public broadcastLogStep(step: Omit<AgentLogPacket, 'id' | 'timestamp'>): string {
+      const logPacket: AgentLogPacket = {
+        ...step,
+        id: `step-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+        timestamp: new Date().toISOString()
+      };
+      this.activeLogs.push(logPacket);
+      if ((global as any).comfyWebSocketServer) {
+        (global as any).comfyWebSocketServer.broadcast({
+          type: 'AGENT_LOG_STREAM_UPDATE',
+          payload: logPacket
+        });
+      }
+      return logPacket.id;
+    }
+    ```
+  - **Why:** Implemented the universal type model `AgentLogPacket` and active telemetry broadcast methods over WebSocket for real-time execution streaming.
+
+- **Target File Path:** `/src/components/LiveConsoleLog.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    <div className={`grid transition-all duration-200 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+      <div className="overflow-hidden bg-zinc-900/10">
+        {log.details && (
+          <div className="px-4 pb-3.5 pt-0.5">
+            <pre className="bg-[#141416] border border-zinc-800/80 rounded-lg p-3 font-mono text-[11px] text-zinc-400 whitespace-pre overflow-x-auto shadow-inner leading-relaxed">
+              {log.details}
+            </pre>
+          </div>
+        )}
+      </div>
+    </div>
+    ```
+  - **Why:** Built expandable dark-mode accordion interface subscribing to `/comfy` WebSocket for live telemetry feeds, status indicators, and copy/clear controls.
+
+- **Target File Path:** `/server/proxy/ProxySavingsEngine.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    export class ProxySavingsEngine {
+      public calculateSavings(mode: OperationalMode, inputTokens: number, outputTokens: number, videoDurationSec = 5) {
+        // Claude Sonnet 5: £1.56/1M in, £7.80/1M out; Midjourney: £0.03; Runway: £0.12/sec
+      }
+      public async logSavings(mode, prompt, inputTokens, outputTokens, durationSec, details) { ... }
+      public scrubThinkingProcess(text: string) { ... }
+      public autoPatchTruncatedOutput(text: string, mode: OperationalMode) { ... }
+      public filterTravelAndCommercialSpam(results, query) { ... }
+    }
+    ```
+  - **Why:** Created dedicated 5-mode intent classifier, CoT scrubber, auto-patcher for truncated tags, and SQLite commercial savings engine in GBP (£).
+
+- **Target File Path:** `/server.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    const wss = new WebSocketServer({ server, path: "/comfy" });
+    (global as any).comfyWebSocketServer = {
+      broadcast: (data: any) => { ... }
+    };
+    app.post('/api/proxy/dispatch', async (req, res) => { ... });
+    app.get('/api/proxy/savings', async (_req, res) => { ... });
+    app.post('/api/agent/test-motion-check', async (_req, res) => { ... });
+    ```
+  - **Why:** Integrated WebSocket telemetry server on `/comfy`, proxy dispatch endpoint, and SQLite savings endpoints into the Express application.
+
+- **Target File Path:** `/dashboard.py`
+  - **Exact Code Snippet:**
+    ```python
+    st.set_page_config(page_title="Gina AI Factory — 5-Mode Proxy Dashboard", layout="wide")
+    # Real-time watchdog (<10 TPS alert) and 5 operational mode tabs
+    ```
+  - **Why:** Created complete Streamlit application layer with dynamic CSS preventing clipping, real-time <10 TPS watchdog alert, and GBP commercial savings matrices.
+
+# v1.20.12 — Phase 59 — AI Studio Import Migration & TypeScript Resolution
+
+- **Target File Path:** `/server/llm/LocalLlmManager1.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    export { LocalLlmManager } from './LocalLlmManager';
+    export type { LocalLlmConfig, LocalLlmStatus } from './LocalLlmManager';
+    export type { LocalLlmEngine } from './LocalLlmModelCatalog';
+    ```
+  - **Why:** Resolved TypeScript compilation error TS2459 where `LocalLlmEngine` was imported from `LocalLlmManager` instead of `LocalLlmModelCatalog`.
+- **Target File Path:** `/server/llm/LocalLlmManager.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    import { getLocalLlmModel, LOCAL_LLM_MODELS, type LocalLlmEngine } from "./LocalLlmModelCatalog";
+    export type { LocalLlmEngine };
+    ```
+  - **Why:** Re-exported `LocalLlmEngine` from `LocalLlmManager` for backwards-compatibility with existing consumers.
+- **Target File Path:** `/src/components/VRAMWarningToast.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    <span title="Drag widget" className="flex items-center">
+      <GripVertical className="w-3.5 h-3.5 text-slate-600" />
+    </span>
+    ```
+  - **Why:** Resolved Lucide icon typing incompatibility where the `title` attribute was directly passed onto `GripVertical` which is disallowed in modern `LucideProps`.
+
 # v1.20.12 — Phase 59 — Consistency Audit & Build Gate
 
 - **Target File Path:** `/src/version.ts`

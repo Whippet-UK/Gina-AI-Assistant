@@ -103,7 +103,9 @@ export const VRAMWarningToast: React.FC<VRAMWarningToastProps> = ({
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
-              <GripVertical className="w-3.5 h-3.5 text-slate-600" title="Drag widget" />
+              <span title="Drag widget" className="flex items-center">
+                <GripVertical className="w-3.5 h-3.5 text-slate-600" />
+              </span>
               <button
                 type="button"
                 onClick={() => setCollapsed(!collapsed)}

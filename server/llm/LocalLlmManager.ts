@@ -5,6 +5,7 @@ import { spawn, ChildProcessWithoutNullStreams } from "child_process";
 import { loadAgentSkills, getActiveAgentSkillsPrompt } from "../agent/AgentSkillLoader";
 import { estimateTokens, runtimeTelemetry, PromptTelemetrySource } from "../telemetry/RuntimeTelemetry";
 import { getLocalLlmModel, LOCAL_LLM_MODELS, type LocalLlmEngine } from "./LocalLlmModelCatalog";
+export type { LocalLlmEngine };
 
 export interface LocalLlmConfig {
   executablePath: string;
