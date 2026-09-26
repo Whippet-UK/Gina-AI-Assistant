@@ -3213,3 +3213,10 @@ className={... 'sm:w-[18rem]' ...}
 - **Target File Path:** `/src/App.tsx`
   - **Exact Code Area:** Removed the standalone `LOCAL AI` and `UNIFIED DASHBOARD` navigation entries and their render blocks; removed the now-unused `LocalLlmStudio`, `UnifiedAiDashboard`, and `Activity` imports.
   - **Why:** The new `StudioWorkspace` is already the primary **GINA ASSISTANT** surface and contains the five requested operating modes. The duplicate dashboard/Local AI tabs were removed so the new assistant is not presented as a separate dashboard tab. Existing saved tab-order values for the retired IDs are ignored by the active navigation list.
+
+
+## 2026-09-26 — Align primary workspace branding
+
+- **Target File Path:** `/src/components/StudioWorkspace.tsx`
+  - **Exact Code Area:** Changed the workspace brand label from `GINA LOCAL AI STUDIO` to `GINA ASSISTANT`.
+  - **Why:** Keep the primary workspace consistently branded as the new Gina Assistant rather than presenting it as a separate studio/product surface.
