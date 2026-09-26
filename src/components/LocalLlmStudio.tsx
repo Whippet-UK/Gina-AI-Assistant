@@ -1940,6 +1940,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
                 </div>
                 <div>{renderRichContent(message.content, index)}</div>
                 {message.imageUrl && <img src={message.imageUrl} alt="Gina generated image" className="mt-3 max-w-full rounded-lg border border-slate-700" />}
+                {message.videoUrl && <video controls playsInline src={message.videoUrl} className="mt-3 max-w-full rounded-lg border border-slate-700" />}
 
                 {/* Grounded Web Sources Display */}
                 {message.role === 'assistant' && message.webSources && message.webSources.length > 0 && (
