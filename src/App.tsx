@@ -211,7 +211,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
     { id: 'assets' as const, label: 'ASSETS', icon: FolderOpen, isGenerating: false },
     { id: 'jobs' as const, label: 'JOBS', icon: ListChecks, isGenerating: isJobActive },
     { id: 'llm' as const, label: 'LOCAL AI', icon: Bot, isGenerating: false },
-    { id: 'dashboard' as const, label: 'UNIFIED DASHBOARD', icon: Activity, isGenerating: false },
+    { id: 'dashboard' as const, label: 'GINA PROMPT STATION', icon: Activity, isGenerating: false },
     { id: 'system' as const, label: 'SYSTEM', icon: Settings2, isGenerating: false }
   ], [isJobActive, isImageJob, isVideoJob, job?.workflowId]);
 
