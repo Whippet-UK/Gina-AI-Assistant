@@ -913,6 +913,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
       if (data.ready && data.imageUrl) {
         adoptCompletedOutput(data.jobId || jobId, data.imageUrl, data.filename, data.workflowId || 'sdxl_juggernaut', { prompt: promptText, __generationAudit: { engine: data.engine, llmModel: data.llmModel, generationModel: data.generationModel, workflowId: data.workflowId } });
         setMessages(prev => [...prev, { role: 'assistant', content: usedReference ? `Done — I generated the image from your supplied reference.` : `Done — I generated the image locally from your prompt.`, imageUrl: data.imageUrl }]);
+        pushExecutionLog('Image Generation Complete', `Image ready · ${data.filename || 'local output'}`, 'complete');
         try {
           await fetch('/api/assets', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ title:`AI Tools · ${new Date().toLocaleString()}`, type:'image', url:data.imageUrl, fileFormat:'PNG', timestamp:new Date().toISOString(), promptUsed:promptText, jobId:data.jobId || jobId, workflowId:data.workflowId || 'sdxl_juggernaut' }) });
         } catch {}
@@ -1152,6 +1153,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
         try {
           await sendImageGeneration(typedText);
         } catch (err: any) {
+          pushExecutionLog('Image Generation Failed', err?.message || 'Local image generation failed', 'error');
           setError(err?.message || 'Local image generation failed');
           onAddLog('WARN', `AI Tool image generation failed: ${err?.message || 'unknown error'}`);
         } finally {
