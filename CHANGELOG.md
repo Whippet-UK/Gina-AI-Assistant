@@ -1,3 +1,109 @@
+# v1.20.13 — Phase 60 — Gina Assistant Full Screen View Top-to-Bottom
+
+- **Target File Path:** `/src/components/StudioWorkspace.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    export type LayoutMode = 'assistant-fullscreen' | 'split' | 'artifact-fullscreen';
+    const [layoutMode, setLayoutMode] = useState<LayoutMode>(() => {
+      try {
+        const saved = localStorage.getItem('gina_studio_layout_mode');
+        if (saved === 'assistant-fullscreen' || saved === 'split' || saved === 'artifact-fullscreen') return saved as LayoutMode;
+      } catch {}
+      return 'assistant-fullscreen'; // User explicitly requested Gina Assistant full screen view top to bottom
+    });
+    const [isTrueFullScreen, setIsTrueFullScreen] = useState(false);
+    ```
+  - **Why:** Reconfigured Gina Assistant layout matrix to default to a 100% full-screen top-to-bottom view, added dedicated layout mode buttons (`Full Screen Assistant`, `Split View`, `Artifact Focus`), and added an immersive edge-to-edge browser fullscreen overlay with Esc key support.
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    interface LocalLlmStudioProps {
+      isFullScreen?: boolean;
+      onToggleFullScreen?: () => void;
+    }
+    const [showEngineConfig, setShowEngineConfig] = useState(false);
+    const [showDetailedTelemetry, setShowDetailedTelemetry] = useState(false);
+    // Dynamic height and full width span for chat:
+    <div className={`flex-1 ${isFullScreen ? 'min-h-[calc(100vh-270px)] h-[calc(100vh-270px)]' : 'min-h-[460px] h-[calc(100vh-340px)]'} grid grid-cols-12 gap-3 min-w-0`}>
+      <div className={`${activePreviewContent ? 'col-span-12 xl:col-span-8' : 'col-span-12'} min-w-0 overflow-y-auto custom-scrollbar space-y-3 pr-1`}>
+    ```
+  - **Why:** Expanded the chat messages container to span full width (12 columns) by default with dynamic vertical stretch from top to bottom, made the 3-column engine card toggleable via an `Engine Config` button, collapsed telemetry to a sleek single-line summary with expandable details, and added windowed/fullscreen toggle controls.
+
+- **Target File Path:** `/src/index.css`
+  - **Exact Code Snippet:**
+    ```css
+    .studio-workspace-grid.is-fullscreen { display: flex !important; flex-direction: column !important; min-height: calc(100vh - 120px) !important; max-height: none !important; height: calc(100vh - 120px) !important; }
+    .studio-workspace-grid.is-fullscreen .studio-chat-column { width: 100% !important; max-width: 100% !important; min-width: 100% !important; border-right: none !important; height: 100% !important; flex: 1 1 0% !important; }
+    .studio-workspace-grid.is-fullscreen .studio-split-resizer,
+    .studio-workspace-grid.is-fullscreen .studio-artifact-column { display: none !important; }
+    ```
+  - **Why:** Added CSS layout classes for full-screen assistant and artifact-only views to stretch edge-to-edge top to bottom without boundary clipping.
+
+- **Target File Path:** `/src/App.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    const defaultNavItems = useMemo(() => [
+      { id: 'studio' as const, label: 'GINA ASSISTANT', icon: Bot, isGenerating: false },
+    ```
+  - **Why:** Updated navigation tab title to explicitly label the primary view as `GINA ASSISTANT` for immediate discoverability.
+
+# v1.20.13 — Phase 60 — Dynamic Movable & Resizable UI Layout Matrix
+
+- **Target File Path:** `/src/App.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    const [tabOrder, setTabOrder] = useState<string[]>(() => {
+      try {
+        const saved = localStorage.getItem('gina_nav_tab_order');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+      return ['studio', 'create', 'video', 'gif', 'streaminject', 'music', 'audio', 'aida64', 'shorts', 'assets', 'jobs', 'llm', 'system'];
+    });
+    // draggable onDragStart, onDragOver, onDrop with persistent localStorage
+    ```
+  - **Why:** Implemented drag-and-drop movable navigation tabs with persistent ordering in `localStorage` and a reset button, allowing full customization of the studio workflow layout.
+
+- **Target File Path:** `/src/components/StudioWorkspace.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    const [chatColWidth, setChatColWidth] = useState<number>(() => {
+      try {
+        const saved = localStorage.getItem('gina_studio_chat_width');
+        if (saved) return Math.max(280, Math.min(window.innerWidth * 0.75, Number(saved)));
+      } catch {}
+      return Math.round(window.innerWidth * 0.40);
+    });
+    // <div className="studio-split-resizer" onMouseDown={...} />
+    ```
+  - **Why:** Added a draggable split resizer between the Chat Terminal and Artifact Panel with persistent width storage and a quick-reset button.
+
+- **Target File Path:** `/src/index.css`
+  - **Exact Code Snippet:**
+    ```css
+    .studio-workspace-grid { display:grid; grid-template-columns: var(--chat-col-width, 42vw) minmax(0, 1fr); max-height: calc(100vh - 140px); overflow:hidden; }
+    .studio-split-resizer { width: 8px; cursor: col-resize; ... }
+    .studio-artifact-panel { resize: vertical; max-height: 85vh; }
+    ```
+  - **Why:** Integrated CSS grid variables, col-resize dividers, vertical resizing for artifact frames, and custom scrollbars to prevent monitor boundary clipping.
+
+- **Target File Path:** `/src/components/Aida64Studio.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-2">
+      {tabs.map(tab => ...)}
+    </div>
+    ```
+  - **Why:** Replaced multi-row grid with horizontal scrolling tab navigation to ensure clean presentation without text truncation or boundary clipping.
+
+- **Target File Path:** `/dashboard.py`
+  - **Exact Code Snippet:**
+    ```css
+    .mode-card { resize: vertical; overflow: auto; max-height: 750px; }
+    .stTabs [data-baseweb="tab-list"] { overflow-x: auto; white-space: nowrap; }
+    ```
+  - **Why:** Enabled vertical resizing and horizontal tab scrolling in the Streamlit application layer.
+
 # v1.20.12 — Phase 60 — Expandable Telemetry Engine & 5-Mode Commercial Savings Proxy
 
 - **Target File Path:** `/package.json`

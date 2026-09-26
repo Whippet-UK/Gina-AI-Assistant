@@ -174,13 +174,13 @@ export const Aida64Studio: React.FC<Aida64StudioProps> = ({ telemetry, onSendToP
           </div>
         )}
 
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+        <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-2">
           {tabs.map(tab => {
             const Icon = tab.icon;
             const selected = activeTab === tab.id;
-            return <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${selected ? 'bg-emerald-500/15 border-emerald-400 text-slate-100 ring-1 ring-emerald-500/50' : 'bg-slate-950/70 border-slate-800/80 text-slate-400 hover:border-slate-700 hover:text-slate-200'}`}>
-              <div className="flex items-center gap-2"><Icon className={`w-4 h-4 ${selected ? 'text-emerald-400' : 'text-slate-500'}`} /><span className="font-bold text-xs">{tab.label}</span></div>
-              <div className="text-[10px] text-slate-500 mt-1">{tab.desc}</div>
+            return <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer shrink-0 min-w-[150px] max-w-[220px] ${selected ? 'bg-emerald-500/15 border-emerald-400 text-slate-100 ring-1 ring-emerald-500/50' : 'bg-slate-950/70 border-slate-800/80 text-slate-400 hover:border-slate-700 hover:text-slate-200'}`}>
+              <div className="flex items-center gap-2"><Icon className={`w-4 h-4 shrink-0 ${selected ? 'text-emerald-400' : 'text-slate-500'}`} /><span className="font-bold text-xs truncate">{tab.label}</span></div>
+              <div className="text-[10px] text-slate-500 mt-1 line-clamp-1">{tab.desc}</div>
             </button>;
           })}
         </div>

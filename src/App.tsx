@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Image, Video, Film, FolderOpen, ListChecks, Settings2, Gauge, Bot, Music, AudioLines } from 'lucide-react';
 import { Header } from './components/Header';
 import { ProjectStateProvider, useProjectState } from './context/ProjectStateContext';
@@ -197,8 +197,8 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
   const isVideoJob = job?.workflowId === 'wan_video' || (job?.workflowId && job.workflowId.includes('video'));
   const isImageJob = !job?.workflowId || job?.workflowId.includes('flux') || job?.workflowId.includes('image');
 
-  const navItems = [
-    { id: 'studio' as const, label: 'AI STUDIO', icon: Bot, isGenerating: false },
+  const defaultNavItems = useMemo(() => [
+    { id: 'studio' as const, label: 'GINA ASSISTANT', icon: Bot, isGenerating: false },
     { id: 'create' as const, label: 'IMAGE CREATION STUDIO', icon: Image, isGenerating: isJobActive && isImageJob },
     { id: 'video' as const, label: 'VIDEO', icon: Video, isGenerating: isJobActive && isVideoJob },
     { id: 'gif' as const, label: 'GIF STUDIO', icon: Film, isGenerating: isJobActive && job?.workflowId === 'gif_studio' },
@@ -211,7 +211,63 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
     { id: 'jobs' as const, label: 'JOBS', icon: ListChecks, isGenerating: isJobActive },
     { id: 'llm' as const, label: 'LOCAL AI', icon: Bot, isGenerating: false },
     { id: 'system' as const, label: 'SYSTEM', icon: Settings2, isGenerating: false }
-  ];
+  ], [isJobActive, isImageJob, isVideoJob, job?.workflowId]);
+
+  // Persistent customizable tab ordering
+  const [tabOrder, setTabOrder] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('gina_nav_tab_order');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [
+      'studio', 'create', 'video', 'gif', 'streaminject', 'music', 'audio',
+      'aida64', 'shorts', 'assets', 'jobs', 'llm', 'system'
+    ];
+  });
+
+  const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
+
+  const navItems = useMemo(() => {
+    const itemMap = new Map(defaultNavItems.map(item => [item.id, item]));
+    const ordered: typeof defaultNavItems = [];
+    for (const id of tabOrder) {
+      const it = itemMap.get(id as any);
+      if (it) {
+        ordered.push(it);
+        itemMap.delete(id as any);
+      }
+    }
+    // Append any newly added items not yet in saved order
+    for (const remaining of itemMap.values()) {
+      ordered.push(remaining);
+    }
+    return ordered;
+  }, [defaultNavItems, tabOrder]);
+
+  const handleTabDrop = (targetId: string) => {
+    if (!draggedTabId || draggedTabId === targetId) return;
+    setTabOrder(prev => {
+      const next = [...prev];
+      const fromIndex = next.indexOf(draggedTabId);
+      const toIndex = next.indexOf(targetId);
+      if (fromIndex !== -1 && toIndex !== -1) {
+        next.splice(fromIndex, 1);
+        next.splice(toIndex, 0, draggedTabId);
+        try { localStorage.setItem('gina_nav_tab_order', JSON.stringify(next)); } catch {}
+      }
+      return next;
+    });
+    setDraggedTabId(null);
+  };
+
+  const handleResetTabOrder = () => {
+    const def = ['studio', 'create', 'video', 'gif', 'streaminject', 'music', 'audio', 'aida64', 'shorts', 'assets', 'jobs', 'llm', 'system'];
+    setTabOrder(def);
+    try { localStorage.removeItem('gina_nav_tab_order'); } catch {}
+  };
 
   const handleSendAida64Prompt = useCallback((prompt: string, width: number, height: number, reference?: { filename: string; name: string; bytes: number; previewUrl: string }) => {
     const safeWidth = Math.max(64, Math.min(8192, Math.round(Number(width) || 1024)));
@@ -236,14 +292,60 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
         <div className="sticky top-0 z-20 mt-4 mb-6 -mx-2 px-2 py-2 bg-[#020617]/95 backdrop-blur border-y border-slate-800/80">
           <nav className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
             {navItems.map(({ id, label, icon: Icon, isGenerating }) => (
-              <button key={id} type="button" onClick={() => setActiveView(id)} className={`shrink-0 px-3.5 py-2 rounded-md border text-[10px] font-bold tracking-widest flex items-center gap-2 transition-colors cursor-pointer ${activeView === id ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-extrabold shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'}`}>
-                <Icon className="w-3.5 h-3.5" /><span>{label}</span>
-                {isGenerating && <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono uppercase font-bold animate-pulse ${activeView === id ? 'bg-slate-950 text-emerald-400' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'}`}>{job?.progress || 0}%</span>}
-                {id === 'video' && <ComfyUIStatusIndicator activeView={activeView} />}
-              </button>
+              <div
+                key={id}
+                draggable
+                onDragStart={() => setDraggedTabId(id)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => handleTabDrop(id)}
+                className="shrink-0 flex items-center"
+              >
+                <button
+                  type="button"
+                  onClick={() => setActiveView(id)}
+                  title="Click to view · Drag to reorder tab"
+                  className={`px-3 py-2 rounded-md border text-[10px] font-bold tracking-widest flex items-center gap-2 transition-all cursor-pointer ${
+                    activeView === id
+                      ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-extrabold shadow-sm'
+                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
+                  } ${draggedTabId === id ? 'opacity-40 scale-95 border-emerald-500 border-dashed' : ''}`}
+                >
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="whitespace-nowrap">{label}</span>
+                  {isGenerating && (
+                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono uppercase font-bold animate-pulse ${
+                      activeView === id ? 'bg-slate-950 text-emerald-400' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    }`}>
+                      {job?.progress || 0}%
+                    </span>
+                  )}
+                  {id === 'video' && <ComfyUIStatusIndicator activeView={activeView} />}
+                </button>
+              </div>
             ))}
-            {isJobActive && <div className="ml-2 hidden lg:flex items-center gap-2 px-2.5 py-1 rounded bg-slate-900 border border-emerald-500/30 text-[9px] font-mono text-emerald-300"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" /><span className="font-bold uppercase tracking-wider">{job?.workflowId?.includes('video') ? 'Video Gen' : 'Image Gen'}: {job?.progress || 0}%</span>{job?.currentStep && <span className="text-slate-500">({job.currentStep}/{job.totalSteps || '?'})</span>}</div>}
-            <div className="ml-auto hidden md:flex items-center gap-2 text-[9px] font-mono text-slate-600"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> LOCAL-FIRST CREATOR ENGINE</div>
+            
+            {/* Tab layout tools */}
+            <div className="ml-2 flex items-center gap-1 border-l border-slate-800 pl-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleResetTabOrder}
+                className="px-2 py-1 text-[9px] font-mono text-slate-500 hover:text-slate-300 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded transition-colors"
+                title="Reset tab order to default"
+              >
+                ↺ Reset Tabs
+              </button>
+            </div>
+
+            {isJobActive && (
+              <div className="ml-2 hidden lg:flex items-center gap-2 px-2.5 py-1 rounded bg-slate-900 border border-emerald-500/30 text-[9px] font-mono text-emerald-300 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <span className="font-bold uppercase tracking-wider">{job?.workflowId?.includes('video') ? 'Video Gen' : 'Image Gen'}: {job?.progress || 0}%</span>
+                {job?.currentStep && <span className="text-slate-500">({job.currentStep}/{job.totalSteps || '?'})</span>}
+              </div>
+            )}
+            <div className="ml-auto hidden md:flex items-center gap-2 text-[9px] font-mono text-slate-600 shrink-0 whitespace-nowrap">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> LOCAL-FIRST CREATOR ENGINE
+            </div>
           </nav>
         </div>
 

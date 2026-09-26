@@ -942,7 +942,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
       <div
         className={`p-4 sm:p-5 bg-[#0d1117] ${
           advancedOpen
-            ? 'grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px] gap-5 items-start'
+            ? 'grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(320px,460px)] gap-5 items-start'
             : 'max-w-5xl mx-auto w-full flex flex-col gap-4'
         }`}
       >

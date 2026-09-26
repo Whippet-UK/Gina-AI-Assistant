@@ -15,9 +15,9 @@
 ---
 
 ## 📌 Project Overview
-- **Current version:** `v1.20.12`
-- **Active lifecycle:** `PHASE 59 — VOICE ENGINE RUNTIME REPAIR & TRANSFORMERS BEAMSEARCHSCORER FIX`
-- **Active save point:** `RESTORE_V1.20.12_VOICE_ENGINE_RUNTIME_REPAIR`
+- **Current version:** `v1.20.13`
+- **Active lifecycle:** `PHASE 60 — DYNAMIC MOVABLE & RESIZABLE UI LAYOUT MATRIX`
+- **Active save point:** `RESTORE_V1.20.13_RESIZABLE_UI_LAYOUT_MATRIX`
 - **Phase 41:** Gina Agent runs are persisted under `.gina/agent-runs`, expose live Server-Sent Events, can reconnect after browser refresh, and support explicit cancellation.
 - **Phase 44:** Qwen Coder accepts text/code files and project ZIPs; project ZIPs are imported into dedicated workspaces, automatically inspected without executing uploaded code, and support up to 100MB / 10,000 files.
 - **Phase 46:** A mandatory update-integrity checklist is loaded into agent startup context; active Wan 2.1 UI references were reconciled and a deterministic integrity gate is available before success reporting.

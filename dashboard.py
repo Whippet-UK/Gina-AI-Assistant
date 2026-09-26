@@ -34,7 +34,7 @@ st.markdown("""
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
   
-  /* Scrollable, non-clipping container cards */
+  /* Scrollable, non-clipping container cards with resize support */
   .mode-card {
     background-color: #1e1e20;
     border: 1px solid #27272a;
@@ -44,6 +44,31 @@ st.markdown("""
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     overflow: auto;
     max-height: 750px;
+    resize: vertical;
+  }
+  
+  /* Movable, scrollable tab container wrapper */
+  .stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 6px;
+  }
+
+  .stTabs [data-baseweb="tab"] {
+    background-color: #141416;
+    border: 1px solid #27272a;
+    border-radius: 8px;
+    padding: 8px 14px;
+    color: #a1a1aa;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .stTabs [aria-selected="true"] {
+    background-color: #10b981 !important;
+    color: #020617 !important;
+    font-weight: 700;
   }
   
   .metric-box {

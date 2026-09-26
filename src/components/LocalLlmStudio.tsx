@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Cpu, FileDown, MessageSquare, Mic, MicOff, Play, RotateCw, Square, Trash2, Volume2, VolumeX, Zap, Sliders, ChevronDown, Paperclip, X, FileText, Image as ImageIcon, Archive, File as FileIcon, Github, Activity, Gauge, Globe, Globe2, ExternalLink, Search } from 'lucide-react';
+import { Bot, Cpu, FileDown, MessageSquare, Mic, MicOff, Play, RotateCw, Square, Trash2, Volume2, VolumeX, Zap, Sliders, ChevronDown, Paperclip, X, FileText, Image as ImageIcon, Archive, File as FileIcon, Github, Activity, Gauge, Globe, Globe2, ExternalLink, Search, Maximize2, Minimize2 } from 'lucide-react';
 import { LocalRagKnowledgePanel } from './LocalRagKnowledgePanel';
 import { useGenerationJob } from '../context/GenerationJobContext';
 import { WebBrowserInspectorModal } from './WebBrowserInspectorModal';
@@ -87,11 +87,21 @@ interface LocalLlmStudioProps {
   onAddLog: (level: 'INFO' | 'WARN' | 'SEC' | 'RULE', message: string, ruleId?: string) => void;
   studioMode?: 'web-search' | 'web-app' | 'code-engine' | 'image-studio' | 'video-generation';
   onWebAppArtifact?: (html: string) => void;
+  isFullScreen?: boolean;
+  onToggleFullScreen?: () => void;
 }
 
 const SYSTEM_PROMPT = `You are Gina, the local AI assistant inside Gina AI Factory. You run locally on a Windows PC with an NVIDIA RTX 3070 Ti 8GB, AMD Ryzen 5 5600X 6-core/12-thread CPU and 32GB RAM. Be practical and concise. Prefer the project's existing local tools and files. You can request local image generation through Gina's Create/ComfyUI tool when the user explicitly asks for an image. Do not claim an image was generated unless Gina has actually returned one. Do not tell the user that Gina is text-only when local image generation is available. Never reveal chain-of-thought, hidden reasoning, internal deliberation, or a section labelled Thinking Process. Return only the concise user-facing answer and useful verified results.`;
 
-export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog, studioMode = 'web-app', onWebAppArtifact }) => {
+export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ 
+  onAddLog, 
+  studioMode = 'web-app', 
+  onWebAppArtifact,
+  isFullScreen = false,
+  onToggleFullScreen
+}) => {
+  const [showEngineConfig, setShowEngineConfig] = useState(true);
+  const [showDetailedTelemetry, setShowDetailedTelemetry] = useState(true);
   const [status, setStatus] = useState<LocalLlmStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [thinkingSource, setThinkingSource] = useState<'local'|'web'|'local+web'>('local');
@@ -1070,95 +1080,122 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog, studio
   }, [status]);
 
   return (
-    <section className="space-y-5 min-h-[calc(100vh-150px)]">
-      <div className="grid grid-cols-12 gap-5 items-start min-w-0">
-        <div className="col-span-12 lg:col-span-3 bg-slate-950 border border-slate-800 rounded-lg p-5 shadow-sm min-w-0 overflow-hidden">
-          <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-4 mb-4">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Local inference engine</div>
-              <h2 className="text-xl font-semibold text-slate-100 mt-1 flex items-center gap-2">
-                <Bot className="w-5 h-5 text-emerald-400" />
-                {status?.engine === 'qwen3.5'
-                  ? 'Qwen3.5 9B Vision-Language'
-                  : status?.engine === 'qwen'
-                  ? 'Qwen 2.5-VL 7B Vision-Language'
-                  : status?.engine === 'qwen-coder'
-                  ? 'Qwen Coder 7B'
-                  : status?.modelName || 'Local Vision-Language Engine'}
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                {status?.engine === 'qwen3.5'
-                  ? 'Qwen3.5 9B GGUF Q4_K_M via llama.cpp CUDA; vision uses the model-matched mmproj-BF16 projector (4096 hidden size).'
-                  : status?.engine === 'qwen'
-                  ? 'Qwen 2.5-VL 7B GGUF Q4_K_M via llama.cpp CUDA with mmproj-F16 vision.'
-                  : 'Qwen Coder 7B GGUF via llama.cpp CUDA. Text-only coding profile; projector unloaded.'}
-              </p>
+    <section className="space-y-4 min-h-[calc(100vh-140px)] flex flex-col flex-1">
+      <div className="grid grid-cols-12 gap-4 items-start min-w-0 flex-1">
+        {showEngineConfig && (
+          <div className="col-span-12 lg:col-span-3 bg-slate-950 border border-slate-800 rounded-lg p-4 shadow-sm min-w-0 overflow-hidden">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3 mb-3">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Local inference engine</div>
+                <h2 className="text-lg font-semibold text-slate-100 mt-1 flex items-center gap-2">
+                  <Bot className="w-4 h-4 text-emerald-400" />
+                  {status?.engine === 'qwen3.5'
+                    ? 'Qwen3.5 9B Vision-Language'
+                    : status?.engine === 'qwen'
+                    ? 'Qwen 2.5-VL 7B Vision-Language'
+                    : status?.engine === 'qwen-coder'
+                    ? 'Qwen Coder 7B'
+                    : status?.modelName || 'Local Vision-Language Engine'}
+                </h2>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {status?.engine === 'qwen3.5'
+                    ? 'Qwen3.5 9B GGUF Q4_K_M via llama.cpp CUDA with mmproj-BF16.'
+                    : status?.engine === 'qwen'
+                    ? 'Qwen 2.5-VL 7B GGUF Q4_K_M via llama.cpp CUDA with mmproj-F16.'
+                    : 'Qwen Coder 7B GGUF via llama.cpp CUDA. Text-only coding profile.'}
+                </p>
+              </div>
+              <span className={`px-2 py-1 rounded border text-[9px] font-mono font-bold ${status?.ready ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{stateLabel}</span>
             </div>
-            <span className={`px-2 py-1 rounded border text-[9px] font-mono font-bold ${status?.ready ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>{stateLabel}</span>
-          </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono">
-            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">BACKEND</div><div className="text-slate-200 mt-1">{status?.backend || 'CUDA'}</div></div>
-            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">GPU LAYERS</div><div className="text-slate-200 mt-1">{status?.gpuLayers ?? 28} (100% Offload)</div></div>
-            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">CONTEXT</div><div className="text-slate-200 mt-1">{status?.contextSize ?? 8192}</div></div>
-            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">CPU THREADS</div><div className="text-slate-200 mt-1">{status?.threads ?? 6}</div></div>
-            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">VISION MMPROJ</div><div className="text-emerald-300 mt-1 truncate" title={status?.mmprojPath || 'None'}>{status?.mmprojPath ? (status.mmprojPath.split(/[/\\]/).pop() || 'Detected') : 'None'}</div></div>
-            <div className="bg-slate-900/70 border border-slate-800 rounded p-3"><div className="text-slate-500">EST. SPEED</div><div className="text-emerald-400 font-bold mt-1">{status?.engine === 'qwen-coder' ? '~30–50 t/s' : status?.engine === 'qwen3.5' ? 'profile-dependent' : '~35–45 t/s'}</div></div>
-          </div>
-
-          <div className="mt-4 p-3 rounded border border-sky-500/20 bg-sky-500/5">
-            <div className="text-[9px] font-bold uppercase tracking-widest text-sky-300 mb-2">MODEL ROUTING</div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              <button onClick={() => void runAction('restart','qwen')} disabled={loading || status?.engine === 'qwen'} className={`p-2 rounded border text-left ${status?.engine === 'qwen' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-700 bg-slate-900'}`}>
-                <div className="text-[10px] font-bold text-slate-100">Qwen 2.5-VL 7B</div>
-                <div className="text-[8px] text-slate-500 mt-1">Q4_K_M + mmproj-F16 · vision</div>
-                <div className="text-[8px] text-emerald-400 mt-1">→ Vision + Juggernaut-XL v9</div>
-              </button>
-              <button onClick={() => void runAction('restart','qwen-coder')} disabled={loading || status?.engine === 'qwen-coder'} className={`p-2 rounded border text-left ${status?.engine === 'qwen-coder' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-700 bg-slate-900'}`}>
-                <div className="text-[10px] font-bold text-slate-100">Qwen Coder 7B</div>
-                <div className="text-[8px] text-slate-500 mt-1">Q5_K_M · text-only · projector unloaded</div>
-                <div className="text-[8px] text-amber-300 mt-1">→ Code / project tasks</div>
-              </button>
-              <button onClick={() => void runAction('restart','qwen3.5')} disabled={loading || status?.engine === 'qwen3.5'} className={`p-2 rounded border text-left ${status?.engine === 'qwen3.5' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-700 bg-slate-900'}`}>
-                <div className="text-[10px] font-bold text-slate-100">Qwen3.5 9B</div>
-                <div className="text-[8px] text-slate-500 mt-1">Q4_K_M + matched mmproj-BF16 · multimodal when projector is present</div>
-                <div className="text-[8px] text-sky-300 mt-1">→ General + vision</div>
-              </button>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono">
+              <div className="bg-slate-900/70 border border-slate-800 rounded p-2"><div className="text-slate-500 text-[8px]">BACKEND</div><div className="text-slate-200 mt-0.5">{status?.backend || 'CUDA'}</div></div>
+              <div className="bg-slate-900/70 border border-slate-800 rounded p-2"><div className="text-slate-500 text-[8px]">GPU LAYERS</div><div className="text-slate-200 mt-0.5">{status?.gpuLayers ?? 28} (100%)</div></div>
+              <div className="bg-slate-900/70 border border-slate-800 rounded p-2"><div className="text-slate-500 text-[8px]">CONTEXT</div><div className="text-slate-200 mt-0.5">{status?.contextSize ?? 8192}</div></div>
+              <div className="bg-slate-900/70 border border-slate-800 rounded p-2"><div className="text-slate-500 text-[8px]">CPU THREADS</div><div className="text-slate-200 mt-0.5">{status?.threads ?? 6}</div></div>
+              <div className="bg-slate-900/70 border border-slate-800 rounded p-2"><div className="text-slate-500 text-[8px]">VISION MMPROJ</div><div className="text-emerald-300 mt-0.5 truncate" title={status?.mmprojPath || 'None'}>{status?.mmprojPath ? (status.mmprojPath.split(/[/\\]/).pop() || 'Detected') : 'None'}</div></div>
+              <div className="bg-slate-900/70 border border-slate-800 rounded p-2"><div className="text-slate-500 text-[8px]">EST. SPEED</div><div className="text-emerald-400 font-bold mt-0.5">{status?.engine === 'qwen-coder' ? '~30–50 t/s' : status?.engine === 'qwen3.5' ? 'profile-dep' : '~35–45 t/s'}</div></div>
             </div>
+
+            <div className="mt-3 p-2.5 rounded border border-sky-500/20 bg-sky-500/5">
+              <div className="text-[9px] font-bold uppercase tracking-widest text-sky-300 mb-1.5">MODEL ROUTING</div>
+              <div className="grid grid-cols-1 gap-1.5">
+                <button onClick={() => void runAction('restart','qwen')} disabled={loading || status?.engine === 'qwen'} className={`p-2 rounded border text-left cursor-pointer transition-colors ${status?.engine === 'qwen' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-700 bg-slate-900 hover:bg-slate-800'}`}>
+                  <div className="text-[10px] font-bold text-slate-100">Qwen 2.5-VL 7B (Vision)</div>
+                  <div className="text-[8px] text-slate-500">Q4_K_M + mmproj-F16 · Vision + Juggernaut-XL v9</div>
+                </button>
+                <button onClick={() => void runAction('restart','qwen-coder')} disabled={loading || status?.engine === 'qwen-coder'} className={`p-2 rounded border text-left cursor-pointer transition-colors ${status?.engine === 'qwen-coder' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-700 bg-slate-900 hover:bg-slate-800'}`}>
+                  <div className="text-[10px] font-bold text-slate-100">Qwen Coder 7B (Text/Code)</div>
+                  <div className="text-[8px] text-amber-300">Q5_K_M · text-only · projector unloaded</div>
+                </button>
+                <button onClick={() => void runAction('restart','qwen3.5')} disabled={loading || status?.engine === 'qwen3.5'} className={`p-2 rounded border text-left cursor-pointer transition-colors ${status?.engine === 'qwen3.5' ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-700 bg-slate-900 hover:bg-slate-800'}`}>
+                  <div className="text-[10px] font-bold text-slate-100">Qwen3.5 9B (Multimodal)</div>
+                  <div className="text-[8px] text-sky-300">Q4_K_M + matched mmproj-BF16</div>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button onClick={() => runAction('start')} disabled={loading || !status?.configured || !!status?.running} className="px-3 py-1.5 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 text-[10px] font-bold uppercase tracking-wider disabled:opacity-40 flex items-center gap-1.5 cursor-pointer"><Play className="w-3 h-3" /> Start</button>
+              <button onClick={() => runAction('stop')} disabled={loading || !status?.running} className="px-3 py-1.5 rounded border border-slate-700 bg-slate-900 text-slate-300 text-[10px] font-bold uppercase tracking-wider disabled:opacity-40 flex items-center gap-1.5 cursor-pointer"><Square className="w-3 h-3" /> Stop</button>
+              <button onClick={() => runAction('restart')} disabled={loading || !status?.configured} className="px-3 py-1.5 rounded border border-sky-500/30 bg-sky-500/10 text-sky-300 text-[10px] font-bold uppercase tracking-wider disabled:opacity-40 flex items-center gap-1.5 cursor-pointer"><RotateCw className="w-3 h-3" /> Restart</button>
+            </div>
+
+            <div className="mt-3 text-[8px] font-mono text-slate-600 break-all">{status?.modelPath || 'C:\\Gina_AI\\models\\llm\\Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf'}</div>
+            {error && <div className="mt-2 p-2 rounded border border-rose-500/30 bg-rose-500/5 text-[9px] text-rose-300">{error}</div>}
           </div>
+        )}
 
-          <div className="mt-4 p-3 rounded border border-amber-500/20 bg-amber-500/5 text-[10px] text-amber-200/80 leading-relaxed">
-            <strong className="text-amber-300">8 GB VRAM rule:</strong> starting the local LLM tells ComfyUI to release cached models first. Avoid running heavy image/video generation at the same time as the local LLM.
-          </div>
-
-          <div className="flex flex-wrap gap-2 mt-4">
-            <button onClick={() => runAction('start')} disabled={loading || !status?.configured || !!status?.running} className="px-3 py-2 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 text-[10px] font-bold uppercase tracking-wider disabled:opacity-40 flex items-center gap-2"><Play className="w-3.5 h-3.5" /> Start</button>
-            <button onClick={() => runAction('stop')} disabled={loading || !status?.running} className="px-3 py-2 rounded border border-slate-700 bg-slate-900 text-slate-300 text-[10px] font-bold uppercase tracking-wider disabled:opacity-40 flex items-center gap-2"><Square className="w-3.5 h-3.5" /> Stop</button>
-            <button onClick={() => runAction('restart')} disabled={loading || !status?.configured} className="px-3 py-2 rounded border border-sky-500/30 bg-sky-500/10 text-sky-300 text-[10px] font-bold uppercase tracking-wider disabled:opacity-40 flex items-center gap-2"><RotateCw className="w-3.5 h-3.5" /> Restart</button>
-          </div>
-
-          <div className="mt-4 text-[9px] font-mono text-slate-600 break-all">{status?.modelPath || 'C:\\Gina_AI\\models\\llm\\Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf'}</div>
-          {error && <div className="mt-3 p-3 rounded border border-rose-500/30 bg-rose-500/5 text-[10px] text-rose-300">{error}</div>}
-        </div>
-
-        <div className="col-span-12 lg:col-span-9 bg-slate-950 border border-slate-800 rounded-lg p-5 shadow-sm min-h-[calc(100vh-165px)] h-auto flex flex-col min-w-0 overflow-hidden">
-          <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3 border-b border-slate-800 pb-3 mb-3 min-w-0">
-            <div className="flex items-center gap-2"><MessageSquare className="w-4 h-4 text-emerald-400" /><span className="text-xs font-bold uppercase tracking-widest text-slate-200">Local Gina Chat</span></div>
-            <div className="flex flex-wrap items-center gap-2 min-w-0">
+        <div className={`col-span-12 ${showEngineConfig ? 'lg:col-span-9' : 'lg:col-span-12'} bg-slate-950 border border-slate-800 rounded-lg p-3 sm:p-5 shadow-sm min-h-[calc(100vh-140px)] flex flex-col flex-1 min-w-0 overflow-hidden`}>
+          <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3 border-b border-slate-800 pb-3 mb-3 min-w-0 shrink-0">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-emerald-400" />
+              <span className="text-xs font-bold uppercase tracking-widest text-slate-200">Local Gina Chat</span>
+              <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold ${status?.ready ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400' : 'bg-slate-900 border border-slate-800 text-slate-500'}`}>
+                {status?.engine === 'qwen3.5' ? 'Qwen3.5 9B' : status?.engine === 'qwen-coder' ? 'Qwen Coder' : 'Qwen 2.5-VL'} · {status?.ready ? 'ONLINE' : 'LOCAL'}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+              <button
+                type="button"
+                onClick={() => setShowEngineConfig(v => !v)}
+                className={`px-2.5 py-1 rounded border text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm ${
+                  showEngineConfig
+                    ? 'border-emerald-500/50 bg-emerald-500/20 text-emerald-300 font-extrabold'
+                    : 'border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300'
+                }`}
+                title="Configure Local Inference Engine, GPU Layers, and Model Profiles"
+              >
+                <Sliders className="w-3 h-3 text-emerald-400" />
+                <span>{showEngineConfig ? 'Hide Config' : 'Engine Config'}</span>
+              </button>
+              {onToggleFullScreen && (
                 <button
                   type="button"
-                  onClick={() => setShowWebBrowserModal(true)}
-                  className="px-2.5 py-1 rounded border border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
-                  title="Open Gina Web Browser & Live Internet Inspector"
+                  onClick={onToggleFullScreen}
+                  className="px-2.5 py-1 rounded border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+                  title={isFullScreen ? 'Exit Full Screen' : 'Expand Full Screen Top to Bottom'}
                 >
-                  <Globe className="w-3 h-3 text-sky-400" /> Web Browser
+                  {isFullScreen ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
+                  <span>{isFullScreen ? 'Windowed' : 'Full Screen'}</span>
                 </button>
-                <button onClick={()=>{const u=window.prompt('GitHub repository URL'); if(u){setGithubUrl(u); setTimeout(()=>void loadGithubProject(),0);}}} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1"><Github className="w-3 h-3"/> GitHub</button>
-                {agentWorkspace && <span className="max-w-[170px] truncate text-[8px] font-mono text-amber-300/70" title={agentWorkspace}>● {agentWorkspace}</span>}<button onClick={exportActiveWorkspace} title="Download the current project as a clean ZIP" className="px-2 py-1 rounded border border-emerald-500/30 bg-emerald-500/5 text-emerald-300 text-[9px] font-bold uppercase tracking-wider">Export ZIP</button>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 min-w-0"><button onClick={() => { setMessages([]); setError(null); setPdfNotice(null); setActivePreviewContent(null); }} disabled={!messages.length || loading} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1"><Trash2 className="w-3 h-3" /> Clear</button><button onClick={() => void saveLastResponseAsPdf()} disabled={!messages.some(m => m.role === 'assistant') || pdfSaving} className="px-2 py-1 rounded border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1"><FileDown className="w-3 h-3" /> {pdfSaving ? 'Saving…' : 'Save PDF'}</button>
-              <button onClick={() => { const next = !voiceEnabled; setVoiceEnabled(next); if (next) testVoice(); }} disabled={!voiceAvailable && !browserVoiceAvailable} title={(voiceAvailable || browserVoiceAvailable) ? 'Toggle Gina voice' : 'No local voice engine detected'} className={`px-2 py-1 rounded border text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1 ${voiceEnabled ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-slate-700 bg-slate-900 text-slate-500'}`}>{voiceEnabled ? <Volume2 className="w-3 h-3"/> : <VolumeX className="w-3 h-3"/>} Voice</button>
-              <button onClick={toggleMicrophone} disabled={listening || !microphoneAvailable} title="Speak to Gina" className={`px-2 py-1 rounded border text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1 ${listening ? 'border-rose-500/40 bg-rose-500/10 text-rose-300' : 'border-violet-500/30 bg-violet-500/5 text-violet-300'}`}>{listening ? <MicOff className="w-3 h-3"/> : <Mic className="w-3 h-3"/>} {listening ? 'Listening…' : 'Talk'}</button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowWebBrowserModal(true)}
+                className="px-2.5 py-1 rounded border border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+                title="Open Gina Web Browser & Live Internet Inspector"
+              >
+                <Globe className="w-3 h-3 text-sky-400" /> Web Browser
+              </button>
+              <button onClick={()=>{const u=window.prompt('GitHub repository URL'); if(u){setGithubUrl(u); setTimeout(()=>void loadGithubProject(),0);}}} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer"><Github className="w-3 h-3"/> GitHub</button>
+              {agentWorkspace && <span className="max-w-[170px] truncate text-[8px] font-mono text-amber-300/70" title={agentWorkspace}>● {agentWorkspace}</span>}<button onClick={exportActiveWorkspace} title="Download the current project as a clean ZIP" className="px-2 py-1 rounded border border-emerald-500/30 bg-emerald-500/5 text-emerald-300 text-[9px] font-bold uppercase tracking-wider cursor-pointer">Export ZIP</button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
+              <button onClick={() => { setMessages([]); setError(null); setPdfNotice(null); setActivePreviewContent(null); }} disabled={!messages.length || loading} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1 cursor-pointer"><Trash2 className="w-3 h-3" /> Clear</button>
+              <button onClick={() => void saveLastResponseAsPdf()} disabled={!messages.some(m => m.role === 'assistant') || pdfSaving} className="px-2 py-1 rounded border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1 cursor-pointer"><FileDown className="w-3 h-3" /> {pdfSaving ? 'Saving…' : 'Save PDF'}</button>
+              <button onClick={() => { const next = !voiceEnabled; setVoiceEnabled(next); if (next) testVoice(); }} disabled={!voiceAvailable && !browserVoiceAvailable} title={(voiceAvailable || browserVoiceAvailable) ? 'Toggle Gina voice' : 'No local voice engine detected'} className={`px-2 py-1 rounded border text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1 cursor-pointer ${voiceEnabled ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-slate-700 bg-slate-900 text-slate-500'}`}>{voiceEnabled ? <Volume2 className="w-3 h-3"/> : <VolumeX className="w-3 h-3"/>} Voice</button>
+              <button onClick={toggleMicrophone} disabled={listening || !microphoneAvailable} title="Speak to Gina" className={`px-2 py-1 rounded border text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1 cursor-pointer ${listening ? 'border-rose-500/40 bg-rose-500/10 text-rose-300' : 'border-violet-500/30 bg-violet-500/5 text-violet-300'}`}>{listening ? <MicOff className="w-3 h-3"/> : <Mic className="w-3 h-3"/>} {listening ? 'Listening…' : 'Talk'}</button>
               <label className="flex items-center gap-1 px-2 text-[9px] font-mono text-slate-500"><input type="checkbox" checked={autoSpeak} onChange={e=>setAutoSpeak(e.target.checked)} /> Auto</label>
               {(voiceAvailable || browserVoiceAvailable) && (
                 <div className="flex items-center gap-1.5">
