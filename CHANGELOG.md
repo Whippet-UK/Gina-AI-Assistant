@@ -1,3 +1,70 @@
+# v1.20.14 — Phase 61 — Local AI Commercial Savings & Performance Telemetry Engine
+
+- **Target File Path:** `/server/proxy/ProxySavingsEngine.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    // Migration check: query columns via PRAGMA table_info before index creation
+    const cols = this.db.prepare(`PRAGMA table_info(savings_ledger)`).all() as Array<{ name: string }>;
+    const colSet = new Set(cols.map(c => c.name));
+    if (!colSet.has('active_mode')) {
+      this.db.exec(`ALTER TABLE savings_ledger ADD COLUMN active_mode TEXT NOT NULL DEFAULT 'web_search'`);
+      if (colSet.has('mode')) this.db.exec(`UPDATE savings_ledger SET active_mode = mode WHERE mode IS NOT NULL`);
+    }
+    ```
+  - **Why:** Resolved `[ProxySavingsEngine] Query error: no such column: active_mode` by inspecting schema via `PRAGMA table_info` and adding missing columns (`active_mode`, `local_model_name`, `commercial_twin`, `tokens_per_sec`, `image_count`, `video_seconds`) before index creation and table querying.
+
+- **Target File Path:** `/dashboard.py`
+  - **Exact Code Snippet:**
+    ```python
+    cursor.execute("PRAGMA table_info(savings_ledger);")
+    cols = {row["name"] for row in cursor.fetchall()}
+    if "active_mode" not in cols:
+        conn.execute("ALTER TABLE savings_ledger ADD COLUMN active_mode TEXT NOT NULL DEFAULT 'web_search';")
+    ```
+  - **Why:** Added defensive column verification in `get_db_connection()` so both Python and Node.js automatically migrate existing databases seamlessly without crashing.
+
+- **Target File Path:** `/server/proxy/ProxySavingsEngine.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    export const COMMERCIAL_RATES: Record<CommercialTwin, CommercialPricingRate> = {
+      'gpt-5.4-mini': { modelName: 'gpt-5.4-mini', tierName: 'Economy Twin', inputRatePer1M: 0.5850, outputRatePer1M: 3.5100, visionPer1kImages: 1.20, videoPerMinute: 0.04 },
+      'gemini-3.6-flash': { modelName: 'gemini-3.6-flash', tierName: 'Balanced Twin', inputRatePer1M: 1.1700, outputRatePer1M: 5.8500, visionPer1kImages: 1.35, videoPerMinute: 0.08 },
+      'claude-sonnet-5': { modelName: 'claude-sonnet-5', tierName: 'Frontier Twin', inputRatePer1M: 1.5600, outputRatePer1M: 7.8000, visionPer1kImages: 1.50, videoPerMinute: 0.12 },
+      'gpt-5.6-sol': { modelName: 'gpt-5.6-sol', tierName: 'Reasoning Benchmark', inputRatePer1M: 3.9000, outputRatePer1M: 23.4000, visionPer1kImages: 2.00, videoPerMinute: 0.25 }
+    };
+    export function createProxyClassifierMiddleware(engine: ProxySavingsEngine) { ... }
+    ```
+  - **Why:** Implemented 1-to-1 commercial twin benchmarking in GBP £ at 1 USD = 0.78 GBP, dynamic GGUF profiling against `http://127.0.0.1:8080/slots`, 5-mode intent classification middleware, truncated output filter & `<thought>` scrubber, and 50,000-row SQLite auto-prune vacuum maintenance.
+
+- **Target File Path:** `/server.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    import { ProxySavingsEngine, COMMERCIAL_RATES, createProxyClassifierMiddleware } from "./server/proxy/ProxySavingsEngine.js";
+    app.use(createProxyClassifierMiddleware(proxySavingsEngine));
+    app.get('/api/proxy/model-profile', async (_req, res) => { ... });
+    app.get('/api/proxy/benchmarks', async (_req, res) => { ... });
+    app.post('/api/proxy/prune', async (req, res) => { ... });
+    ```
+  - **Why:** Mounted the 5-mode telemetry classifier middleware, registered model profiling and database auto-pruning endpoints, and exposed commercial benchmarks API.
+
+- **Target File Path:** `/dashboard.py`
+  - **Exact Code Snippet:**
+    ```python
+    COMMERCIAL_BENCHMARKS = { ... }
+    def execute_vacuum_prune(max_rows=50000, delete_batch=10000): ...
+    tab_search, tab_app, tab_code, tab_image, tab_video, tab_scorecard, tab_chart = st.tabs([ ... ])
+    ```
+  - **Why:** Built the complete Streamlit dashboard with 1-to-1 commercial twin scorecards, `<10 TPS` real-time hardware watchdog alerts, 5 dedicated modes with sandboxed canvas, and Plotly multi-series throughput vs context size charts.
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    const [widgetOrder, setWidgetOrder] = useState<Array<'telemetry' | 'electricity' | 'commercial'>>( ... );
+    const [minimizedWidgets, setMinimizedWidgets] = useState<Record<string, boolean>>( ... );
+    const [widgetDockPosition, setWidgetDockPosition] = useState<'above' | 'below'>('above');
+    ```
+  - **Why:** Redesigned tool mode tabs into a sleek, professional toolbar docked directly above the prompt input, added movable and collapsible widget cards for Telemetry, Electricity, and Commercial Benchmarks, and provided a Clean Screen toggle.
+
 # v1.20.13 — GitHub Import Migration & Container Host Port Resilience
 
 - **Target File Path:** `/server.ts`

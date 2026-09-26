@@ -255,6 +255,7 @@ export const StudioWorkspace: React.FC<Props> = ({ telemetry, logs, onAddLog, on
             onWebAppArtifact={setCode}
             isFullScreen={layoutMode === 'assistant-fullscreen'}
             onToggleFullScreen={() => handleSetLayoutMode(layoutMode === 'assistant-fullscreen' ? 'split' : 'assistant-fullscreen')}
+            onModeChange={setMode}
           />
         </div>
       </aside>
@@ -332,6 +333,7 @@ export const StudioWorkspace: React.FC<Props> = ({ telemetry, logs, onAddLog, on
             onWebAppArtifact={setCode}
             isFullScreen={true}
             onToggleFullScreen={() => setIsTrueFullScreen(false)}
+            onModeChange={setMode}
           />
         </div>
       </div>

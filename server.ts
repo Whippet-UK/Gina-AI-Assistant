@@ -62,7 +62,7 @@ import { APP_VERSION } from "./src/version.js";
 import { runtimeTelemetry } from "./server/telemetry/RuntimeTelemetry.js";
 import JSZip from "jszip";
 import { WebSocketServer, WebSocket as WsClient } from "ws";
-import { ProxySavingsEngine } from "./server/proxy/ProxySavingsEngine.js";
+import { ProxySavingsEngine, COMMERCIAL_RATES, createProxyClassifierMiddleware } from "./server/proxy/ProxySavingsEngine.js";
 
 // Note: Added the explicit .js extension to prevent standard ES module path resolution errors
 import imageRoutes from './server/routes/imageRoute.ts';
@@ -366,6 +366,9 @@ const execAsync = promisify(exec);
 
 // Ensure express.json() is active so it can read your incoming UI config payloads:
 app.use(express.json({ limit: "50mb" }));
+
+// 5-Mode Telemetry Classifier & Truncated/CoT output filter middleware
+app.use(createProxyClassifierMiddleware(proxySavingsEngine));
 
 // Mount your new optimized image prompt router layer here:
 app.use("/api/llm", imageRoutes);
@@ -2760,6 +2763,42 @@ app.get('/api/proxy/savings', async (_req, res) => {
   try {
     const summary = await proxySavingsEngine.getSavingsSummary();
     res.json({ ok: true, summary });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
+app.get('/api/proxy/model-profile', async (_req, res) => {
+  try {
+    const profile = await proxySavingsEngine.profileActiveModel();
+    res.json({ ok: true, profile });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
+app.get('/api/proxy/benchmarks', async (_req, res) => {
+  try {
+    const profile = await proxySavingsEngine.profileActiveModel();
+    res.json({
+      ok: true,
+      formula: '((Input Tokens / 1,000,000) * Input Rate) + ((Output Tokens / 1,000,000) * Output Rate) + (Image Count * Vision Premium) + (Video Seconds * Video Premium)',
+      exchangeRate: '1 USD = 0.78 GBP',
+      activeModel: profile.localModel,
+      activeTwin: profile.commercialTwin,
+      rates: COMMERCIAL_RATES
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
+app.post('/api/proxy/prune', async (req, res) => {
+  try {
+    const maxRows = Number(req.body?.maxRows || 50000);
+    const deleteBatch = Number(req.body?.deleteBatch || 10000);
+    const result = await proxySavingsEngine.checkAndPruneDatabase(maxRows, deleteBatch);
+    res.json({ ok: true, result });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err?.message || String(err) });
   }

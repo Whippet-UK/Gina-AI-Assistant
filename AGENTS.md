@@ -15,9 +15,9 @@
 ---
 
 ## 📌 Project Overview
-- **Current version:** `v1.20.13`
-- **Active lifecycle:** `PHASE 60 — DYNAMIC MOVABLE & RESIZABLE UI LAYOUT MATRIX`
-- **Active save point:** `RESTORE_V1.20.13_RESIZABLE_UI_LAYOUT_MATRIX`
+- **Current version:** `v1.20.14`
+- **Active lifecycle:** `PHASE 61 — LOCAL AI COMMERCIAL SAVINGS & PERFORMANCE TELEMETRY ENGINE`
+- **Active save point:** `RESTORE_V1.20.14_COMMERCIAL_TELEMETRY_ENGINE`
 - **Phase 41:** Gina Agent runs are persisted under `.gina/agent-runs`, expose live Server-Sent Events, can reconnect after browser refresh, and support explicit cancellation.
 - **Phase 44:** Qwen Coder accepts text/code files and project ZIPs; project ZIPs are imported into dedicated workspaces, automatically inspected without executing uploaded code, and support up to 100MB / 10,000 files.
 - **Phase 46:** A mandatory update-integrity checklist is loaded into agent startup context; active Wan 2.1 UI references were reconciled and a deterministic integrity gate is available before success reporting.

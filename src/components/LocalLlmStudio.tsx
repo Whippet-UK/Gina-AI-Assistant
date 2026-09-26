@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Cpu, FileDown, MessageSquare, Mic, MicOff, Play, RotateCw, Square, Trash2, Volume2, VolumeX, Zap, Sliders, ChevronDown, Paperclip, X, FileText, Image as ImageIcon, Archive, File as FileIcon, Github, Activity, Gauge, Globe, Globe2, ExternalLink, Search, Maximize2, Minimize2 } from 'lucide-react';
+import { Bot, Cpu, FileDown, MessageSquare, Mic, MicOff, Play, RotateCw, Square, Trash2, Volume2, VolumeX, Zap, Sliders, ChevronDown, ChevronUp, Paperclip, X, FileText, Image as ImageIcon, Archive, File as FileIcon, Github, Activity, Gauge, Globe, Globe2, ExternalLink, Search, Maximize2, Minimize2, Code2, Video, DollarSign, Eye, EyeOff, Layers, Check, Sparkles } from 'lucide-react';
 import { LocalRagKnowledgePanel } from './LocalRagKnowledgePanel';
 import { useGenerationJob } from '../context/GenerationJobContext';
 import { WebBrowserInspectorModal } from './WebBrowserInspectorModal';
@@ -89,6 +89,7 @@ interface LocalLlmStudioProps {
   onWebAppArtifact?: (html: string) => void;
   isFullScreen?: boolean;
   onToggleFullScreen?: () => void;
+  onModeChange?: (mode: 'web-search' | 'web-app' | 'code-engine' | 'image-studio' | 'video-generation') => void;
 }
 
 const SYSTEM_PROMPT = `You are Gina, the local AI assistant inside Gina AI Factory. You run locally on a Windows PC with an NVIDIA RTX 3070 Ti 8GB, AMD Ryzen 5 5600X 6-core/12-thread CPU and 32GB RAM. Be practical and concise. Prefer the project's existing local tools and files. You can request local image generation through Gina's Create/ComfyUI tool when the user explicitly asks for an image. Do not claim an image was generated unless Gina has actually returned one. Do not tell the user that Gina is text-only when local image generation is available. Never reveal chain-of-thought, hidden reasoning, internal deliberation, or a section labelled Thinking Process. Return only the concise user-facing answer and useful verified results.`;
@@ -98,7 +99,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   studioMode = 'web-app', 
   onWebAppArtifact,
   isFullScreen = false,
-  onToggleFullScreen
+  onToggleFullScreen,
+  onModeChange
 }) => {
   const [showEngineConfig, setShowEngineConfig] = useState(true);
   const [showDetailedTelemetry, setShowDetailedTelemetry] = useState(true);
@@ -153,7 +155,150 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   const [savedCodeFiles, setSavedCodeFiles] = useState<Record<string, { url:string; path:string; bytes:number }>>({});
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [sessionElectricityCost, setSessionElectricityCost] = useState<number>(0);
+  const [sessionSavingsGbp, setSessionSavingsGbp] = useState<number>(0);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // Layout-adjustable & movable telemetry widgets state
+  const [showTelemetryWidget, setShowTelemetryWidget] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('gina_widget_telemetry');
+      return v !== null ? v === 'true' : true;
+    } catch { return true; }
+  });
+  const [showElectricityWidget, setShowElectricityWidget] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('gina_widget_electricity');
+      return v !== null ? v === 'true' : false; // Default compact
+    } catch { return false; }
+  });
+  const [showCommercialWidget, setShowCommercialWidget] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('gina_widget_commercial');
+      return v !== null ? v === 'true' : true;
+    } catch { return true; }
+  });
+  const [widgetsMinimized, setWidgetsMinimized] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('gina_widgets_minimized') === 'true';
+    } catch { return false; }
+  });
+  const [widgetOrder, setWidgetOrder] = useState<Array<'telemetry' | 'electricity' | 'commercial'>>(() => {
+    try {
+      const saved = localStorage.getItem('gina_widget_order');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length === 3) return parsed;
+      }
+    } catch {}
+    return ['telemetry', 'electricity', 'commercial'];
+  });
+  const [minimizedWidgets, setMinimizedWidgets] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('gina_widget_minimized_map');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return { telemetry: false, electricity: false, commercial: false };
+  });
+  const [widgetDockPosition, setWidgetDockPosition] = useState<'above' | 'below'>((() => {
+    try {
+      const saved = localStorage.getItem('gina_widget_dock_pos');
+      return saved === 'below' ? 'below' : 'above';
+    } catch { return 'above'; }
+  })());
+
+  const [commercialLedgerData, setCommercialLedgerData] = useState<{
+    totalGbp: number;
+    totalTransactions: number;
+    avgTokensPerSec: number;
+  }>({ totalGbp: 0, totalTransactions: 0, avgTokensPerSec: 0 });
+
+  const moveWidget = (id: 'telemetry' | 'electricity' | 'commercial', dir: 'up' | 'down') => {
+    setWidgetOrder(prev => {
+      const idx = prev.indexOf(id);
+      if (idx === -1) return prev;
+      const target = dir === 'up' ? idx - 1 : idx + 1;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      const [item] = next.splice(idx, 1);
+      next.splice(target, 0, item);
+      try { localStorage.setItem('gina_widget_order', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  const toggleSingleWidgetMin = (key: 'telemetry' | 'electricity' | 'commercial') => {
+    setMinimizedWidgets(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      try { localStorage.setItem('gina_widget_minimized_map', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  const toggleDockPosition = () => {
+    setWidgetDockPosition(prev => {
+      const next = prev === 'above' ? 'below' : 'above';
+      try { localStorage.setItem('gina_widget_dock_pos', next); } catch {}
+      return next;
+    });
+  };
+
+  const toggleWidget = (key: 'telemetry' | 'electricity' | 'commercial') => {
+    if (key === 'telemetry') {
+      setShowTelemetryWidget(prev => {
+        const next = !prev;
+        try { localStorage.setItem('gina_widget_telemetry', String(next)); } catch {}
+        return next;
+      });
+    } else if (key === 'electricity') {
+      setShowElectricityWidget(prev => {
+        const next = !prev;
+        try { localStorage.setItem('gina_widget_electricity', String(next)); } catch {}
+        return next;
+      });
+    } else if (key === 'commercial') {
+      setShowCommercialWidget(prev => {
+        const next = !prev;
+        try { localStorage.setItem('gina_widget_commercial', String(next)); } catch {}
+        return next;
+      });
+    }
+  };
+
+  const toggleWidgetsMinimized = () => {
+    setWidgetsMinimized(prev => {
+      const next = !prev;
+      try { localStorage.setItem('gina_widgets_minimized', String(next)); } catch {}
+      // Sync all individual widgets
+      setMinimizedWidgets({ telemetry: next, electricity: next, commercial: next });
+      try { localStorage.setItem('gina_widget_minimized_map', JSON.stringify({ telemetry: next, electricity: next, commercial: next })); } catch {}
+      return next;
+    });
+  };
+
+  const toggleCleanScreen = () => {
+    // If all are minimized or hidden, restore them; otherwise minimize all to clean the screen
+    const allMin = minimizedWidgets.telemetry && minimizedWidgets.electricity && minimizedWidgets.commercial;
+    const nextState = !allMin;
+    setMinimizedWidgets({ telemetry: nextState, electricity: nextState, commercial: nextState });
+    setWidgetsMinimized(nextState);
+    try {
+      localStorage.setItem('gina_widgets_minimized', String(nextState));
+      localStorage.setItem('gina_widget_minimized_map', JSON.stringify({ telemetry: nextState, electricity: nextState, commercial: nextState }));
+    } catch {}
+  };
+
+  const toggleAllWidgets = () => {
+    const allVisible = showTelemetryWidget && showElectricityWidget && showCommercialWidget;
+    const nextState = !allVisible;
+    setShowTelemetryWidget(nextState);
+    setShowElectricityWidget(nextState);
+    setShowCommercialWidget(nextState);
+    try {
+      localStorage.setItem('gina_widget_telemetry', String(nextState));
+      localStorage.setItem('gina_widget_electricity', String(nextState));
+      localStorage.setItem('gina_widget_commercial', String(nextState));
+    } catch {}
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -179,14 +324,74 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
         const runtime = await runtimeResult.value.json().catch(() => null);
         if (runtime) setRuntimeTelemetry(runtime);
       }
+      try {
+        const savRes = await fetch('/api/proxy/savings', { cache: 'no-store' });
+        if (savRes.ok) {
+          const d = await savRes.json();
+          if (d.ok && d.summary) {
+            setCommercialLedgerData({
+              totalGbp: d.summary.totalGbp || 0,
+              totalTransactions: d.summary.totalTransactions || 0,
+              avgTokensPerSec: d.summary.avgTokensPerSec || 0
+            });
+          }
+        }
+      } catch {}
     };
     void refreshTelemetry();
-    const timer = window.setInterval(() => { void refreshTelemetry(); }, 1000);
+    const timer = window.setInterval(() => { void refreshTelemetry(); }, 1500);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
   }, []);
+
+  const resolvedLocalArch = useMemo(() => {
+    const modelName = (status?.modelName || '').toLowerCase();
+    if (modelName.includes('coder') || status?.engine === 'qwen-coder') {
+      return {
+        arch: 'Qwen-2.5-Coder-7B',
+        twin: 'claude-sonnet-5',
+        tier: 'Frontier Twin',
+        inputRate: 1.5600,
+        outputRate: 7.8000,
+        visionRate: 1.50,
+        videoRate: 0.12
+      };
+    }
+    if (modelName.includes('3.5') || modelName.includes('9b') || status?.engine === 'qwen3.5') {
+      return {
+        arch: 'Qwen-3.5-9B',
+        twin: 'gpt-5.4-mini',
+        tier: 'Economy Twin',
+        inputRate: 0.5850,
+        outputRate: 3.5100,
+        visionRate: 1.20,
+        videoRate: 0.04
+      };
+    }
+    return {
+      arch: 'Qwen-2.5-VL-7B-Vision',
+      twin: 'gemini-3.6-flash',
+      tier: 'Balanced Twin',
+      inputRate: 1.1700,
+      outputRate: 5.8500,
+      visionRate: 1.35,
+      videoRate: 0.08
+    };
+  }, [status?.modelName, status?.engine]);
+
+  const latestTurnTokens = useMemo(() => {
+    const p = lastTelemetry?.promptTokens ?? runtimeTelemetry?.promptTokens ?? 0;
+    const c = lastTelemetry?.completionTokens ?? runtimeTelemetry?.completionTokens ?? 0;
+    return { prompt: p, completion: c, total: p + c };
+  }, [lastTelemetry, runtimeTelemetry]);
+
+  const latestTurnSavingsGbp = useMemo(() => {
+    const inCost = (latestTurnTokens.prompt / 1_000_000) * resolvedLocalArch.inputRate;
+    const outCost = (latestTurnTokens.completion / 1_000_000) * resolvedLocalArch.outputRate;
+    return Number((inCost + outCost).toFixed(4));
+  }, [latestTurnTokens, resolvedLocalArch]);
 
   const resizePromptInput = useCallback(() => {
     const element = promptInputRef.current;
@@ -1079,6 +1284,298 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     return 'OFFLINE';
   }, [status]);
 
+  const renderMovableWidgetsMatrix = () => {
+    const anyVisible = showTelemetryWidget || showElectricityWidget || showCommercialWidget;
+    if (!anyVisible) return null;
+
+    return (
+      <div className="my-2 space-y-2">
+        {widgetOrder.map((wId, idx) => {
+          if (wId === 'telemetry' && showTelemetryWidget) {
+            const isMin = minimizedWidgets.telemetry;
+            const tps = Number((lastTelemetry?.completionTokensPerSecond ?? runtimeTelemetry?.completionTokensPerSecond ?? runtimeTelemetry?.tokensPerSecond ?? 0).toFixed(1));
+            const totalToks = lastTelemetry?.totalTokens ?? runtimeTelemetry?.totalTokens ?? 0;
+            const durSec = ((lastTelemetry?.durationMs ?? runtimeTelemetry?.durationMs ?? 0) / 1000).toFixed(2);
+            const vramUsed = hardwareTelemetry?.vramUsedMB ?? 0;
+            const vramTotal = hardwareTelemetry?.vramTotalMB ?? 8192;
+            const isWatchdogTriggered = tps > 0 && tps < 10.0;
+
+            if (isMin) {
+              return (
+                <div key="widget-telemetry" className="rounded-lg border border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center justify-between text-[10px] font-mono transition-all">
+                  <div className="flex items-center gap-2 cursor-pointer flex-1 min-w-0" onClick={() => toggleSingleWidgetMin('telemetry')}>
+                    <Activity className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="font-bold text-slate-200">TELEMETRY</span>
+                    <span className={`font-bold ${isWatchdogTriggered ? 'text-amber-400' : 'text-emerald-400'}`}>{tps} tok/s</span>
+                    <span className="text-slate-600 hidden sm:inline">·</span>
+                    <span className="text-slate-400 hidden sm:inline">{totalToks.toLocaleString()} tokens</span>
+                    <span className="text-slate-600 hidden sm:inline">·</span>
+                    <span className="text-sky-300 hidden md:inline">{vramUsed ? `${vramUsed.toLocaleString()} MB` : '8GB VRAM'}</span>
+                    <span className="text-slate-600 hidden md:inline">·</span>
+                    <span className="text-slate-400 hidden lg:inline">GPU {hardwareTelemetry?.gpuUtilizationPercent ?? 0}%</span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                    <button type="button" onClick={() => moveWidget('telemetry', 'up')} disabled={idx === 0} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('telemetry', 'down')} disabled={idx === widgetOrder.length - 1} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleSingleWidgetMin('telemetry')} className="p-1 rounded text-slate-400 hover:text-white cursor-pointer" title="Expand Widget"><Maximize2 className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleWidget('telemetry')} className="p-1 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div key="widget-telemetry" className="rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 transition-all">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">LOCAL AI TELEMETRY</span>
+                    <span className={`text-[8px] font-mono font-bold ml-2 ${isWatchdogTriggered ? 'text-amber-400 animate-pulse' : 'text-emerald-400/90'}`}>
+                      {tps} tok/s
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[8px] font-mono text-slate-600 hidden sm:inline">LIVE · 1s</span>
+                    <button type="button" onClick={() => moveWidget('telemetry', 'up')} disabled={idx === 0} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('telemetry', 'down')} disabled={idx === widgetOrder.length - 1} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleSingleWidgetMin('telemetry')} className="p-1 rounded text-slate-400 hover:text-white cursor-pointer" title="Minimize Widget"><Minimize2 className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleWidget('telemetry')} className="p-1 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
+                  </div>
+                </div>
+
+                {isWatchdogTriggered && (
+                  <div className="mb-2 p-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-300 text-[8px] font-mono flex items-center justify-between">
+                    <span className="font-bold flex items-center gap-1">
+                      <Zap className="w-3 h-3 text-amber-400" />
+                      WATCHDOG ALERT: Token generation speed below 10 TPS ({tps} tok/s). Potential VRAM KV-cache bottleneck or context saturation.
+                    </span>
+                    <span className="text-slate-400">RTX 3070 Ti 8GB Sentinel</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
+                  <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
+                    <div className="text-[7px] uppercase tracking-widest text-slate-600">Generation</div>
+                    <div className="mt-0.5 text-[11px] font-bold font-mono text-emerald-300">{tps} tok/s</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
+                    <div className="text-[7px] uppercase tracking-widest text-slate-600">Tokens</div>
+                    <div className="mt-0.5 text-[11px] font-bold font-mono text-slate-200">{totalToks.toLocaleString()}</div>
+                    <div className="text-[7px] font-mono text-slate-600">prompt + completion</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
+                    <div className="text-[7px] uppercase tracking-widest text-slate-600">Latency</div>
+                    <div className="mt-0.5 text-[11px] font-bold font-mono text-slate-200">{durSec}s</div>
+                    <div className="text-[7px] font-mono text-slate-600">{lastTelemetry?.iteration != null ? `iteration ${lastTelemetry.iteration}` : 'per turn'}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
+                    <div className="text-[7px] uppercase tracking-widest text-slate-600">VRAM</div>
+                    <div className="mt-0.5 flex items-center gap-1 text-[11px] font-bold font-mono text-slate-200">
+                      <Gauge className="w-3 h-3 text-sky-400" />
+                      {hardwareTelemetry ? `${hardwareTelemetry.vramUsedMB.toLocaleString()} MB` : '—'}
+                    </div>
+                    <div className="text-[7px] font-mono text-slate-600">of {vramTotal.toLocaleString()} MB</div>
+                  </div>
+                </div>
+
+                <div className="mt-1.5 grid grid-cols-2 md:grid-cols-6 gap-1 text-[7px] font-mono">
+                  <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">GPU {hardwareTelemetry?.gpuUtilizationPercent ?? 0}%</span>
+                  <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">TEMP {hardwareTelemetry?.gpuTempC ?? 0}°C</span>
+                  <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">POWER {hardwareTelemetry?.gpuPowerW ?? 0}W</span>
+                  <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">ITER/s {runtimeTelemetry?.iterationsPerSecond != null ? runtimeTelemetry.iterationsPerSecond.toFixed(2) : '—'}</span>
+                  <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">TOOLS {lastTelemetry?.toolCalls ?? runtimeTelemetry?.toolCalls ?? 0}</span>
+                  <span className={`rounded bg-slate-900 px-1.5 py-1 ${hardwareTelemetry?.thermalBrakeActive ? 'text-amber-400' : 'text-slate-500'}`}>
+                    {hardwareTelemetry?.thermalBrakeActive ? 'THERMAL BRAKE' : 'THERMAL OK'}
+                  </span>
+                </div>
+              </div>
+            );
+          }
+
+          if (wId === 'electricity' && showElectricityWidget) {
+            const currentHour = new Date().getHours();
+            const isDayRate = currentHour >= 7 && currentHour < 23;
+            const rateKwh = isDayRate ? 0.3157 : 0.1390;
+            const powerW = Number(hardwareTelemetry?.systemPowerW ?? hardwareTelemetry?.estimatedWallPowerW ?? hardwareTelemetry?.gpuPowerW ?? 0);
+            const cpuPowerW = Number(hardwareTelemetry?.cpuPowerW || 0);
+            const gpuPowerW = Number(hardwareTelemetry?.gpuPowerW || 0);
+            const otherPowerW = Number(hardwareTelemetry?.otherHardwarePowerW || 0);
+            const powerSource = hardwareTelemetry?.powerSource || 'estimated';
+            const powerKw = powerW / 1000;
+            const hourlyCostPounds = powerKw * rateKwh;
+            const hourlyCostPence = hourlyCostPounds * 100;
+            const estimatedDailyCost = (powerKw * rateKwh * 24) + 0.5472;
+            const isMin = minimizedWidgets.electricity;
+
+            if (isMin) {
+              return (
+                <div key="widget-electricity" className="rounded-lg border border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center justify-between text-[10px] font-mono transition-all">
+                  <div className="flex items-center gap-2 cursor-pointer flex-1 min-w-0" onClick={() => toggleSingleWidgetMin('electricity')}>
+                    <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span className="font-bold text-slate-200">POWER &amp; COST</span>
+                    <span className="text-amber-300 font-bold">{powerW}W</span>
+                    <span className="text-slate-600 hidden sm:inline">·</span>
+                    <span className="text-emerald-400 font-bold">£{hourlyCostPounds.toFixed(4)}/hr ({hourlyCostPence.toFixed(2)}p/hr)</span>
+                    <span className="text-slate-600 hidden sm:inline">·</span>
+                    <span className="text-slate-400 hidden md:inline">{isDayRate ? 'DAY (£0.3157)' : 'NIGHT (£0.1390)'}</span>
+                    <span className="text-slate-600 hidden lg:inline">·</span>
+                    <span className="text-slate-400 hidden lg:inline">Session: £{sessionElectricityCost.toFixed(4)}</span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                    <button type="button" onClick={() => moveWidget('electricity', 'up')} disabled={idx === 0} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('electricity', 'down')} disabled={idx === widgetOrder.length - 1} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleSingleWidgetMin('electricity')} className="p-1 rounded text-slate-400 hover:text-white cursor-pointer" title="Expand Widget"><Maximize2 className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleWidget('electricity')} className="p-1 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div key="widget-electricity" className="rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 transition-all">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-[8px] font-bold uppercase tracking-widest text-slate-300">WHOLE-PC ELECTRICITY &amp; RUNNING COST</span>
+                    <span className="text-[8px] font-mono text-emerald-400 font-semibold ml-2">
+                      £{hourlyCostPounds.toFixed(4)}/hr · {hourlyCostPence.toFixed(2)}p/hr
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold ${isDayRate ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'}`}>
+                      {isDayRate ? 'DAY (£0.3157/kWh)' : 'NIGHT (£0.1390/kWh)'}
+                    </span>
+                    <button type="button" onClick={() => moveWidget('electricity', 'up')} disabled={idx === 0} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('electricity', 'down')} disabled={idx === widgetOrder.length - 1} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleSingleWidgetMin('electricity')} className="p-1 rounded text-slate-400 hover:text-white cursor-pointer" title="Minimize Widget"><Minimize2 className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleWidget('electricity')} className="p-1 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
+                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                    <div className="text-[7px] uppercase tracking-widest text-slate-500">Whole PC Draw</div>
+                    <div className="mt-0.5 text-[10px] font-bold font-mono text-amber-300">{powerW}W <span className="text-[7px] font-normal text-slate-400">({powerKw.toFixed(3)} kW)</span></div>
+                    <div className="text-[6px] font-mono text-slate-500">CPU {cpuPowerW || '—'}W · GPU {gpuPowerW}W · Other {otherPowerW}W</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                    <div className="text-[7px] uppercase tracking-widest text-slate-500">Running Cost</div>
+                    <div className="mt-0.5 text-[10px] font-bold font-mono text-emerald-400">
+                      £{hourlyCostPounds.toFixed(4)}/hr · {hourlyCostPence.toFixed(2)}p/hr
+                    </div>
+                    <div className="text-[6px] font-mono text-slate-600">at £{rateKwh.toFixed(4)}/kWh</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                    <div className="text-[7px] uppercase tracking-widest text-slate-500">Session Cost</div>
+                    <div className="mt-0.5 text-[10px] font-bold font-mono text-amber-300">
+                      £{sessionElectricityCost.toFixed(4)}
+                    </div>
+                    <div className="text-[6px] font-mono text-slate-600">accumulated runtime</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                    <div className="text-[7px] uppercase tracking-widest text-slate-500">Est. 24h Cost</div>
+                    <div className="mt-0.5 text-[10px] font-bold font-mono text-slate-200">
+                      £{estimatedDailyCost.toFixed(2)}/day
+                    </div>
+                    <div className="text-[6px] font-mono text-slate-600">incl. £0.5472 standing</div>
+                  </div>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center justify-between text-[7px] font-mono text-slate-500 pt-1 border-t border-slate-900">
+                  <span>Day: £0.3157/kWh · Night: £0.1390/kWh · Standing: £0.5472/day · Cost shown in £/hr and p/hr</span>
+                  <span className="text-slate-400 font-semibold">Power source: {powerSource}</span>
+                </div>
+              </div>
+            );
+          }
+
+          if (wId === 'commercial' && showCommercialWidget) {
+            const isMin = minimizedWidgets.commercial;
+
+            if (isMin) {
+              return (
+                <div key="widget-commercial" className="rounded-lg border border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center justify-between text-[10px] font-mono transition-all">
+                  <div className="flex items-center gap-2 cursor-pointer flex-1 min-w-0" onClick={() => toggleSingleWidgetMin('commercial')}>
+                    <DollarSign className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                    <span className="font-bold text-slate-200">COMMERCIAL BENCHMARK</span>
+                    <span className="text-sky-300 font-bold">{resolvedLocalArch.arch} ➔ {resolvedLocalArch.twin}</span>
+                    <span className="text-slate-600 hidden sm:inline">·</span>
+                    <span className="text-emerald-400 font-bold">Saved £{commercialLedgerData.totalGbp.toFixed(2)}</span>
+                    <span className="text-slate-600 hidden sm:inline">·</span>
+                    <span className="text-slate-400 hidden md:inline">{commercialLedgerData.totalTransactions} runs</span>
+                    <span className="text-slate-600 hidden lg:inline">·</span>
+                    <span className="text-slate-400 hidden lg:inline">Turn: £{latestTurnSavingsGbp.toFixed(4)}</span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                    <button type="button" onClick={() => moveWidget('commercial', 'up')} disabled={idx === 0} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('commercial', 'down')} disabled={idx === widgetOrder.length - 1} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleSingleWidgetMin('commercial')} className="p-1 rounded text-slate-400 hover:text-white cursor-pointer" title="Expand Widget"><Maximize2 className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleWidget('commercial')} className="p-1 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div key="widget-commercial" className="rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 transition-all">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <DollarSign className="w-3.5 h-3.5 text-sky-400" />
+                    <span className="text-[8px] font-bold uppercase tracking-widest text-slate-300">COMMERCIAL PRICING BENCHMARKS (GBP £)</span>
+                    <span className="text-[8px] font-mono text-sky-300 font-bold ml-2">
+                      Twin: {resolvedLocalArch.arch} ──&gt; {resolvedLocalArch.twin}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[8px] font-mono text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                      Ledger Total: £{commercialLedgerData.totalGbp.toFixed(2)}
+                    </span>
+                    <button type="button" onClick={() => moveWidget('commercial', 'up')} disabled={idx === 0} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('commercial', 'down')} disabled={idx === widgetOrder.length - 1} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleSingleWidgetMin('commercial')} className="p-1 rounded text-slate-400 hover:text-white cursor-pointer" title="Minimize Widget"><Minimize2 className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleWidget('commercial')} className="p-1 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
+                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                    <div className="text-[7px] uppercase tracking-widest text-slate-500">Local Architecture</div>
+                    <div className="mt-0.5 text-[10px] font-bold font-mono text-slate-200">{resolvedLocalArch.arch}</div>
+                    <div className="text-[6px] font-mono text-emerald-400">{resolvedLocalArch.tier}</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                    <div className="text-[7px] uppercase tracking-widest text-slate-500">1-to-1 Commercial Twin</div>
+                    <div className="mt-0.5 text-[10px] font-bold font-mono text-sky-300">{resolvedLocalArch.twin}</div>
+                    <div className="text-[6px] font-mono text-slate-500">In £{resolvedLocalArch.inputRate.toFixed(4)} · Out £{resolvedLocalArch.outputRate.toFixed(4)}/1M</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                    <div className="text-[7px] uppercase tracking-widest text-slate-500">Turn Savings</div>
+                    <div className="mt-0.5 text-[10px] font-bold font-mono text-emerald-400">
+                      £{latestTurnSavingsGbp.toFixed(4)}
+                    </div>
+                    <div className="text-[6px] font-mono text-slate-600">{latestTurnTokens.total.toLocaleString()} tokens avoided</div>
+                  </div>
+                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                    <div className="text-[7px] uppercase tracking-widest text-slate-500">SQLite Transactions</div>
+                    <div className="mt-0.5 text-[10px] font-bold font-mono text-slate-200">
+                      {commercialLedgerData.totalTransactions} runs
+                    </div>
+                    <div className="text-[6px] font-mono text-slate-600">ai_commercial_savings.db</div>
+                  </div>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center justify-between text-[7px] font-mono text-slate-500 pt-1 border-t border-slate-900">
+                  <span>Formula: ((In/1M)*Rate) + ((Out/1M)*Rate) + (Images*Vision) + (VideoSec*Video) · 1 USD = 0.78 GBP</span>
+                  <span className="text-slate-400 font-semibold">Vision: £{resolvedLocalArch.visionRate.toFixed(2)}/1k · Video: £{resolvedLocalArch.videoRate.toFixed(2)}/min</span>
+                </div>
+              </div>
+            );
+          }
+
+          return null;
+        })}
+      </div>
+    );
+  };
+
   return (
     <section className="space-y-4 min-h-[calc(100vh-140px)] flex flex-col flex-1">
       <div className="grid grid-cols-12 gap-4 items-start min-w-0 flex-1">
@@ -1401,126 +1898,118 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
             </div>
           )}
 
-          <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/80 p-2.5">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5">
-                <Activity className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">LOCAL AI TELEMETRY</span>
-              </div>
-              <span className="text-[8px] font-mono text-slate-600">LIVE · 1s</span>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
-              <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
-                <div className="text-[7px] uppercase tracking-widest text-slate-600">Generation</div>
-                <div className="mt-0.5 text-[11px] font-bold font-mono text-emerald-300">
-                  {(lastTelemetry?.completionTokensPerSecond ?? runtimeTelemetry?.completionTokensPerSecond ?? runtimeTelemetry?.tokensPerSecond ?? 0).toFixed(1)} tok/s
-                </div>
-              </div>
-              <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
-                <div className="text-[7px] uppercase tracking-widest text-slate-600">Tokens</div>
-                <div className="mt-0.5 text-[11px] font-bold font-mono text-slate-200">
-                  {(lastTelemetry?.totalTokens ?? runtimeTelemetry?.totalTokens ?? 0).toLocaleString()}
-                </div>
-                <div className="text-[7px] font-mono text-slate-600">prompt + completion</div>
-              </div>
-              <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
-                <div className="text-[7px] uppercase tracking-widest text-slate-600">Latency</div>
-                <div className="mt-0.5 text-[11px] font-bold font-mono text-slate-200">
-                  {((lastTelemetry?.durationMs ?? runtimeTelemetry?.durationMs ?? 0) / 1000).toFixed(2)}s
-                </div>
-                <div className="text-[7px] font-mono text-slate-600">
-                  {lastTelemetry?.iteration != null ? `iteration ${lastTelemetry.iteration}` : 'per completed turn'}
-                </div>
-              </div>
-              <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
-                <div className="text-[7px] uppercase tracking-widest text-slate-600">VRAM</div>
-                <div className="mt-0.5 flex items-center gap-1 text-[11px] font-bold font-mono text-slate-200">
-                  <Gauge className="w-3 h-3 text-sky-400" />
-                  {hardwareTelemetry ? `${hardwareTelemetry.vramUsedMB.toLocaleString()} MB` : '—'}
-                </div>
-                <div className="text-[7px] font-mono text-slate-600">
-                  {hardwareTelemetry?.vramTotalMB ? `of ${hardwareTelemetry.vramTotalMB.toLocaleString()} MB` : 'GPU telemetry unavailable'}
-                </div>
-              </div>
-            </div>
-            <div className="mt-1.5 grid grid-cols-2 md:grid-cols-5 gap-1 text-[7px] font-mono">
-              <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">GPU {hardwareTelemetry?.gpuUtilizationPercent ?? 0}%</span>
-              <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">TEMP {hardwareTelemetry?.gpuTempC ?? 0}°C</span>
-              <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">POWER {hardwareTelemetry?.gpuPowerW ?? 0}W</span>
-              <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">ITER/s {runtimeTelemetry?.iterationsPerSecond != null ? runtimeTelemetry.iterationsPerSecond.toFixed(2) : '—'}</span>
-              <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">TOOLS {lastTelemetry?.toolCalls ?? runtimeTelemetry?.toolCalls ?? 0}</span>
-              <span className={`rounded bg-slate-900 px-1.5 py-1 ${hardwareTelemetry?.thermalBrakeActive ? 'text-amber-400' : 'text-slate-500'}`}>
-                {hardwareTelemetry?.thermalBrakeActive ? 'THERMAL BRAKE' : 'THERMAL OK'}
-              </span>
+          {/* ============================================================== */}
+          {/* SLEEK TOOL MODES SELECTOR & MOVABLE WIDGET DOCK CONTROL BAR */}
+          {/* ============================================================== */}
+          <div className="mt-3 mb-2 flex flex-wrap items-center justify-between gap-2 p-1.5 rounded-xl border border-slate-800/80 bg-slate-950/85 backdrop-blur-md">
+            {/* Sleek, professional tool mode pills */}
+            <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar py-0.5">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 pl-1.5 pr-1 select-none shrink-0">MODE:</span>
+              {[
+                { id: 'web-search', label: 'Web Search', icon: Search, color: 'text-sky-400' },
+                { id: 'web-app', label: 'Web App', icon: Globe2, color: 'text-emerald-400' },
+                { id: 'code-engine', label: 'Code Engine', icon: Code2, color: 'text-violet-400' },
+                { id: 'image-studio', label: 'Image Studio', icon: ImageIcon, color: 'text-rose-400' },
+                { id: 'video-generation', label: 'Video Gen', icon: Video, color: 'text-amber-400' },
+              ].map(m => {
+                const Icon = m.icon;
+                const isActive = studioMode === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => onModeChange?.(m.id as any)}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold tracking-tight flex items-center gap-1.5 transition-all cursor-pointer select-none shrink-0 ${
+                      isActive
+                        ? 'bg-slate-800 text-white shadow-sm ring-1 ring-emerald-500/50 font-bold'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent'
+                    }`}
+                    title={`Switch to ${m.label} mode`}
+                  >
+                    <Icon className={`w-3.5 h-3.5 ${isActive ? m.color : 'text-slate-400'}`} />
+                    <span>{m.label}</span>
+                    {isActive && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* UK Electricity & Energy Cost Breakdown */}
-            {(() => {
-              const currentHour = new Date().getHours();
-              const isDayRate = currentHour >= 7 && currentHour < 23;
-              const rateKwh = isDayRate ? 0.3157 : 0.1390;
-              const powerW = Number(hardwareTelemetry?.systemPowerW ?? hardwareTelemetry?.estimatedWallPowerW ?? hardwareTelemetry?.gpuPowerW ?? 0);
-              const cpuPowerW = Number(hardwareTelemetry?.cpuPowerW || 0);
-              const gpuPowerW = Number(hardwareTelemetry?.gpuPowerW || 0);
-              const otherPowerW = Number(hardwareTelemetry?.otherHardwarePowerW || 0);
-              const powerSource = hardwareTelemetry?.powerSource || 'estimated';
-              const powerKw = powerW / 1000;
-              const hourlyCostPounds = powerKw * rateKwh;
-              const hourlyCostPence = hourlyCostPounds * 100;
-              const estimatedDailyCost = (powerKw * rateKwh * 24) + 0.5472;
+            {/* Movable widgets toolbar */}
+            <div className="flex items-center gap-1 ml-auto shrink-0">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 px-1 select-none">WIDGETS:</span>
+              <button
+                type="button"
+                onClick={() => toggleWidget('telemetry')}
+                className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer ${
+                  showTelemetryWidget
+                    ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                    : 'bg-slate-900/90 text-slate-500 border border-slate-800 hover:text-slate-300'
+                }`}
+                title="Toggle Local AI Telemetry widget"
+              >
+                <Activity className="w-3 h-3 text-emerald-400" />
+                <span className="hidden sm:inline">Telemetry</span>
+              </button>
 
-              return (
-                <div className="mt-2 pt-2 border-t border-slate-800/80">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <Zap className="w-3 h-3 text-amber-400" />
-                      <span className="text-[8px] font-bold uppercase tracking-widest text-slate-300">WHOLE-PC ELECTRICITY &amp; RUNNING COST</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold ${isDayRate ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'}`}>
-                        {isDayRate ? 'DAY RATE (£0.3157/kWh)' : 'NIGHT RATE (£0.1390/kWh)'}
-                      </span>
-                      <span className="text-[7px] font-mono text-slate-500">7-23h Day · 23-7h Night</span>
-                    </div>
-                  </div>
+              <button
+                type="button"
+                onClick={() => toggleWidget('electricity')}
+                className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer ${
+                  showElectricityWidget
+                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                    : 'bg-slate-900/90 text-slate-500 border border-slate-800 hover:text-slate-300'
+                }`}
+                title="Toggle Whole-PC Electricity & Running Cost widget"
+              >
+                <Zap className="w-3 h-3 text-amber-400" />
+                <span className="hidden sm:inline">Power</span>
+              </button>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
-                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Whole PC Draw</div>
-                      <div className="mt-0.5 text-[10px] font-bold font-mono text-amber-300">{powerW}W <span className="text-[7px] font-normal text-slate-400">({powerKw.toFixed(3)} kW)</span></div>
-                      <div className="text-[6px] font-mono text-slate-500">CPU {cpuPowerW || '—'}W · GPU {gpuPowerW}W · Other {otherPowerW}W</div>
-                    </div>
-                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Running Cost</div>
-                      <div className="mt-0.5 text-[10px] font-bold font-mono text-emerald-400">
-                        £{hourlyCostPounds.toFixed(4)}/hr · {hourlyCostPence.toFixed(2)}p/hr
-                      </div>
-                      <div className="text-[6px] font-mono text-slate-600">at £{rateKwh.toFixed(4)}/kWh</div>
-                    </div>
-                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Session Cost</div>
-                      <div className="mt-0.5 text-[10px] font-bold font-mono text-amber-300">
-                        £{sessionElectricityCost.toFixed(4)}
-                      </div>
-                      <div className="text-[6px] font-mono text-slate-600">accumulated runtime</div>
-                    </div>
-                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Est. 24h Cost</div>
-                      <div className="mt-0.5 text-[10px] font-bold font-mono text-slate-200">
-                        £{estimatedDailyCost.toFixed(2)}/day
-                      </div>
-                      <div className="text-[6px] font-mono text-slate-600">incl. £0.5472 standing</div>
-                    </div>
-                  </div>
+              <button
+                type="button"
+                onClick={() => toggleWidget('commercial')}
+                className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer ${
+                  showCommercialWidget
+                    ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
+                    : 'bg-slate-900/90 text-slate-500 border border-slate-800 hover:text-slate-300'
+                }`}
+                title="Toggle Commercial Pricing Benchmarks widget"
+              >
+                <DollarSign className="w-3 h-3 text-sky-400" />
+                <span className="hidden sm:inline">Savings</span>
+              </button>
 
-                  <div className="mt-1.5 flex flex-wrap items-center justify-between text-[7px] font-mono text-slate-500 pt-1 border-t border-slate-900">
-                    <span>Day: £0.3157/kWh · Night: £0.1390/kWh · Standing: £0.5472/day · Cost shown in £/hr and p/hr</span>
-                    <span className="text-slate-400 font-semibold">Power source: {powerSource}</span>
-                  </div>
-                </div>
-              );
-            })()}
+              <div className="h-4 w-px bg-slate-800 mx-0.5" />
+
+              <button
+                type="button"
+                onClick={toggleDockPosition}
+                className="px-2 py-1 rounded-md bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-200 text-[9px] font-mono transition-colors cursor-pointer flex items-center gap-1"
+                title={`Move widgets ${widgetDockPosition === 'above' ? 'below prompt' : 'above prompt'}`}
+              >
+                <Layers className="w-3 h-3" />
+                <span className="hidden md:inline">{widgetDockPosition === 'above' ? 'Dock: Top' : 'Dock: Bottom'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleCleanScreen}
+                className={`px-2 py-1 rounded-md border text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                  minimizedWidgets.telemetry && minimizedWidgets.electricity && minimizedWidgets.commercial
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+                title="Clean Screen: toggle between full widgets and 1-line compact badges"
+              >
+                <Sparkles className="w-3 h-3 text-emerald-400" />
+                <span>Clean Screen</span>
+              </button>
+            </div>
           </div>
+
+          {/* DOCKED TOP: MOVABLE & RESIZABLE TELEMETRY WIDGETS MATRIX */}
+          {widgetDockPosition === 'above' && renderMovableWidgetsMatrix()}
+
           {status?.recentLog?.length ? (
             <details className="mt-1.5 rounded border border-slate-800 bg-slate-950/60">
               <summary className="cursor-pointer px-2 py-1 text-[8px] font-bold uppercase tracking-widest text-slate-600">llama-server diagnostic log</summary>
@@ -1529,7 +2018,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
           ) : null}
 
           {pdfNotice && <div className={`mb-2 p-2 rounded border text-[9px] ${pdfNotice.startsWith('PDF saved:') ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-rose-500/30 bg-rose-500/5 text-rose-300'}`}>{pdfNotice}</div>}
-          <div className="mt-3 border-t border-slate-800 pt-3">
+          <div className="mt-2.5 border-t border-slate-800 pt-2.5">
             <input
               ref={fileInputRef}
               type="file"
@@ -1563,6 +2052,10 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
               {loading ? <button onClick={() => void cancelChat()} className="absolute right-2 bottom-2 w-9 h-9 rounded-full border border-rose-500/50 bg-rose-500/15 text-rose-300 flex items-center justify-center" title="Stop inference and flush VRAM"><Square className="w-3.5 h-3.5 fill-current" /></button> : <button onClick={() => void sendMessage()} disabled={!status?.ready || (!input.trim() && !attachedFiles.length)} className="absolute right-2 bottom-2 w-9 h-9 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center disabled:opacity-30" title="Send"><span className="text-base font-black leading-none">↑</span></button>}
             </div>
           </div>
+
+          {/* DOCKED BOTTOM: MOVABLE & RESIZABLE TELEMETRY WIDGETS MATRIX */}
+          {widgetDockPosition === 'below' && renderMovableWidgetsMatrix()}
+
           <div className="mt-2 text-[8px] font-mono text-slate-700">Local AI attachments stay on this machine: text/code/config ≤2 MB, images ≤12 MB in Vision Mode, ZIP project archives ≤100 MB · max 5 non-project attachments per turn. Project ZIPs are imported into a dedicated workspace and inspected locally; archives are no longer limited to 100 files. {status?.multimodal ? <span className="text-emerald-500">Vision attachments are enabled.</span> : <span>Image uploads are stored locally; switch to Qwen 2.5-VL Vision Mode or Qwen3.5 9B with its configured multimodal projector to enable pixel vision.</span>}</div>
           {(voiceAvailable || browserVoiceAvailable) && <div className="mt-2 flex flex-wrap items-center gap-2 text-[9px] font-mono text-slate-600"><Volume2 className="w-3 h-3" /> SPEECH RATE <input aria-label="Speech rate" type="range" min="-5" max="5" value={voiceRate} onChange={e=>setVoiceRate(Number(e.target.value))} /><span>{voiceRate > 0 ? '+' : ''}{voiceRate}</span><button onClick={testVoice} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200">TEST</button>{speaking && <span className="text-emerald-400 animate-pulse">SPEAKING</span>}</div>}
         </div>
