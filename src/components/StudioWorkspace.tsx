@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { LocalLlmStudio } from './LocalLlmStudio';
 import type { LogEntry, SystemTelemetry } from '../types';
+
+type StudioMode = 'web-search' | 'web-app' | 'code-engine' | 'image-studio' | 'video-generation';
 
 interface Props {
   telemetry: SystemTelemetry;
@@ -11,19 +13,19 @@ interface Props {
 
 /**
  * Gina Assistant is intentionally a single continuous page.
- *
- * Do not add a second dashboard/tab shell here. LocalLlmStudio owns the
- * response, preview, mode selector, activity log, widgets, inference engine
- * and prompt input so those pieces cannot drift into duplicate UI.
+ * LocalLlmStudio owns the response, preview, mode selector, activity log,
+ * telemetry/power/commercial widgets, inference engine and prompt input.
  */
 export const StudioWorkspace: React.FC<Props> = ({ onAddLog }) => {
+  const [mode, setMode] = useState<StudioMode>('web-app');
+
   return (
     <section className="gina-assistant-page w-full min-w-0">
       <LocalLlmStudio
         onAddLog={onAddLog}
-        studioMode="web-app"
+        studioMode={mode}
         isFullScreen={false}
-        onModeChange={() => undefined}
+        onModeChange={setMode}
       />
     </section>
   );
