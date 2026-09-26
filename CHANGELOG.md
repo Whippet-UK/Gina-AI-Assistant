@@ -3206,3 +3206,19 @@ className={... 'sm:w-[18rem]' ...}
 - Added persistent Studio chat history via session storage so switching Studio modes does not discard the current conversation.
 - Added a dedicated Web App Studio generation path that creates a complete single-file HTML artifact and immediately renders it in the right-hand artifact panel.
 - Added live Web App generation/rendering activity states.
+
+
+## 2026-09-26 — Prompt Station completion & Web App artifact hardening
+- **Target File:** `/src/components/GinaPromptStation.tsx` (lines 1-295)
+- **Exact Code Area:** Added live `/api/prompt-station/telemetry` polling, measured generation/context/queue metrics, real power-efficiency/carbon/fan telemetry display, measured MCP throughput chart, and server-backed history reset. Removed hard-coded benchmark score display from the active station.
+- **Why:** Complete the Prompt Station without simulated telemetry or placeholder sensor values.
+- **Target File:** `/server.ts` (lines 795-870)
+- **Exact Code Area:** Added Prompt Station telemetry aggregation and reset endpoints, including cached NESO Great Britain carbon-intensity retrieval.
+- **Why:** Provide one authoritative backend snapshot for hardware, local LLM, queue, carbon and MCP measurements.
+- **Target File:** `/server/agent/McpServerAdapter.ts` (lines 70-183)
+- **Exact Code Area:** Added measured MCP call history, request/error counters and reset support.
+- **Why:** Replace the previous empty MCP chart with actual broker throughput measurements.
+- **Target File:** `/src/components/LocalLlmStudio.tsx` (lines 966-1021)
+- **Exact Code Area:** Hardened Web App artifact extraction, invalid-response handling and one-shot complete-HTML recovery.
+- **Why:** Prevent malformed model output from reaching the Web App preview and provide deterministic recovery for incomplete HTML artifacts.
+- **Validation:** Repository-level source inspection completed. Full Windows Node/llama.cpp/AIDA64 runtime acceptance still requires the user's local environment; no live hardware result is claimed here.
