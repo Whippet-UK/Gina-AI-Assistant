@@ -9,7 +9,6 @@ import {
   Database,
   Gauge,
   GitBranch,
-  Network,
   Terminal,
   Trash2
 } from 'lucide-react';
