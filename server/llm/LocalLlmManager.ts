@@ -266,7 +266,8 @@ export class LocalLlmManager {
     await this.agentSkillsLoadPromise;
     const skillAwareMessages = Array.isArray(messages) ? [...messages] : [];
     const latestUserText = [...skillAwareMessages].reverse().find(message => message?.role === 'user');
-    const operationalContext = this.engine === 'qwen-coder' || /\b(?:edit|modify|change|update|patch|repair|fix|implement|refactor|rewrite|replace|remove|delete|create|make|build|scaffold|develop|write|save)\b[\s\S]{0,220}\b(?:code|file|component|function|project|repo|repository|react|typescript|javascript|server|ui|app|website|dashboard)\b/i.test(String(latestUserText?.content || ''));
+    const isArtifactStudio = String(options?.suite || '').trim().toLowerCase() === 'web app studio';
+    const operationalContext = !isArtifactStudio && (this.engine === 'qwen-coder' || /\b(?:edit|modify|change|update|patch|repair|fix|implement|refactor|rewrite|replace|remove|delete|create|make|build|scaffold|develop|write|save)\b[\s\S]{0,220}\b(?:code|file|component|function|project|repo|repository|react|typescript|javascript|server|ui|app|website|dashboard)\b/i.test(String(latestUserText?.content || '')));
     if (operationalContext && !skillAwareMessages.some(message => message?.role === 'system' && String(message.content || '').includes('LOCAL AUTONOMY MANDATE'))) {
       skillAwareMessages.unshift({ role:'system', content: LOCAL_AUTONOMY_MANDATE });
     }
