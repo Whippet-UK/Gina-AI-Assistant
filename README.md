@@ -1,14 +1,4 @@
-# Gina AI Factory — v1.20.13
-
-## v1.20.13 — Wan 2.1 VACE 1.3B FP16 Model Mounting & Whippet Anchor Smoke Test (2026-09-25)
-
-Mounted and indexed `wan2.1_vace_1.3B_fp16.safetensors` across server prewarm, capability manager, and video/story generation pipelines:
-- **Model indexing & prewarm:** Registered in `server/capabilities/CapabilityManager.ts`, `server.ts` `modelMetadataRegistry`, and `AVAILABLE_PREWARM_MODELS` with 5400 MB VRAM footprint.
-- **Workflow parser:** Added `unet_name` binding to `WorkflowParser.ts` for unified ComfyUI UNETLoader and CheckpointLoader model overrides.
-- **Studio UI controls:** Surfaced Wan 2.1 VACE 1.3B FP16 card and Whippet character slot anchor toggle/status in `VideoStudio.tsx` and story model options in `GifStudio.tsx`.
-- **Smoke test preset:** Added `micro_1s_12f` preset (1.0s target duration, 12 frames, 12 steps) targeting Whippet character slot anchor for safe CUDA/bfloat16 allocation on the 8GB RTX 3070 Ti.
-- **Diagnostic candidate paths:** Updated `scripts/check_wan21.ts` to scan both `diffusion_models` and `checkpoints`.
-- **Versioned restore point:** `RESTORE_V1.20.13_WAN_VACE_MODEL_MOUNT_AND_WHIPPET_ANCHOR` (Phase 60).
+# Gina AI Factory — v1.20.12
 
 
 ## v1.20.6 — StreamInject Source Audio Stripping Engine (2026-09-13)

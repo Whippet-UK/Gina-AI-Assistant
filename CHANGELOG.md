@@ -1,91 +1,29 @@
-# v1.20.13 — Phase 60 — Wan 2.1 VACE 1.3B FP16 Model Mounting & Whippet Anchor Smoke Test
+# v1.20.12 — Phase 59 — Consistency Audit & Build Gate
 
-## Infrastructure Model Indexing & Character Slot Anchor Controls — 2026-09-25
-
-- **Target File Path:** `/server/capabilities/CapabilityManager.ts`
-  - **Exact Code Snippet:**
-    ```typescript
-    { id:'wan-vace-1.3b', fileName:'wan2.1_vace_1.3B_fp16.safetensors', category:'checkpoint', relative:'models/checkpoints/wan2.1_vace_1.3B_fp16.safetensors', purpose:'Wan 2.1 VACE 1.3B FP16 video generation model with character/reference control', enabled:true, aliases:['wan2.1_vace.safetensors', 'wan2.1_vace_1.3B.safetensors', 'wan2.1_vace_1.3B_fp16.safetensors'] },
-    ```
-  - **Why:** Registered `wan2.1_vace_1.3B_fp16.safetensors` in `knownModels`, added `vace` heuristic to `classifyModel`, and updated `buildCapabilities` regex to recognize Wan VACE checkpoints.
-
-- **Target File Path:** `/server/comfy/WorkflowParser.ts`
-  - **Exact Code Snippet:**
-    ```typescript
-    model: [{ key: 'model', inputs: ['ckpt_name', 'unet_name'], classes: ['CheckpointLoaderSimple', 'CheckpointLoader', 'UNETLoader'] }],
-    ```
-  - **Why:** Included `unet_name` alongside `ckpt_name` in the model binding alias rules so ComfyUI `UNETLoader` nodes are bound to `model` parameters.
-
-- **Target File Path:** `/server.ts`
-  - **Exact Code Snippet:**
-    ```typescript
-    wan_vace_13b: { name: "Wan 2.1 VACE 1.3B FP16 (Video Control)", filename: "wan2.1_vace_1.3B_fp16.safetensors", vramFootprintMB: 5400, color: "#38bdf8", runs: 28 },
-    ```
-    ```typescript
-    {
-      id: 'wan_vace_13b', name: 'Wan 2.1 VACE 1.3B FP16', filename: 'wan2.1_vace_1.3B_fp16.safetensors',
-      workflowId: 'wan_video', type: 'video', vramFootprintMB: 5400,
-      description: 'Wan 2.1 VACE 1.3B FP16 video generation model with character slot anchor & reference control (5400 MB footprint).'
-    },
-    ```
-  - **Why:** Indexed VACE in `modelMetadataRegistry` and `AVAILABLE_PREWARM_MODELS`, added `diffusion_models` to candidate search paths in `/api/models/prewarm`, and wired VACE auto-adaptation in `adaptWorkflowForComfySession`.
-
-- **Target File Path:** `/scripts/check_wan21.ts`
-  - **Exact Code Snippet:**
-    ```typescript
-    path.join(comfyRoot, 'models', 'checkpoints', 'wan2.1_vace_1.3B_fp16.safetensors'),
-    'C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\checkpoints\\wan2.1_vace_1.3B_fp16.safetensors',
-    ```
-  - **Why:** Added candidate paths for `wan2.1_vace_1.3B_fp16.safetensors` in both portable checkpoints and diffusion_models folders so diagnostic reports verify VACE presence.
-
-- **Target File Path:** `/src/components/VideoStudio.tsx`
-  - **Exact Code Snippet:**
-    ```tsx
-    <button
-      type="button"
-      onClick={() => {
-        setSelectedModel('wan2.1_vace_1.3B_fp16.safetensors');
-        setEnableCharacterAnchor(true);
-      }}
-      className={`p-3 rounded border text-left transition-all cursor-pointer ${
-        selectedModel === 'wan2.1_vace_1.3B_fp16.safetensors'
-          ? 'bg-sky-500/15 border-sky-400 text-slate-100 shadow-md shadow-sky-500/10'
-          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-bold text-slate-200">Wan 2.1 VACE 1.3B FP16</span>
-        <span className="text-[9px] font-mono text-sky-400 font-bold">5400 MB</span>
-      </div>
-      <div className="text-[10px] text-slate-400 mt-1">Character anchor & reference control · 8GB-safe bfloat16</div>
-    </button>
-    ```
-    ```typescript
-    const durationOptions = [
-      { id: '1s_12f', seconds: 1, frames: 12, label: '1.0s Micro · 12 frames', vram: 'Micro-Baseline · 12 frames' },
-      { id: '1s_25f', seconds: 1, frames: 25, label: '1.0s · 25 frames', vram: 'Safest · 512×512' },
-      { id: '2s_49f', seconds: 2, frames: 49, label: '2.0s · 49 frames', vram: 'Safe · 512×512' },
-      { id: '3s_73f', seconds: 3, frames: 73, label: '3.0s · 73 frames', vram: 'Safe ceiling · 512×512 / 512×768' },
-    ];
-    ```
-  - **Why:** Surfaced Wan 2.1 VACE model selector card with 5400 MB footprint, Whippet character slot anchor controls, and refined `durationOptions` with unique IDs so 12-frame and 25-frame 1.0s durations are selectable independently.
-
-- **Target File Path:** `/src/components/GifStudio.tsx`
-  - **Exact Code Snippet:**
-    ```tsx
-    <option value="wan2.1_vace_1.3B_fp16.safetensors">Wan 2.1 VACE 1.3B FP16 (Reference Control · 5400 MB Footprint)</option>
-    ```
-  - **Why:** Added Wan 2.1 VACE 1.3B FP16 with 5400 MB footprint to GifStudio story model selection dropdown.
-
-- **Target File Path:** `/src/version.ts`, `/package.json`, `/metadata.json`, `/index.html`, `/AGENTS.md`, `/README.md`, `/docs/INDEX.md`, `/src/components/MilestoneChecklist.tsx`
-  - **Exact Code Snippet:**
-    ```typescript
-    export const APP_VERSION = '1.20.13';
-    export const ACTIVE_SAVE_POINT_ID = 'RESTORE_V1.20.13_WAN_VACE_MODEL_MOUNT_AND_WHIPPET_ANCHOR';
-    export const ACTIVE_LIFECYCLE_PHASE = 60;
-    export const ACTIVE_LIFECYCLE_NAME = 'PHASE 60 — WAN 2.1 VACE MODEL MOUNTING & WHIPPET ANCHOR SMOKE TEST';
-    ```
-  - **Why:** Universal metadata synchronization across all 8 surfaces guaranteeing consistency with Definition of Done gate.
+- **Target File Path:** `/src/version.ts`
+  - **Exact Code/Config Area:** Line 4 — `ACTIVE_LIFECYCLE_NAME`.
+  - **Why:** Reconciled the authoritative lifecycle name with the Phase 59 milestone/changelog title.
+- **Target File Path:** `/AGENTS.md`
+  - **Exact Code/Config Area:** Lines 18–20 — project version, lifecycle name, and active restore-point header.
+  - **Why:** Synchronized the agent context bridge with the authoritative `src/version.ts` state (`v1.20.12`, `RESTORE_V1.20.12_VOICE_ENGINE_RUNTIME_REPAIR`).
+- **Target File Path:** `/README.md`
+  - **Exact Code/Config Area:** Line 1 — top-level product version heading.
+  - **Why:** Removed the stale v1.20.8 product banner.
+- **Target File Path:** `/docs/INDEX.md`
+  - **Exact Code/Config Area:** Line 4 — documentation index version banner.
+  - **Why:** Removed the stale v1.20.8 documentation banner.
+- **Target File Path:** `/metadata.json`
+  - **Exact Code/Config Area:** Line 96 — `release` metadata field.
+  - **Why:** Aligned the release marker with the already-current `version` field.
+- **Target File Path:** `/server/agent/UpdateIntegrityGuard.ts`
+  - **Exact Code/Config Area:** `HISTORICAL_FILES` exclusion set.
+  - **Why:** Excluded the integrity scanner implementation itself from retired-engine content scanning; its detector regex/message necessarily contains the retired vocabulary and otherwise self-triggers the production gate.
+- **Target File Path:** `/server/llm/LocalLlmManager1.ts`
+  - **Exact Code/Config Area:** Entire file — replaced the obsolete duplicate implementation with a compatibility re-export of `./LocalLlmManager`.
+  - **Why:** Removes the retired Gemma engine vocabulary while preserving any legacy import path that may still exist outside the inspected source tree.
+- **Target File Path:** `/CHANGELOG.md`
+  - **Exact Code/Config Area:** Lines 1–26 — this Phase 59 audit entry.
+  - **Why:** Records the consistency repair and validation work required by the project update contract.
 
 # v1.20.12 — Phase 59 — Voice Engine Runtime Repair & Transformers BeamSearchScorer Fix
 
@@ -2882,3 +2820,63 @@ Added a complete local filesystem tool contract matching the requested MCP-style
 - **Why**: Maintain an authoritative, machine-readable reference table documenting all 14 models with their formats, base memory requirements, peak observed memory, 8GB RTX 3070 Ti hardware verdicts, and safe execution boundaries.
 
 
+
+## 2026-09-25 — Local AI Studio split-screen workspace
+
+- **Target File Path:** `/src/components/StudioWorkspace.tsx`
+  - **Exact Code Snippet / Code Block:** Added the five-mode Local AI Studio shell, 40vw chat terminal, flexible artifact view, web search broker UI, live Web App HTML editor/preview, Code Engine runtime log surface, and native Image/Video studio mounts.
+  - **Why:** Implements the requested split-screen operating workspace without replacing the existing Gina runtime engines.
+- **Target File Path:** `/src/App.tsx`
+  - **Exact Code Snippet / Code Block:** Added `StudioWorkspace` as the primary `AI STUDIO` navigation surface and default view.
+  - **Why:** Makes the new workspace the application entry experience while preserving the existing suites.
+- **Target File Path:** `/src/index.css`
+  - **Exact Code Snippet / Code Block:** Added `.studio-*` split-screen, tab, artifact, editor, result, and responsive layout styles.
+  - **Why:** Enforces the requested 40vw left terminal and flex-based right artifact proportions.
+
+## 2026-09-25 — Studio Web Response / VRAM UX Repair
+
+### `/src/components/LocalLlmStudio.tsx`
+```tsx
+const SYSTEM_PROMPT = `... Never reveal chain-of-thought, hidden reasoning, internal deliberation, or a section labelled Thinking Process. Return only the concise user-facing answer and useful verified results.`;
+...
+const searchResponse = await fetch('/api/agent/web-search', { ... });
+...
+webGrounding,
+...
+for (const raw of [m.content]) { ... }
+...
+text = text.replace(/[\\/:;]+/g, ' ');
+```
+**Why:** Prevent visible reasoning leakage, stop client-side fallback to hidden reasoning fields, perform live web search before local generation, expose immediate web activity state, and keep voice output from literally speaking common punctuation symbols.
+
+### `/server.ts`
+```ts
+function sanitizeUserFacingAssistantText(input: string): string { ... }
+...
+const suppliedWebGrounding = req.body?.webGrounding ...;
+const liveGrounding = route.requiresWeb || route.intent === 'network-diagnostic'
+  ? (suppliedWebGrounding || await buildLiveGrounding(rawLatestUser))
+  : ...;
+...
+message.content = sanitizeUserFacingAssistantText(rawVisible);
+```
+**Why:** Make the server the final safety boundary against exposing model reasoning and reuse the already-completed live web search instead of silently performing it only inside the generation request.
+
+### `/src/components/VRAMWarningToast.tsx`
+```tsx
+const [collapsed, setCollapsed] = useState(true);
+...
+drag
+dragMomentum={false}
+onDragEnd={...}
+className={... 'sm:w-[18rem]' ...}
+```
+**Why:** Turn the VRAM warning into a compact, draggable overlay that no longer permanently obscures the studio tabs, with collapse and reset-position controls.
+
+## 2026-09-25 — Studio live execution and Web App fix
+- Fixed Qwen3.5 visible reasoning leakage by disabling thinking mode for normal local chat and preventing normal chat from promoting reasoning fields into visible content.
+- Disabled the large agent skill bundle during autonomous coding turns to prevent context overflow on 8K-context runtimes; compacted persistent memory and explicit-file preflight payloads.
+- Added live execution activity rendering with collapsible `[EXEC_STEP: ...]` and `[FILE_STEP: ...]` blocks matching the requested workspace log style.
+- Added persistent Studio chat history via session storage so switching Studio modes does not discard the current conversation.
+- Added a dedicated Web App Studio generation path that creates a complete single-file HTML artifact and immediately renders it in the right-hand artifact panel.
+- Added live Web App generation/rendering activity states.

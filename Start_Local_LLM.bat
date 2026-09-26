@@ -1,11 +1,11 @@
 @echo off
 setlocal EnableDelayedExpansion
 
-rem Phase 42: Rigidly lock LLAMA_ROOT directly to your new memory-optimized TurboQuant binary directory
-set "LLAMA_ROOT=C:\Gina_AI\runtimes\turboquant"
+rem Phase 42: Point explicitly to your stable, matched installation directory
+set "LLAMA_ROOT=C:\Gina_AI\tools\llama.cpp"
 
 if not exist "%LLAMA_ROOT%\llama-server.exe" (
-  echo [GINA] llama-server.exe not found in turboquant runtime folder:
+  echo [GINA] llama-server.exe not found in working installation folder:
   echo %LLAMA_ROOT%\llama-server.exe
   pause
   exit /b 1
@@ -63,18 +63,21 @@ if defined MMPROJ if not exist "%MMPROJ%" (
 )
 
 echo =========================================================================
-echo [GINA] Local AI Inference Server Launcher (TurboQuant Accelerated)
+echo [GINA] Local AI Inference Server Launcher (Stable Baseline)
 echo [GINA] Engine: %ENGINE%
 echo [GINA] Model:  %MODEL_DESC%
 echo [GINA] File:   %MODEL%
-echo [GINA] API:    http://127.0.0.1:8080/v1/chat/completions
+echo [GINA] API:    http://127.0.0
 echo =========================================================================
+
+rem Shift terminal execution folder inside your stable tools path
+cd /d "%LLAMA_ROOT%"
 
 if defined MMPROJ (
   echo [GINA] Multimodal Vision Projector: %MMPROJ%
   echo [GINA] Vision input: ENABLED
-  "%LLAMA_ROOT%\llama-server.exe" --model "%MODEL%" --mmproj "%MMPROJ%" --host 127.0.0.1 --port 8080 --n-gpu-layers %GPU_LAYERS% --ctx-size %CTX_SIZE% --threads 6 --jinja --cache-type-k f16 --cache-type-v f16
+  "llama-server.exe" --model "%MODEL%" --mmproj "%MMPROJ%" --host 127.0.0.1 --port 8080 --n-gpu-layers %GPU_LAYERS% --ctx-size %CTX_SIZE% --threads 6 --jinja --cache-type-k f16 --cache-type-v f16
 ) else (
   echo [GINA] Vision projector: not loaded
-  "%LLAMA_ROOT%\llama-server.exe" --model "%MODEL%" --host 127.0.0.1 --port 8080 --n-gpu-layers %GPU_LAYERS% --ctx-size %CTX_SIZE% --threads 6 --jinja --cache-type-k f16 --cache-type-v f16
+  "llama-server.exe" --model "%MODEL%" --host 127.0.0.1 --port 8080 --n-gpu-layers %GPU_LAYERS% --ctx-size %CTX_SIZE% --threads 6 --jinja --cache-type-k f16 --cache-type-v f16
 )

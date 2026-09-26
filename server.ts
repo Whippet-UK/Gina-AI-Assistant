@@ -258,7 +258,6 @@ const modelMetadataRegistry: Record<string, { name: string; filename: string; vr
   juggernaut_xl_v9: { name: "Juggernaut-XL v9 Photorealism (SDXL)", filename: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors", vramFootprintMB: 6200, color: "#22d3ee", runs: 42 },
   flux_lite: { name: "FLUX.1 Lite GGUF (High-Precision)", filename: "FLUX.1-lite-pure-Q4_0.gguf", vramFootprintMB: 5900, color: "#10b981", runs: 32 },
   wan_video_21: { name: "Wan 2.1 1.3B BF16 (Video)", filename: "wan2.1_t2v_1.3B_bf16.safetensors", vramFootprintMB: 5200, color: "#38bdf8", runs: 28 },
-  wan_vace_13b: { name: "Wan 2.1 VACE 1.3B FP16 (Video Control)", filename: "wan2.1_vace_1.3B_fp16.safetensors", vramFootprintMB: 5400, color: "#0ea5e9", runs: 0 },
   hunyuan_video: { name: "Hunyuan Video (3D Attention)", filename: "hunyuan-video.safetensors", vramFootprintMB: 7100, color: "#f43f5e", runs: 12 },
   geneva_fp8: { name: "Geneva 1.12B FP8", filename: "geneva_1-12b_fp8.safetensors", vramFootprintMB: 4800, color: "#a855f7", runs: 9 },
   qwen_25_vl_7b: { name: "Qwen 2.5-VL 7B Q4_K_M + mmproj-F16", filename: "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf", vramFootprintMB: 4700, color: "#f59e0b", runs: 38 },
@@ -1820,9 +1819,9 @@ async function executeAgentRun(userPrompt: string, runId?: string, emit?: (type:
   if (promptPolicy.mode !== 'act') throw new Error('This request is not an explicit operational task. Gina will answer it conversationally rather than modifying files.');
 
   await publish('status', { phase:'INSPECTING FILES', message:'Loading persistent project context, relevant memory, and explicit target files.' });
-  const relevantMemory = await agentMemory.recall(userPrompt, 6).catch(() => []);
-  const memoryText = clipForAgent(relevantMemory, 2200);
-  const learnedKnowledge = await knowledgeBase.promptContext(userPrompt, 2400).catch(() => '');
+  const relevantMemory = await agentMemory.recall(userPrompt, 3).catch(() => []);
+  const memoryText = clipForAgent(relevantMemory, 900);
+  const learnedKnowledge = await knowledgeBase.promptContext(userPrompt, 900).catch(() => '');
   const explicitTargets = extractExplicitTargets(userPrompt);
   const preflightTargets:any[] = [];
   for (const target of explicitTargets.slice(0,4)) {
@@ -1831,7 +1830,7 @@ async function executeAgentRun(userPrompt: string, runId?: string, emit?: (type:
       const stat = await fs.stat(absolute);
       if (stat.isFile()) {
         const content = await fs.readFile(absolute, 'utf8');
-        preflightTargets.push({ path:target, content:clipForAgent(content, 24000) });
+        preflightTargets.push({ path:target, content:clipForAgent(content, 9000) });
       }
     } catch { /* The agent will discover/create the target when appropriate. */ }
   }
@@ -1865,7 +1864,7 @@ async function executeAgentRun(userPrompt: string, runId?: string, emit?: (type:
       : baseMessages;
 
     await publish('step_started', { step:i+1, maxSteps:16, phase:'THINKING', message: steps.length ? 'Choosing the next verified action.' : 'Planning the first inspection.' });
-    const response = await localLlm.chat(messages, { temperature:0.12, maxTokens:560 });
+    const response = await localLlm.chat(messages, { temperature:0.12, maxTokens:560, includeAgentSkills:false, allowReasoningFallback:true });
     const raw = response?.choices?.[0]?.message?.content || '';
     let plan = extractJsonObject(raw);
     if (!plan) {
@@ -1876,7 +1875,7 @@ async function executeAgentRun(userPrompt: string, runId?: string, emit?: (type:
 Allowed actions: none, inspect_system, inspect_capabilities, inspect_project_context, inspect_project_map, verify_definition_of_done, read_project_bundle, list_directory, list_directory_with_sizes, directory_tree, search_files, knowledge_search, read_file, read_text_file, read_media_file, read_multiple_files, get_file_info, list_allowed_directories, patch_file, edit_file, write_file, create_directory, move_file, execute_command, workspace_inspect, web_search, web_fetch, web_research, research_docs, verify_compatibility, git_status, git_workspace_diff, git_diff, git_log, remember, recall_memory, refresh_context, project_integrity_check, import_project_archive, github_clone, github_sync, github_push, git_branch, git_commit, validate_project, resolve_location, create_github_pr, network_test, comfy_clear_cache, llm_start, llm_stop, llm_restart, build_aida64_template, write_pdf.
 Original response:
 ${String(raw).slice(0, 1800)}` }
-      ], { temperature:0, maxTokens:360 }).catch(() => null);
+      ], { temperature:0, maxTokens:360, includeAgentSkills:false, allowReasoningFallback:true }).catch(() => null);
       const recoveredPlan = extractJsonObject(recovery?.choices?.[0]?.message?.content || '');
       if (!recoveredPlan) {
         const error = 'The model response was not valid JSON after an automatic recovery attempt.';
@@ -2805,6 +2804,24 @@ async function buildLiveGrounding(userText: string) {
   return { text: lines.join('\n'), webSearched: false, provider: null, engine: null, sources: [] };
 }
 
+function sanitizeUserFacingAssistantText(input: string): string {
+  let text = String(input || '').trim();
+  if (!text) return '';
+  // Thinking-capable local models may place their hidden chain-of-thought in a visible field.
+  // Never send that internal reasoning to the browser. Prefer an explicit final-answer section.
+  const finalMatch = text.match(/(?:^|\n)\s*(?:final answer|answer)\s*:\s*([\s\S]*)$/i);
+  if (finalMatch?.[1]?.trim()) text = finalMatch[1].trim();
+  else {
+    const thinkingMatch = text.match(/(?:^|\n)\s*thinking process\s*:\s*([\s\S]*)$/i);
+    if (thinkingMatch) {
+      const lines = text.split(/\r?\n/);
+      const kept = lines.filter(line => !/^\s*(?:thinking process|analysis|reasoning)\s*:?\s*$/i.test(line));
+      text = kept.filter(line => !/^\s*\d+[.)]\s+/.test(line)).join('\n').trim();
+    }
+  }
+  return text;
+}
+
 app.post("/api/llm/chat", async (req, res) => {
   try {
     const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
@@ -2887,7 +2904,12 @@ app.post("/api/llm/chat", async (req, res) => {
     const learnedGrounding = !route.requiresWeb && route.intent !== 'network-diagnostic' && route.intent !== 'capability-query'
       ? await knowledgeBase.promptContext(rawLatestUser, route.intent === 'code-task' || route.intent === 'file-operation' ? 2400 : 1400).catch(() => '')
       : '';
-    const liveGrounding = route.requiresWeb || route.intent === 'network-diagnostic' ? await buildLiveGrounding(rawLatestUser) : { text:'', webSearched:false, provider:null as string|null };
+    const suppliedWebGrounding = req.body?.webGrounding && typeof req.body.webGrounding?.text === 'string'
+      ? { text:String(req.body.webGrounding.text).slice(0, 18000), webSearched:true, provider:String(req.body.webGrounding.provider || 'verified web search'), engine:String(req.body.webGrounding.engine || 'HTTP fetcher'), sources:Array.isArray(req.body.webGrounding.sources) ? req.body.webGrounding.sources.slice(0,8) : [] }
+      : null;
+    const liveGrounding = route.requiresWeb || route.intent === 'network-diagnostic'
+      ? (suppliedWebGrounding || await buildLiveGrounding(rawLatestUser))
+      : { text:'', webSearched:false, provider:null as string|null };
     // Explicit web requests may never silently fall back to an unsourced local answer.
     // If the public web lane failed, report the actual failure rather than letting Qwen say
     // that it will search later or claim it has no internet access.
@@ -2945,6 +2967,11 @@ app.post("/api/llm/chat", async (req, res) => {
         skills: route.requiresSkills ? String(getActiveAgentSkillsPrompt()).length : 0
       }
     }, attachments);
+    if (data?.choices?.[0]?.message && typeof data.choices[0].message === 'object') {
+      const message = data.choices[0].message;
+      const rawVisible = typeof message.content === 'string' ? message.content : '';
+      if (rawVisible) message.content = sanitizeUserFacingAssistantText(rawVisible);
+    }
     data.ginaTelemetry = {
       ...(data.ginaTelemetry || {}),
       webProvider: liveGrounding.provider,
@@ -3257,11 +3284,6 @@ const AVAILABLE_PREWARM_MODELS: PreWarmModelDef[] = [
     description: 'Native ComfyUI Wan 2.1 text-to-video workflow using local UMT5, Wan VAE and optional CLIP Vision assets.'
   },
   {
-    id: 'wan_vace_13b', name: 'Wan 2.1 VACE 1.3B FP16', filename: 'wan2.1_vace_1.3B_fp16.safetensors',
-    workflowId: 'wan_video', type: 'video', vramFootprintMB: 5400,
-    description: 'Wan 2.1 VACE 1.3B FP16 video generation model with character slot anchor & reference control (5400 MB footprint).'
-  },
-  {
     id: 'musicgen_small', name: 'MusicGen Small (AudioCraft 300M)', filename: 'facebook/musicgen-small',
     workflowId: 'audiocraft_music', type: 'music', vramFootprintMB: 2800,
     description: 'Meta AudioCraft MusicGen 300M model for fast BGM generation and audio composition (cached in models/audio). Runs as an exclusive AudioCraft job.'
@@ -3311,7 +3333,7 @@ app.get("/api/models/prewarm", async (_req, res) => {
           path.join(process.env.GINA_LLM_ROOT || (isWin ? 'C:\\Gina_AI\\models\\llm' : path.join(process.cwd(), 'models', 'llm')), model.filename),
           path.join(MODEL_ROOT, model.filename)
         ]
-      : [path.join(MODEL_ROOT, 'checkpoints', model.filename), path.join(MODEL_ROOT, 'diffusion_models', model.filename), path.join(MODEL_ROOT, 'unet', model.filename), path.join(MODEL_ROOT, model.filename)];
+      : [path.join(MODEL_ROOT, 'unet', model.filename), path.join(MODEL_ROOT, 'checkpoints', model.filename), path.join(MODEL_ROOT, model.filename)];
     let filePath: string | null = null; let fileBytes = 0;
     for (const candidate of candidates) { try { const stat = await fs.stat(candidate); if (stat.isFile()) { filePath=candidate; fileBytes=stat.size; break; } } catch {} }
     return { ...model, filePresent:!!filePath, filePath, fileBytes };
@@ -4559,19 +4581,6 @@ async function adaptWorkflowForComfySession(workflow: any) {
           }
         }
       }
-      // For Wan video workflows: ensure VACE model mapping if VACE is selected
-      if (node?.class_type === 'UNETLoader') {
-        const currentUnet = String(node?.inputs?.unet_name || '');
-        if (/vace/i.test(currentUnet)) {
-          const availableUnets: string[] = objectInfo?.UNETLoader?.input?.required?.unet_name?.[0] || [];
-          const availableCkpts: string[] = objectInfo?.CheckpointLoaderSimple?.input?.required?.ckpt_name?.[0] || [];
-          const matched = availableUnets.find(u => /vace/i.test(u)) || availableCkpts.find(c => /vace/i.test(c));
-          if (matched) {
-            console.log(`[Workflow Adapter] Routing Wan UNETLoader unet_name to discovered VACE model '${matched}'`);
-            node.inputs.unet_name = matched;
-          }
-        }
-      }
     }
   } catch {
     // Return original if object_info query is unavailable
@@ -5208,8 +5217,7 @@ function validateWanVideoParameters(parameters: Record<string, any>) {
   }
   if (frames < 9) throw new Error('Wan 2.1 requires at least 9 temporal frames.');
   if (requestedDuration > 3) throw new Error("Wan 2.1 1.3B direct generation is limited to 3 seconds on Gina's 8GB GPU. Use the GIF/Story tools for longer compositions.");
-  const model = parameters.model ? String(parameters.model).trim() : 'wan2.1_t2v_1.3B_bf16.safetensors';
-  return { ...parameters, width, height, frames, batch_size: 1, fps, duration_sec: duration, steps, model };
+  return { ...parameters, width, height, frames, batch_size: 1, fps, duration_sec: duration, steps };
 }
 
 app.post("/api/jobs", async (req, res) => {
