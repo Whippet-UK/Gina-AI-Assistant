@@ -1,5 +1,8 @@
 # v1.20.15 — Phase 62 — Gina Tool Isolation, Context Hygiene & Unified Agent Trace
 
+- **Target File Path:** `/package.json` (line 4) and `/src/version.ts` (lines 1-3)
+  - **Why:** Advanced the project version/save-point metadata from 1.20.14 / Phase 61 to 1.20.15 / Phase 62 so the runtime, package metadata and changelog remain consistent.
+
 - **Target File Path:** `/src/components/LocalLlmStudio.tsx` (lines 118, 1018, 1190-1338, 2061)
   - **Why:** Partitioned conversation history by active Gina mode, removed the generic keyword-driven web-search fallback, made Web Search / Web App / Code Engine / Image Studio / Video Gen deterministic local tool lanes, and replaced the duplicate activity-history block with the unified Agent Execution Trace. Video generation now returns into the Gina preview/conversation.
 
