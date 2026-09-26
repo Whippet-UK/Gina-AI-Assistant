@@ -2921,7 +2921,9 @@ app.post("/api/llm/chat", async (req, res) => {
     // PDF requests are handled by the real local PDF writer. If the user pasted a
     // document (CV/resume/text) in the same message, save that document; otherwise
     // save Gina's most recent response. Never claim a PDF exists without verifying it.
-    const wantsPdf = /\bpdf\b/i.test(rawLatestUser) && /\b(save|export|write|put|create|make|convert|generate|download)\b/i.test(rawLatestUser);
+    const wantsPdf = (!requestedStudioMode || requestedStudioMode === 'local-chat') &&
+      /\bpdf\b/i.test(rawLatestUser) &&
+      /\b(save|export|write|put|create|make|convert|generate|download)\b/i.test(rawLatestUser);
     if (wantsPdf) {
       const previousAssistant = [...validMessages].reverse().find((m:any) => m.role === 'assistant')?.content || '';
       const looksLikeDocument = rawLatestUser.length > 700 ||
