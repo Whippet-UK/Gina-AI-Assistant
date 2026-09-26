@@ -827,6 +827,8 @@ async function getPromptStationCarbonIntensity() {
 app.get('/api/prompt-station/telemetry', async (_req, res) => {
   try {
     const runtime = runtimeTelemetry.getSnapshot();
+    const latencySamples = runtime.history.map((record: any) => Number(record.durationMs)).filter((value: number) => Number.isFinite(value) && value >= 0).sort((a: number, b: number) => a - b);
+    const p95LatencyMs = latencySamples.length ? latencySamples[Math.min(latencySamples.length - 1, Math.ceil(latencySamples.length * 0.95) - 1)] : null;
     const llmStatus = await localLlm.getStatus().catch(() => null);
     const jobs = jobManager.list();
     const comfyQueue = comfyWatchdog.lastQueue;
@@ -856,7 +858,8 @@ app.get('/api/prompt-station/telemetry', async (_req, res) => {
         durationMs: Number(runtime.latest?.durationMs || 0),
         contextUsedTokens: Number(runtime.latest?.totalTokens || 0),
         contextWindowTokens: Number(runtime.latest?.contextSize || llmStatus?.contextSize || 0),
-        source: runtime.latest?.source || 'local'
+        source: runtime.latest?.source || 'local',
+        p95LatencyMs
       },
       queue: { pending: pendingQueue, running: runningJobs },
       temperature: Number((aida.sensors || []).find((sensor: any) => /gpu.*temp|core.*temp|gpu temperature/i.test(String(sensor.label || '')))?.value || 0),
