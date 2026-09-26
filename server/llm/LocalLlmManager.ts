@@ -75,6 +75,23 @@ function isContextError(message:string){const text=String(message||'').toLowerCa
 const LOCAL_AUTONOMY_MANDATE = `LOCAL AUTONOMY MANDATE — UNCONDITIONAL:
 You are connected to a live Win32 server broker with full local filesystem permissions. You possess the real tools edit_file, write_file, and execute_command through Gina's autonomous broker. You are forbidden from stating that you cannot modify files, run commands, or validate local code when the runtime has registered those capabilities. If a user asks you to update, change, fix, build, create, modify, or repair code/files/project content, you MUST choose the corresponding broker action tool and execute it. An instructional answer is an error for an operational request. A tool execution failure means status FAILED and must trigger diagnosis, patching, and re-validation; it is never proof that the capability is unavailable. Never claim success until the tool result and validation confirm it.`;
 
+
+/** Extract assistant text from llama-server / OpenAI-shaped messages.
+ *  Qwen3.5 (and some thinking models) put the visible answer in reasoning_content
+ *  and leave content empty — treat that as the reply so callers never see "". */
+function extractAssistantText(message: any, allowReasoningFallback = false): string {
+  if (!message || typeof message !== "object") return "";
+  const candidates = allowReasoningFallback ? [message.content, message.reasoning_content, message.reasoning] : [message.content];
+  for (const raw of candidates) {
+    if (typeof raw === "string" && raw.trim()) return raw;
+    if (Array.isArray(raw)) {
+      const joined = raw.map((p: any) => (typeof p === "string" ? p : (p?.text ?? ""))).join("");
+      if (joined.trim()) return joined;
+    }
+  }
+  return "";
+}
+
 export class LocalLlmManager {
   private child: ChildProcessWithoutNullStreams | null = null;
   private ready=false;
@@ -244,7 +261,7 @@ export class LocalLlmManager {
   async restart():Promise<LocalLlmStatus>{await this.stop();return this.start();}
   async cancelChat():Promise<boolean>{const controller=this.activeChatController;if(!controller)return false;controller.abort();this.activeChatController=null;if(this.child&&!this.child.killed)await this.stop();this.appendDiagnostic('CHAT CANCEL COMPLETE — llama.cpp stopped and VRAM released; restart Local AI to continue');return true;}
 
-  async chat(messages:ChatMessage[],options?:{temperature?:number;maxTokens?:number;suite?:string;telemetrySource?:PromptTelemetrySource;webProvider?:string|null;includeAgentSkills?:boolean;contextBreakdown?:Record<string,number>;iteration?:number;toolCalls?:number},attachments:ImageAttachment[]=[]){
+  async chat(messages:ChatMessage[],options?:{temperature?:number;maxTokens?:number;suite?:string;telemetrySource?:PromptTelemetrySource;webProvider?:string|null;includeAgentSkills?:boolean;allowReasoningFallback?:boolean;contextBreakdown?:Record<string,number>;iteration?:number;toolCalls?:number},attachments:ImageAttachment[]=[]){
     await this.agentSkillsLoadPromise;
     const skillAwareMessages = Array.isArray(messages) ? [...messages] : [];
     const latestUserText = [...skillAwareMessages].reverse().find(message => message?.role === 'user');
@@ -259,19 +276,19 @@ export class LocalLlmManager {
       }
     }
     messages = skillAwareMessages;
-    const status=await this.getStatus();if(!status.ready)throw new Error(`Local ${getLocalLlmModel(this.engine).label} engine is not running. Start the local AI engine first.`);const maxTokens=Math.min(1024,Math.max(64,Math.round(Number(options?.maxTokens)||768)));const request=async(normalized:ChatMessage[],label:string)=>{if(!normalized.length||normalized[normalized.length-1].role!=='user')throw new Error('Local LLM conversation could not be normalized into a valid user turn.');const requestMessages:any[]=normalized.map(m=>({...m}));const imageAttachments=attachments.filter(a=>a?.localPath&&/^image\//i.test(a.mime));if(imageAttachments.length){if(!this.resolvedMmprojPath)throw new Error(`${getLocalLlmModel(this.engine).label} vision is selected, but no multimodal projector GGUF was found beside the local model.`);const latest=requestMessages[requestMessages.length-1];const parts:any[]=[{type:'text',text:String(latest.content||'')}];for(const attachment of imageAttachments.slice(0,5)){const buffer=await fs.readFile(attachment.localPath);parts.push({type:'image_url',image_url:{url:`data:${attachment.mime};base64,${buffer.toString('base64')}`}});}latest.content=parts;}this.appendDiagnostic(`${label}: engine=${this.engine}, model=${path.basename(this.config.modelPath)}, turns=${requestMessages.length}${imageAttachments.length?`, images=${imageAttachments.length}`:''}`);const controller=new AbortController();this.activeChatController=controller;const timeout=setTimeout(()=>controller.abort(),this.config.timeoutMs);try{const response=await fetch(`http://${this.config.host}:${this.config.port}/v1/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:path.basename(this.config.modelPath),messages:requestMessages,temperature:options?.temperature??0.7,max_tokens:maxTokens,stream:false}),signal:controller.signal});const bodyText=await response.text();if(!bodyText.trim())throw new Error(`llama-server returned an empty response (HTTP ${response.status}).`);let data:any;try{data=JSON.parse(bodyText);}catch{throw new Error(`llama-server returned invalid JSON (HTTP ${response.status}).`);}if(!response.ok)throw new Error(String(data?.error?.message||data?.error||`llama-server returned HTTP ${response.status}`));return data;}finally{clearTimeout(timeout);if(this.activeChatController===controller)this.activeChatController=null;}};const normalized=normalizeChatMessages(messages);
+    const status=await this.getStatus();if(!status.ready)throw new Error(`Local ${getLocalLlmModel(this.engine).label} engine is not running. Start the local AI engine first.`);const maxTokens=Math.min(1024,Math.max(64,Math.round(Number(options?.maxTokens)||768)));const request=async(normalized:ChatMessage[],label:string)=>{if(!normalized.length||normalized[normalized.length-1].role!=='user')throw new Error('Local LLM conversation could not be normalized into a valid user turn.');const requestMessages:any[]=normalized.map(m=>({...m}));const imageAttachments=attachments.filter(a=>a?.localPath&&/^image\//i.test(a.mime));if(imageAttachments.length){if(!this.resolvedMmprojPath)throw new Error(`${getLocalLlmModel(this.engine).label} vision is selected, but no multimodal projector GGUF was found beside the local model.`);const latest=requestMessages[requestMessages.length-1];const parts:any[]=[{type:'text',text:String(latest.content||'')}];for(const attachment of imageAttachments.slice(0,5)){const buffer=await fs.readFile(attachment.localPath);parts.push({type:'image_url',image_url:{url:`data:${attachment.mime};base64,${buffer.toString('base64')}`}});}latest.content=parts;}this.appendDiagnostic(`${label}: engine=${this.engine}, model=${path.basename(this.config.modelPath)}, turns=${requestMessages.length}${imageAttachments.length?`, images=${imageAttachments.length}`:''}`);const controller=new AbortController();this.activeChatController=controller;const timeout=setTimeout(()=>controller.abort(),this.config.timeoutMs);try{const response=await fetch(`http://${this.config.host}:${this.config.port}/v1/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:path.basename(this.config.modelPath),messages:requestMessages,temperature:options?.temperature??0.7,max_tokens:maxTokens,stream:false,...(this.engine==='qwen3.5'?{chat_template_kwargs:{enable_thinking:false}}:{})}),signal:controller.signal});const bodyText=await response.text();if(!bodyText.trim())throw new Error(`llama-server returned an empty response (HTTP ${response.status}).`);let data:any;try{data=JSON.parse(bodyText);}catch{throw new Error(`llama-server returned invalid JSON (HTTP ${response.status}).`);}if(!response.ok)throw new Error(String(data?.error?.message||data?.error||`llama-server returned HTTP ${response.status}`));return data;}finally{clearTimeout(timeout);if(this.activeChatController===controller)this.activeChatController=null;}};const normalized=normalizeChatMessages(messages);
     const startedAt=Date.now();
     const suite=String(options?.suite||'Local AI');
     const source:PromptTelemetrySource=options?.telemetrySource||'local';
     const recordTelemetry=(data:any,success:boolean)=>{
       const usage=data?.usage||{};
       const promptTokens=Number(usage.prompt_tokens||usage.promptTokens||estimateTokens(normalized));
-      const completionTokens=Number(usage.completion_tokens||usage.completionTokens||estimateTokens(data?.choices?.[0]?.message?.content||''));
+      const completionTokens=Number(usage.completion_tokens||usage.completionTokens||estimateTokens(extractAssistantText(data?.choices?.[0]?.message, !!options?.allowReasoningFallback)||''));
       const durationMs=Date.now()-startedAt; const completionRate=durationMs>0?(completionTokens/(durationMs/1000)):0; const promptRate=durationMs>0?(promptTokens/(durationMs/1000)):0; const telemetry=runtimeTelemetry.recordPrompt({suite,source,promptTokens,completionTokens,totalTokens:Number(usage.total_tokens||usage.totalTokens||promptTokens+completionTokens),maxTokens:Math.min(1024,Math.max(64,Math.round(Number(options?.maxTokens)||768))),contextSize:this.config.contextSize,durationMs,tokensPerSecond:completionRate,promptTokensPerSecond:promptRate,completionTokensPerSecond:completionRate,firstTokenLatencyMs:null,iteration:options?.iteration??null,toolCalls:options?.toolCalls??0,contextBreakdown:options?.contextBreakdown,webSearched:source==='web'||source==='local+web',webProvider:options?.webProvider||null,success});
       if(data && typeof data==='object') data.ginaTelemetry=telemetry;
       return data;
     };
-    try{const data=await request(normalized,'CHAT');this.lastError=null;return recordTelemetry(data,true);}catch(firstError:any){const firstMessage=firstError?.message||String(firstError);this.lastError=firstMessage;this.appendDiagnostic(`CHAT ERROR: ${firstMessage}`);if(isRecoverableTemplateError(firstMessage)||isContextError(firstMessage)||/HTTP 5\d\d|temporar|server busy|overloaded|empty response/i.test(firstMessage)){const fallback=normalizeChatMessages(messages,true);try{const data=await request(fallback,'RECOVERY');this.lastError=null;return recordTelemetry(data,true);}catch(fallbackError:any){this.lastError=fallbackError?.message||String(fallbackError);recordTelemetry({choices:[]},false);}}throw new Error(`${firstMessage} (Gina recovery attempts were also exhausted.)`);}}
+    try{const data=await request(normalized,'CHAT');this.lastError=null;const msg=data?.choices?.[0]?.message;const text=extractAssistantText(msg, !!options?.allowReasoningFallback);if(msg&&typeof msg==='object'&&text&&!(typeof msg.content==='string'&&msg.content.trim())){msg.content=text;}return recordTelemetry(data,true);}catch(firstError:any){const firstMessage=firstError?.message||String(firstError);this.lastError=firstMessage;this.appendDiagnostic(`CHAT ERROR: ${firstMessage}`);if(isRecoverableTemplateError(firstMessage)||isContextError(firstMessage)||/HTTP 5\d\d|temporar|server busy|overloaded|empty response/i.test(firstMessage)){const fallback=normalizeChatMessages(messages,true);try{const data=await request(fallback,'RECOVERY');this.lastError=null;const msg2=data?.choices?.[0]?.message;const text2=extractAssistantText(msg2, !!options?.allowReasoningFallback);if(msg2&&typeof msg2==='object'&&text2&&!(typeof msg2.content==='string'&&msg2.content.trim())){msg2.content=text2;}return recordTelemetry(data,true);}catch(fallbackError:any){this.lastError=fallbackError?.message||String(fallbackError);recordTelemetry({choices:[]},false);}}throw new Error(`${firstMessage} (Gina recovery attempts were also exhausted.)`);}}
 
   async generateCompletion(options: { systemPrompt?: string; prompt: string; temperature?: number; maxTokens?: number; suite?: string; telemetrySource?: PromptTelemetrySource; webProvider?: string | null }): Promise<string> {
     await this.agentSkillsLoadPromise;
@@ -285,7 +302,13 @@ export class LocalLlmManager {
       { role: 'user', content: options.prompt }
     ];
     const res = await this.chat(messages, { temperature: options.temperature ?? 0.7, maxTokens: options.maxTokens ?? 1024, suite: options.suite, telemetrySource: options.telemetrySource, webProvider: options.webProvider });
-    return res?.choices?.[0]?.message?.content || "";
+    const msg = res?.choices?.[0]?.message;
+    const text = extractAssistantText(msg);
+    // Normalize so downstream callers always see a populated content field
+    if (msg && typeof msg === "object" && text && !(typeof msg.content === "string" && msg.content.trim())) {
+      msg.content = text;
+    }
+    return text;
   }
 
   private appendDiagnostic(message:string){const line=String(message).replace(/\s+/g,' ').trim().slice(0,1000);if(!line)return;this.recentLog.push(`[chat] ${line}`);if(this.recentLog.length>60)this.recentLog.splice(0,this.recentLog.length-60);}

@@ -17,7 +17,8 @@ const HISTORICAL_FILES = new Set([
   'src/components/AppFeaturesGuide.tsx',
   'src/components/LTXWorkflowGenerator.tsx',
   'src/components/LTXDiagnostic.tsx',
-  'server/agent/UpdateIntegrityGuard.ts'
+  'server/agent/UpdateIntegrityGuard.ts',
+  'server/agent/AgentConsistencyScanner.js'
 ]);
 
 async function walk(dir: string, out: string[]) {

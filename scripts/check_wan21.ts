@@ -22,10 +22,8 @@ export async function runWanDiagnostic(): Promise<WanDiagnosticResult> {
   const candidatePaths = [
     path.join(comfyRoot, 'models', 'diffusion_models', 'wan2.1_t2v_1.3B_bf16.safetensors'),
     path.join(comfyRoot, 'models', 'checkpoints', 'wan2.1_t2v_1.3B_bf16.safetensors'),
-    path.join(comfyRoot, 'models', 'checkpoints', 'wan2.1_vace_1.3B_fp16.safetensors'),
     'C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\diffusion_models\\wan2.1_t2v_1.3B_bf16.safetensors',
     'C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\checkpoints\\wan2.1_t2v_1.3B_bf16.safetensors',
-    'C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\checkpoints\\wan2.1_vace_1.3B_fp16.safetensors',
     'C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\checkpoints\\wan2.1-1.3b.safetensors',
   ];
 
