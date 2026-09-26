@@ -1,3 +1,18 @@
+# v1.20.13 — GitHub Import Migration & Container Host Port Resilience
+
+- **Target File Path:** `/server.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    const isWin = process.platform === "win32";
+    const PORT = isWin ? 3200 : (process.env.PORT ? parseInt(process.env.PORT, 10) : 3000);
+    const HOST = process.env.HOST || (isWin ? "127.0.0.1" : "0.0.0.0");
+    ...
+    const candidatePorts = isWin
+      ? [3200, 3201, 3202, 3203, 3204, 3205, 3206, 3207, 3208, 3209, 3210]
+      : [PORT];
+    ```
+  - **Why:** Ensured container environments (Linux / Cloud Run / AI Studio preview) bind dynamically to `process.env.PORT` or port 3000 on `0.0.0.0` while strictly preserving the Windows local loopback port 3200 configuration.
+
 # v1.20.13 — Phase 60 — Gina Assistant Full Screen View Top-to-Bottom
 
 - **Target File Path:** `/src/components/StudioWorkspace.tsx`

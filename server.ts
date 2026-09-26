@@ -70,7 +70,7 @@ import audioEngineRoute from './server/routes/audioEngineRoute.ts';
 
 const app = express();
 const isWin = process.platform === "win32";
-const PORT = isWin ? 3200 : 3000;
+const PORT = isWin ? 3200 : (process.env.PORT ? parseInt(process.env.PORT, 10) : 3000);
 const HOST = process.env.HOST || (isWin ? "127.0.0.1" : "0.0.0.0");
 const COMFY_URL = process.env.COMFY_URL || "http://127.0.0.1:8188";
 const GINA_ROOT = process.env.GINA_ROOT || (isWin ? "C:\\Gina_AI" : process.cwd());
@@ -6598,7 +6598,7 @@ async function startServer() {
   // different port can leave the browser pointed at a stale Gina instance.
   const candidatePorts = isWin
     ? [3200, 3201, 3202, 3203, 3204, 3205, 3206, 3207, 3208, 3209, 3210]
-    : [3000];
+    : [PORT];
   let lastError: NodeJS.ErrnoException | undefined;
 
   for (const port of candidatePorts) {
