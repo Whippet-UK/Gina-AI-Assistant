@@ -876,6 +876,12 @@ app.get('/api/prompt-station/telemetry', async (_req, res) => {
   }
 });
 
+app.post('/api/prompt-station/reset', (_req, res) => {
+  runtimeTelemetry.reset();
+  mcpServer.resetTelemetry();
+  res.json({ ok: true, message: 'Prompt Station runtime and MCP history reset.' });
+});
+
 app.get("/api/capabilities", async (_req, res) => {
   try {
     const [gpu, comfy] = await Promise.all([getNvidiaSmi(), getComfyHealth()]);
