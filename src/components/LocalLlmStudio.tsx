@@ -85,11 +85,13 @@ interface LocalLlmPropsTelemetry {
 
 interface LocalLlmStudioProps {
   onAddLog: (level: 'INFO' | 'WARN' | 'SEC' | 'RULE', message: string, ruleId?: string) => void;
+  studioMode?: 'web-search' | 'web-app' | 'code-engine' | 'image-studio' | 'video-generation';
+  onWebAppArtifact?: (html: string) => void;
 }
 
-const SYSTEM_PROMPT = `You are Gina, the local AI assistant inside Gina AI Factory. You run locally on a Windows PC with an NVIDIA RTX 3070 Ti 8GB, AMD Ryzen 5 5600X 6-core/12-thread CPU and 32GB RAM. Be practical and concise. Prefer the project's existing local tools and files. You can request local image generation through Gina's Create/ComfyUI tool when the user explicitly asks for an image. Do not claim an image was generated unless Gina has actually returned one. Do not tell the user that Gina is text-only when local image generation is available.`;
+const SYSTEM_PROMPT = `You are Gina, the local AI assistant inside Gina AI Factory. You run locally on a Windows PC with an NVIDIA RTX 3070 Ti 8GB, AMD Ryzen 5 5600X 6-core/12-thread CPU and 32GB RAM. Be practical and concise. Prefer the project's existing local tools and files. You can request local image generation through Gina's Create/ComfyUI tool when the user explicitly asks for an image. Do not claim an image was generated unless Gina has actually returned one. Do not tell the user that Gina is text-only when local image generation is available. Never reveal chain-of-thought, hidden reasoning, internal deliberation, or a section labelled Thinking Process. Return only the concise user-facing answer and useful verified results.`;
 
-export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
+export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog, studioMode = 'web-app', onWebAppArtifact }) => {
   const [status, setStatus] = useState<LocalLlmStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [thinkingSource, setThinkingSource] = useState<'local'|'web'|'local+web'>('local');
@@ -97,7 +99,12 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
   const { job: generationJob, adoptJob, adoptCompletedOutput, updateJobProgress, cancelJob } = useGenerationJob();
   const [aiImageJobId, setAiImageJobId] = useState<string | null>(null);
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('gina_studio_messages') || '[]');
+      return Array.isArray(saved) ? saved.slice(-30) : [];
+    } catch { return []; }
+  });
   const [error, setError] = useState<string | null>(null);
   const [pdfSaving, setPdfSaving] = useState(false);
   const [pdfNotice, setPdfNotice] = useState<string | null>(null);
@@ -540,6 +547,9 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     // Tables: remove pipe separators while preserving cell text.
     text = text.replace(/^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/gm, '');
     text = text.replace(/\s*\|\s*/g, '. ');
+    // Voice should sound natural: do not literally announce common punctuation symbols.
+    text = text.replace(/[\/:;]+/g, ' ');
+    text = text.replace(/\s+-\s+/g, '. ');
     // HTML tags and escaped Markdown punctuation.
     text = text.replace(/<[^>]*>/g, '');
     text = text.replace(/\\([*_`#>\[\]\\])/g, '$1');
@@ -721,7 +731,49 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
   });
   const [agentStatus, setAgentStatus] = useState<string>('READY');
   const [agentActivity, setAgentActivity] = useState<string[]>([]);
+
+  useEffect(() => {
+    try { sessionStorage.setItem('gina_studio_messages', JSON.stringify(messages.slice(-30).map(m => ({ ...m, content: String(m.content || '').slice(0, 12000) })))); } catch {}
+  }, [messages]);
   const [githubUrl, setGithubUrl] = useState('');
+
+  const pushAgentActivity = (entry: string) => setAgentActivity(prev => [...prev, entry].slice(-24));
+  const describeAgentStep = (action: string, result?: any, message?: string) => {
+    const r = result && typeof result === 'object' ? result : {};
+    const pathValue = r.path || r.file || r.filePath || r.target || r.workspace || r.directory;
+    const command = r.command || r.cmd;
+    if (/^(execute_command|validate_project)$/.test(action)) return `[EXEC_STEP: ${action === 'validate_project' ? 'Ran validation' : 'Ran a command'}]\n${command ? String(command).slice(0, 500) + '\n' : ''}${message || '✓ Completed'}\n[END_STEP]`;
+    if (/^(edit_file|patch_file|write_file|create_directory|move_file)$/.test(action)) return `[FILE_STEP: ${action === 'create_directory' ? 'Created a directory' : action === 'write_file' ? 'Wrote a file' : 'Edited a file'}${pathValue ? ` ${String(pathValue).slice(0, 180)}` : ''}]\n${message || '✓ Completed'}\n[END_STEP]`;
+    if (/^(read_file|read_text_file|read_multiple_files|get_file_info|search_files|directory_tree|list_directory|workspace_inspect|inspect_project_context|read_project_bundle)$/.test(action)) return `[FILE_STEP: Read project data${pathValue ? ` ${String(pathValue).slice(0, 180)}` : ''}]\n${message || '✓ Read completed'}\n[END_STEP]`;
+    return `[EXEC_STEP: ${message || action}]\n✓ ${r.ok === false ? 'Failed' : 'Completed'}\n[END_STEP]`;
+  };
+
+  const runWebAppArtifact = async (task: string) => {
+    pushAgentActivity('[EXEC_STEP: Preparing Web App artifact]\n✓ Sending the build request to the local model\n[END_STEP]');
+    setAgentStatus('GENERATING ARTIFACT');
+    const response = await fetch('/api/llm/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [
+          { role: 'system', content: 'You are Gina Web App Studio. Build the requested interactive web app as a single self-contained HTML document. Return ONLY the complete HTML document, with inline CSS and JavaScript, no markdown fences, no explanation, no thinking process.' },
+          { role: 'user', content: task }
+        ],
+        temperature: 0.45, maxTokens: 1600, suite: 'Web App Studio'
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error || `Web App generation failed (HTTP ${response.status}).`);
+    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
+    const htmlMatch = raw.match(/```html\s*([\s\S]*?)```/i);
+    const html = (htmlMatch?.[1] || raw).trim();
+    if (!/^<!doctype html|<html[\s>]/i.test(html)) throw new Error('The local model did not return a complete HTML artifact.');
+    setAgentStatus('RENDERING ARTIFACT');
+    pushAgentActivity('[FILE_STEP: Generated Web App artifact]\n✓ HTML received and ready for live rendering\n[END_STEP]');
+    onWebAppArtifact?.(html);
+    setAgentStatus('COMPLETED');
+    setMessages(prev => [...prev, { role:'assistant', content:'Web App artifact generated and rendered in the right-hand workspace.' }]);
+  };
 
   const runProjectAgent = async (task: string) => {
     const executionRoot = agentWorkspace || 'C:\\Gina_AI';
@@ -734,17 +786,18 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     const id = data.runId;
     setAgentStatus('WORKING');
     setAgentActivity([]);
+    pushAgentActivity('[EXEC_STEP: Agent started]\n✓ Inspecting the workspace before editing\n[END_STEP]');
     await new Promise<void>((resolve, reject) => {
       const es = new EventSource(`/api/agent/runs/${encodeURIComponent(id)}/stream`);
       const finish = () => { es.close(); resolve(); };
       es.addEventListener('status', (ev:any) => {
-        try { const d=JSON.parse(ev.data||'{}'); setAgentStatus(d.phase || 'WORKING'); if(d.message) setAgentActivity(prev=>[...prev,d.message].slice(-12)); } catch {}
+        try { const d=JSON.parse(ev.data||'{}'); setAgentStatus(d.phase || 'WORKING'); if(d.message) pushAgentActivity(`[EXEC_STEP: ${d.phase || 'Agent activity'}]\n${d.message}\n[END_STEP]`); } catch {}
       });
       es.addEventListener('step_started', (ev:any) => {
         try { const d=JSON.parse(ev.data||'{}'); setAgentActivity(prev=>[...prev, d.message || `Working on step ${d.step}`].slice(-12)); } catch {}
       });
       es.addEventListener('step_completed', (ev:any) => {
-        try { const d=JSON.parse(ev.data||'{}'); if(d.summary) setAgentActivity(prev=>[...prev,d.summary].slice(-12)); } catch {}
+        try { const d=JSON.parse(ev.data||'{}'); if(d.summary) pushAgentActivity(describeAgentStep(String(d.action || 'agent_step'), d.result, d.summary)); } catch {}
       });
       es.addEventListener('state', async (ev:any) => {
         try {
@@ -821,6 +874,14 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     if (!text || !status?.ready || loading) return;
 
     try {
+      if (studioMode === 'web-app') {
+        const nextMessages: ChatMessage[] = [...messages, { role:'user', content:text }];
+        setMessages(nextMessages); setInput(''); setLoading(true); setError(null);
+        try { await runWebAppArtifact(typedText); }
+        catch (webAppError:any) { setError(webAppError?.message || 'Web App generation failed.'); pushAgentActivity(`[EXEC_STEP: Web App failed]\n${webAppError?.message || 'Unknown error'}\n[END_STEP]`); }
+        finally { setLoading(false); }
+        return;
+      }
       const capabilityResponse = await fetch('/api/agent/capability-plan', {
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text:typedText})
       });
@@ -879,10 +940,34 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
     setError(null);
     const webIntent = /\b(search|google|browse|look(?: it)? up|find|latest|current|today|now|news|headline|headlines|weather|forecast|temperature|price|cost|flight|flights|airline|airport|ticket|tickets|fare|fares|cheap(?:est)?|hotel|hotels|holiday|travel|schedule|score|crypto|bitcoin|stock)\b/i.test(text)
       || /\b(?:https?:\/\/|www\.|\.com\b|\.co\.uk\b|\.org\b)/i.test(text);
-    setThinkingSource(webIntent ? 'local+web' : 'local');
-
     try {
       const controller = new AbortController();
+      chatAbortRef.current = controller;
+      let webGrounding: any = null;
+      if (webIntent) {
+        setAgentStatus('SEARCHING WEB');
+        setAgentActivity(['Starting live web search before local generation…']);
+        const searchResponse = await fetch('/api/agent/web-search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: text, maxResults: 8 }),
+          signal: controller.signal,
+        });
+        const searchData = await searchResponse.json().catch(() => ({}));
+        if (!searchResponse.ok) throw new Error(searchData?.error || `Live web search failed (HTTP ${searchResponse.status}).`);
+        const results = Array.isArray(searchData?.results) ? searchData.results : [];
+        webGrounding = {
+          text: results.map((r:any, i:number) => `[WEB RESULT ${i + 1}]\nTitle: ${r.title || ''}\nURL: ${r.url || ''}\nSnippet: ${r.snippet || ''}`).join('\n\n'),
+          provider: searchData?.provider || 'verified web search',
+          engine: searchData?.engine || 'HTTP fetcher',
+          sources: results.slice(0, 8).map((r:any) => ({ title:r.title, url:r.url, snippet:r.snippet, source:r.source }))
+        };
+        setAgentStatus('READING WEB RESULTS');
+        setAgentActivity([`Live search returned ${results.length} result${results.length === 1 ? '' : 's'}.`, 'Reading verified web results…']);
+      } else {
+        setAgentStatus('GENERATING');
+        setAgentActivity(['Generating a concise local response…']);
+      }
       chatAbortRef.current = controller;
       const response = await fetch('/api/llm/chat', {
         method: 'POST',
@@ -895,6 +980,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
           attachments: attachedFiles.filter(file => file.kind === 'image').map(file => ({
             name: file.name, mime: file.mime, localPath: file.localPath, kind: file.kind
           })),
+          webGrounding,
         }),
         signal: controller.signal,
       });
@@ -905,8 +991,21 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
         const diagnostic = data?.diagnostic?.recentLog?.slice?.(-3)?.join?.(' | ');
         throw new Error([data?.error || `HTTP ${response.status}`, diagnostic].filter(Boolean).join(' — '));
       }
-      const reply = data?.choices?.[0]?.message?.content;
-      if (typeof reply !== 'string' || !reply.trim()) throw new Error('The local model returned an empty response.');
+      const msg = data?.choices?.[0]?.message;
+      const extractReply = (m: any): string => {
+        if (!m || typeof m !== 'object') return '';
+        // Never prefer hidden reasoning fields. The server sanitizes legacy thinking-model fallbacks.
+        for (const raw of [m.content]) {
+          if (typeof raw === 'string' && raw.trim()) return raw;
+          if (Array.isArray(raw)) {
+            const joined = raw.map((p: any) => (typeof p === 'string' ? p : (p?.text ?? ''))).join('');
+            if (joined.trim()) return joined;
+          }
+        }
+        return '';
+      };
+      const reply = extractReply(msg);
+      if (!reply.trim()) throw new Error('The local model returned an empty response.');
       const htmlPreview = reply.match(/```html\n?([\s\S]*?)```/i);
       const firstMarkdownLink = reply.match(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/);
       const telemetrySources = Array.isArray(data?.ginaTelemetry?.webSources) ? data.ginaTelemetry.webSources : [];
@@ -1143,9 +1242,14 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
           <div className="flex-1 min-h-[calc(100vh-430px)] h-[calc(100vh-430px)] grid grid-cols-12 gap-3 min-w-0">
             <div className="col-span-12 xl:col-span-8 min-w-0 overflow-y-auto custom-scrollbar space-y-3 pr-1">
             {!messages.length && <div className="h-full min-h-[400px] flex items-center justify-center text-center text-slate-600 text-xs"><div><Zap className="w-6 h-6 mx-auto mb-2 text-slate-700" /><p>Start Qwen locally to chat with Gina.</p><p className="text-[10px] mt-1">No cloud provider is used.</p></div></div>}
-            {agentWorkspace && <div className="mb-2 rounded border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[9px] font-mono">
-            <div className="flex justify-between"><span className="text-amber-300">GINA CODING WORKSPACE</span><span className="text-slate-500">{agentStatus}</span></div>
-            {agentActivity.length > 0 && <div className="mt-1 text-slate-400 truncate">{agentActivity[agentActivity.length-1]}</div>}
+            {(agentWorkspace || agentActivity.length > 0 || loading) && <div className="mb-2 rounded border border-slate-800 bg-slate-950/80 px-3 py-2 text-[9px] font-mono">
+            <div className="flex items-center justify-between gap-2"><span className="text-amber-300 font-bold">{agentWorkspace ? 'GINA CODING WORKSPACE' : 'GINA STUDIO ACTIVITY'}</span><span className="text-slate-500">{agentStatus}</span></div>
+            {agentActivity.length > 0 && <details open={loading} className="mt-2">
+              <summary className="cursor-pointer select-none text-slate-500">{agentActivity.length} live execution event{agentActivity.length === 1 ? '' : 's'}</summary>
+              <div className="mt-1.5 max-h-56 overflow-auto space-y-1">
+                {agentActivity.map((entry, i) => <pre key={`${i}-${entry.slice(0,24)}`} className="whitespace-pre-wrap rounded border border-slate-800 bg-slate-900/80 px-2 py-1.5 text-[8px] leading-relaxed text-slate-400">{entry}</pre>)}
+              </div>
+            </details>}
           </div>}
           {messages.map((message, index) => (
               <div key={`${message.role}-${index}`} className={`rounded-lg border p-3 text-xs leading-relaxed ${message.role === 'user' ? 'ml-10 bg-emerald-500/5 border-emerald-500/20 text-slate-200' : 'mr-10 bg-slate-900 border-slate-800 text-slate-300'}`}>
@@ -1213,7 +1317,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({ onAddLog }) => {
                           ? 'Gina is searching the live web & browsing sources…'
                           : thinkingSource === 'web'
                           ? 'Gina is searching the live web…'
-                          : 'Gina is thinking locally…'}
+                          : 'Gina is working locally…'}
                       </span>
                       {(thinkingSource === 'local+web' || thinkingSource === 'web') && (
                         <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-mono font-bold">

@@ -19,6 +19,7 @@ import { LocalLlmStudio } from './components/LocalLlmStudio';
 import { WorkspaceErrorBoundary } from './components/WorkspaceErrorBoundary';
 import { ComfyUIStatusIndicator } from './components/WanDiagnostic';
 import { RuntimeTelemetryPanel } from './components/RuntimeTelemetryPanel';
+import { StudioWorkspace } from './components/StudioWorkspace';
 import { LogEntry, SystemTelemetry } from './types';
 import { Aida64Hud } from './components/Aida64Hud';
 import { APP_VERSION, ACTIVE_SAVE_POINT_ID } from './version';
@@ -187,7 +188,7 @@ interface AppContentProps {
 }
 
 function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCache, handleRunAudit, isAuditing, activeSavePoint, isCooldownActive, cooldownRemainingSec, isManifestOpen, setIsManifestOpen }: AppContentProps) {
-  const [activeView, setActiveView] = useState<'create' | 'video' | 'gif' | 'streaminject' | 'music' | 'audio' | 'aida64' | 'shorts' | 'assets' | 'jobs' | 'llm' | 'system'>('create');
+  const [activeView, setActiveView] = useState<'studio' | 'create' | 'video' | 'gif' | 'streaminject' | 'music' | 'audio' | 'aida64' | 'shorts' | 'assets' | 'jobs' | 'llm' | 'system'>('studio');
   const [isTelemetryOpen, setIsTelemetryOpen] = useState<boolean>(false);
   const { job, outputLoading } = useGenerationJob();
   const { updatePromptStudio } = useProjectState();
@@ -197,6 +198,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
   const isImageJob = !job?.workflowId || job?.workflowId.includes('flux') || job?.workflowId.includes('image');
 
   const navItems = [
+    { id: 'studio' as const, label: 'AI STUDIO', icon: Bot, isGenerating: false },
     { id: 'create' as const, label: 'IMAGE CREATION STUDIO', icon: Image, isGenerating: isJobActive && isImageJob },
     { id: 'video' as const, label: 'VIDEO', icon: Video, isGenerating: isJobActive && isVideoJob },
     { id: 'gif' as const, label: 'GIF STUDIO', icon: Film, isGenerating: isJobActive && job?.workflowId === 'gif_studio' },
@@ -244,6 +246,10 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
             <div className="ml-auto hidden md:flex items-center gap-2 text-[9px] font-mono text-slate-600"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> LOCAL-FIRST CREATOR ENGINE</div>
           </nav>
         </div>
+
+        <main className={`${activeView === 'studio' ? 'block' : 'hidden'}`}>
+          <StudioWorkspace telemetry={telemetry} logs={logs} onAddLog={logWithOomCheck} onClearCache={() => handleClearCache(false, true)} />
+        </main>
 
         <main className={`space-y-5 ${activeView === 'create' ? 'block' : 'hidden'}`}>
           <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Creator workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Image Creation Studio</h1><p className="text-xs text-slate-500 mt-1">Generate locally through your validated ComfyUI workflows.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">IMAGE · LOCAL · QWEN + JUGGERNAUT-XL V9</div></div>

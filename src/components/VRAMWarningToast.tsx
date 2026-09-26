@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { AlertTriangle, Cpu, X, ChevronDown, ChevronUp, ShieldAlert, Thermometer, Trash2 } from 'lucide-react';
+import { AlertTriangle, Cpu, X, ChevronDown, ChevronUp, ShieldAlert, Thermometer, Trash2, GripVertical, RotateCcw } from 'lucide-react';
 import { SystemTelemetry } from '../types';
 
 interface VRAMWarningToastProps {
@@ -23,8 +23,9 @@ export const VRAMWarningToast: React.FC<VRAMWarningToastProps> = ({
   onClearCache
 }) => {
   const [userDismissed, setUserDismissed] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [lastWarningTime, setLastWarningTime] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   const vramUsed = telemetry.vramUsedMB || 0;
   const vramTotal = telemetry.vramTotalMB || 7372;
@@ -41,6 +42,8 @@ export const VRAMWarningToast: React.FC<VRAMWarningToastProps> = ({
       setLastWarningTime(null);
     }
   }, [isOverThreshold, isCooldownActive, lastWarningTime]);
+
+  const handleResetPosition = () => setDragOffset({ x: 0, y: 0 });
 
   const handleDismiss = () => {
     setUserDismissed(true);
@@ -64,8 +67,12 @@ export const VRAMWarningToast: React.FC<VRAMWarningToastProps> = ({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -20, scale: 0.95 }}
           transition={{ duration: 0.25, ease: 'easeOut' }}
-          className={`fixed top-6 right-6 z-50 max-w-sm w-[calc(100vw-3rem)] sm:w-96 bg-slate-900/95 border-2 ${isCooldownActive ? 'border-cyan-500/80 shadow-cyan-500/20' : 'border-amber-500/70'} rounded-xl shadow-2xl backdrop-blur-md p-4 text-slate-100 font-sans pointer-events-auto`}
-          style={{ boxShadow: isCooldownActive ? '0 12px 36px -4px rgba(6, 182, 212, 0.35)' : '0 12px 36px -4px rgba(245, 158, 11, 0.35)' }}
+          drag
+          dragMomentum={false}
+          dragElastic={0.08}
+          onDragEnd={(_event, info) => setDragOffset(prev => ({ x: prev.x + info.offset.x, y: prev.y + info.offset.y }))}
+          className={`fixed top-3 right-3 z-50 max-w-[18rem] w-[calc(100vw-1.5rem)] sm:w-[18rem] bg-slate-900/95 border ${isCooldownActive ? 'border-cyan-500/80 shadow-cyan-500/20' : 'border-amber-500/70'} rounded-lg shadow-2xl backdrop-blur-md p-2.5 text-slate-100 font-sans pointer-events-auto cursor-move`}
+          style={{ x: dragOffset.x, y: dragOffset.y, boxShadow: isCooldownActive ? '0 12px 36px -4px rgba(6, 182, 212, 0.35)' : '0 12px 36px -4px rgba(245, 158, 11, 0.35)' }}
         >
           {/* Header */}
           <div className="flex items-start justify-between gap-2 border-b border-slate-800 pb-2.5">
@@ -96,6 +103,7 @@ export const VRAMWarningToast: React.FC<VRAMWarningToastProps> = ({
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
+              <GripVertical className="w-3.5 h-3.5 text-slate-600" title="Drag widget" />
               <button
                 type="button"
                 onClick={() => setCollapsed(!collapsed)}
@@ -104,6 +112,15 @@ export const VRAMWarningToast: React.FC<VRAMWarningToastProps> = ({
                 aria-label={collapsed ? 'Expand details' : 'Collapse details'}
               >
                 {collapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                type="button"
+                onClick={handleResetPosition}
+                className="p-1 text-slate-500 hover:text-slate-200 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Reset widget position"
+                aria-label="Reset widget position"
+              >
+                <RotateCcw className="w-3 h-3" />
               </button>
               <button
                 type="button"
@@ -118,7 +135,7 @@ export const VRAMWarningToast: React.FC<VRAMWarningToastProps> = ({
           </div>
 
           {/* Body / Telemetry Meter */}
-          <div className="mt-3 space-y-2.5 font-mono">
+          <div className="mt-2 space-y-2 font-mono">
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-slate-400 flex items-center gap-1.5">
                 <Cpu className="w-3.5 h-3.5 text-amber-400" />

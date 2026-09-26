@@ -23,10 +23,9 @@ interface VideoStudioProps {
 // Wan 2.1 1.3B is running on an 8GB RTX 3070 Ti. Keep the UI inside the
 // tested conservative envelope: one temporal sequence, <=73 frames and <=393,216 pixels.
 const durationOptions = [
-  { id: '1s_12f', seconds: 1, frames: 12, label: '1.0s Micro · 12 frames', vram: 'Micro-Baseline · 12 frames' },
-  { id: '1s_25f', seconds: 1, frames: 25, label: '1.0s · 25 frames', vram: 'Safest · 512×512' },
-  { id: '2s_49f', seconds: 2, frames: 49, label: '2.0s · 49 frames', vram: 'Safe · 512×512' },
-  { id: '3s_73f', seconds: 3, frames: 73, label: '3.0s · 73 frames', vram: 'Safe ceiling · 512×512 / 512×768' },
+  { seconds: 1, frames: 25, label: '1.0s · 25 frames', vram: 'Safest · 512×512' },
+  { seconds: 2, frames: 49, label: '2.0s · 49 frames', vram: 'Safe · 512×512' },
+  { seconds: 3, frames: 73, label: '3.0s · 73 frames', vram: 'Safe ceiling · 512×512 / 512×768' },
 ];
 
 const videoResolutionPresets = [
@@ -62,25 +61,6 @@ interface VideoPreset {
 }
 
 const videoParameterPresets: VideoPreset[] = [
-  {
-    id: 'micro_1s_12f',
-    name: 'Micro Baseline · 1.0s',
-    badge: '512×512 · 12 frames · Smoke Test',
-    description: 'Micro-generation (1.0s target duration, 12 frames raw baseline) using Whippet character slot anchor for safe CUDA/bfloat16 tensor allocation without OOM.',
-    icon: '🐕',
-    motionScale: 0.6,
-    durationSec: 1,
-    frames: 12,
-    fps: 12,
-    steps: 12,
-    cfgScale: 3.0,
-    resolutionLabel: '512 × 512 · 1:1 Safest',
-    width: 512,
-    height: 512,
-    cameraMotion: 'Static Tripod Mount',
-    isSafe8GB: true,
-    interpolationMultiplier: 1
-  },
   {
     id: 'safe_1s_square',
     name: 'Safe · 1.0s',
@@ -191,10 +171,6 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
   const [prompt, setPrompt] = useState('A majestic black dragon breathing fiery embers in an obsidian cavern, slow cinematic camera pan, 8k resolution');
   const [negativePrompt, setNegativePrompt] = useState('blurry, static, distorted motion, flickering, low resolution, bad anatomy');
   const [showNegative, setShowNegative] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string>('wan2.1_t2v_1.3B_bf16.safetensors');
-  const [enableCharacterAnchor, setEnableCharacterAnchor] = useState<boolean>(true);
-  const [characterBreed, setCharacterBreed] = useState<string>('Whippet');
-  const [characterColor, setCharacterColor] = useState<string>('pure white');
   const [selectedDuration, setSelectedDuration] = useState(1); // Wan temporal length uses 24 intervals/sec + first frame
   const [customFrames, setCustomFrames] = useState(25);
   const [fps, setFps] = useState(24);
@@ -262,10 +238,6 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
     if (preset.interpolationMultiplier) {
       setInterpolationMultiplier(preset.interpolationMultiplier);
     }
-    if (preset.id === 'micro_1s_12f') {
-      setSelectedModel('wan2.1_vace_1.3B_fp16.safetensors');
-      setEnableCharacterAnchor(true);
-    }
     onAddLog('INFO', `Loaded Wan 2.1 preset: "${preset.name}" (${preset.badge})`);
   };
 
@@ -278,8 +250,8 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       const videoCapability = (data.capabilities || data).capabilities?.find?.((c:any) => c.id === 'wan-video') || (data.capabilities || []).find?.((c:any) => c.id === 'wan-video');
       const models = Array.isArray(data.models) ? data.models : [];
-      const wanModel = models.find((m:any) => /wan2\.1.*1\.3b|wan.*vace/i.test(String(m.fileName || m.name || '')));
-      const report = { comfyResponsive: Boolean(data.comfy?.connected ?? data.runtime?.comfyConnected ?? data.comfyConnected ?? true), modelFound: Boolean(wanModel || videoCapability), modelFile: wanModel?.fileName || selectedModel, capability: videoCapability, recommendations: [] };
+      const wanModel = models.find((m:any) => /wan2\.1.*1\.3b/i.test(String(m.fileName || m.name || '')));
+      const report = { comfyResponsive: Boolean(data.comfy?.connected ?? data.runtime?.comfyConnected ?? data.comfyConnected ?? true), modelFound: Boolean(wanModel || videoCapability), modelFile: wanModel?.fileName || 'wan2.1_t2v_1.3B_bf16.safetensors', capability: videoCapability, recommendations: [] };
       setDiagResult(report);
       if (report.comfyResponsive && report.modelFound) {
         onAddLog('INFO', 'Diagnostic PASSED: ComfyUI is responsive and the active Wan 2.1 video capability is available.');
@@ -294,9 +266,11 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
   };
 
   // Keep custom frames in sync with selected duration option unless overridden
-  const activeDurationOpt = durationOptions.find(d => d.seconds === selectedDuration && d.frames === customFrames)
-    || durationOptions.find(d => d.seconds === selectedDuration)
-    || durationOptions[1];
+  const activeDurationOpt = durationOptions.find(d => d.seconds === selectedDuration) || durationOptions[2];
+
+  useEffect(() => {
+    setCustomFrames(activeDurationOpt.frames);
+  }, [selectedDuration]);
 
   const handleResolutionChange = (resLabel: string) => {
     setResolution(resLabel);
@@ -313,16 +287,11 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
   };
 
   const handleGenerateVideo = async (promptOverride?: string) => {
-    const rawPrompt = String(promptOverride ?? prompt).trim();
-    if (!rawPrompt) {
+    const activePrompt = String(promptOverride ?? prompt).trim();
+    if (!activePrompt) {
       onAddLog('WARN', 'Please enter a video prompt before generating.');
       return;
     }
-
-    const characterSnippet = enableCharacterAnchor
-      ? `, ${characterColor} ${characterBreed} character slot anchor, pristine white coat, photorealistic texture, natural soft fur lighting, subject continuity`
-      : '';
-    const activePrompt = rawPrompt + characterSnippet;
 
     const currentSeed = isRandomSeed ? Math.floor(Math.random() * 1000000000) : seed;
     if (isRandomSeed) setSeed(currentSeed);
@@ -335,7 +304,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
       body: JSON.stringify({ unload_models: false, free_memory: true })
     }).catch(() => null);
 
-    onAddLog('INFO', `Submitting Wan 2.1 Video Job: "${activePrompt.slice(0, 45)}..." (${customFrames} frames @ ${fps}fps, model ${selectedModel}, motion scale ${motionScale})`);
+    onAddLog('INFO', `Submitting Wan 2.1 Video Job: "${activePrompt.slice(0, 45)}..." (${customFrames} frames @ ${fps}fps, motion scale ${motionScale})`);
 
     const resultJob = await startJob('wan_video', {
       prompt: activePrompt,
@@ -351,9 +320,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
       steps,
       cfg: cfgScale,
       camera_motion: cameraMotion,
-      model: selectedModel,
-      character_anchor: enableCharacterAnchor ? characterBreed : undefined,
-      character_slot: enableCharacterAnchor ? 1 : undefined
+      model: 'wan2.1_t2v_1.3B_bf16.safetensors'
     });
 
     if (!resultJob) {
@@ -545,116 +512,6 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Video Parameter Controls (7 Cols) */}
         <div className="lg:col-span-7 space-y-5">
-          {/* Model Architecture & Footprint Selector */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
-                <Cpu className="w-3.5 h-3.5 text-sky-400" />
-                Video Model Architecture & Footprint
-              </label>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-                selectedModel.includes('vace')
-                  ? 'bg-sky-500/10 text-sky-300 border-sky-500/30'
-                  : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-              }`}>
-                {selectedModel.includes('vace') ? '5400 MB FOOTPRINT · VACE CONTROL' : '5200 MB FOOTPRINT · NATIVE'}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedModel('wan2.1_t2v_1.3B_bf16.safetensors')}
-                className={`p-3 rounded border text-left transition-all cursor-pointer ${
-                  selectedModel === 'wan2.1_t2v_1.3B_bf16.safetensors'
-                    ? 'bg-emerald-500/15 border-emerald-400 text-slate-100 shadow-md shadow-emerald-500/10'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-200">Wan 2.1 1.3B BF16</span>
-                  <span className="text-[9px] font-mono text-emerald-400">5200 MB</span>
-                </div>
-                <div className="text-[10px] text-slate-400 mt-1">Native direct video generation · standard temporal synthesis</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedModel('wan2.1_vace_1.3B_fp16.safetensors');
-                  setEnableCharacterAnchor(true);
-                }}
-                className={`p-3 rounded border text-left transition-all cursor-pointer ${
-                  selectedModel === 'wan2.1_vace_1.3B_fp16.safetensors'
-                    ? 'bg-sky-500/15 border-sky-400 text-slate-100 shadow-md shadow-sky-500/10'
-                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-200">Wan 2.1 VACE 1.3B FP16</span>
-                  <span className="text-[9px] font-mono text-sky-400 font-bold">5400 MB</span>
-                </div>
-                <div className="text-[10px] text-slate-400 mt-1">Character anchor & reference control · 8GB-safe bfloat16</div>
-              </button>
-            </div>
-          </div>
-
-          {/* Character Image Slot Anchor Card */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-base">🐕</span>
-                <div>
-                  <div className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                    Whippet Character Slot Anchor
-                    <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">Slot 1</span>
-                  </div>
-                  <div className="text-[10px] text-slate-400 font-mono">Character Identity & Subject Continuity Anchor</div>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setEnableCharacterAnchor(!enableCharacterAnchor)}
-                className={`px-2.5 py-1 rounded text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
-                  enableCharacterAnchor
-                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                    : 'bg-slate-950 text-slate-500 border-slate-800'
-                }`}
-              >
-                {enableCharacterAnchor ? 'ANCHOR ACTIVE' : 'ANCHOR OFF'}
-              </button>
-            </div>
-
-            {enableCharacterAnchor && (
-              <div className="p-2.5 rounded bg-slate-950 border border-slate-800 text-[11px] space-y-2">
-                <div className="flex items-center justify-between text-[10px]">
-                  <span className="text-slate-400 font-medium">Anchor Subject: <strong className="text-slate-200">{characterColor} {characterBreed}</strong></span>
-                  <span className="text-emerald-400 font-mono text-[9px]">● Locked to Image Slot 1</span>
-                </div>
-                <div className="text-[10px] text-slate-500 font-mono">
-                  Preserves pristine white fur coat, lighting, and anatomy across video generation steps.
-                </div>
-                <div className="flex gap-1.5 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPrompt('A pristine pure white whippet walking gracefully across an atmospheric studio stage, soft cinematic rim lighting, 8k resolution');
-                      setCustomFrames(12);
-                      setSelectedDuration(1);
-                      setFps(12);
-                      setSteps(12);
-                      setSelectedModel('wan2.1_vace_1.3B_fp16.safetensors');
-                    }}
-                    className="px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 text-[9px] font-mono flex items-center gap-1 cursor-pointer"
-                  >
-                    ⚡ Load 1.0s Whippet Micro-Smoke Test (12 frames)
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* Wan 2.1 Preset Selector */}
           <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -753,30 +610,24 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
             <div className="space-y-2">
               <label className="text-[11px] font-semibold text-slate-300">Target Duration (8GB VRAM Safe Bounds)</label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {durationOptions.map((opt) => {
-                  const isSelected = selectedDuration === opt.seconds && customFrames === opt.frames;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedDuration(opt.seconds);
-                        setCustomFrames(opt.frames);
-                      }}
-                      className={`p-2.5 rounded border text-left transition-colors ${
-                        isSelected
-                          ? 'bg-emerald-500/10 border-emerald-500 text-emerald-300'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="text-xs font-bold">{opt.seconds}.0 Seconds</div>
-                      <div className="text-[9px] font-mono text-slate-500 mt-0.5">{opt.frames} frames</div>
-                      <div className={`text-[8px] font-mono mt-1 ${isSelected ? 'text-emerald-400' : 'text-slate-600'}`}>
-                        {opt.vram}
-                      </div>
-                    </button>
-                  );
-                })}
+                {durationOptions.map((opt) => (
+                  <button
+                    key={opt.seconds}
+                    type="button"
+                    onClick={() => setSelectedDuration(opt.seconds)}
+                    className={`p-2.5 rounded border text-left transition-colors ${
+                      selectedDuration === opt.seconds
+                        ? 'bg-emerald-500/10 border-emerald-500 text-emerald-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="text-xs font-bold">{opt.seconds}.0 Seconds</div>
+                    <div className="text-[9px] font-mono text-slate-500 mt-0.5">{opt.frames} frames</div>
+                    <div className={`text-[8px] font-mono mt-1 ${selectedDuration === opt.seconds ? 'text-emerald-400' : 'text-slate-600'}`}>
+                      {opt.vram}
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
 

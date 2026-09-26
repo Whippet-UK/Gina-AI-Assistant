@@ -387,8 +387,7 @@ export const GifStudio: React.FC<GifStudioProps> = ({ telemetry, onAddLog }) => 
                     <span className="text-[7px] text-emerald-400 font-mono">FP8_e4m3fn · Mandatory for 8GB</span>
                   </div>
                   <select value={storyModel} onChange={e=>setStoryModel(e.target.value)} className="mt-1 w-full bg-slate-900 border border-slate-800 rounded px-2 py-1.5 text-xs text-slate-200">
-                    <option value="wan2.1_t2v_1.3B_bf16.safetensors">Wan 2.1 1.3B BF16 (Native · 5200 MB Footprint)</option>
-                    <option value="wan2.1_vace_1.3B_fp16.safetensors">Wan 2.1 VACE 1.3B FP16 (Reference Control · 5400 MB Footprint)</option>
+                    <option value="wan2.1_t2v_1.3B_bf16.safetensors">Wan 2.1 1.3B BF16 (Native · 8GB-oriented)</option>
                   </select>
                 </div>
 
