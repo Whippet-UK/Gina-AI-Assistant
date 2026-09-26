@@ -163,6 +163,12 @@ export class McpServerAdapter {
     }
   }
 
+  resetTelemetry() {
+    this.telemetry.length = 0;
+    this.requestCount = 0;
+    this.errorCount = 0;
+  }
+
   private recordTelemetry(action: string, durationMs: number, ok: boolean) {
     this.telemetry.unshift({
       id: `mcp_${Date.now()}_${this.telemetry.length}`,
