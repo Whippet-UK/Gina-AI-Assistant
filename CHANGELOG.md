@@ -3206,3 +3206,10 @@ className={... 'sm:w-[18rem]' ...}
 - Added persistent Studio chat history via session storage so switching Studio modes does not discard the current conversation.
 - Added a dedicated Web App Studio generation path that creates a complete single-file HTML artifact and immediately renders it in the right-hand artifact panel.
 - Added live Web App generation/rendering activity states.
+
+
+## 2026-09-26 — Make GINA ASSISTANT the primary workspace
+
+- **Target File Path:** `/src/App.tsx`
+  - **Exact Code Area:** Removed the standalone `LOCAL AI` and `UNIFIED DASHBOARD` navigation entries and their render blocks; removed the now-unused `LocalLlmStudio`, `UnifiedAiDashboard`, and `Activity` imports.
+  - **Why:** The new `StudioWorkspace` is already the primary **GINA ASSISTANT** surface and contains the five requested operating modes. The duplicate dashboard/Local AI tabs were removed so the new assistant is not presented as a separate dashboard tab. Existing saved tab-order values for the retired IDs are ignored by the active navigation list.
