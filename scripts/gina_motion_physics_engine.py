@@ -36,6 +36,25 @@ except ImportError:
 
 
 # ===============================================================================
+# SECTION 1A: HARDWARE SAFEGUARDS & FRAME RATE TIMING ENVELOPES
+# ===============================================================================
+
+# Global safety limits tuned for an 8GB RTX 3070 Ti configuration
+SAFE_FRAME_MINIMUM = 16        # Lower bound boundary to avoid mathematical errors
+SAFE_FRAME_MAXIMUM = 81        # Absolute architecture threshold limit for the Wan context
+TARGET_WORKFLOW_FPS = 16       # Aligns spatial motion steps to your frame rate
+
+def get_engine_duration_headroom(total_frames: int, workflow_fps: int = TARGET_WORKFLOW_FPS) -> float:
+    """
+    Computes the precise real-time duration in seconds for physics simulations.
+    Prevents animations from compressing or speeding up inside long video streams.
+    """
+    # Enforce safe execution envelope bounds
+    clamped_frames = max(SAFE_FRAME_MINIMUM, min(total_frames, SAFE_FRAME_MAXIMUM))
+    return float(clamped_frames) / float(workflow_fps)
+
+
+# ===============================================================================
 # SECTION 1: KINETIC TEXT & LAYERS (Physics & Keyframes)
 # ===============================================================================
 
@@ -113,8 +132,8 @@ def squash_and_stretch_element(
     surf_w = text_w + pad * 2
     surf_h = text_h + pad * 2
     text_surf = Image.new("RGBA", (surf_w, surf_h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(text_surf)
-    draw.text((pad - bbox[0], pad - bbox[1]), text, font=font, fill=(255, 255, 255, 255))
+    text_draw = ImageDraw.Draw(text_surf)
+    text_draw.text((pad - bbox[0], pad - bbox[1]), text, font=font, fill=(255, 255, 255, 255))
 
     surf_np = np.array(text_surf, dtype=np.uint8)
 
@@ -124,7 +143,6 @@ def squash_and_stretch_element(
     anchor_y = pad + text_h
 
     # Construct translation & scaling affine matrix
-    # M = T(cx, current_y) * S(scale_x, scale_y) * T(-anchor_x, -anchor_y)
     m_scale = np.array([
         [scale_x, 0.0, anchor_x * (1.0 - scale_x)],
         [0.0, scale_y, anchor_y * (1.0 - scale_y)],
@@ -152,8 +170,7 @@ def squash_and_stretch_element(
         borderValue=(0, 0, 0, 0)
     )
 
-    # Vectorized Alpha Composite (Zero python loops)
-    # Output = (1 - alpha) * Frame + alpha * TextColor
+    # Vectorized Alpha Composite
     alpha = (warped_rgba[:, :, 3:4].astype(np.float32)) / 255.0
     text_rgb = warped_rgba[:, :, 0:3].astype(np.float32)
 
@@ -175,26 +192,16 @@ def apply_elastic_spring_track(
 ) -> Tuple[Tuple[float, float], Tuple[float, float]]:
     """
     Second-order mass-spring-damper kinematic physics step.
-    Implements a symplectic semi-implicit Euler integration scheme:
-        F_spring = stiffness * (target - current)
-        F_damping = -damping * velocity
-        a = (F_spring + F_damping) / mass (mass = 1.0)
-        v_next = v + a * dt
-        x_next = x + v_next * dt
-    Yields natural overshoot, rubber-band inertia, and harmonic settling.
     """
     tx, ty = target_pos
     cx, cy = current_pos
     vx, vy = velocity
 
-    # Clamping time-step to prevent numerical instability
     clamped_dt = min(max(dt, 0.001), 0.05)
 
-    # Hooke's Law Spring Force with linear damping
     fx = stiffness * (tx - cx) - damping * vx
     fy = stiffness * (ty - cy) - damping * vy
 
-    # Symplectic update step
     new_vx = vx + fx * clamped_dt
     new_vy = vy + fy * clamped_dt
 
@@ -215,18 +222,12 @@ def reveal_typography_dispersion(
 ) -> np.ndarray:
     """
     Per-character kinematic dispersion renderer.
-    At progress = 0: Characters are chaotically projected across radial vectors
-    (angles 0..2pi, offset distance up to 400px) with alpha = 0.
-    As progress -> 1.0: Coordinates smoothly converge via cubic Hermite easing
-    to their aligned typographical positions, with alpha ramping to 255.
-    Uses deterministic seeding by glyph index to guarantee identical trajectories.
     """
     h_frame, w_frame = frame.shape[:2]
     p = float(np.clip(progress, 0.0, 1.0))
     if p >= 1.0 and not text:
         return frame
 
-    # Cubic ease-out interpolation profile: f(p) = 1 - (1 - p)^3
     ease = 1.0 - math.pow(1.0 - p, 3.0)
 
     try:
@@ -234,7 +235,6 @@ def reveal_typography_dispersion(
     except Exception:
         font = ImageFont.load_default()
 
-    # Pre-calculate glyph widths and horizontal positions
     char_widths = []
     total_w = 0
     for ch in text:
@@ -245,8 +245,6 @@ def reveal_typography_dispersion(
 
     start_x = cx - (total_w / 2.0)
     canvas = frame.copy()
-
-    # Pre-allocate accumulation layer
     accum_bgr = canvas.astype(np.float32)
 
     current_x = start_x
@@ -254,7 +252,6 @@ def reveal_typography_dispersion(
         target_char_x = current_x + (cw / 2.0)
         target_char_y = float(cy)
 
-        # Deterministic pseudo-random projection vector for glyph
         rng = random.Random(42 + i * 10007)
         angle = rng.uniform(0.0, 2.0 * math.pi)
         dist = rng.uniform(150.0, 400.0)
@@ -262,23 +259,20 @@ def reveal_typography_dispersion(
         scatter_x = target_char_x + dist * math.cos(angle)
         scatter_y = target_char_y + dist * math.sin(angle)
 
-        # Interpolate coordinates and opacity
         draw_x = int(scatter_x + (target_char_x - scatter_x) * ease)
         draw_y = int(scatter_y + (target_char_y - scatter_y) * ease)
         alpha_val = float(np.clip(p * 1.25, 0.0, 1.0))
 
         if alpha_val > 0.01:
-            # Render glyph onto isolated buffer
             glyph_surf = Image.new("RGBA", (cw + 32, size + 32), (0, 0, 0, 0))
             g_draw = ImageDraw.Draw(glyph_surf)
             g_draw.text((16, 16), ch, font=font, fill=(255, 255, 255, int(255 * alpha_val)))
             glyph_np = np.array(glyph_surf, dtype=np.uint8)
 
-            gw, gh = glyph_np.shape[1], glyph_np.shape[0]
+            gh, gw = glyph_np.shape[:2]
             top_y = draw_y - gh // 2
             left_x = draw_x - gw // 2
 
-            # Compute valid intersection bounds with frame
             src_x1 = max(0, -left_x)
             src_y1 = max(0, -top_y)
             src_x2 = min(gw, w_frame - left_x)
@@ -315,33 +309,25 @@ def apply_rolling_wave_line(
     thickness: int = 3
 ) -> np.ndarray:
     """
-    Renders an unanchored, continuous vector wave line that sweeps vertically
-    across the canvas while propagating horizontally as a function of time (t).
-    Uses dilated continuous polygon indexing to preserve line integrity at curve peaks.
+    Renders an unanchored, continuous vector wave line.
     """
     h_frame, w_frame = frame.shape[:2]
     out = frame.copy()
 
-    # Time-dependent phase shift and vertical scan line
     phase = t * 4.5
     scan_y = (t * 85.0) % float(h_frame)
 
-    # Vectorized sine wave coordinate generation across width
     xs = np.arange(w_frame, dtype=np.float32)
     ys = scan_y + amplitude * np.sin(frequency * xs + phase)
 
-    # Clip to valid coordinates
     pts = np.column_stack((xs, ys)).astype(np.int32).reshape((-1, 1, 2))
 
-    # Render vector line onto dedicated mask to support uniform dilation thickness
     line_mask = np.zeros((h_frame, w_frame), dtype=np.uint8)
     cv2.polylines(line_mask, [pts], isClosed=False, color=255, thickness=thickness, lineType=cv2.LINE_AA)
 
-    # Dilation indexing guarantees uniform stroke width across sharp derivatives
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (thickness, thickness))
     dilated_mask = cv2.dilate(line_mask, kernel, iterations=1)
 
-    # Vectorized Alpha Composite
     alpha = (dilated_mask.astype(np.float32) / 255.0)[:, :, np.newaxis]
     color_bgr = np.array(color, dtype=np.float32).reshape((1, 1, 3))
 
@@ -358,44 +344,34 @@ def apply_radial_shockwave(
 ) -> np.ndarray:
     """
     Applies a 100% vectorized radial refractive shockwave distortion.
-    Generates a full coordinate meshgrid, computes Euclidean distance matrices,
-    and applies a local sinusoidal displacement vector to pixel lookup coordinates
-    using cv2.remap with bilinear interpolation and reflection boundary padding.
     """
     h_frame, w_frame = frame.shape[:2]
     cx, cy = center
 
-    # 1. Vectorized Coordinate Grid Generation
     grid_y, grid_x = np.meshgrid(
         np.arange(h_frame, dtype=np.float32),
         np.arange(w_frame, dtype=np.float32),
         indexing="ij"
     )
 
-    # 2. Euclidean Distance Vectorization
     dx = grid_x - float(cx)
     dy = grid_y - float(cy)
     r = np.sqrt(dx * dx + dy * dy)
     r_safe = np.maximum(r, 1e-5)
 
-    # 3. Wave Envelope Filtering (radius - width <= r <= radius + width)
     diff = r - radius
     mask = np.abs(diff) <= width
 
-    # 4. Outward Sinusoidal Displacement Calculation
     map_x = grid_x.copy()
     map_y = grid_y.copy()
 
     if np.any(mask):
         phase = (diff[mask] / width) * math.pi
-        # Sinusoidal displacement decaying to 0 at the envelope boundaries
         displacement = amplitude * np.cos(phase) * (1.0 - (np.abs(diff[mask]) / width))
 
-        # Displace coordinates along radial unit vector (dx/r, dy/r)
         map_x[mask] += (dx[mask] / r_safe[mask]) * displacement
         map_y[mask] += (dy[mask] / r_safe[mask]) * displacement
 
-    # 5. Hardware-Accelerated Coordinate Remapping
     return cv2.remap(
         frame,
         map_x,
@@ -411,9 +387,7 @@ def apply_page_curl(
     roll_width_pct: float = 0.15
 ) -> np.ndarray:
     """
-    Simulates a 3D cylindrical page flip coordinate warp across the X-axis.
-    Transforms pixel positions within the roll cylinder using a non-linear cosine curve
-    and bakes dynamic ambient occlusion shadows beneath the curl fold.
+    Simulates a 3D cylindrical page flip warp.
     """
     h_frame, w_frame = frame.shape[:2]
     p = float(np.clip(progress, 0.0, 1.0))
@@ -423,7 +397,6 @@ def apply_page_curl(
         return np.zeros_like(frame)
 
     roll_w = float(w_frame * roll_width_pct)
-    # Curl line progresses from left (-roll_w) to right (w_frame + roll_w)
     fold_x = p * (w_frame + roll_w)
 
     grid_y, grid_x = np.meshgrid(
@@ -435,17 +408,13 @@ def apply_page_curl(
     map_x = grid_x.copy()
     map_y = grid_y.copy()
 
-    # Mask regions: Left of curl (flipped/revealed), inside cylinder roll, right (flat)
     in_roll = (grid_x >= fold_x - roll_w) & (grid_x <= fold_x)
     past_roll = grid_x < fold_x - roll_w
 
-    # Cylindrical compression inside roll fold
     if np.any(in_roll):
         theta = (grid_x[in_roll] - (fold_x - roll_w)) / roll_w * math.pi
-        # Cosine spatial compression mimicking a cylinder surface projection
         map_x[in_roll] = fold_x - roll_w + (roll_w / math.pi) * np.sin(theta)
 
-    # Discard turned page content
     map_x[past_roll] = -100.0
     map_y[past_roll] = -100.0
 
@@ -458,12 +427,10 @@ def apply_page_curl(
         borderValue=(0, 0, 0)
     )
 
-    # Bake dynamic ambient occlusion shadow gradient beneath the fold line
     shadow_mask = np.ones((h_frame, w_frame, 1), dtype=np.float32)
     shadow_zone = (grid_x >= fold_x - roll_w * 1.5) & (grid_x < fold_x - roll_w)
     if np.any(shadow_zone):
         dist_to_fold = (grid_x[shadow_zone] - (fold_x - roll_w * 1.5)) / (roll_w * 0.5)
-        # Smooth quadratic drop shadow
         shadow_intensity = 0.40 + 0.60 * (dist_to_fold ** 2)
         shadow_mask[shadow_zone, 0] = shadow_intensity
 
@@ -478,10 +445,7 @@ def apply_vortex_twirl(
     max_angle_deg: float
 ) -> np.ndarray:
     """
-    Applies a localized, non-linear whirlpool twist distortion.
-    Coordinates inside max_radius undergo Cartesian-to-polar rotation, where
-    angular deflection peaks at center and smoothly decays to zero at max_radius.
-    Remapped with cv2.BORDER_REFLECT to maintain pristine edge boundaries.
+    Applies a localized whirlpool twist distortion.
     """
     h_frame, w_frame = frame.shape[:2]
     cx, cy = center
@@ -496,7 +460,6 @@ def apply_vortex_twirl(
     dy = grid_y - float(cy)
     r = np.sqrt(dx * dx + dy * dy)
 
-    # Non-linear quadratic falloff factor
     inside = r < max_radius
     theta = np.arctan2(dy, dx)
 
@@ -530,15 +493,10 @@ def apply_crt_scanlines(
     aberration_px: int = 3
 ) -> np.ndarray:
     """
-    Simulates vintage cathode ray tube (CRT) phosphor displays:
-    1. Chromatic Aberration: Horizontally separates the Red matrix (+aberration_px)
-       and Blue matrix (-aberration_px) via zero-copy np.roll broadcasting.
-    2. Phosphor Grid Mask: Interleaved 1-channel attenuation matrix reducing luminance
-       by `opacity` on every alternating even scanline (0::2).
+    Simulates vintage cathode ray tube (CRT) phosphor displays.
     """
     h_frame, w_frame = frame.shape[:2]
 
-    # 1. Chromatic Channel Separation (B, G, R)
     b_chan = frame[:, :, 0]
     g_chan = frame[:, :, 1]
     r_chan = frame[:, :, 2]
@@ -551,7 +509,6 @@ def apply_crt_scanlines(
     else:
         aberrated = frame.copy()
 
-    # 2. Interleaved 1-Channel Scanline Attenuation Mask
     scan_mask = np.ones((h_frame, 1, 1), dtype=np.float32)
     scan_mask[0::2, 0, 0] = max(0.0, 1.0 - float(opacity))
 
@@ -566,10 +523,7 @@ def apply_datamosh_glitch(
     probability: float = 0.25
 ) -> np.ndarray:
     """
-    Simulates H.264 video compression macroblock corruption and I-frame packet loss.
-    Partitions the canvas into block_size horizontal row bands. When a randomized
-    probability test passes, applies a horizontal NumPy slice roll whose amplitude
-    scales with progress. 100% vectorized per macroblock strip.
+    Simulates video compression macroblock corruption.
     """
     h_frame, w_frame = frame.shape[:2]
     out = frame.copy()
@@ -580,7 +534,6 @@ def apply_datamosh_glitch(
     num_blocks = h_frame // block_size
     rng = random.Random(int(progress * 1000) + 77)
 
-    # Process macroblock strips without per-pixel loops
     for b in range(num_blocks):
         if rng.random() < probability:
             y1 = b * block_size
@@ -598,15 +551,10 @@ def apply_optical_liquid_flow(
 ) -> np.ndarray:
     """
     Fluid dynamics spatial warp engine.
-    If scikit-image is available, computes cross-flowing sinusoidal vector fields,
-    smooths coordinate gradients using a 2D Gaussian blur kernel to model fluid viscosity,
-    and warps the frame via skimage.transform.warp.
-    If scikit-image is unavailable, seamlessly falls back to an oscillatory cv2 vortex twirl.
     """
     h_frame, w_frame = frame.shape[:2]
 
     if SKIMAGE_AVAILABLE:
-        # Generate cross-current displacement vectors
         grid_y, grid_x = np.meshgrid(
             np.arange(h_frame, dtype=np.float32),
             np.arange(w_frame, dtype=np.float32),
@@ -616,20 +564,16 @@ def apply_optical_liquid_flow(
         flow_scale = 0.008
         time_speed = t * 2.2
 
-        # Dual-axis trigonometric liquid vectors
         disp_x = np.sin(grid_y * flow_scale + time_speed) * np.cos(grid_x * flow_scale * 0.5) * viscosity
         disp_y = np.cos(grid_x * flow_scale + time_speed) * np.sin(grid_y * flow_scale * 0.5) * viscosity
 
-        # Viscous diffusion smoothing via Gaussian spatial convolution
         disp_x = cv2.GaussianBlur(disp_x, (15, 15), 0)
         disp_y = cv2.GaussianBlur(disp_y, (15, 15), 0)
 
-        # skimage.transform.warp expects coordinate coordinates in (row, col) format
         map_coords = np.zeros((2, h_frame, w_frame), dtype=np.float32)
         map_coords[0] = np.clip(grid_y + disp_y, 0, h_frame - 1)
         map_coords[1] = np.clip(grid_x + disp_x, 0, w_frame - 1)
 
-        # Perform high-precision bicubic flow warp
         frame_rgb = frame[:, :, ::-1] / 255.0
         warped_rgb = skimage.transform.warp(
             frame_rgb,
@@ -639,7 +583,6 @@ def apply_optical_liquid_flow(
         )
         return (warped_rgb[:, :, ::-1] * 255.0).astype(np.uint8)
     else:
-        # Zero-crash fallback: Dynamic multi-oscillation vortex
         osc_radius = 200.0 + 50.0 * math.sin(t * 3.0)
         osc_angle = math.sin(t * 2.5) * (viscosity * 2.5)
         return apply_vortex_twirl(
@@ -658,26 +601,19 @@ def render_volumetric_glow_layer(
     config: Optional[Dict[str, Any]] = None
 ) -> np.ndarray:
     """
-    High-performance volumetric glow and aura compositor.
-    1. Initializes an isolated black buffer matching source frame dimensions.
-    2. Calculates dynamic radius anchored at 150px modulated by zoom/pulse parameters.
-    3. Downsamples vector mask to a proxy resolution (480x270) for bound O(1) convolution costs.
-    4. Applies a broad Gaussian convolution pass to generate an ultra-smooth volumetric aura.
-    5. Re-scales proxy layer back to native resolution and alpha-blends with the source frame.
+    High-performance volumetric glow compositor.
     """
     h_frame, w_frame = frame.shape[:2]
     cfg = config or {}
 
     zoom_speed = float(cfg.get("zoom_speed", 1.8))
     intensity = float(np.clip(cfg.get("intensity", 0.75), 0.0, 1.0))
-    glow_color = cfg.get("color", (255, 180, 50))  # BGR
+    glow_color = cfg.get("color", (255, 180, 50))
 
-    # Calculate dynamic pulsing radius
     base_radius = 150.0
     pulse = math.sin(t * zoom_speed) * 35.0
     radius = int(max(20.0, base_radius + pulse))
 
-    # Downsample target proxy dimensions for computational efficiency
     proxy_w = 480
     proxy_h = 270
     scale_x = proxy_w / float(w_frame)
@@ -687,22 +623,17 @@ def render_volumetric_glow_layer(
     proxy_cy = int(cy * scale_y)
     proxy_radius = int(radius * ((scale_x + scale_y) * 0.5))
 
-    # Render raw circular vector in proxy space
     proxy_mask = np.zeros((proxy_h, proxy_w), dtype=np.uint8)
     cv2.circle(proxy_mask, (proxy_cx, proxy_cy), proxy_radius, 255, -1)
 
-    # Dynamic odd-integer kernel window for expansive volumetric blur
     ksize = int(max(31, (proxy_radius * 1.5) // 2 * 2 + 1))
     blurred_proxy = cv2.GaussianBlur(proxy_mask, (ksize, ksize), 0)
 
-    # Interpolate blurred proxy back to native resolution via bilinear filtering
     native_glow = cv2.resize(blurred_proxy, (w_frame, h_frame), interpolation=cv2.INTER_LINEAR)
 
-    # Construct weighted overlay
     alpha = (native_glow.astype(np.float32) / 255.0 * intensity)[:, :, np.newaxis]
     glow_bgr = np.array(glow_color, dtype=np.float32).reshape((1, 1, 3))
 
-    # Additive and soft-light volumetric blend
     blended = frame.astype(np.float32) + (glow_bgr * alpha * 0.85)
     return np.clip(blended, 0, 255).astype(np.uint8)
 
@@ -743,7 +674,6 @@ if __name__ == "__main__":
     print(f"[Gina Motion Engine] Initializing verification pipeline...")
     test_canvas = np.zeros((720, 1280, 3), dtype=np.uint8)
 
-    # Rapid verification sweep across all 11 modular algorithms
     f1 = squash_and_stretch_element(test_canvas, "GINA PHYSICS", None, 64, 640, 360, 0.45)
     pos, vel = apply_elastic_spring_track((640, 360), (0, 0), (100, 50), 0.016)
     f2 = reveal_typography_dispersion(test_canvas, "DISPERSE", None, 48, 640, 360, 0.5)

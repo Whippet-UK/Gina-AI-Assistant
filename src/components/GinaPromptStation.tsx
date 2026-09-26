@@ -192,14 +192,25 @@ export default function GinaPromptStation({ telemetry, logs }: GinaPromptStation
             <span className="text-blue-500 font-bold">Live telemetry channel</span>
           </div>
           <span className="text-[9.5px] text-zinc-500 max-w-2xl leading-normal tracking-tight">The chart is reserved for measured MCP throughput. It does not invent a synthetic data stream when no MCP samples are available.</span>
-          <div className="h-28 w-full bg-[#0C0E12] border border-zinc-900 rounded-lg p-2 mt-1 relative flex flex-col justify-between overflow-hidden">
-            <div className="absolute left-2 top-2 bottom-8 text-[8px] text-zinc-700 flex flex-col justify-between"><span>100%</span><span>75%</span><span>50%</span><span>25%</span></div>
-            <div className="w-full flex-1 flex items-end pl-8 pb-1">
-              <svg viewBox="0 0 100 30" className="w-full h-full overflow-visible" preserveAspectRatio="none" role="img" aria-label="MCP throughput vectors">
-                <path d="M 0 29 L 100 29" fill="none" stroke="#1f2937" strokeWidth="1" />
-              </svg>
-            </div>
-            <div className="flex justify-between items-center border-t border-zinc-900 pt-1 text-[8.5px] text-zinc-600 pl-8"><span>-40s</span><span>No MCP samples</span><span>Now</span></div>
+          <div className="h-28 w-full bg-[#0C0E12] border border-zinc-900 rounded-lg overflow-hidden relative">
+            <svg viewBox="0 0 100 30" className="w-full h-full" preserveAspectRatio="none" role="img" aria-label="MCP throughput vectors">
+              <defs>
+                <linearGradient id="mcp-throughput-fill" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.35" />
+                  <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
+                </linearGradient>
+                <filter id="mcp-throughput-glow" x="-20%" y="-100%" width="140%" height="300%">
+                  <feGaussianBlur stdDeviation="0.8" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+              <path d="M 0 29.5 L 100 29.5 L 100 30 L 0 30 Z" fill="url(#mcp-throughput-fill)" />
+              <path d="M 0 29.5 L 100 29.5" fill="none" stroke="#38bdf8" strokeWidth="0.6" strokeLinecap="round" filter="url(#mcp-throughput-glow)" opacity="0.5" />
+            </svg>
+            <div className="absolute inset-x-0 bottom-1.5 text-center text-[8.5px] text-zinc-600">No MCP samples yet</div>
           </div>
         </section>
       </main>

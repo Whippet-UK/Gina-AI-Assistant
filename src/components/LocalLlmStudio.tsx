@@ -440,6 +440,31 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     return `webapp-${(hash >>> 0).toString(16)}`;
   };
 
+  type ExecutionLogEntry = { id: string; title: string; details: string; status: 'running' | 'complete' | 'error' };
+  const [executionLog, setExecutionLog] = useState<ExecutionLogEntry[]>([]);
+  const pushExecutionLog = useCallback((title: string, details: string, status: ExecutionLogEntry['status'] = 'complete') => {
+    setExecutionLog(prev => {
+      const next = [...prev];
+      const runningIndex = next.findIndex(entry => entry.title === title && entry.status === 'running');
+      if (runningIndex >= 0) {
+        next[runningIndex] = { ...next[runningIndex], details, status };
+        return next.slice(-40);
+      }
+      return [
+        ...next.map(entry => entry.status === 'running' ? { ...entry, status: 'complete' as const } : entry),
+        { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title, details, status }
+      ].slice(-40);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (activePreviewContent?.type === 'html') {
+      setWebAppStorageNamespace(makeWebAppStorageNamespace(activePreviewContent.content));
+    } else {
+      setWebAppStorageNamespace(null);
+    }
+  }, [activePreviewContent]);
+
   const readWebAppStorage = (namespace: string) => {
     const prefix = `gina_webapp:${namespace}:`;
     const snapshot: Record<string, string> = {};
@@ -512,14 +537,14 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   send({op:'ready'});
 })();
 <\/script>`;
-    const rewritten = html.replace(/(<script\\b[^>]*>)([\\s\\S]*?)(<\\/script>)/gi, (_match, open, body, close) => {
+    const rewritten = html.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi, (_match, open, body, close) => {
       const transformed = String(body)
-        .replace(/\\bwindow\\.localStorage\\b/g, 'window.__ginaWebAppStorage')
-        .replace(/\\bglobalThis\\.localStorage\\b/g, 'window.__ginaWebAppStorage')
-        .replace(/\\blocalStorage\\b/g, '__ginaWebAppStorage');
+        .replace(/\bwindow\.localStorage\b/g, 'window.__ginaWebAppStorage')
+        .replace(/\bglobalThis\.localStorage\b/g, 'window.__ginaWebAppStorage')
+        .replace(/\blocalStorage\b/g, '__ginaWebAppStorage');
       return `${open}${transformed}${close}`;
     });
-    return /<head[\\s>]/i.test(rewritten) ? rewritten.replace(/<head([^>]*)>/i, `<head$1>${bridge}`) : `${bridge}${rewritten}`;
+    return /<head[\s>]/i.test(rewritten) ? rewritten.replace(/<head([^>]*)>/i, `<head$1>${bridge}`) : `${bridge}${rewritten}`;
   };
 
   const renderMarkdownLinks = (text: string) => {
@@ -1090,24 +1115,6 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
       }
     }
   }, [studioMode, generationJob?.id, generationJob?.workflowId, generationJob?.status, generationJob?.progress, generationJob?.error, generationOutput?.outputs?.[0]?.url]);
-
-
-  type ExecutionLogEntry = { id: string; title: string; details: string; status: 'running' | 'complete' | 'error' };
-  const [executionLog, setExecutionLog] = useState<ExecutionLogEntry[]>([]);
-  const pushExecutionLog = useCallback((title: string, details: string, status: ExecutionLogEntry['status'] = 'complete') => {
-    setExecutionLog(prev => {
-      const next = [...prev];
-      const runningIndex = next.findIndex(entry => entry.title === title && entry.status === 'running');
-      if (runningIndex >= 0) {
-        next[runningIndex] = { ...next[runningIndex], details, status };
-        return next.slice(-40);
-      }
-      return [
-        ...next.map(entry => entry.status === 'running' ? { ...entry, status: 'complete' as const } : entry),
-        { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title, details, status }
-      ].slice(-40);
-    });
-  }, []);
 
   useEffect(() => {
     if (historyModeRef.current !== studioMode) return;
@@ -2168,10 +2175,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
                   webAppView === 'code' ? (
                     <pre className="h-full min-h-[320px] overflow-auto rounded border border-slate-800 bg-slate-950 p-3 text-[9px] leading-relaxed text-slate-300 whitespace-pre-wrap break-words"><code>{activePreviewContent.content}</code></pre>
                   ) : (
-                    <iframe ref={webAppIframeRef} title={activePreviewContent.title} sandbox="allow-scripts allow-forms" srcDoc={buildWebAppPreviewHtml(activePreviewContent.content, webAppStorageNamespace || makeWebAppStorageNamespace(activePreviewContent.content))} onLoad={() => {
-                      const namespace = webAppStorageNamespace || makeWebAppStorageNamespace(activePreviewContent.content);
-                      webAppIframeRef.current?.contentWindow?.postMessage({ channel:'gina-webapp-storage', namespace, op:'ready' }, '*');
-                    }} className="h-full min-h-[320px] w-full rounded border border-slate-800 bg-white" />
+                    <iframe ref={webAppIframeRef} title={activePreviewContent.title} sandbox="allow-scripts allow-forms" srcDoc={buildWebAppPreviewHtml(activePreviewContent.content, webAppStorageNamespace || makeWebAppStorageNamespace(activePreviewContent.content))} className="h-full min-h-[320px] w-full rounded border border-slate-800 bg-white" />
                   )
                 ) : activePreviewContent.type === 'video' ? (
                   <div className="flex h-full min-h-[320px] items-center justify-center rounded border border-slate-800 bg-slate-950 p-2">
