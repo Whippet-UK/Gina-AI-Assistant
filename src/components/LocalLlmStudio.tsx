@@ -994,6 +994,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     const html = (htmlMatch?.[1] || raw).trim();
     if (!/^<!doctype html|<html[\s>]/i.test(html)) throw new Error('The local model did not return a complete HTML artifact.');
     setAgentStatus('RENDERING ARTIFACT');
+    setActivePreviewContent({ type: 'html', title: 'Generated Web App', content: html });
     pushAgentActivity('[FILE_STEP: Generated Web App artifact]\n✓ HTML received and ready for live rendering\n[END_STEP]');
     onWebAppArtifact?.(html);
     setAgentStatus('COMPLETED');
