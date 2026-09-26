@@ -266,7 +266,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
   };
 
   const handleResetTabOrder = () => {
-    const def = ['studio', 'create', 'video', 'gif', 'streaminject', 'music', 'audio', 'aida64', 'shorts', 'assets', 'jobs', 'llm', 'system'];
+    const def = ['studio', 'create', 'video', 'gif', 'streaminject', 'music', 'audio', 'aida64', 'shorts', 'assets', 'jobs', 'llm', 'dashboard', 'system'];
     setTabOrder(def);
     try { localStorage.removeItem('gina_nav_tab_order'); } catch {}
   };
