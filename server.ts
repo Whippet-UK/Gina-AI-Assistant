@@ -2974,6 +2974,36 @@ app.post("/api/llm/chat", async (req, res) => {
     const capabilityRegistry = getCapabilityIntelligenceRegistry();
     const capabilityPlan = planCapabilityIntent(rawLatestUser, capabilityRegistry);
 
+    // Web App Studio is an artifact-generation lane, not an autonomous coding-agent lane.
+    // The generated app is returned as HTML to the React preview. Do not send this request
+    // through the agent/tool JSON protocol: doing so makes simple HTML generation depend on
+    // the model producing valid tool-call JSON and can surface parser-recovery failures.
+    const isWebAppStudio = String(req.body?.suite || '').trim().toLowerCase() === 'web app studio';
+    if (isWebAppStudio) {
+      const webAppData = await localLlm.chat(validMessages, {
+        temperature: Number.isFinite(Number(req.body?.temperature)) ? Number(req.body.temperature) : 0.45,
+        maxTokens: Number.isFinite(Number(req.body?.maxTokens)) ? Math.min(4096, Math.max(256, Number(req.body.maxTokens))) : 3072,
+        suite: 'Web App Studio',
+        telemetrySource: 'local',
+        includeAgentSkills: false,
+        contextBreakdown: {
+          system: validMessages.filter((m:any)=>m.role==='system').reduce((n:any,m:any)=>n+String(m.content||'').length,0),
+          conversation: validMessages.filter((m:any)=>m.role!=='system').reduce((n:any,m:any)=>n+String(m.content||'').length,0),
+          rag: 0, learnedKnowledge: 0, liveWeb: 0, capability: 0, skills: 0
+        }
+      });
+      if (webAppData?.choices?.[0]?.message && typeof webAppData.choices[0].message === 'object') {
+        const message = webAppData.choices[0].message;
+        if (typeof message.content === 'string') message.content = sanitizeUserFacingAssistantText(message.content, 'web_app');
+      }
+      webAppData.ginaTelemetry = {
+        ...(webAppData.ginaTelemetry || {}),
+        source: 'local', webSearched: false, webProvider: null, browserUsed: false,
+        inference: 'local', webSources: [], webAppStudio: true
+      };
+      return res.json(webAppData);
+    }
+
     // SERVER-SIDE ACTION GATE: never depend on a React client flag to decide whether
     // Gina should act. An explicit operational request is routed to the autonomous
     // agent here as a second, authoritative execution boundary.
