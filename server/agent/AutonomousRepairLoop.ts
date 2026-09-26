@@ -121,9 +121,12 @@ export class AutonomousRepairLoop {
       files: primaryFilesToInspect.slice(0, 15)
     });
 
-    // 5. RESEARCH: conduct local + web research if external libraries or APIs are mentioned
+    // 5. RESEARCH: local-first. Only enter the live documentation lane when the
+    // request explicitly needs external documentation/API/package compatibility.
+    // Generic code edits such as "update the button" must never trigger web research.
     let researchBriefing: ResearchBriefing | undefined;
-    const shouldResearch = options.researchLibrary || /library|api|update|migration|wan|qwen|flux|ffmpeg|version|npm|pip/i.test(options.request);
+    const shouldResearch = Boolean(options.researchLibrary) ||
+      /(?:official\s+docs?|documentation|api\s+(?:reference|syntax)|package\s+(?:docs?|reference)|dependency\s+(?:version|compatibility)|migration\s+(?:guide|docs?)|breaking\s+change|compatibility\s+(?:with|for)|npm\s+(?:package|docs?)|pip\s+(?:package|docs?))/i.test(options.request);
     if (shouldResearch) {
       try {
         researchBriefing = await this.researchEngine.research({
