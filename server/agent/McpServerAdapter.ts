@@ -66,10 +66,30 @@ function compactResult(value: any, maxChars: number) {
   return { value: { truncated: true, preview: clipped, originalChars: raw.length, hint: 'Result was clipped by Gina MCP context protection. Use tool parameters such as maxResults/head/tail where supported.' }, truncated: true, raw: clipped };
 }
 
+export interface McpTelemetrySample {
+  id: string;
+  timestamp: string;
+  action: string;
+  durationMs: number;
+  ok: boolean;
+}
+
 export class McpServerAdapter {
   private readonly maxResultChars: number;
+  private readonly telemetry: McpTelemetrySample[] = [];
+  private requestCount = 0;
+  private errorCount = 0;
+
   constructor(private readonly options: McpAdapterOptions) {
     this.maxResultChars = options.maxResultChars || DEFAULT_MAX_RESULT_CHARS;
+  }
+
+  getTelemetry() {
+    return {
+      requestCount: this.requestCount,
+      errorCount: this.errorCount,
+      history: [...this.telemetry]
+    };
   }
 
   getTools() {
@@ -123,9 +143,12 @@ export class McpServerAdapter {
         return jsonRpc(id, { content: [{ type: 'text', text: JSON.stringify({ requiresApproval: true, approval }) }], isError: true, structuredContent: { requiresApproval: true, approval } });
       }
     }
+    const startedAt = Date.now();
+    this.requestCount += 1;
     try {
       const result = await this.options.execute(name, args);
       const compacted = compactResult(result, this.maxResultChars);
+      this.recordTelemetry(name, Date.now() - startedAt, true);
       return jsonRpc(id, {
         content: [{ type: 'text', text: compacted.raw }],
         structuredContent: compacted.value,
@@ -134,7 +157,20 @@ export class McpServerAdapter {
       });
     } catch (error: any) {
       const message = error?.message || String(error);
+      this.errorCount += 1;
+      this.recordTelemetry(name, Date.now() - startedAt, false);
       return jsonRpc(id, { content: [{ type: 'text', text: message }], isError: true, structuredContent: { ok: false, action: name, error: message, actionable: true, hint: 'Inspect the error, correct the tool arguments or capability state, then retry.' } });
     }
+  }
+
+  private recordTelemetry(action: string, durationMs: number, ok: boolean) {
+    this.telemetry.unshift({
+      id: `mcp_${Date.now()}_${this.telemetry.length}`,
+      timestamp: new Date().toISOString(),
+      action,
+      durationMs,
+      ok
+    });
+    if (this.telemetry.length > 120) this.telemetry.pop();
   }
 }
