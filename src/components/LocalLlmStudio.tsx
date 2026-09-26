@@ -111,7 +111,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   const [loading, setLoading] = useState(false);
   const [thinkingSource, setThinkingSource] = useState<'local'|'web'|'local+web'>('local');
   const chatAbortRef = useRef<AbortController | null>(null);
-  const { job: generationJob, adoptJob, adoptCompletedOutput, updateJobProgress, cancelJob } = useGenerationJob();
+  const { job: generationJob, output: generationOutput, adoptJob, adoptCompletedOutput, updateJobProgress, cancelJob } = useGenerationJob();
   const [aiImageJobId, setAiImageJobId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const historyModeRef = useRef(studioMode);
@@ -156,7 +156,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   const [hardwareTelemetry, setHardwareTelemetry] = useState<HardwareTelemetry | null>(null);
   const [runtimeTelemetry, setRuntimeTelemetry] = useState<RuntimeTelemetrySnapshot | null>(null);
   const [showWebBrowserModal, setShowWebBrowserModal] = useState(false);
-  const [activePreviewContent, setActivePreviewContent] = useState<{ type:'text'|'html'|'web'; title:string; content:string; url?:string; sources?:Array<{title:string;url:string;snippet?:string}> } | null>(null);
+  const [activePreviewContent, setActivePreviewContent] = useState<{ type:'text'|'html'|'web'|'video'; title:string; content:string; url?:string; sources?:Array<{title:string;url:string;snippet?:string}> } | null>(null);
   const [savedCodeFiles, setSavedCodeFiles] = useState<Record<string, { url:string; path:string; bytes:number }>>({});
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [sessionElectricityCost, setSessionElectricityCost] = useState<number>(0);
@@ -952,6 +952,49 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   });
   const [agentStatus, setAgentStatus] = useState<string>('READY');
   const [agentActivity, setAgentActivity] = useState<string[]>([]);
+  const videoTraceRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (studioMode !== 'video-generation' || generationJob?.workflowId !== 'wan_video') return;
+    const jobId = generationJob.id;
+    const status = generationJob.status;
+    const outputUrl = generationOutput?.outputs?.[0]?.url || generationJob.outputs?.[0]?.url;
+    if (status === 'QUEUED' || status === 'RUNNING') {
+      setLoading(true);
+      setAgentStatus('GENERATING VIDEO');
+      if (videoTraceRef.current !== `${jobId}:running`) {
+        videoTraceRef.current = `${jobId}:running`;
+        pushExecutionLog('Video Gen', `Wan 2.1 job ${jobId.slice(0, 8)} is ${status.toLowerCase()} · ${generationJob.progress || 0}%`, 'running');
+      } else {
+        pushExecutionLog('Video Gen', `Wan 2.1 job ${jobId.slice(0, 8)} is ${status.toLowerCase()} · ${generationJob.progress || 0}%`, 'running');
+      }
+      return;
+    }
+    if (status === 'COMPLETED') {
+      setLoading(false);
+      setAgentStatus('COMPLETED');
+      if (outputUrl) {
+        setActivePreviewContent({ type:'video', title:'Generated Wan 2.1 Video', content:outputUrl, url:outputUrl });
+      }
+      if (videoTraceRef.current !== `${jobId}:complete`) {
+        videoTraceRef.current = `${jobId}:complete`;
+        pushExecutionLog('Video Gen', outputUrl ? 'Wan 2.1 video completed and is available in the local preview.' : 'Wan 2.1 video job completed.', 'complete');
+        setMessages(prev => prev.some(m => m.videoUrl === outputUrl) ? prev : [...prev, { role:'assistant', content:'Done — I generated the video locally with Wan 2.1.', videoUrl:outputUrl }]);
+      }
+      return;
+    }
+    if (status === 'FAILED' || status === 'CANCELLED') {
+      setLoading(false);
+      setAgentStatus(status);
+      if (videoTraceRef.current !== `${jobId}:failed`) {
+        videoTraceRef.current = `${jobId}:failed`;
+        const message = generationJob.error || `Video generation ${status.toLowerCase()}.`;
+        pushExecutionLog('Video Gen', message, 'error');
+        setError(message);
+      }
+    }
+  }, [studioMode, generationJob?.id, generationJob?.workflowId, generationJob?.status, generationJob?.progress, generationJob?.error, generationOutput?.outputs?.[0]?.url]);
+
 
   type ExecutionLogEntry = { id: string; title: string; details: string; status: 'running' | 'complete' | 'error' };
   const [executionLog, setExecutionLog] = useState<ExecutionLogEntry[]>([]);
@@ -1991,6 +2034,16 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
               <div className="flex-1 min-h-0 overflow-auto p-3">
                 {!activePreviewContent ? <div className="h-full min-h-[260px] flex items-center justify-center text-center text-slate-600 text-[10px]">Web sources, HTML layouts and live response scraps will appear here.</div> : activePreviewContent.type === 'html' ? (
                   <iframe title={activePreviewContent.title} sandbox="" srcDoc={activePreviewContent.content} className="h-full min-h-[320px] w-full rounded border border-slate-800 bg-white" />
+                ) : activePreviewContent.type === 'video' ? (
+                  <div className="flex h-full min-h-[320px] items-center justify-center rounded border border-slate-800 bg-slate-950 p-2">
+                    {activePreviewContent.url || activePreviewContent.content ? (
+                      <video controls playsInline className="max-h-full max-w-full rounded" src={activePreviewContent.url || activePreviewContent.content}>
+                        Your browser cannot play this local video.
+                      </video>
+                    ) : (
+                      <div className="text-[10px] text-slate-600">Video output is not available yet.</div>
+                    )}
+                  </div>
                 ) : activePreviewContent.type === 'web' ? (
                   <div className="space-y-3">
                     <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-3"><div className="text-[9px] font-bold uppercase tracking-wider text-sky-300">SOURCE</div><div className="mt-1 text-xs font-semibold text-slate-200 break-words">{activePreviewContent.title}</div>{activePreviewContent.url && <a href={activePreviewContent.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-[9px] text-sky-300 hover:text-sky-200"><ExternalLink className="w-3 h-3" /> Open source</a>}</div>
