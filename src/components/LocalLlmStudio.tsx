@@ -3,6 +3,7 @@ import { Bot, Cpu, FileDown, MessageSquare, Mic, MicOff, Play, RotateCw, Square,
 import { LocalRagKnowledgePanel } from './LocalRagKnowledgePanel';
 import { useGenerationJob } from '../context/GenerationJobContext';
 import { WebBrowserInspectorModal } from './WebBrowserInspectorModal';
+import { AgentExecutionTrace } from './AgentExecutionTrace';
 
 interface LocalLlmStatus {
   configured: boolean;
@@ -67,6 +68,7 @@ interface RuntimeTelemetrySnapshot {
   source?: string;
   webSearched?: boolean;
   webProvider?: string | null;
+  contextBreakdown?: Record<string, number>;
 }
 
 interface LocalLlmPropsTelemetry {
@@ -112,9 +114,11 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   const { job: generationJob, adoptJob, adoptCompletedOutput, updateJobProgress, cancelJob } = useGenerationJob();
   const [aiImageJobId, setAiImageJobId] = useState<string | null>(null);
   const [input, setInput] = useState('');
+  const historyModeRef = useRef(studioMode);
+  const historyKey = `gina_studio_messages_${studioMode}`;
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
-      const saved = JSON.parse(sessionStorage.getItem('gina_studio_messages') || '[]');
+      const saved = JSON.parse(sessionStorage.getItem(`gina_studio_messages_${studioMode}`) || '[]');
       return Array.isArray(saved) ? saved.slice(-30) : [];
     } catch { return []; }
   });
@@ -952,15 +956,40 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   type ExecutionLogEntry = { id: string; title: string; details: string; status: 'running' | 'complete' | 'error' };
   const [executionLog, setExecutionLog] = useState<ExecutionLogEntry[]>([]);
   const pushExecutionLog = useCallback((title: string, details: string, status: ExecutionLogEntry['status'] = 'complete') => {
-    setExecutionLog(prev => [
-      ...prev.map(entry => entry.status === 'running' ? { ...entry, status: 'complete' as const } : entry),
-      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title, details, status }
-    ].slice(-40));
+    setExecutionLog(prev => {
+      const next = [...prev];
+      const runningIndex = next.findIndex(entry => entry.title === title && entry.status === 'running');
+      if (runningIndex >= 0) {
+        next[runningIndex] = { ...next[runningIndex], details, status };
+        return next.slice(-40);
+      }
+      return [
+        ...next.map(entry => entry.status === 'running' ? { ...entry, status: 'complete' as const } : entry),
+        { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title, details, status }
+      ].slice(-40);
+    });
   }, []);
 
   useEffect(() => {
-    try { sessionStorage.setItem('gina_studio_messages', JSON.stringify(messages.slice(-30).map(m => ({ ...m, content: String(m.content || '').slice(0, 12000) })))); } catch {}
-  }, [messages]);
+    if (historyModeRef.current !== studioMode) return;
+    try {
+      sessionStorage.setItem(historyKey, JSON.stringify(messages.slice(-30).map(m => ({ ...m, content: String(m.content || '').slice(0, 12000) }))));
+    } catch {}
+  }, [messages, historyKey, studioMode]);
+
+  useEffect(() => {
+    historyModeRef.current = studioMode;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(`gina_studio_messages_${studioMode}`) || '[]');
+      setMessages(Array.isArray(saved) ? saved.slice(-30) : []);
+    } catch {
+      setMessages([]);
+    }
+    setExecutionLog([]);
+    setAgentActivity([]);
+    setActivePreviewContent(null);
+    setError(null);
+  }, [studioMode]);
   const [githubUrl, setGithubUrl] = useState('');
 
   const pushAgentActivity = (entry: string) => setAgentActivity(prev => [...prev, entry].slice(-24));
@@ -1114,6 +1143,80 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
         finally { setLoading(false); }
         return;
       }
+      if (studioMode === 'web-search') {
+        const nextMessages: ChatMessage[] = [...messages, { role:'user', content:text }];
+        setMessages(nextMessages); setInput(''); setLoading(true); setError(null);
+        setThinkingSource('web');
+        pushExecutionLog('Web Search', 'Searching live public sources; no local project tools are invoked.', 'running');
+        setAgentStatus('SEARCHING WEB');
+        setAgentActivity(['Live web search requested by Web Search mode.']);
+        try {
+          const searchResponse = await fetch('/api/agent/web-search', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query:typedText,maxResults:8}) });
+          const searchData = await searchResponse.json().catch(() => ({}));
+          if (!searchResponse.ok) throw new Error(searchData?.error || `Live web search failed (HTTP ${searchResponse.status}).`);
+          const results = Array.isArray(searchData?.results) ? searchData.results : [];
+          if (!results.length) throw new Error('The web search returned no usable sources.');
+          const webGrounding = {
+            text:results.map((r:any,i:number)=>`[WEB RESULT ${i+1}]\nTitle: ${r.title||''}\nURL: ${r.url||''}\nSnippet: ${r.snippet||''}`).join('\n\n'),
+            provider:searchData?.provider || 'verified web search',
+            engine:searchData?.engine || 'HTTP fetcher',
+            sources:results.slice(0,8).map((r:any)=>({title:r.title,url:r.url,snippet:r.snippet,source:r.source}))
+          };
+          const response = await fetch('/api/llm/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+            messages:[{role:'system',content:SYSTEM_PROMPT},{role:'user',content:typedText}],temperature:0.35,maxTokens:768,suite:'Web Search',studioMode:'web-search',webGrounding
+          })});
+          const responseText=await response.text();
+          const data=responseText.trim()?JSON.parse(responseText):{};
+          if(!response.ok) throw new Error(data?.error || `Web response generation failed (HTTP ${response.status}).`);
+          const reply=String(data?.choices?.[0]?.message?.content||'').trim();
+          if(!reply) throw new Error('The local model returned an empty web-grounded response.');
+          const telemetry=data?.ginaTelemetry||{};
+          setActivePreviewContent({type:'web',title:results[0].title||'Live web results',content:results[0].snippet||results[0].url,url:results[0].url,sources:webGrounding.sources});
+          setMessages(prev=>[...prev,{role:'assistant',content:reply,webSources:telemetry.webSources||webGrounding.sources,webProvider:telemetry.webProvider||webGrounding.provider,browserEngine:telemetry.browserEngine||webGrounding.engine}]);
+          setLastTelemetry({promptTokens:Number(telemetry.promptTokens||0),completionTokens:Number(telemetry.completionTokens||0),totalTokens:Number(telemetry.totalTokens||0),durationMs:Number(telemetry.durationMs||0),tokensPerSecond:Number(telemetry.tokensPerSecond||0),promptTokensPerSecond:Number(telemetry.promptTokensPerSecond||0),completionTokensPerSecond:Number(telemetry.completionTokensPerSecond||0),iteration:telemetry.iteration==null?null:Number(telemetry.iteration),toolCalls:Number(telemetry.toolCalls||0),source:'local+web',webProvider:telemetry.webProvider||webGrounding.provider,contextBreakdown:telemetry.contextBreakdown});
+          pushExecutionLog('Web Search',`Returned ${results.length} live sources and generated a grounded local response.`,'complete');
+          setAgentStatus('COMPLETED'); setAgentActivity(['Web sources retrieved and summarized locally.']);
+        } catch(err:any) {
+          pushExecutionLog('Web Search',err?.message||'Web search failed.','error'); setAgentStatus('ERROR'); setError(err?.message||'Web search failed.');
+          setMessages(prev=>prev.filter((_,index)=>index!==prev.length-1));
+        } finally { setLoading(false); }
+        return;
+      }
+
+      if (studioMode === 'code-engine') {
+        const nextMessages: ChatMessage[]=[...messages,{role:'user',content:text}];
+        setMessages(nextMessages); setInput(''); setLoading(true); setError(null); setThinkingSource('local');
+        pushExecutionLog('Code Engine','Executing the local project/file agent; web tools are not in the Code Engine route.','running');
+        try { await runProjectAgent(typedText); pushExecutionLog('Code Engine','Local coding task completed.','complete'); }
+        catch(err:any){ pushExecutionLog('Code Engine',err?.message||'Local coding task failed.','error'); setError(err?.message||'Local coding task failed.'); }
+        finally { setLoading(false); }
+        return;
+      }
+
+      if (studioMode === 'image-studio') {
+        const nextMessages: ChatMessage[]=[...messages,{role:'user',content:text}];
+        setMessages(nextMessages); setInput(''); setLoading(true); setError(null); setThinkingSource('local');
+        pushExecutionLog('Image Studio','Routing directly to the local ComfyUI image generation pipeline.','running');
+        try {
+          if(status?.engine==='qwen-coder') throw new Error('Image Studio requires a vision-capable local engine. Switch from Qwen Coder to Qwen 2.5-VL or Qwen3.5.');
+          await sendImageGeneration(typedText);
+          pushExecutionLog('Image Studio','Local ComfyUI image job completed and output was returned to the preview.','complete');
+        } catch(err:any){ pushExecutionLog('Image Studio',err?.message||'Local image generation failed.','error'); setError(err?.message||'Local image generation failed.'); }
+        finally { setLoading(false); }
+        return;
+      }
+
+      if (studioMode === 'video-generation') {
+        const nextMessages: ChatMessage[]=[...messages,{role:'user',content:text}];
+        setMessages(nextMessages); setInput(''); setLoading(true); setError(null); setThinkingSource('local');
+        pushExecutionLog('Video Gen','Routing directly to the local Wan 2.1 1.3B video pipeline.','running');
+        try {
+          window.dispatchEvent(new CustomEvent('gina-video-generation-request',{detail:{prompt:typedText}}));
+          setAgentStatus('GENERATING VIDEO'); setAgentActivity(['Wan 2.1 generation requested. Monitoring the shared local generation job.']);
+        } catch(err:any){ pushExecutionLog('Video Gen',err?.message||'Local video generation could not be started.','error'); setError(err?.message||'Local video generation could not be started.'); setLoading(false); }
+        return;
+      }
+
       const capabilityResponse = await fetch('/api/agent/capability-plan', {
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text:typedText})
       });
@@ -1172,38 +1275,13 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     setInput('');
     setLoading(true);
     setError(null);
-    const webIntent = /\b(search|google|browse|look(?: it)? up|find|latest|current|today|now|news|headline|headlines|weather|forecast|temperature|price|cost|flight|flights|airline|airport|ticket|tickets|fare|fares|cheap(?:est)?|hotel|hotels|holiday|travel|schedule|score|crypto|bitcoin|stock)\b/i.test(text)
-      || /\b(?:https?:\/\/|www\.|\.com\b|\.co\.uk\b|\.org\b)/i.test(text);
     try {
       const controller = new AbortController();
       chatAbortRef.current = controller;
-      let webGrounding: any = null;
-      if (webIntent) {
-        pushExecutionLog('Web Search', 'Searching current web sources before local response generation.', 'running');
-        setAgentStatus('SEARCHING WEB');
-        setAgentActivity(['Starting live web search before local generation…']);
-        const searchResponse = await fetch('/api/agent/web-search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: text, maxResults: 8 }),
-          signal: controller.signal,
-        });
-        const searchData = await searchResponse.json().catch(() => ({}));
-        if (!searchResponse.ok) throw new Error(searchData?.error || `Live web search failed (HTTP ${searchResponse.status}).`);
-        const results = Array.isArray(searchData?.results) ? searchData.results : [];
-        webGrounding = {
-          text: results.map((r:any, i:number) => `[WEB RESULT ${i + 1}]\nTitle: ${r.title || ''}\nURL: ${r.url || ''}\nSnippet: ${r.snippet || ''}`).join('\n\n'),
-          provider: searchData?.provider || 'verified web search',
-          engine: searchData?.engine || 'HTTP fetcher',
-          sources: results.slice(0, 8).map((r:any) => ({ title:r.title, url:r.url, snippet:r.snippet, source:r.source }))
-        };
-        setAgentStatus('READING WEB RESULTS');
-        setAgentActivity([`Live search returned ${results.length} result${results.length === 1 ? '' : 's'}.`, 'Reading verified web results…']);
-      } else {
-        pushExecutionLog('Local Inference', 'Generating the response with the configured local model.', 'running');
-        setAgentStatus('GENERATING');
-        setAgentActivity(['Generating a concise local response…']);
-      }
+      const webGrounding: any = null;
+      pushExecutionLog('Local Inference', 'Generating the response with the configured local model.', 'running');
+      setAgentStatus('GENERATING');
+      setAgentActivity(['Generating a concise local response…']);
       chatAbortRef.current = controller;
       const response = await fetch('/api/llm/chat', {
         method: 'POST',
@@ -1213,6 +1291,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
           temperature: 0.7,
           maxTokens: 512,
           suite: 'Local AI',
+          studioMode: 'local-chat',
           attachments: attachedFiles.filter(file => file.kind === 'image').map(file => ({
             name: file.name, mime: file.mime, localPath: file.localPath, kind: file.kind
           })),
@@ -1264,6 +1343,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
           toolCalls: Number(telemetry.toolCalls || 0),
           source: telemetry.source === 'local+web' ? 'local+web' : telemetry.source === 'web' ? 'web' : 'local',
           webProvider: telemetry.webSearched ? (telemetry.webProvider || 'verified') : null,
+          contextBreakdown: telemetry.contextBreakdown && typeof telemetry.contextBreakdown === 'object' ? telemetry.contextBreakdown : undefined,
         });
         setRuntimeTelemetry(telemetry);
         onAddLog('INFO', `Prompt telemetry: ${Number(telemetry.promptTokens||0).toLocaleString()} prompt tokens · ${Number(telemetry.completionTokens||0).toLocaleString()} completion tokens${telemetry.webSearched ? ` · web: ${telemetry.webProvider || 'verified'}` : ' · local only'}.`);
@@ -1803,15 +1883,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
           <div className="flex-1 min-h-[calc(100vh-430px)] h-[calc(100vh-430px)] grid grid-cols-12 gap-3 min-w-0">
             <div className="col-span-12 xl:col-span-8 min-w-0 overflow-y-auto custom-scrollbar space-y-3 pr-1">
             {!messages.length && <div className="h-full min-h-[400px] flex items-center justify-center text-center text-slate-600 text-xs"><div><Zap className="w-6 h-6 mx-auto mb-2 text-slate-700" /><p>Start Qwen locally to chat with Gina.</p><p className="text-[10px] mt-1">No cloud provider is used.</p></div></div>}
-            {(agentWorkspace || agentActivity.length > 0 || loading) && <div className="mb-2 rounded border border-slate-800 bg-slate-950/80 px-3 py-2 text-[9px] font-mono">
-            <div className="flex items-center justify-between gap-2"><span className="text-amber-300 font-bold">{agentWorkspace ? 'GINA CODING WORKSPACE' : 'GINA STUDIO ACTIVITY'}</span><span className="text-slate-500">{agentStatus}</span></div>
-            {agentActivity.length > 0 && <details open={loading} className="mt-2">
-              <summary className="cursor-pointer select-none text-slate-500">{agentActivity.length} live execution event{agentActivity.length === 1 ? '' : 's'}</summary>
-              <div className="mt-1.5 max-h-56 overflow-auto space-y-1">
-                {agentActivity.map((entry, i) => <pre key={`${i}-${entry.slice(0,24)}`} className="whitespace-pre-wrap rounded border border-slate-800 bg-slate-900/80 px-2 py-1.5 text-[8px] leading-relaxed text-slate-400">{entry}</pre>)}
-              </div>
-            </details>}
-          </div>}
+            {(agentWorkspace || agentActivity.length > 0 || loading) && <div className="mb-2 rounded border border-slate-800 bg-slate-950/80 px-3 py-2 text-[9px] font-mono"><div className="flex items-center justify-between gap-2"><span className="text-amber-300 font-bold">{agentWorkspace ? 'GINA CODING WORKSPACE' : 'GINA STUDIO ACTIVITY'}</span><span className="text-slate-500">{agentStatus}</span></div><div className="mt-1 text-slate-600">Detailed execution trace is available in the collapsible Agent Log below.</div></div>}
           {messages.map((message, index) => (
               <div key={`${message.role}-${index}`} className={`rounded-lg border p-3 text-xs leading-relaxed ${message.role === 'user' ? 'ml-10 bg-emerald-500/5 border-emerald-500/20 text-slate-200' : 'mr-10 bg-slate-900 border-slate-800 text-slate-300'}`}>
                 <div className="text-[9px] font-mono uppercase tracking-wider text-slate-600 mb-1 flex items-center justify-between">
@@ -1931,39 +2003,16 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
           </div>
 
 
-          <section className="rounded-lg border border-slate-800 bg-slate-950/90 overflow-hidden">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2">
-              <div className="flex items-center gap-2">
-                <Activity className="h-3.5 w-3.5 text-emerald-400" />
-                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-200">Activity Log / Execution History</span>
-                <span className="text-[8px] font-mono text-emerald-400">● LIVE</span>
-              </div>
-              <button type="button" onClick={() => setExecutionLog([])} className="rounded border border-slate-800 bg-slate-900 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-200">Clear Log</button>
-            </div>
-            <div className="divide-y divide-slate-800/80">
-              {executionLog.length === 0 && <div className="px-3 py-3 text-[9px] font-mono text-slate-600">No execution activity yet. Send a prompt to populate the workflow history.</div>}
-              {executionLog.map((entry, index) => (
-                <details key={entry.id} open={entry.status === 'running' && index === executionLog.length - 1} className="group">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 hover:bg-slate-900/70">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <ChevronRight className="h-3 w-3 shrink-0 text-slate-600 transition-transform group-open:rotate-90" />
-                      <span className="text-[9px] font-bold text-slate-200 truncate">{entry.title}</span>
-                      <span className={`text-[8px] font-mono ${entry.status === 'error' ? 'text-rose-400' : entry.status === 'running' ? 'text-amber-300' : 'text-emerald-400'}`}>{entry.status.toUpperCase()}</span>
-                    </div>
-                    <span className="text-[8px] font-mono text-slate-600">step {index + 1}</span>
-                  </summary>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 px-7 pb-2.5">
-                    <pre className="rounded border border-slate-800 bg-slate-900/70 p-2 text-[8px] leading-relaxed text-slate-400 whitespace-pre-wrap">{entry.details}</pre>
-                    <div className="rounded border border-slate-800 bg-slate-900/70 p-2 text-[8px] font-mono text-slate-500">
-                      <div className="mb-1 uppercase tracking-widest text-slate-600">Execution State</div>
-                      <div className="text-slate-300">{entry.status === 'running' ? 'Working…' : entry.status === 'error' ? 'Failed — see details' : 'Completed'}</div>
-                    </div>
-                  </div>
-                </details>
-              ))}
-            </div>
-          </section>
-
+          <AgentExecutionTrace
+            studioMode={studioMode}
+            agentStatus={agentStatus}
+            agentActivity={agentActivity}
+            executionLog={executionLog}
+            telemetry={lastTelemetry}
+            runtimeTelemetry={runtimeTelemetry}
+            hardwareTelemetry={hardwareTelemetry}
+            onClear={() => setExecutionLog([])}
+          />
           {lastTelemetry && (
             <div className="mt-1.5 flex items-center gap-1.5 text-[8px] font-mono text-slate-600">
               <span className="text-slate-500">{lastTelemetry.promptTokens.toLocaleString()}p</span>
