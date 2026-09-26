@@ -290,7 +290,7 @@ export default function UnifiedAiDashboard() {
                             <span className="text-emerald-400">{tokensPerSec ? `${tokensPerSec.toFixed(1)} tok/s` : 'Awaiting data'}</span>
                           </div>
                           <svg viewBox="0 0 100 40" className="w-full h-20" preserveAspectRatio="none" role="img" aria-label="Prompt throughput graph">
-                            {throughput.length > 1 && <path d={throughput.map((v, i) => `${(i/(throughput.length-1))*100},${36-Math.min(30,(v/Math.max(...throughput,1))*30)}`).join(' L ')} fill="none" stroke="#3b82f6" strokeWidth="1.5" />}
+                            {throughput.length > 1 && <path d={`M ${throughput.map((v, i) => `${(i/(throughput.length-1))*100},${36-Math.min(30,(v/Math.max(...throughput,1))*30)}`).join(' L ')}`} fill="none" stroke="#3b82f6" strokeWidth="1.5" />}
                             {throughput.length > 1 && <path d={`M ${throughput.map((v,i)=>`${(i/(throughput.length-1))*100},${36-Math.min(30,(v/Math.max(...throughput,1))*30)}`).join(' L ')} L 100 40 L 0 40 Z`} fill="#3b82f6" fillOpacity="0.15" />}
                           </svg>
                           <div className="flex justify-between text-[8.5px] font-mono text-zinc-600 border-t border-zinc-800/60 pt-1"><span>-40s</span><span>Live prompt history</span><span>Now</span></div>
