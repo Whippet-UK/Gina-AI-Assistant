@@ -123,7 +123,7 @@ export const StudioWorkspace: React.FC<Props> = ({ telemetry, logs, onAddLog, on
   const modeHeader = MODES.find(x => x.id === mode)!;
   return <div className="studio-shell">
     <header className="studio-modebar">
-      <div className="studio-brand"><Sparkles className="w-4 h-4 text-emerald-400" /><span>GINA LOCAL AI STUDIO</span><span className="studio-status-dot" /></div>
+      <div className="studio-brand"><Sparkles className="w-4 h-4 text-emerald-400" /><span>GINA ASSISTANT</span><span className="studio-status-dot" /></div>
       
       {/* Studio modes */}
       <nav className="studio-tabs custom-scrollbar" aria-label="Studio modes">
