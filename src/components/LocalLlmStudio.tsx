@@ -952,7 +952,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   const [executionLog, setExecutionLog] = useState<ExecutionLogEntry[]>([]);
   const pushExecutionLog = useCallback((title: string, details: string, status: ExecutionLogEntry['status'] = 'complete') => {
     setExecutionLog(prev => [
-      ...prev,
+      ...prev.map(entry => entry.status === 'running' ? { ...entry, status: 'complete' as const } : entry),
       { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title, details, status }
     ].slice(-40));
   }, []);
@@ -1109,7 +1109,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
         const nextMessages: ChatMessage[] = [...messages, { role:'user', content:text }];
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null);
         try { await runWebAppArtifact(typedText); }
-        catch (webAppError:any) { setError(webAppError?.message || 'Web App generation failed.'); pushAgentActivity(`[EXEC_STEP: Web App failed]\n${webAppError?.message || 'Unknown error'}\n[END_STEP]`); }
+        catch (webAppError:any) { pushExecutionLog('Web App Failed', webAppError?.message || 'Unknown error', 'error'); setError(webAppError?.message || 'Web App generation failed.'); pushAgentActivity(`[EXEC_STEP: Web App failed]\n${webAppError?.message || 'Unknown error'}\n[END_STEP]`); }
         finally { setLoading(false); }
         return;
       }
@@ -1672,6 +1672,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
             <div className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-emerald-400" />
               <span className="text-xs font-bold uppercase tracking-widest text-slate-200">Local Gina Chat</span>
+              <span className="px-2 py-0.5 rounded text-[8px] font-mono font-bold border border-slate-800 bg-slate-950 text-emerald-300">● {agentStatus}</span>
               <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold ${status?.ready ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400' : 'bg-slate-900 border border-slate-800 text-slate-500'}`}>
                 {status?.engine === 'qwen3.5' ? 'Qwen3.5 9B' : status?.engine === 'qwen-coder' ? 'Qwen Coder' : 'Qwen 2.5-VL'} · {status?.ready ? 'ONLINE' : 'LOCAL'}
               </span>
