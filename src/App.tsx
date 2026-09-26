@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Image, Video, Film, FolderOpen, ListChecks, Settings2, Gauge, Bot, Music, AudioLines, Activity } from 'lucide-react';
+import { Image, Video, Film, FolderOpen, ListChecks, Settings2, Gauge, Bot, Music, AudioLines } from 'lucide-react';
 import { Header } from './components/Header';
 import { ProjectStateProvider, useProjectState } from './context/ProjectStateContext';
 import { GenerationJobProvider, useGenerationJob } from './context/GenerationJobContext';
@@ -15,12 +15,10 @@ import { AiStudioSuite } from './components/AiStudioSuite';
 import { SystemHub } from './components/SystemHub';
 import { RestoreManifestModal } from './components/RestoreManifestModal';
 import { VRAMWarningToast } from './components/VRAMWarningToast';
-import { LocalLlmStudio } from './components/LocalLlmStudio';
 import { WorkspaceErrorBoundary } from './components/WorkspaceErrorBoundary';
 import { ComfyUIStatusIndicator } from './components/WanDiagnostic';
 import { RuntimeTelemetryPanel } from './components/RuntimeTelemetryPanel';
 import { StudioWorkspace } from './components/StudioWorkspace';
-import UnifiedAiDashboard from './components/UnifiedAiDashboard';
 import { LogEntry, SystemTelemetry } from './types';
 import { Aida64Hud } from './components/Aida64Hud';
 import { APP_VERSION, ACTIVE_SAVE_POINT_ID } from './version';
@@ -189,7 +187,7 @@ interface AppContentProps {
 }
 
 function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCache, handleRunAudit, isAuditing, activeSavePoint, isCooldownActive, cooldownRemainingSec, isManifestOpen, setIsManifestOpen }: AppContentProps) {
-  const [activeView, setActiveView] = useState<'studio' | 'create' | 'video' | 'gif' | 'streaminject' | 'music' | 'audio' | 'aida64' | 'shorts' | 'assets' | 'jobs' | 'llm' | 'dashboard' | 'system'>('studio');
+  const [activeView, setActiveView] = useState<'studio' | 'create' | 'video' | 'gif' | 'streaminject' | 'music' | 'audio' | 'aida64' | 'shorts' | 'assets' | 'jobs' | 'system'>('studio');
   const [isTelemetryOpen, setIsTelemetryOpen] = useState<boolean>(false);
   const { job, outputLoading } = useGenerationJob();
   const { updatePromptStudio } = useProjectState();
@@ -210,8 +208,6 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
     { id: 'shorts' as const, label: 'SHORTS', icon: Film, isGenerating: false },
     { id: 'assets' as const, label: 'ASSETS', icon: FolderOpen, isGenerating: false },
     { id: 'jobs' as const, label: 'JOBS', icon: ListChecks, isGenerating: isJobActive },
-    { id: 'llm' as const, label: 'LOCAL AI', icon: Bot, isGenerating: false },
-    { id: 'dashboard' as const, label: 'UNIFIED DASHBOARD', icon: Activity, isGenerating: false },
     { id: 'system' as const, label: 'SYSTEM', icon: Settings2, isGenerating: false }
   ], [isJobActive, isImageJob, isVideoJob, job?.workflowId]);
 
@@ -226,7 +222,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
     } catch {}
     return [
       'studio', 'create', 'video', 'gif', 'streaminject', 'music', 'audio',
-      'aida64', 'shorts', 'assets', 'jobs', 'llm', 'dashboard', 'system'
+      'aida64', 'shorts', 'assets', 'jobs', 'system'
     ];
   });
 
@@ -404,11 +400,6 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
         <main className={`space-y-5 ${activeView === 'assets' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Local library</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Assets</h1><p className="text-xs text-slate-500 mt-1">Generated files and their local generation records.</p></div><WorkspaceErrorBoundary name="Assets"><AiStudioSuite onAddLog={logWithOomCheck} view="assets" /></WorkspaceErrorBoundary></main>
         <main className={`space-y-5 ${activeView === 'jobs' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Execution monitor</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Jobs</h1><p className="text-xs text-slate-500 mt-1">Track local ComfyUI work without opening ComfyUI itself.</p></div><WorkspaceErrorBoundary name="Jobs"><AiStudioSuite onAddLog={logWithOomCheck} view="jobs" /></WorkspaceErrorBoundary></main>
 
-        <main className={`space-y-5 ${activeView === 'llm' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Quantized local AI engine</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Local AI</h1><p className="text-xs text-slate-500 mt-1">Qwen 2.5-VL Vision / Qwen 2.5 Coder served locally by llama.cpp CUDA.</p></div><WorkspaceErrorBoundary name="Local AI"><LocalLlmStudio onAddLog={logWithOomCheck} /></WorkspaceErrorBoundary></main>
-
-        <main className={`${activeView === 'dashboard' ? 'block' : 'hidden'} -mx-4 sm:-mx-5 lg:-mx-6 xl:-mx-8 -mb-4 sm:-mb-5 lg:-mb-6 xl:-mb-8`}>
-          <WorkspaceErrorBoundary name="Unified AI Dashboard"><UnifiedAiDashboard /></WorkspaceErrorBoundary>
-        </main>
 
         <main className={`space-y-5 ${activeView === 'system' ? 'block' : 'hidden'}`}>
           <WorkspaceErrorBoundary name="System"><SystemHub telemetry={telemetry} logs={logs} activeSavePoint={activeSavePoint} logWithOomCheck={logWithOomCheck} handleClearCache={handleClearCache} onClearLogs={() => setLogs([])} /></WorkspaceErrorBoundary>
