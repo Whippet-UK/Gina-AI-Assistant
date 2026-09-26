@@ -966,55 +966,25 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   const runWebAppArtifact = async (task: string) => {
     pushAgentActivity('[EXEC_STEP: Preparing Web App artifact]\n✓ Sending the build request to the local model\n[END_STEP]');
     setAgentStatus('GENERATING ARTIFACT');
-
-    const extractHtml = (value: any): string => {
-      const raw = typeof value === 'string'
-        ? value.trim()
-        : String(value?.choices?.[0]?.message?.content || value?.html || '').trim();
-      if (!raw) return '';
-      const fenced = raw.match(/```html\s*([\s\S]*?)```/i);
-      const candidate = (fenced?.[1] || raw).trim();
-      const startIndex = candidate.search(/<!doctype\s+html|<html(?:\s|>)/i);
-      if (startIndex < 0) return '';
-      const sliced = candidate.slice(startIndex).trim();
-      const endIndex = sliced.toLowerCase().lastIndexOf('</html>');
-      return endIndex >= 0 ? sliced.slice(0, endIndex + 7).trim() : '';
-    };
-
-    const requestArtifact = async (messages: Array<{ role: 'system' | 'user'; content: string }>, maxTokens: number) => {
-      const response = await fetch('/api/llm/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages, temperature: 0.35, maxTokens, suite: 'Web App Studio' })
-      });
-      const body = await response.text();
-      let data: any = null;
-      try { data = body.trim() ? JSON.parse(body) : null; } catch {
-        const directHtml = extractHtml(body);
-        if (response.ok && directHtml) return directHtml;
-        throw new Error('The Gina backend returned an invalid JSON response for Web App generation.');
-      }
-      if (!response.ok) throw new Error(data?.error || `Web App generation failed (HTTP ${response.status}).`);
-      return extractHtml(data);
-    };
-
-    const baseSystem = 'You are Gina Web App Studio. Build the requested interactive web app as ONE complete self-contained HTML document. Return ONLY the complete HTML document. Include inline CSS and JavaScript. Never return JSON, Markdown fences, explanations, or hidden reasoning. The document must end with </html>.';
-    let html = await requestArtifact([
-      { role: 'system', content: baseSystem },
-      { role: 'user', content: task }
-    ], 1800);
-
-    if (!html) {
-      pushAgentActivity('[EXEC_STEP: Recovering Web App artifact]\n✓ The first response was incomplete; requesting a complete HTML document\n[END_STEP]');
-      html = await requestArtifact([
-        { role: 'system', content: baseSystem + ' Complete the supplied partial artifact and return a full replacement document.' },
-        { role: 'user', content: 'REQUEST:\n' + task + '\n\nPARTIAL ARTIFACT:\n' + String(html || '').slice(0, 9000) }
-      ], 2048);
-    }
-
-    if (!html) throw new Error('The local model did not return a complete HTML artifact after recovery.');
+    const response = await fetch('/api/llm/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [
+          { role: 'system', content: 'You are Gina Web App Studio. Build the requested interactive web app as a single self-contained HTML document. Return ONLY the complete HTML document, with inline CSS and JavaScript, no markdown fences, no explanation, no thinking process.' },
+          { role: 'user', content: task }
+        ],
+        temperature: 0.45, maxTokens: 1600, suite: 'Web App Studio'
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error || `Web App generation failed (HTTP ${response.status}).`);
+    const raw = String(data?.choices?.[0]?.message?.content || '').trim();
+    const htmlMatch = raw.match(/```html\s*([\s\S]*?)```/i);
+    const html = (htmlMatch?.[1] || raw).trim();
+    if (!/^<!doctype html|<html[\s>]/i.test(html)) throw new Error('The local model did not return a complete HTML artifact.');
     setAgentStatus('RENDERING ARTIFACT');
-    pushAgentActivity('[FILE_STEP: Generated Web App artifact]\n✓ Complete HTML received and ready for live rendering\n[END_STEP]');
+    pushAgentActivity('[FILE_STEP: Generated Web App artifact]\n✓ HTML received and ready for live rendering\n[END_STEP]');
     onWebAppArtifact?.(html);
     setAgentStatus('COMPLETED');
     setMessages(prev => [...prev, { role:'assistant', content:'Web App artifact generated and rendered in the right-hand workspace.' }]);
