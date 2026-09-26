@@ -964,7 +964,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   };
 
   const runWebAppArtifact = async (task: string) => {
-    pushAgentActivity('[EXEC_STEP: Preparing Web App artifact]\\n✓ Sending the build request to the local model\\n[END_STEP]');
+    pushAgentActivity('[EXEC_STEP: Preparing Web App artifact]\n✓ Sending the build request to the local model\n[END_STEP]');
     setAgentStatus('GENERATING ARTIFACT');
 
     const extractHtml = (value: any): string => {
@@ -972,9 +972,9 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
         ? value.trim()
         : String(value?.choices?.[0]?.message?.content || value?.html || '').trim();
       if (!raw) return '';
-      const fenced = raw.match(/```html\\s*([\\s\\S]*?)```/i);
+      const fenced = raw.match(/```html\s*([\s\S]*?)```/i);
       const candidate = (fenced?.[1] || raw).trim();
-      const startIndex = candidate.search(/<!doctype\\s+html|<html(?:\\s|>)/i);
+      const startIndex = candidate.search(/<!doctype\s+html|<html(?:\s|>)/i);
       if (startIndex < 0) return '';
       const sliced = candidate.slice(startIndex).trim();
       const endIndex = sliced.toLowerCase().lastIndexOf('</html>');
@@ -1005,16 +1005,16 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     ], 1800);
 
     if (!html) {
-      pushAgentActivity('[EXEC_STEP: Recovering Web App artifact]\\n✓ The first response was incomplete; requesting a complete HTML document\\n[END_STEP]');
+      pushAgentActivity('[EXEC_STEP: Recovering Web App artifact]\n✓ The first response was incomplete; requesting a complete HTML document\n[END_STEP]');
       html = await requestArtifact([
         { role: 'system', content: baseSystem + ' Complete the supplied partial artifact and return a full replacement document.' },
-        { role: 'user', content: 'REQUEST:\\n' + task + '\\n\\nPARTIAL ARTIFACT:\\n' + String(html || '').slice(0, 9000) }
+        { role: 'user', content: 'REQUEST:\n' + task + '\n\nPARTIAL ARTIFACT:\n' + String(html || '').slice(0, 9000) }
       ], 2048);
     }
 
     if (!html) throw new Error('The local model did not return a complete HTML artifact after recovery.');
     setAgentStatus('RENDERING ARTIFACT');
-    pushAgentActivity('[FILE_STEP: Generated Web App artifact]\\n✓ Complete HTML received and ready for live rendering\\n[END_STEP]');
+    pushAgentActivity('[FILE_STEP: Generated Web App artifact]\n✓ Complete HTML received and ready for live rendering\n[END_STEP]');
     onWebAppArtifact?.(html);
     setAgentStatus('COMPLETED');
     setMessages(prev => [...prev, { role:'assistant', content:'Web App artifact generated and rendered in the right-hand workspace.' }]);
