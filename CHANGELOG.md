@@ -1,3 +1,17 @@
+# v1.20.16 — Phase 63 — Web App Runtime, Code View, Save & Token Telemetry
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx`
+  - **Why:** Fixed Web App Studio live execution by replacing the disabled empty iframe sandbox with an isolated executable sandbox. Generated JavaScript now runs in the preview, while a namespaced `localStorage` bridge preserves app-local data without exposing Gina's parent page storage.
+  - **Why:** Added dedicated Web App **Preview / Code / Save HTML** controls so the generated HTML is directly inspectable and can be persisted through Gina's existing generated-code save route.
+  - **Why:** Web App generation now explicitly sends `studioMode: 'web-app'`, consumes the returned `ginaTelemetry`, updates the runtime telemetry widgets, and records prompt/completion/total token counts in the agent trace.
+  - **Why:** Added isolated iframe runtime-error reporting so JavaScript failures are surfaced in Gina's execution trace instead of leaving a broken preview looking like a successful build.
+
+## Validation Notes
+
+- Confirmed the Web App branch now contains the explicit `studioMode: 'web-app'` request, executable sandbox, storage bridge, Code view, Save HTML control, and Web App token telemetry path.
+- GitHub repository has no Actions workflow providing an automatic compile/test result for this branch; final runtime acceptance still requires the local Gina workspace to run the project.
+- Acceptance case: generate the requested Pomodoro timer and verify Start/Pause/Reset, completion audio, completed-session persistence, Code view, Save HTML, and non-zero prompt/completion/total token telemetry.
+
 # v1.20.15 — Phase 62 — Gina Tool Isolation, Context Hygiene & Unified Agent Trace
 
 - **Target File Path:** `/package.json` (line 4) and `/src/version.ts` (lines 1-3)

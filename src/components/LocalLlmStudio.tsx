@@ -159,6 +159,10 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   const [showWebBrowserModal, setShowWebBrowserModal] = useState(false);
   const [activePreviewContent, setActivePreviewContent] = useState<{ type:'text'|'html'|'web'|'video'; title:string; content:string; url?:string; sources?:Array<{title:string;url:string;snippet?:string}> } | null>(null);
   const [savedCodeFiles, setSavedCodeFiles] = useState<Record<string, { url:string; path:string; bytes:number }>>({});
+  const [webAppView, setWebAppView] = useState<'preview' | 'code'>('preview');
+  const [webAppRuntimeError, setWebAppRuntimeError] = useState<string | null>(null);
+  const [webAppStorageNamespace, setWebAppStorageNamespace] = useState<string | null>(null);
+  const webAppIframeRef = useRef<HTMLIFrameElement | null>(null);
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [sessionElectricityCost, setSessionElectricityCost] = useState<number>(0);
   const [sessionSavingsGbp, setSessionSavingsGbp] = useState<number>(0);
@@ -425,6 +429,97 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
       setError(`Code save failed: ${saveError?.message || 'unknown error'}`);
       onAddLog('WARN', `Generated code save failed: ${saveError?.message || 'unknown error'}`);
     }
+  };
+
+  const makeWebAppStorageNamespace = (html: string) => {
+    let hash = 2166136261;
+    for (let i = 0; i < html.length; i += 1) {
+      hash ^= html.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `webapp-${(hash >>> 0).toString(16)}`;
+  };
+
+  const readWebAppStorage = (namespace: string) => {
+    const prefix = `gina_webapp:${namespace}:`;
+    const snapshot: Record<string, string> = {};
+    try {
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (key?.startsWith(prefix)) snapshot[key.slice(prefix.length)] = localStorage.getItem(key) ?? '';
+      }
+    } catch {}
+    return snapshot;
+  };
+
+  useEffect(() => {
+    const onWebAppMessage = (event: MessageEvent) => {
+      const iframe = webAppIframeRef.current;
+      const data = event.data;
+      if (!iframe?.contentWindow || event.source !== iframe.contentWindow || !data || data.channel !== 'gina-webapp-storage') return;
+      if (!webAppStorageNamespace || data.namespace !== webAppStorageNamespace) return;
+      const prefix = `gina_webapp:${webAppStorageNamespace}:`;
+      try {
+        if (data.op === 'ready') {
+          iframe.contentWindow.postMessage({ channel:'gina-webapp-storage', namespace:webAppStorageNamespace, op:'hydrate', data:readWebAppStorage(webAppStorageNamespace) }, '*');
+        } else if (data.op === 'set' && typeof data.key === 'string') {
+          localStorage.setItem(prefix + data.key, String(data.value ?? ''));
+        } else if (data.op === 'remove' && typeof data.key === 'string') {
+          localStorage.removeItem(prefix + data.key);
+        } else if (data.op === 'clear') {
+          const keys = Object.keys(readWebAppStorage(webAppStorageNamespace));
+          for (const key of keys) localStorage.removeItem(prefix + key);
+        } else if (data.op === 'runtime-error') {
+          const message = String(data.message || 'The generated Web App reported a runtime error.').slice(0, 500);
+          setWebAppRuntimeError(message);
+          pushAgentActivity(`[EXEC_STEP: Web App runtime error]\n${message}\n[END_STEP]`);
+          pushExecutionLog('Web App Runtime', message, 'error');
+        }
+      } catch (storageError:any) {
+        const message = storageError?.message || 'Web App local storage bridge failed.';
+        setWebAppRuntimeError(message);
+        pushExecutionLog('Web App Runtime', message, 'error');
+      }
+    };
+    window.addEventListener('message', onWebAppMessage);
+    return () => window.removeEventListener('message', onWebAppMessage);
+  }, [webAppStorageNamespace, pushExecutionLog]);
+
+  const buildWebAppPreviewHtml = (html: string, namespace: string) => {
+    const bridge = `<script>
+(function(){
+  const CHANNEL='gina-webapp-storage';
+  const NAMESPACE='${namespace}';
+  let store=Object.create(null);
+  const send=(payload)=>parent.postMessage(Object.assign({channel:CHANNEL,namespace:NAMESPACE},payload),'*');
+  const storage={
+    get length(){return Object.keys(store).length;},
+    key:(index)=>Object.keys(store)[Number(index)] ?? null,
+    getItem:(key)=>Object.prototype.hasOwnProperty.call(store,String(key)) ? store[String(key)] : null,
+    setItem:(key,value)=>{store[String(key)]=String(value);send({op:'set',key:String(key),value:String(value)});},
+    removeItem:(key)=>{delete store[String(key)];send({op:'remove',key:String(key)});},
+    clear:()=>{store=Object.create(null);send({op:'clear'});}
+  };
+  window.__ginaWebAppStorage=storage;
+  try{Object.defineProperty(window,'localStorage',{configurable:true,get:()=>storage});}catch{}
+  window.addEventListener('message',(event)=>{
+    const data=event.data;
+    if(event.source!==parent || !data || data.channel!==CHANNEL || data.namespace!==NAMESPACE || data.op!=='hydrate') return;
+    store=Object.assign(Object.create(null),data.data||{});
+  });
+  window.addEventListener('error',(event)=>send({op:'runtime-error',message:event.error?.message || event.message || 'JavaScript runtime error'}));
+  window.addEventListener('unhandledrejection',(event)=>send({op:'runtime-error',message:event.reason?.message || String(event.reason || 'Unhandled promise rejection')}));
+  send({op:'ready'});
+})();
+<\/script>`;
+    const rewritten = html.replace(/(<script\\b[^>]*>)([\\s\\S]*?)(<\\/script>)/gi, (_match, open, body, close) => {
+      const transformed = String(body)
+        .replace(/\\bwindow\\.localStorage\\b/g, 'window.__ginaWebAppStorage')
+        .replace(/\\bglobalThis\\.localStorage\\b/g, 'window.__ginaWebAppStorage')
+        .replace(/\\blocalStorage\\b/g, '__ginaWebAppStorage');
+      return `${open}${transformed}${close}`;
+    });
+    return /<head[\\s>]/i.test(rewritten) ? rewritten.replace(/<head([^>]*)>/i, `<head$1>${bridge}`) : `${bridge}${rewritten}`;
   };
 
   const renderMarkdownLinks = (text: string) => {
@@ -1055,10 +1150,10 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         messages: [
-          { role: 'system', content: 'You are Gina Web App Studio. Build the requested interactive web app as a single self-contained HTML document. Return ONLY the complete HTML document, with inline CSS and JavaScript, no markdown fences, no explanation, no thinking process.' },
+          { role: 'system', content: 'You are Gina Web App Studio. Build the requested interactive web app as a single self-contained HTML document. Return ONLY the complete HTML document, with inline CSS and JavaScript. No markdown fences, no explanation, no thinking process, no external scripts or libraries. All requested controls must work in the browser. If persistence is requested, use localStorage normally; Gina provides an isolated app-local storage bridge in the preview.' },
           { role: 'user', content: task }
         ],
-        temperature: 0.45, maxTokens: 3072, suite: 'Web App Studio'
+        temperature: 0.45, maxTokens: 3072, suite: 'Web App Studio', studioMode: 'web-app'
       })
     });
     const data = await response.json().catch(() => ({}));
@@ -1068,7 +1163,31 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     const html = (htmlMatch?.[1] || raw).trim();
     if (!/^<!doctype html|<html[\s>]/i.test(html)) throw new Error('The local model did not return a complete HTML artifact.');
     setAgentStatus('RENDERING ARTIFACT');
+    const storageNamespace = makeWebAppStorageNamespace(html);
+    setWebAppStorageNamespace(storageNamespace);
+    setWebAppRuntimeError(null);
+    setWebAppView('preview');
     setActivePreviewContent({ type: 'html', title: 'Generated Web App', content: html });
+    const telemetry = data?.ginaTelemetry || {};
+    const promptTokens = Number(telemetry.promptTokens || 0);
+    const completionTokens = Number(telemetry.completionTokens || 0);
+    const totalTokens = Number(telemetry.totalTokens || promptTokens + completionTokens);
+    const normalizedTelemetry: LocalLlmPropsTelemetry = {
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      durationMs:Number(telemetry.durationMs || 0),
+      tokensPerSecond:Number(telemetry.tokensPerSecond || 0),
+      promptTokensPerSecond:Number(telemetry.promptTokensPerSecond || 0),
+      completionTokensPerSecond:Number(telemetry.completionTokensPerSecond || 0),
+      iteration:telemetry.iteration == null ? null : Number(telemetry.iteration),
+      toolCalls:Number(telemetry.toolCalls || 0),
+      source:'local',
+      webProvider:null
+    };
+    setLastTelemetry(normalizedTelemetry);
+    setRuntimeTelemetry({ ...normalizedTelemetry, contextBreakdown:telemetry.contextBreakdown, webSearched:false, webProvider:null });
+    pushExecutionLog('Web App Tokens', `${promptTokens.toLocaleString()} prompt · ${completionTokens.toLocaleString()} completion · ${totalTokens.toLocaleString()} total`, 'complete');
     pushAgentActivity('[FILE_STEP: Generated Web App artifact]\n✓ HTML received and ready for live rendering\n[END_STEP]');
     onWebAppArtifact?.(html);
     setAgentStatus('COMPLETED');
@@ -2028,13 +2147,32 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
               })()}
             </div>
             <aside className="col-span-12 xl:col-span-4 min-w-0 overflow-hidden rounded-lg border border-slate-800 bg-slate-950/90 flex flex-col">
-              <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-3 py-2">
                 <div className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-widest text-slate-300"><Search className="w-3 h-3 text-sky-400" /> Interactive Preview</div>
-                <span className="text-[8px] font-mono text-slate-600">LIVE FRAME</span>
+                {activePreviewContent?.type === 'html' ? (
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => setWebAppView('preview')} className={`rounded px-2 py-1 text-[8px] font-bold uppercase tracking-wider ${webAppView === 'preview' ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' : 'text-slate-500 hover:text-slate-300 border border-transparent'}`}>Preview</button>
+                    <button type="button" onClick={() => setWebAppView('code')} className={`rounded px-2 py-1 text-[8px] font-bold uppercase tracking-wider ${webAppView === 'code' ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30' : 'text-slate-500 hover:text-slate-300 border border-transparent'}`}>Code</button>
+                    <button type="button" onClick={() => void saveCodeBlock('gina-web-app.html', activePreviewContent.content, 'web-app-html')} className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/20">Save HTML</button>
+                  </div>
+                ) : <span className="text-[8px] font-mono text-slate-600">LIVE FRAME</span>}
               </div>
+              {activePreviewContent?.type === 'html' && savedCodeFiles['web-app-html'] && (
+                <div className="border-b border-slate-800 px-3 py-1.5 text-[8px] font-mono text-emerald-400 truncate">Saved: {savedCodeFiles['web-app-html'].path}</div>
+              )}
+              {webAppRuntimeError && activePreviewContent?.type === 'html' && (
+                <div className="mx-3 mt-2 rounded border border-rose-500/30 bg-rose-500/10 px-2.5 py-2 text-[9px] text-rose-300">Web App runtime error: {webAppRuntimeError}</div>
+              )}
               <div className="flex-1 min-h-0 overflow-auto p-3">
                 {!activePreviewContent ? <div className="h-full min-h-[260px] flex items-center justify-center text-center text-slate-600 text-[10px]">Web sources, HTML layouts and live response scraps will appear here.</div> : activePreviewContent.type === 'html' ? (
-                  <iframe title={activePreviewContent.title} sandbox="" srcDoc={activePreviewContent.content} className="h-full min-h-[320px] w-full rounded border border-slate-800 bg-white" />
+                  webAppView === 'code' ? (
+                    <pre className="h-full min-h-[320px] overflow-auto rounded border border-slate-800 bg-slate-950 p-3 text-[9px] leading-relaxed text-slate-300 whitespace-pre-wrap break-words"><code>{activePreviewContent.content}</code></pre>
+                  ) : (
+                    <iframe ref={webAppIframeRef} title={activePreviewContent.title} sandbox="allow-scripts allow-forms" srcDoc={buildWebAppPreviewHtml(activePreviewContent.content, webAppStorageNamespace || makeWebAppStorageNamespace(activePreviewContent.content))} onLoad={() => {
+                      const namespace = webAppStorageNamespace || makeWebAppStorageNamespace(activePreviewContent.content);
+                      webAppIframeRef.current?.contentWindow?.postMessage({ channel:'gina-webapp-storage', namespace, op:'ready' }, '*');
+                    }} className="h-full min-h-[320px] w-full rounded border border-slate-800 bg-white" />
+                  )
                 ) : activePreviewContent.type === 'video' ? (
                   <div className="flex h-full min-h-[320px] items-center justify-center rounded border border-slate-800 bg-slate-950 p-2">
                     {activePreviewContent.url || activePreviewContent.content ? (
