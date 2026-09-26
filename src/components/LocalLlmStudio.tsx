@@ -985,7 +985,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
           { role: 'system', content: 'You are Gina Web App Studio. Build the requested interactive web app as a single self-contained HTML document. Return ONLY the complete HTML document, with inline CSS and JavaScript, no markdown fences, no explanation, no thinking process.' },
           { role: 'user', content: task }
         ],
-        temperature: 0.45, maxTokens: 1600, suite: 'Web App Studio'
+        temperature: 0.45, maxTokens: 3072, suite: 'Web App Studio'
       })
     });
     const data = await response.json().catch(() => ({}));
