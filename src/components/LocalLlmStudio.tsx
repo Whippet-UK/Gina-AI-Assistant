@@ -29,6 +29,7 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   imageUrl?: string;
+  videoUrl?: string;
   webSources?: Array<{ title: string; url: string; snippet?: string; source?: string }>;
   webProvider?: string | null;
   browserEngine?: string | null;
