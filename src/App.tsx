@@ -20,6 +20,7 @@ import { ComfyUIStatusIndicator } from './components/WanDiagnostic';
 import { RuntimeTelemetryPanel } from './components/RuntimeTelemetryPanel';
 import { StudioWorkspace } from './components/StudioWorkspace';
 import { LogEntry, SystemTelemetry } from './types';
+import { applyGinaPanelChrome, OuterWorkspaceFrame } from './components/ResizablePanels';
 import { Aida64Hud } from './components/Aida64Hud';
 import { APP_VERSION, ACTIVE_SAVE_POINT_ID } from './version';
 
@@ -42,6 +43,7 @@ export default function App() {
     ramTotalGB: 32.0, ssdFreeGB: 168.4, thermalBrakeActive: false,
     gpuPowerW: 0
   });
+  useEffect(() => { applyGinaPanelChrome(); }, []);
   const [logs, setLogs] = useState<LogEntry[]>([
     { id: '1', timestamp: new Date().toISOString().slice(11, 23), level: 'INFO', message: 'Gina AI Factory Engine Dashboard initialized successfully.' },
     { id: '2', timestamp: new Date().toISOString().slice(11, 23), level: 'RULE', ruleId: '011-020', message: 'Rule 011: VRAM Cage locked at 7372MB (90% of 8GB RTX 3070 Ti).' },
@@ -347,6 +349,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
           </nav>
         </div>
 
+        <OuterWorkspaceFrame className="mb-6">
         <main className={`${activeView === 'studio' ? 'block' : 'hidden'}`}>
           <StudioWorkspace telemetry={telemetry} logs={logs} onAddLog={logWithOomCheck} onClearCache={() => handleClearCache(false, true)} />
         </main>
@@ -404,6 +407,8 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
         <main className={`space-y-5 ${activeView === 'system' ? 'block' : 'hidden'}`}>
           <WorkspaceErrorBoundary name="System"><SystemHub telemetry={telemetry} logs={logs} activeSavePoint={activeSavePoint} logWithOomCheck={logWithOomCheck} handleClearCache={handleClearCache} onClearLogs={() => setLogs([])} /></WorkspaceErrorBoundary>
         </main>
+
+        </OuterWorkspaceFrame>
 
         <footer className="border-t border-slate-800 mt-8 pt-4 pb-6 text-center text-[10px] text-slate-600">Gina AI Factory v{APP_VERSION} · Local-first · ComfyUI + llama.cpp execution backends · C:\Gina_AI\</footer>
       </div>

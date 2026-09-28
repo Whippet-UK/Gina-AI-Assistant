@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ResizableSplit, PanelChromeControls, ginaPanelStyle } from './ResizablePanels';
 import { Bot, Cpu, FileDown, MessageSquare, Mic, MicOff, Play, RotateCw, Square, Trash2, Volume2, VolumeX, Zap, Sliders, ChevronDown, ChevronUp, ChevronRight, Paperclip, X, FileText, Image as ImageIcon, Archive, File as FileIcon, Github, Activity, Gauge, Globe, Globe2, ExternalLink, Search, Maximize2, Minimize2, Code2, Video, DollarSign, Eye, EyeOff, Layers, Check, Sparkles } from 'lucide-react';
 import { LocalRagKnowledgePanel } from './LocalRagKnowledgePanel';
 import { useGenerationJob } from '../context/GenerationJobContext';
 import { WebBrowserInspectorModal } from './WebBrowserInspectorModal';
 import { AgentExecutionTrace } from './AgentExecutionTrace';
+import { initGinaMath } from '../lib/ginaMath';
 
 interface LocalLlmStatus {
   configured: boolean;
@@ -332,7 +334,28 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
       }
       if (runtimeResult.status === 'fulfilled' && runtimeResult.value.ok) {
         const runtime = await runtimeResult.value.json().catch(() => null);
-        if (runtime) setRuntimeTelemetry(runtime);
+        // /api/runtime/telemetry returns Snapshot { latest, totals, history }.
+        // UI consumers expect a flat prompt-telemetry record (promptTokens, etc.).
+        if (runtime) {
+          const latest = runtime.latest && typeof runtime.latest === 'object' ? runtime.latest : null;
+          if (latest) {
+            setRuntimeTelemetry({
+              promptTokens: Number(latest.promptTokens || 0),
+              completionTokens: Number(latest.completionTokens || 0),
+              totalTokens: Number(latest.totalTokens || 0),
+              durationMs: Number(latest.durationMs || 0),
+              tokensPerSecond: Number(latest.tokensPerSecond || latest.completionTokensPerSecond || 0),
+              promptTokensPerSecond: Number(latest.promptTokensPerSecond || 0),
+              completionTokensPerSecond: Number(latest.completionTokensPerSecond || latest.tokensPerSecond || 0),
+              iteration: latest.iteration == null ? null : Number(latest.iteration),
+              toolCalls: Number(latest.toolCalls || 0),
+              source: latest.source === 'local+web' || latest.source === 'web' ? latest.source : 'local',
+              webProvider: latest.webProvider ?? null,
+              contextBreakdown: latest.contextBreakdown,
+              webSearched: Boolean(latest.webSearched),
+            });
+          }
+        }
       }
       try {
         const savRes = await fetch('/api/proxy/savings', { cache: 'no-store' });
@@ -354,6 +377,11 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
       cancelled = true;
       window.clearInterval(timer);
     };
+  }, []);
+
+  // Optional WASM math kernels — silent fallback to pure JS (src/lib/ginaMath.ts).
+  useEffect(() => {
+    void initGinaMath('/wasm/gina_math.wasm').catch(() => { /* JS backend remains active */ });
   }, []);
 
   const resolvedLocalArch = useMemo(() => {
@@ -431,6 +459,25 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     }
   };
 
+  /** Immediate client-side download (no server round-trip). */
+  const downloadCodeFile = (filename: string, content: string, mime = 'text/plain;charset=utf-8') => {
+    try {
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.rel = 'noopener';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+      onAddLog('INFO', `Downloaded ${filename} (${content.length.toLocaleString()} chars)`);
+    } catch (downloadError: any) {
+      setError(`Download failed: ${downloadError?.message || 'unknown error'}`);
+    }
+  };
+
   const makeWebAppStorageNamespace = (html: string) => {
     let hash = 2166136261;
     for (let i = 0; i < html.length; i += 1) {
@@ -440,19 +487,54 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     return `webapp-${(hash >>> 0).toString(16)}`;
   };
 
-  type ExecutionLogEntry = { id: string; title: string; details: string; status: 'running' | 'complete' | 'error' };
+  type ExecutionLogEntry = {
+    id: string;
+    title: string;
+    details: string;
+    status: 'running' | 'complete' | 'error';
+    startedAt?: number;
+    endedAt?: number;
+    kind?: 'command' | 'workflow' | 'info' | 'tool';
+  };
   const [executionLog, setExecutionLog] = useState<ExecutionLogEntry[]>([]);
-  const pushExecutionLog = useCallback((title: string, details: string, status: ExecutionLogEntry['status'] = 'complete') => {
+  const pushExecutionLog = useCallback((
+    title: string,
+    details: string,
+    status: ExecutionLogEntry['status'] = 'complete',
+    kind: ExecutionLogEntry['kind'] = 'workflow'
+  ) => {
+    const now = Date.now();
     setExecutionLog(prev => {
       const next = [...prev];
       const runningIndex = next.findIndex(entry => entry.title === title && entry.status === 'running');
       if (runningIndex >= 0) {
-        next[runningIndex] = { ...next[runningIndex], details, status };
+        const prevEntry = next[runningIndex];
+        next[runningIndex] = {
+          ...prevEntry,
+          details,
+          status,
+          kind: kind || prevEntry.kind,
+          endedAt: status === 'running' ? undefined : now,
+        };
         return next.slice(-40);
       }
+      // Close any other running steps so only one "Working for" is active
+      const closed = next.map(entry =>
+        entry.status === 'running'
+          ? { ...entry, status: 'complete' as const, endedAt: entry.endedAt ?? now }
+          : entry
+      );
       return [
-        ...next.map(entry => entry.status === 'running' ? { ...entry, status: 'complete' as const } : entry),
-        { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title, details, status }
+        ...closed,
+        {
+          id: `${now}-${Math.random().toString(36).slice(2, 7)}`,
+          title,
+          details,
+          status,
+          kind,
+          startedAt: now,
+          endedAt: status === 'running' ? undefined : now,
+        },
       ].slice(-40);
     });
   }, []);
@@ -510,41 +592,90 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     return () => window.removeEventListener('message', onWebAppMessage);
   }, [webAppStorageNamespace, pushExecutionLog]);
 
+  /** Pull a clean HTML document out of messy model output (fences, preamble, etc.). */
+  const normalizeWebAppHtml = (raw: string): string => {
+    let text = String(raw || '').trim();
+    if (!text) return '';
+    // Prefer fenced html block if present
+    const fenced = text.match(/```(?:html|HTML)?\s*([\s\S]*?)```/);
+    if (fenced?.[1]) text = fenced[1].trim();
+    // Drop everything before doctype/html
+    const start = text.search(/<!doctype\s+html|<html[\s>]/i);
+    if (start > 0) text = text.slice(start).trim();
+    // Drop trailing markdown fences / prose after </html>
+    const end = text.search(/<\/html>/i);
+    if (end >= 0) text = text.slice(0, end + 7).trim();
+    // Recover incomplete artifacts: model returned canvas/script body without document shell
+    if (!/^<!doctype html|<html[\s>]/i.test(text)) {
+      const looksLikeMarkup = /<(?:canvas|div|style|script|body|head|button|input)\b/i.test(text);
+      if (looksLikeMarkup) {
+        text = `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n<script src="https://cdn.tailwindcss.com"><\/script>\n<title>Gina Web App<\/title>\n</head>\n<body class="m-0 overflow-hidden bg-slate-950">\n${text}\n</body>\n</html>`;
+      }
+    }
+    return text;
+  };
+
+  /**
+   * Inside <script> bodies, a literal </script> closes the HTML script element
+   * early (srcDoc parser). That leaves following markup parsed as JS →
+   * "Unexpected token '<'". Escape those sequences for safe embedding.
+   */
+  const escapeScriptEndsForSrcDoc = (html: string): string =>
+    String(html || '').replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi, (_m, open, body, close) => {
+      const safe = String(body).replace(/<\/script/gi, '<\\/script');
+      return `${open}${safe}${close}`;
+    });
+
   const buildWebAppPreviewHtml = (html: string, namespace: string) => {
+    // Storage bridge only — do NOT rewrite app script identifiers.
+    // window.localStorage is overridden via defineProperty instead.
     const bridge = `<script>
 (function(){
-  const CHANNEL='gina-webapp-storage';
-  const NAMESPACE='${namespace}';
-  let store=Object.create(null);
-  const send=(payload)=>parent.postMessage(Object.assign({channel:CHANNEL,namespace:NAMESPACE},payload),'*');
-  const storage={
+  var CHANNEL='gina-webapp-storage';
+  var NAMESPACE=${JSON.stringify(namespace)};
+  var store=Object.create(null);
+  function send(payload){
+    try{parent.postMessage(Object.assign({channel:CHANNEL,namespace:NAMESPACE},payload),'*');}catch(e){}
+  }
+  var storage={
     get length(){return Object.keys(store).length;},
-    key:(index)=>Object.keys(store)[Number(index)] ?? null,
-    getItem:(key)=>Object.prototype.hasOwnProperty.call(store,String(key)) ? store[String(key)] : null,
-    setItem:(key,value)=>{store[String(key)]=String(value);send({op:'set',key:String(key),value:String(value)});},
-    removeItem:(key)=>{delete store[String(key)];send({op:'remove',key:String(key)});},
-    clear:()=>{store=Object.create(null);send({op:'clear'});}
+    key:function(index){return Object.keys(store)[Number(index)]||null;},
+    getItem:function(key){key=String(key);return Object.prototype.hasOwnProperty.call(store,key)?store[key]:null;},
+    setItem:function(key,value){key=String(key);store[key]=String(value);send({op:'set',key:key,value:String(value)});},
+    removeItem:function(key){key=String(key);delete store[key];send({op:'remove',key:key});},
+    clear:function(){store=Object.create(null);send({op:'clear'});}
   };
   window.__ginaWebAppStorage=storage;
-  try{Object.defineProperty(window,'localStorage',{configurable:true,get:()=>storage});}catch{}
-  window.addEventListener('message',(event)=>{
-    const data=event.data;
-    if(event.source!==parent || !data || data.channel!==CHANNEL || data.namespace!==NAMESPACE || data.op!=='hydrate') return;
+  try{
+    Object.defineProperty(window,'localStorage',{configurable:true,enumerable:true,get:function(){return storage;}});
+  }catch(e){
+    try{window.localStorage=storage;}catch(e2){}
+  }
+  window.addEventListener('message',function(event){
+    var data=event.data;
+    if(event.source!==parent||!data||data.channel!==CHANNEL||data.namespace!==NAMESPACE||data.op!=='hydrate')return;
     store=Object.assign(Object.create(null),data.data||{});
   });
-  window.addEventListener('error',(event)=>send({op:'runtime-error',message:event.error?.message || event.message || 'JavaScript runtime error'}));
-  window.addEventListener('unhandledrejection',(event)=>send({op:'runtime-error',message:event.reason?.message || String(event.reason || 'Unhandled promise rejection')}));
+  window.addEventListener('error',function(event){
+    var msg=(event.error&&event.error.message)||event.message||'JavaScript runtime error';
+    send({op:'runtime-error',message:msg});
+  });
+  window.addEventListener('unhandledrejection',function(event){
+    var reason=event.reason;
+    var msg=(reason&&reason.message)||String(reason||'Unhandled promise rejection');
+    send({op:'runtime-error',message:msg});
+  });
   send({op:'ready'});
 })();
 <\/script>`;
-    const rewritten = html.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi, (_match, open, body, close) => {
-      const transformed = String(body)
-        .replace(/\bwindow\.localStorage\b/g, 'window.__ginaWebAppStorage')
-        .replace(/\bglobalThis\.localStorage\b/g, 'window.__ginaWebAppStorage')
-        .replace(/\blocalStorage\b/g, '__ginaWebAppStorage');
-      return `${open}${transformed}${close}`;
-    });
-    return /<head[\s>]/i.test(rewritten) ? rewritten.replace(/<head([^>]*)>/i, `<head$1>${bridge}`) : `${bridge}${rewritten}`;
+    const source = escapeScriptEndsForSrcDoc(String(html || ''));
+    if (/<head[\s>]/i.test(source)) {
+      return source.replace(/<head([^>]*)>/i, `<head$1>${bridge}`);
+    }
+    if (/<html[\s>]/i.test(source)) {
+      return source.replace(/<html([^>]*)>/i, `<html$1><head>${bridge}</head>`);
+    }
+    return `${bridge}${source}`;
   };
 
   const renderMarkdownLinks = (text: string) => {
@@ -567,27 +698,67 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
 
   const renderRichContent = (content: string, messageIndex: number) => {
     const blocks: React.ReactNode[] = [];
-    const fence = /```([\w+-]*)\n?([\s\S]*?)```/g;
+    // language or language:filename.ext
+    const fence = /```([\w+-]+(?::[^\s`]+)?)[ \t]*\n?([\s\S]*?)```/g;
     let cursor = 0; let match: RegExpExecArray | null; let codeIndex = 0;
     while ((match = fence.exec(content))) {
       if (match.index > cursor) blocks.push(<div key={`txt-${cursor}`} className="whitespace-pre-wrap break-words">{renderMarkdownLinks(content.slice(cursor, match.index))}</div>);
-      const language = (match[1] || 'text').toLowerCase();
+      const meta = (match[1] || 'text').trim();
+      const colon = meta.indexOf(':');
+      const language = (colon >= 0 ? meta.slice(0, colon) : meta).toLowerCase() || 'text';
+      const metaName = colon >= 0 ? meta.slice(colon + 1).trim() : '';
       const code = match[2].replace(/^\n/, '').replace(/\n$/, '');
-      const supported = ['js','ts','tsx','py','html','css','json'].includes(language);
-      const ext = language === 'js' ? 'js' : language === 'ts' ? 'ts' : language === 'tsx' ? 'tsx' : language === 'py' ? 'py' : language === 'html' ? 'html' : language === 'css' ? 'css' : language === 'json' ? 'json' : 'txt';
-      const filename = `gina-generated-${messageIndex + 1}-${codeIndex + 1}.${ext}`;
+      const supported = ['js','ts','tsx','jsx','py','html','css','json','md','txt','sh','bash','ps1'].includes(language);
+      const ext = language === 'js' || language === 'jsx' ? (language === 'jsx' ? 'jsx' : 'js')
+        : language === 'ts' ? 'ts' : language === 'tsx' ? 'tsx' : language === 'py' ? 'py'
+          : language === 'html' ? 'html' : language === 'css' ? 'css' : language === 'json' ? 'json'
+            : language === 'md' ? 'md' : language === 'sh' || language === 'bash' ? 'sh' : language === 'ps1' ? 'ps1' : 'txt';
+      // Prefer explicit name, else first-line path comment, else generated name
+      const firstLine = code.split(/\r?\n/, 1)[0] || '';
+      const fromComment = firstLine.match(/^(?:\/\/|#|\/\*)\s*([A-Za-z0-9._\- /\\]+\.\w{1,8})\s*(?:\*\/)?$/)?.[1];
+      const filename = (metaName || fromComment || `gina-generated-${messageIndex + 1}-${codeIndex + 1}.${ext}`).replace(/^["']|["']$/g, '');
+      const displayName = filename.split(/[/\\]/).pop() || filename;
       const blockKey = `${messageIndex}:${codeIndex}`;
       const saved = savedCodeFiles[blockKey];
+      const openInPreview = () => {
+        setActivePreviewContent({
+          type: language === 'html' ? 'html' : 'text',
+          title: displayName,
+          content: code
+        });
+        if (language === 'html') setWebAppView('preview');
+      };
       blocks.push(
         <div key={`code-${blockKey}`} className="my-2 overflow-hidden rounded-lg border border-slate-700 bg-slate-950">
           <div className="flex items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-2.5 py-1.5">
-            <div className="flex items-center gap-2 text-[9px] font-mono uppercase tracking-wider text-slate-400"><span className="rounded bg-slate-800 px-1.5 py-0.5 text-emerald-300">{language}</span><span className="truncate">{saved?.path || filename}</span></div>
-            {supported && <div className="flex items-center gap-1.5">
-              <button type="button" onClick={() => void saveCodeBlock(filename, code, blockKey)} className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/20">Save &amp; Open File</button>
-              {saved && <a href={saved.url} target="_blank" rel="noopener noreferrer" download={filename} className="rounded border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[8px] font-bold text-sky-300 hover:bg-sky-500/20">Saved · {saved.bytes.toLocaleString()} B</a>}
-            </div>}
+            <div className="flex min-w-0 items-center gap-2 text-[9px] font-mono tracking-wider text-slate-400">
+              <span className="rounded bg-slate-800 px-1.5 py-0.5 uppercase text-emerald-300">{language}</span>
+              <button
+                type="button"
+                onClick={openInPreview}
+                className="truncate rounded border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-bold normal-case text-sky-300 hover:bg-sky-500/20 hover:border-sky-400/50"
+                title={`Open ${displayName} in interactive preview`}
+              >
+                📄 {displayName}
+              </button>
+              <span className="text-[8px] text-slate-600">{code.length.toLocaleString()} chars</span>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button type="button" onClick={openInPreview} className="rounded border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-violet-300 hover:bg-violet-500/20">Open</button>
+              {supported && (
+                <>
+                  <button type="button" onClick={() => downloadCodeFile(displayName, code, language === 'html' ? 'text/html;charset=utf-8' : 'text/plain;charset=utf-8')} className="rounded border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-sky-300 hover:bg-sky-500/20 flex items-center gap-1"><FileDown className="w-3 h-3" /> Download</button>
+                  <button type="button" onClick={() => void saveCodeBlock(displayName, code, blockKey)} className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/20">Save</button>
+                </>
+              )}
+              {saved && <a href={saved.url} target="_blank" rel="noopener noreferrer" download={displayName} className="rounded border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[8px] font-bold text-sky-300 hover:bg-sky-500/20">Saved · {saved.bytes.toLocaleString()} B</a>}
+            </div>
           </div>
-          <pre className="max-h-[360px] overflow-auto p-3 text-[10px] leading-relaxed text-slate-300"><code>{code}</code></pre>
+          {/* Collapsed by default: filename is the primary UI; expand to peek at source */}
+          <details className="group">
+            <summary className="cursor-pointer list-none px-3 py-1.5 text-[8px] font-mono uppercase tracking-wider text-slate-600 hover:text-slate-400">Show source</summary>
+            <pre className="max-h-[280px] overflow-auto border-t border-slate-800 p-3 text-[10px] leading-relaxed text-slate-300"><code>{code}</code></pre>
+          </details>
         </div>
       );
       cursor = match.index + match[0].length; codeIndex++;
@@ -1072,8 +1243,18 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     try { return localStorage.getItem('gina_active_workspace'); } catch { return null; }
   });
   const [agentStatus, setAgentStatus] = useState<string>('READY');
-  const [agentActivity, setAgentActivity] = useState<string[]>([]);
+  type StudioActivityItem = {
+    text: string;
+    path?: string;
+    command?: string;
+    kind?: 'command' | 'file' | 'read' | 'edit' | 'info' | 'error';
+    status?: 'running' | 'complete' | 'error';
+  };
+  const [agentActivity, setAgentActivity] = useState<StudioActivityItem[]>([]);
   const videoTraceRef = useRef<string | null>(null);
+  const editedFilesRef = useRef<Set<string>>(new Set());
+  const readFilesRef = useRef<Set<string>>(new Set());
+  const commandsRunRef = useRef(0);
 
   useEffect(() => {
     if (studioMode !== 'video-generation' || generationJob?.workflowId !== 'wan_video') return;
@@ -1082,12 +1263,13 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     const outputUrl = generationOutput?.outputs?.[0]?.url || generationJob.outputs?.[0]?.url;
     if (status === 'QUEUED' || status === 'RUNNING') {
       setLoading(true);
-      setAgentStatus('GENERATING VIDEO');
-      if (videoTraceRef.current !== `${jobId}:running`) {
-        videoTraceRef.current = `${jobId}:running`;
-        pushExecutionLog('Video Gen', `Wan 2.1 job ${jobId.slice(0, 8)} is ${status.toLowerCase()} · ${generationJob.progress || 0}%`, 'running');
-      } else {
-        pushExecutionLog('Video Gen', `Wan 2.1 job ${jobId.slice(0, 8)} is ${status.toLowerCase()} · ${generationJob.progress || 0}%`, 'running');
+      setAgentStatus('Generating video…');
+      const progress = generationJob.progress || 0;
+      const detail = `Wan 2.1 job ${jobId.slice(0, 8)} · ${status.toLowerCase()} · ${progress}%`;
+      if (videoTraceRef.current !== `${jobId}:running:${progress}`) {
+        videoTraceRef.current = `${jobId}:running:${progress}`;
+        pushExecutionLog('Generating video…', detail, 'running', 'workflow');
+        pushAgentActivity({ text: `[Generating video…]\n${detail}`, kind: 'info', status: 'running' });
       }
       return;
     }
@@ -1099,7 +1281,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
       }
       if (videoTraceRef.current !== `${jobId}:complete`) {
         videoTraceRef.current = `${jobId}:complete`;
-        pushExecutionLog('Video Gen', outputUrl ? 'Wan 2.1 video completed and is available in the local preview.' : 'Wan 2.1 video job completed.', 'complete');
+        pushExecutionLog('Video generated', outputUrl ? 'Wan 2.1 video ready in preview' : 'Wan 2.1 job completed', 'complete', 'workflow');
+        pushAgentActivity({ text: `[Video generated]\n✓ Wan 2.1 complete${outputUrl ? `\n→ ${outputUrl}` : ''}`, kind: 'info', status: 'complete' });
         setMessages(prev => prev.some(m => m.videoUrl === outputUrl) ? prev : [...prev, { role:'assistant', content:'Done — I generated the video locally with Wan 2.1.', videoUrl:outputUrl }]);
       }
       return;
@@ -1110,7 +1293,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
       if (videoTraceRef.current !== `${jobId}:failed`) {
         videoTraceRef.current = `${jobId}:failed`;
         const message = generationJob.error || `Video generation ${status.toLowerCase()}.`;
-        pushExecutionLog('Video Gen', message, 'error');
+        pushExecutionLog('Video generation failed', message, 'error', 'workflow');
+        pushAgentActivity({ text: `[Video generation failed]\n✗ ${message}`, kind: 'error', status: 'error' });
         setError(message);
       }
     }
@@ -1138,43 +1322,209 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   }, [studioMode]);
   const [githubUrl, setGithubUrl] = useState('');
 
-  const pushAgentActivity = (entry: string) => setAgentActivity(prev => [...prev, entry].slice(-24));
-  const describeAgentStep = (action: string, result?: any, message?: string) => {
+  const pushAgentActivity = (entry: string | StudioActivityItem) => {
+    const item: StudioActivityItem = typeof entry === 'string' ? { text: entry } : entry;
+    setAgentActivity(prev => [...prev, item].slice(-80));
+  };
+
+  /** Universal logger — always hits BOTH the activity stream and the execution timeline. */
+  const logGina = useCallback((
+    title: string,
+    details: string,
+    status: 'running' | 'complete' | 'error' = 'complete',
+    opts?: { kind?: StudioActivityItem['kind']; path?: string; command?: string; execKind?: 'command' | 'workflow' | 'info' | 'tool' }
+  ) => {
+    const kind = opts?.kind || (status === 'error' ? 'error' : /command|\$ /i.test(title + details) ? 'command' : /read/i.test(title) ? 'read' : /edit|writ/i.test(title) ? 'edit' : 'info');
+    const icon = status === 'error' ? '✗' : status === 'running' ? '…' : '✓';
+    pushExecutionLog(title, details, status, opts?.execKind || (kind === 'command' ? 'command' : kind === 'read' || kind === 'edit' ? 'tool' : 'workflow'));
+    pushAgentActivity({
+      text: `[${status === 'running' ? 'RUNNING' : status === 'error' ? 'ERROR' : 'DONE'}: ${title}]\n${details}\n${icon} ${status === 'running' ? 'in progress' : status === 'error' ? 'failed' : 'done'}`,
+      path: opts?.path,
+      command: opts?.command,
+      kind,
+      status
+    });
+  }, [pushExecutionLog]);
+
+  const openWorkspaceFile = useCallback(async (filePath: string) => {
+    const pathValue = String(filePath || '').trim();
+    if (!pathValue) return;
+    pushExecutionLog('Read file', pathValue, 'running', 'command');
+    pushAgentActivity({ text: `[FILE_STEP: Opening file]\n→ ${pathValue}\n[END_STEP]`, path: pathValue, kind: 'read', status: 'running' });
+    try {
+      const response = await fetch('/api/agent/tool', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'read_file', parameters: { path: pathValue }, approved: true })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) {
+        throw new Error(data?.error || data?.result?.error || `Unable to read ${pathValue}`);
+      }
+      const result = data?.result || data;
+      const content = String(
+        result?.content ?? result?.text ?? result?.data ?? (typeof result === 'string' ? result : JSON.stringify(result, null, 2))
+      );
+      setActivePreviewContent({
+        type: pathValue.toLowerCase().endsWith('.html') || pathValue.toLowerCase().endsWith('.htm') ? 'html' : 'text',
+        title: pathValue,
+        content: content.slice(0, 400000)
+      });
+      pushExecutionLog('Read file', `${pathValue} · ${content.length.toLocaleString()} chars`, 'complete', 'command');
+      pushAgentActivity({ text: `[FILE_STEP: Opened file in panel]\n✓ ${pathValue}\n✓ ${content.length.toLocaleString()} characters\n[END_STEP]`, path: pathValue, kind: 'read', status: 'complete' });
+    } catch (err: any) {
+      pushExecutionLog('Read file', err?.message || 'Failed', 'error', 'command');
+      pushAgentActivity({ text: `[FILE_STEP: Open file failed]\n✗ ${err?.message || 'Failed'}\n[END_STEP]`, path: pathValue, kind: 'error', status: 'error' });
+      setError(err?.message || `Unable to open ${pathValue}`);
+    }
+  }, [pushExecutionLog]);
+
+  const describeAgentStep = (action: string, result?: any, message?: string): StudioActivityItem => {
     const r = result && typeof result === 'object' ? result : {};
-    const pathValue = r.path || r.file || r.filePath || r.target || r.workspace || r.directory;
+    const pathValue = r.path || r.file || r.filePath || r.target || r.workspace || r.directory || r.filename;
     const command = r.command || r.cmd;
-    if (/^(execute_command|validate_project)$/.test(action)) return `[EXEC_STEP: ${action === 'validate_project' ? 'Ran validation' : 'Ran a command'}]\n${command ? String(command).slice(0, 500) + '\n' : ''}${message || '✓ Completed'}\n[END_STEP]`;
-    if (/^(edit_file|patch_file|write_file|create_directory|move_file)$/.test(action)) return `[FILE_STEP: ${action === 'create_directory' ? 'Created a directory' : action === 'write_file' ? 'Wrote a file' : 'Edited a file'}${pathValue ? ` ${String(pathValue).slice(0, 180)}` : ''}]\n${message || '✓ Completed'}\n[END_STEP]`;
-    if (/^(read_file|read_text_file|read_multiple_files|get_file_info|search_files|directory_tree|list_directory|workspace_inspect|inspect_project_context|read_project_bundle)$/.test(action)) return `[FILE_STEP: Read project data${pathValue ? ` ${String(pathValue).slice(0, 180)}` : ''}]\n${message || '✓ Read completed'}\n[END_STEP]`;
-    return `[EXEC_STEP: ${message || action}]\n✓ ${r.ok === false ? 'Failed' : 'Completed'}\n[END_STEP]`;
+    const failed = r.ok === false || Number(r.exitCode) > 0;
+    const pathStr = pathValue ? String(pathValue) : undefined;
+
+    if (/^(execute_command|validate_project)$/.test(action)) {
+      commandsRunRef.current += 1;
+      const label = action === 'validate_project' ? 'Ran validation' : `Ran command #${commandsRunRef.current}`;
+      return {
+        text: `[${label}]\n${command ? `$ ${String(command).slice(0, 600)}\n` : ''}${message || (failed ? '✗ Failed' : '✓ Completed')}\nCommands run this session: ${commandsRunRef.current}`,
+        command: command ? String(command) : undefined,
+        kind: 'command',
+        status: failed ? 'error' : 'complete'
+      };
+    }
+    if (/^(edit_file|patch_file|write_file|create_directory|move_file)$/.test(action)) {
+      if (pathStr) editedFilesRef.current.add(pathStr);
+      const n = editedFilesRef.current.size;
+      const verb = action === 'create_directory' ? 'Creating directory' : action === 'write_file' ? 'Writing' : action === 'move_file' ? 'Moving' : 'Editing';
+      const done = action === 'create_directory' ? 'Created directory' : action === 'write_file' ? 'Wrote file' : action === 'move_file' ? 'Moved file' : 'Edited file';
+      return {
+        text: `[${failed ? verb : done}${pathStr ? `: ${pathStr}` : ''}]\n${message || (failed ? '✗ Failed' : '✓ Completed')}\nEdited files this session: ${n}`,
+        path: pathStr,
+        kind: 'edit',
+        status: failed ? 'error' : 'complete'
+      };
+    }
+    if (/^(read_file|read_text_file|read_multiple_files|get_file_info|search_files|directory_tree|list_directory|workspace_inspect|inspect_project_context|read_project_bundle)$/.test(action)) {
+      if (pathStr) readFilesRef.current.add(pathStr);
+      const n = readFilesRef.current.size;
+      const verb = action.startsWith('read') ? 'Reading' : action.includes('search') ? 'Searching' : action.includes('list') || action.includes('tree') ? 'Listing' : 'Inspecting';
+      const done = action.startsWith('read') ? 'Read' : action.includes('search') ? 'Searched' : action.includes('list') || action.includes('tree') ? 'Listed' : 'Inspected';
+      return {
+        text: `[${failed ? verb : done}${pathStr ? `: ${pathStr}` : ''}]\n${message || (failed ? '✗ Failed' : '✓ Completed')}\nFiles read this session: ${n}`,
+        path: pathStr,
+        kind: 'read',
+        status: failed ? 'error' : 'complete'
+      };
+    }
+    if (/^web_/.test(action)) {
+      return {
+        text: `[Web research: ${action}]\n${message || (failed ? '✗ Failed' : '✓ Completed')}`,
+        kind: 'info',
+        status: failed ? 'error' : 'complete'
+      };
+    }
+    if (/^git_/.test(action) || action === 'github_sync') {
+      return {
+        text: `[Git: ${action}]\n${message || (failed ? '✗ Failed' : '✓ Completed')}`,
+        kind: 'command',
+        status: failed ? 'error' : 'complete'
+      };
+    }
+    return {
+      text: `[${action}]\n${message || (failed ? '✗ Failed' : '✓ Completed')}`,
+      path: pathStr,
+      command: command ? String(command) : undefined,
+      kind: 'info',
+      status: failed ? 'error' : 'complete'
+    };
+  };
+
+  const phaseToLabel = (phase: string, action?: string): string => {
+    const p = String(phase || '').toUpperCase();
+    const a = String(action || '').toLowerCase();
+    if (/THINK/.test(p)) return 'Thinking…';
+    if (/READ/.test(p) || a.startsWith('read') || a.includes('list') || a.includes('inspect')) return 'Reading…';
+    if (/EDIT|WRIT/.test(p) || /edit|write|patch/.test(a)) return 'Writing / editing…';
+    if (/VALID|RUN|EXEC/.test(p) || /execute|validate|command/.test(a)) return 'Running command…';
+    if (/WEB|SEARCH/.test(p) || a.startsWith('web_')) return 'Searching the web…';
+    if (/REPAIR/.test(p)) return 'Repairing…';
+    if (/REPORT|SUMMAR/.test(p)) return 'Summarizing…';
+    if (/DIFF|VERIFY/.test(p) || a.startsWith('git_')) return 'Verifying…';
+    if (/GENERAT.*IMAGE|IMAGE/.test(p)) return 'Generating image…';
+    if (/GENERAT.*VIDEO|VIDEO/.test(p)) return 'Generating video…';
+    return phase || 'Working…';
   };
 
   const runWebAppArtifact = async (task: string) => {
-    pushAgentActivity('[EXEC_STEP: Preparing Web App artifact]\n✓ Sending the build request to the local model\n[END_STEP]');
+    pushExecutionLog('Web App · prepare', `Task: ${task.slice(0, 240)}`, 'running', 'workflow');
+    pushAgentActivity('[EXEC_STEP: Preparing Web App artifact]\n✓ Validating request\n✓ Routing to Web App Studio (local model)\n[END_STEP]');
     setAgentStatus('GENERATING ARTIFACT');
-    const response = await fetch('/api/llm/chat', {
+
+    pushExecutionLog('Web App · model request', 'POST /api/llm/web-app · dedicated HTML lane (no image routing)', 'running', 'command');
+    pushAgentActivity('[EXEC_STEP: Local model inference]\n→ Endpoint: /api/llm/web-app\n→ Suite: Web App Studio\n→ Engine may be Coder — HTML only, never Comfy\n→ Waiting for complete HTML document…\n[END_STEP]');
+
+    const payload = {
+      messages: [
+        { role: 'system', content: 'You are Gina Web App Studio. Build the requested interactive web app as a single self-contained HTML document. Return ONLY the complete HTML document starting with <!DOCTYPE html>. Inline CSS and JavaScript only. No markdown fences, no explanation, no thinking process. Prefer CDN Tailwind if useful. JavaScript: use function declarations; declare variables before use; put scripts after DOM; never emit a raw </script> sequence inside JS strings. If persistence is needed, use localStorage.' },
+        { role: 'user', content: task }
+      ],
+      temperature: 0.35,
+      maxTokens: 6144,
+      suite: 'Web App Studio',
+      studioMode: 'web-app'
+    };
+
+    // Dedicated endpoint first — cannot hit imageGenerationPolicy. Fallback to /api/llm/chat for older servers.
+    let response = await fetch('/api/llm/web-app', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: 'You are Gina Web App Studio. Build the requested interactive web app as a single self-contained HTML document. Return ONLY the complete HTML document, with inline CSS and JavaScript. No markdown fences, no explanation, no thinking process, no external scripts or libraries. All requested controls must work in the browser. If persistence is requested, use localStorage normally; Gina provides an isolated app-local storage bridge in the preview.' },
-          { role: 'user', content: task }
-        ],
-        temperature: 0.45, maxTokens: 3072, suite: 'Web App Studio', studioMode: 'web-app'
-      })
+      body: JSON.stringify(payload)
     });
+    if (response.status === 404) {
+      pushExecutionLog('Web App · model request', 'Dedicated /api/llm/web-app missing — falling back to /api/llm/chat', 'running', 'command');
+      response = await fetch('/api/llm/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data?.error || `Web App generation failed (HTTP ${response.status}).`);
+    if (!response.ok) {
+      const errMsg = data?.error || `HTTP ${response.status}`;
+      pushExecutionLog('Web App · model request', errMsg, 'error', 'command');
+      // Surface a clearer hint when an old server still mis-routes to image gen
+      if (/cannot route image generation/i.test(String(errMsg))) {
+        throw new Error('Web App was still routed to image generation. Restart the Gina server after applying the latest server.ts (needs POST /api/llm/web-app).');
+      }
+      throw new Error(errMsg || `Web App generation failed (HTTP ${response.status}).`);
+    }
+    pushExecutionLog('Web App · model request', `Response OK · ${String(data?.choices?.[0]?.message?.content || '').length.toLocaleString()} chars`, 'complete', 'command');
+    pushAgentActivity('[EXEC_STEP: Model response received]\n✓ Parsing assistant payload\n✓ Extracting HTML document\n[END_STEP]');
+
+    pushExecutionLog('Web App · parse HTML', 'Normalizing model output (fences / preamble / trailing prose)', 'running', 'workflow');
     const raw = String(data?.choices?.[0]?.message?.content || '').trim();
-    const htmlMatch = raw.match(/```html\s*([\s\S]*?)```/i);
-    const html = (htmlMatch?.[1] || raw).trim();
-    if (!/^<!doctype html|<html[\s>]/i.test(html)) throw new Error('The local model did not return a complete HTML artifact.');
+    const html = normalizeWebAppHtml(raw);
+    if (!/^<!doctype html|<html[\s>]/i.test(html)) {
+      pushExecutionLog('Web App · parse HTML', 'Model did not return a complete HTML document', 'error', 'workflow');
+      throw new Error('The local model did not return a complete HTML artifact.');
+    }
+    pushExecutionLog('Web App · parse HTML', `Document ready · ${html.length.toLocaleString()} chars · doctype/html root OK`, 'complete', 'workflow');
+    pushAgentActivity(`[FILE_STEP: HTML artifact normalized]\n✓ ${html.length.toLocaleString()} characters\n✓ Ready for isolated preview iframe\n[END_STEP]`);
+
     setAgentStatus('RENDERING ARTIFACT');
+    pushExecutionLog('Web App · render preview', 'Injecting storage bridge · mounting srcDoc iframe', 'running', 'workflow');
     const storageNamespace = makeWebAppStorageNamespace(html);
     setWebAppStorageNamespace(storageNamespace);
     setWebAppRuntimeError(null);
     setWebAppView('preview');
     setActivePreviewContent({ type: 'html', title: 'Generated Web App', content: html });
+    pushExecutionLog('Web App · render preview', `Preview mounted · namespace ${storageNamespace}`, 'complete', 'workflow');
+    pushAgentActivity('[EXEC_STEP: Preview mounted]\n✓ Storage bridge active\n✓ Sandboxed iframe rendering\n[END_STEP]');
+
     const telemetry = data?.ginaTelemetry || {};
     const promptTokens = Number(telemetry.promptTokens || 0);
     const completionTokens = Number(telemetry.completionTokens || 0);
@@ -1194,16 +1544,39 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     };
     setLastTelemetry(normalizedTelemetry);
     setRuntimeTelemetry({ ...normalizedTelemetry, contextBreakdown:telemetry.contextBreakdown, webSearched:false, webProvider:null });
-    pushExecutionLog('Web App Tokens', `${promptTokens.toLocaleString()} prompt · ${completionTokens.toLocaleString()} completion · ${totalTokens.toLocaleString()} total`, 'complete');
-    pushAgentActivity('[FILE_STEP: Generated Web App artifact]\n✓ HTML received and ready for live rendering\n[END_STEP]');
+    pushExecutionLog(
+      'Web App · tokens',
+      `${promptTokens.toLocaleString()} prompt · ${completionTokens.toLocaleString()} completion · ${totalTokens.toLocaleString()} total · ${Number(telemetry.durationMs || 0)} ms`,
+      'complete',
+      'info'
+    );
     onWebAppArtifact?.(html);
     setAgentStatus('COMPLETED');
-    setMessages(prev => [...prev, { role:'assistant', content:'Web App artifact generated and rendered in the right-hand workspace.' }]);
+    pushAgentActivity('[EXEC_STEP: Web App complete]\n✓ Artifact in chat + preview\n✓ Download / Code controls available\n[END_STEP]');
+    const assistantText = `Web App artifact generated and rendered in the right-hand workspace.\n\nUse **Download** below or the preview panel controls to save the full app.\n\n\`\`\`html\n${html}\n\`\`\``;
+    setMessages(prev => [...prev, { role: 'assistant', content: assistantText }]);
+    // Speak a short spoken summary — never read the entire HTML source aloud.
+    if (autoSpeak && voiceEnabled) {
+      void speakText('Done. Your web app is ready in the preview panel. You can download the HTML or open the code from the controls.');
+    }
   };
 
   const runProjectAgent = async (task: string) => {
-    const executionRoot = agentWorkspace || 'C:\\Gina_AI';
-    const prompt = `ACTIVE WORKSPACE: ${executionRoot}\n\nUSER REQUEST:\n${task}\n\nWork directly on this workspace. Inspect before editing, make the requested changes, validate them, repair failures when practical, review the final diff, and report what changed. Do not push to GitHub unless the user explicitly asks.`;
+    const workspaceName = agentWorkspace || 'default';
+    const workspaceRel = `.gina/workspaces/${workspaceName}`;
+    const prompt = `ACTIVE WORKSPACE NAME: ${workspaceName}
+ACTIVE WORKSPACE PATH (relative to Gina root): ${workspaceRel}
+
+PATH RULES (mandatory):
+- All file tools must use paths under the Gina root.
+- Prefer relative paths like: ${workspaceRel}/src/...
+- Never invent broken paths such as C:/Gina_AI.ginaworkspaces/... (missing separators).
+- Correct absolute form is like C:\\\\Gina_AI\\\\.gina\\\\workspaces\\\\${workspaceName}\\\\...
+
+USER REQUEST:
+${task}
+
+Work directly on this workspace. Start with list_directory or workspace_inspect on ${workspaceRel}. Inspect before editing, make the requested changes, validate them, repair failures when practical, review the final diff, and report what changed. Do not push to GitHub unless the user explicitly asks.`;
     const response = await fetch('/api/agent/run-stream', {
       method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({prompt})
     });
@@ -1212,29 +1585,80 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     const id = data.runId;
     setAgentStatus('WORKING');
     setAgentActivity([]);
-    pushAgentActivity('[EXEC_STEP: Agent started]\n✓ Inspecting the workspace before editing\n[END_STEP]');
+    editedFilesRef.current = new Set();
+    readFilesRef.current = new Set();
+    commandsRunRef.current = 0;
+    logGina('Agent started', `runId ${id}\nWorkspace: ${executionRoot}\nThinking… planning first inspection`, 'running', { kind: 'info' });
     await new Promise<void>((resolve, reject) => {
       const es = new EventSource(`/api/agent/runs/${encodeURIComponent(id)}/stream`);
       const finish = () => { es.close(); resolve(); };
       es.addEventListener('status', (ev:any) => {
-        try { const d=JSON.parse(ev.data||'{}'); setAgentStatus(d.phase || 'WORKING'); if(d.message) pushAgentActivity(`[EXEC_STEP: ${d.phase || 'Agent activity'}]\n${d.message}\n[END_STEP]`); } catch {}
+        try {
+          const d = JSON.parse(ev.data || '{}');
+          const label = phaseToLabel(d.phase, d.action);
+          setAgentStatus(label);
+          logGina(label, [d.message, d.action ? `action: ${d.action}` : '', d.step ? `step ${d.step}/${d.maxSteps || '?'}` : ''].filter(Boolean).join('\n'), 'running', { kind: 'info' });
+        } catch {}
       });
       es.addEventListener('step_started', (ev:any) => {
-        try { const d=JSON.parse(ev.data||'{}'); setAgentActivity(prev=>[...prev, d.message || `Working on step ${d.step}`].slice(-12)); } catch {}
+        try {
+          const d = JSON.parse(ev.data || '{}');
+          const label = phaseToLabel(d.phase || 'THINKING', d.action);
+          setAgentStatus(label);
+          logGina(`${label} (step ${d.step || '?'})`, d.message || 'Choosing the next action…', 'running', { kind: 'info' });
+        } catch {}
       });
       es.addEventListener('step_completed', (ev:any) => {
-        try { const d=JSON.parse(ev.data||'{}'); if(d.summary) pushAgentActivity(describeAgentStep(String(d.action || 'agent_step'), d.result, d.summary)); } catch {}
+        try {
+          const d = JSON.parse(ev.data || '{}');
+          const action = String(d.action || 'agent_step');
+          const result = d.result || {};
+          const item = describeAgentStep(action, result, d.summary || d.message);
+          pushAgentActivity(item);
+          pushExecutionLog(
+            item.text.split('\n')[0].replace(/^\[|\]$/g, '') || action,
+            [d.summary || d.message || 'completed', item.path ? `path=${item.path}` : '', item.command ? `cmd=${item.command}` : '', `reads=${readFilesRef.current.size}`, `edits=${editedFilesRef.current.size}`, `cmds=${commandsRunRef.current}`].filter(Boolean).join(' · '),
+            item.status === 'error' ? 'error' : 'complete',
+            item.kind === 'command' ? 'command' : item.kind === 'read' || item.kind === 'edit' ? 'tool' : 'workflow'
+          );
+          if (item.path && /^(read_file|read_text_file|write_file|edit_file|patch_file)$/.test(action) && result?.content != null) {
+            setActivePreviewContent({
+              type: String(item.path).toLowerCase().endsWith('.html') ? 'html' : 'text',
+              title: String(item.path),
+              content: String(result.content).slice(0, 400000)
+            });
+          }
+        } catch {}
       });
+      es.addEventListener('step_failed', (ev:any) => {
+        try {
+          const d = JSON.parse(ev.data || '{}');
+          logGina(`${d.action || 'step'} failed`, d.error || d.message || 'Tool failed', 'error', { kind: 'error' });
+        } catch {}
+      });
+      // Catch-all: any other named SSE events from the agent
+      es.onmessage = (ev: any) => {
+        try {
+          const d = JSON.parse(ev.data || '{}');
+          if (d && (d.message || d.phase || d.action)) {
+            logGina(phaseToLabel(d.phase, d.action), d.message || JSON.stringify(d).slice(0, 300), 'running', { kind: 'info' });
+          }
+        } catch {}
+      };
       es.addEventListener('state', async (ev:any) => {
         try {
-          const d=JSON.parse(ev.data||'{}');
-          if (['COMPLETED','FAILED','CANCELLED'].includes(d.state)) {
-            if (d.state === 'FAILED') reject(new Error(d.error || 'Gina coding task failed.'));
-            else {
-              const run = await fetch(`/api/agent/runs/${encodeURIComponent(id)}`).then(r=>r.json());
+          const d = JSON.parse(ev.data || '{}');
+          if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(d.state)) {
+            const tally = `Files read: ${readFilesRef.current.size} · Files edited: ${editedFilesRef.current.size} · Commands run: ${commandsRunRef.current}`;
+            if (d.state === 'FAILED') {
+              logGina('Agent failed', `${d.error || 'Failed'}\n${tally}`, 'error', { kind: 'error' });
+              reject(new Error(d.error || 'Gina coding task failed.'));
+            } else {
+              const run = await fetch(`/api/agent/runs/${encodeURIComponent(id)}`).then(r => r.json());
               const summary = run?.result?.summary || run?.summary || (d.state === 'CANCELLED' ? 'Coding task cancelled.' : 'Coding task completed.');
-              setMessages(prev => [...prev, { role:'assistant', content:summary }]);
-              setActivePreviewContent({ type:'text', title:'Agent Execution Preview', content:summary });
+              setMessages(prev => [...prev, { role: 'assistant', content: `${summary}\n\n---\n${tally}` }]);
+              setActivePreviewContent({ type: 'text', title: 'Agent Execution Preview', content: `${summary}\n\n${tally}` });
+              logGina(d.state === 'CANCELLED' ? 'Agent cancelled' : 'Agent completed', `${summary.slice(0, 400)}\n${tally}`, 'complete', { kind: 'info' });
               if (autoSpeak) void speakText(summary);
               finish();
             }
@@ -1299,17 +1723,20 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     const text = `${typedText}${attachmentsText}`.trim();
     if (!text || !status?.ready || loading) return;
 
-    pushExecutionLog('User Prompt Received', text.slice(0, 1000), 'running');
-    setAgentStatus('RECEIVED');
-    setAgentActivity(['Prompt received — routing request through Gina capabilities…']);
+    logGina('Prompt received', `Mode: ${studioMode}\n${text.slice(0, 400)}`, 'running', { kind: 'info' });
+    setAgentStatus('Thinking…');
+    logGina('Thinking…', 'Routing request through Gina capabilities', 'running', { kind: 'info' });
 
     try {
       if (studioMode === 'web-app') {
-        pushExecutionLog('Web App Workflow', 'Generating the requested self-contained web app artifact.', 'running');
+        logGina('Web App Studio', 'Entering artifact lane · generating HTML', 'running', { kind: 'info' });
         const nextMessages: ChatMessage[] = [...messages, { role:'user', content:text }];
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null);
         try { await runWebAppArtifact(typedText); }
-        catch (webAppError:any) { pushExecutionLog('Web App Failed', webAppError?.message || 'Unknown error', 'error'); setError(webAppError?.message || 'Web App generation failed.'); pushAgentActivity(`[EXEC_STEP: Web App failed]\n${webAppError?.message || 'Unknown error'}\n[END_STEP]`); }
+        catch (webAppError:any) {
+          logGina('Web App failed', webAppError?.message || 'Unknown error', 'error', { kind: 'error' });
+          setError(webAppError?.message || 'Web App generation failed.');
+        }
         finally { setLoading(false); }
         return;
       }
@@ -1317,15 +1744,15 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
         const nextMessages: ChatMessage[] = [...messages, { role:'user', content:text }];
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null);
         setThinkingSource('web');
-        pushExecutionLog('Web Search', 'Searching live public sources; no local project tools are invoked.', 'running');
-        setAgentStatus('SEARCHING WEB');
-        setAgentActivity(['Live web search requested by Web Search mode.']);
+        setAgentStatus('Searching the web…');
+        logGina('Searching the web…', `Query: ${typedText.slice(0, 200)}`, 'running', { kind: 'info' });
         try {
           const searchResponse = await fetch('/api/agent/web-search', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query:typedText,maxResults:8}) });
           const searchData = await searchResponse.json().catch(() => ({}));
           if (!searchResponse.ok) throw new Error(searchData?.error || `Live web search failed (HTTP ${searchResponse.status}).`);
           const results = Array.isArray(searchData?.results) ? searchData.results : [];
           if (!results.length) throw new Error('The web search returned no usable sources.');
+          logGina('Web sources found', `${results.length} results · synthesizing answer…`, 'running', { kind: 'info' });
           const webGrounding = {
             text:results.map((r:any,i:number)=>`[WEB RESULT ${i+1}]\nTitle: ${r.title||''}\nURL: ${r.url||''}\nSnippet: ${r.snippet||''}`).join('\n\n'),
             provider:searchData?.provider || 'verified web search',
@@ -1344,10 +1771,11 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
           setActivePreviewContent({type:'web',title:results[0].title||'Live web results',content:results[0].snippet||results[0].url,url:results[0].url,sources:webGrounding.sources});
           setMessages(prev=>[...prev,{role:'assistant',content:reply,webSources:telemetry.webSources||webGrounding.sources,webProvider:telemetry.webProvider||webGrounding.provider,browserEngine:telemetry.browserEngine||webGrounding.engine}]);
           setLastTelemetry({promptTokens:Number(telemetry.promptTokens||0),completionTokens:Number(telemetry.completionTokens||0),totalTokens:Number(telemetry.totalTokens||0),durationMs:Number(telemetry.durationMs||0),tokensPerSecond:Number(telemetry.tokensPerSecond||0),promptTokensPerSecond:Number(telemetry.promptTokensPerSecond||0),completionTokensPerSecond:Number(telemetry.completionTokensPerSecond||0),iteration:telemetry.iteration==null?null:Number(telemetry.iteration),toolCalls:Number(telemetry.toolCalls||0),source:'local+web',webProvider:telemetry.webProvider||webGrounding.provider,contextBreakdown:telemetry.contextBreakdown});
-          pushExecutionLog('Web Search',`Returned ${results.length} live sources and generated a grounded local response.`,'complete');
-          setAgentStatus('COMPLETED'); setAgentActivity(['Web sources retrieved and summarized locally.']);
+          logGina('Web search complete', `Returned ${results.length} sources and a grounded answer`, 'complete', { kind: 'info' });
+          setAgentStatus('COMPLETED');
         } catch(err:any) {
-          pushExecutionLog('Web Search',err?.message||'Web search failed.','error'); setAgentStatus('ERROR'); setError(err?.message||'Web search failed.');
+          logGina('Web search failed', err?.message||'Web search failed.', 'error', { kind: 'error' });
+          setAgentStatus('ERROR'); setError(err?.message||'Web search failed.');
           setMessages(prev=>prev.filter((_,index)=>index!==prev.length-1));
         } finally { setLoading(false); }
         return;
@@ -1356,9 +1784,14 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
       if (studioMode === 'code-engine') {
         const nextMessages: ChatMessage[]=[...messages,{role:'user',content:text}];
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null); setThinkingSource('local');
-        pushExecutionLog('Code Engine','Executing the local project/file agent; web tools are not in the Code Engine route.','running');
-        try { await runProjectAgent(typedText); pushExecutionLog('Code Engine','Local coding task completed.','complete'); }
-        catch(err:any){ pushExecutionLog('Code Engine',err?.message||'Local coding task failed.','error'); setError(err?.message||'Local coding task failed.'); }
+        logGina('Code Engine', 'Starting project agent · Thinking…', 'running', { kind: 'info', execKind: 'command' });
+        try {
+          await runProjectAgent(typedText);
+          logGina('Code Engine complete', `Files read: ${readFilesRef.current.size} · Edited: ${editedFilesRef.current.size} · Commands: ${commandsRunRef.current}`, 'complete', { kind: 'info', execKind: 'command' });
+        } catch(err:any){
+          logGina('Code Engine failed', err?.message||'Local coding task failed.', 'error', { kind: 'error', execKind: 'command' });
+          setError(err?.message||'Local coding task failed.');
+        }
         finally { setLoading(false); }
         return;
       }
@@ -1366,11 +1799,15 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
       if (studioMode === 'image-studio') {
         const nextMessages: ChatMessage[]=[...messages,{role:'user',content:text}];
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null); setThinkingSource('local');
-        pushExecutionLog('Image Studio','Routing directly to the local ComfyUI image generation pipeline.','running');
+        setAgentStatus('Generating image…');
+        logGina('Generating image…', 'Routing to local ComfyUI pipeline', 'running', { kind: 'info' });
         try {
           await sendImageGeneration(typedText);
-          pushExecutionLog('Image Studio','Local ComfyUI image job completed and output was returned to the preview.','complete');
-        } catch(err:any){ pushExecutionLog('Image Studio',err?.message||'Local image generation failed.','error'); setError(err?.message||'Local image generation failed.'); }
+          logGina('Image generated', 'ComfyUI output ready in preview', 'complete', { kind: 'info' });
+        } catch(err:any){
+          logGina('Image generation failed', err?.message||'Local image generation failed.', 'error', { kind: 'error' });
+          setError(err?.message||'Local image generation failed.');
+        }
         finally { setLoading(false); }
         return;
       }
@@ -1378,11 +1815,14 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
       if (studioMode === 'video-generation') {
         const nextMessages: ChatMessage[]=[...messages,{role:'user',content:text}];
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null); setThinkingSource('local');
-        pushExecutionLog('Video Gen','Routing directly to the local Wan 2.1 1.3B video pipeline.','running');
+        setAgentStatus('Generating video…');
+        logGina('Generating video…', 'Wan 2.1 1.3B pipeline requested', 'running', { kind: 'info' });
         try {
           window.dispatchEvent(new CustomEvent('gina-video-generation-request',{detail:{prompt:typedText}}));
-          setAgentStatus('GENERATING VIDEO'); setAgentActivity(['Wan 2.1 generation requested. Monitoring the shared local generation job.']);
-        } catch(err:any){ pushExecutionLog('Video Gen',err?.message||'Local video generation could not be started.','error'); setError(err?.message||'Local video generation could not be started.'); setLoading(false); }
+        } catch(err:any){
+          logGina('Video generation failed', err?.message||'Could not start video job.', 'error', { kind: 'error' });
+          setError(err?.message||'Local video generation could not be started.'); setLoading(false);
+        }
         return;
       }
 
@@ -1413,7 +1853,12 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
         setInput(''); setLoading(false);
         return;
       }
-      const route = await classifyImageIntent(typedText);
+      // Canvas/HTML/WebGL artifact prompts must never enter image generation (Coder lock).
+      const looksLikeHtmlArtifact = /\b(html5?|canvas|webgl|tailwind|standalone\s+html|vanilla\s*js|web\s*app|requestAnimationFrame|orbital|gravity\s+sim)\b/i.test(typedText)
+        && !/\b(png|jpe?g|webp|comfyui?|flux|sdxl|photograph|photo\s+of)\b/i.test(typedText);
+      const route = looksLikeHtmlArtifact
+        ? { intent: 'chat', policyLocked: false }
+        : await classifyImageIntent(typedText);
       if (route.intent === 'image-generation' || route.intent === 'image-modification') {
         pushExecutionLog('Image Generation Workflow', 'Routing the request to the local image generation pipeline.', 'running');
         if (route.policyLocked) throw new Error('Qwen Coder is text-only. Switch to Qwen 2.5-VL Vision Mode to use image generation or vision attachments.');
@@ -1448,9 +1893,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
       const controller = new AbortController();
       chatAbortRef.current = controller;
       const webGrounding: any = null;
-      pushExecutionLog('Local Inference', 'Generating the response with the configured local model.', 'running');
-      setAgentStatus('GENERATING');
-      setAgentActivity(['Generating a concise local response…']);
+      logGina('Thinking…', 'Generating a local model response', 'running', { kind: 'info' });
+      setAgentStatus('Thinking…');
       chatAbortRef.current = controller;
       const response = await fetch('/api/llm/chat', {
         method: 'POST',
@@ -1517,9 +1961,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
         setRuntimeTelemetry(telemetry);
         onAddLog('INFO', `Prompt telemetry: ${Number(telemetry.promptTokens||0).toLocaleString()} prompt tokens · ${Number(telemetry.completionTokens||0).toLocaleString()} completion tokens${telemetry.webSearched ? ` · web: ${telemetry.webProvider || 'verified'}` : ' · local only'}.`);
       }
-      pushExecutionLog('Response Generation', `Response received · ${Number(telemetry?.completionTokens || 0).toLocaleString()} completion tokens · ${Number(telemetry?.durationMs || 0)} ms`, 'complete');
+      logGina('Response generated', `${Number(telemetry?.completionTokens || 0).toLocaleString()} completion tokens · ${Number(telemetry?.durationMs || 0)} ms`, 'complete', { kind: 'info' });
       setAgentStatus('COMPLETED');
-      setAgentActivity(['Response generated successfully.']);
       setMessages(prev => [
         ...prev,
         {
@@ -1918,7 +2361,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
           </div>
         )}
 
-        <div className={`col-span-12 ${showEngineConfig ? 'lg:col-span-9' : 'lg:col-span-12'} bg-slate-950 border border-slate-800 rounded-lg p-3 sm:p-5 shadow-sm min-h-[calc(100vh-140px)] flex flex-col flex-1 min-w-0 overflow-hidden`}>
+        <div className={`col-span-12 ${showEngineConfig ? 'lg:col-span-9' : 'lg:col-span-12'} bg-slate-950/80 p-3 sm:p-5 shadow-sm min-h-[420px] flex flex-col flex-1 min-w-0 overflow-hidden`} style={ginaPanelStyle()}>
           <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3 border-b border-slate-800 pb-3 mb-3 min-w-0 shrink-0">
             <div className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-emerald-400" />
@@ -2049,10 +2492,73 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
             </div>
           )}
 
-          <div className="flex-1 min-h-[calc(100vh-430px)] h-[calc(100vh-430px)] grid grid-cols-12 gap-3 min-w-0">
-            <div className="col-span-12 xl:col-span-8 min-w-0 overflow-y-auto custom-scrollbar space-y-3 pr-1">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
+            <div className="text-[9px] font-mono text-slate-600 uppercase tracking-wider">Workspace · drag divider / bottom edge to resize</div>
+            <PanelChromeControls />
+          </div>
+          <ResizableSplit
+            className="flex-1 min-w-0"
+            defaultLeftPct={62}
+            defaultHeightPx={560}
+            left={(
+              <div className="h-full min-h-0 overflow-y-auto custom-scrollbar space-y-3 p-3 bg-slate-950/80" style={ginaPanelStyle()}>
+
             {!messages.length && <div className="h-full min-h-[400px] flex items-center justify-center text-center text-slate-600 text-xs"><div><Zap className="w-6 h-6 mx-auto mb-2 text-slate-700" /><p>Start Qwen locally to chat with Gina.</p><p className="text-[10px] mt-1">No cloud provider is used.</p></div></div>}
-            {(agentWorkspace || agentActivity.length > 0 || loading) && <div className="mb-2 rounded border border-slate-800 bg-slate-950/80 px-3 py-2 text-[9px] font-mono"><div className="flex items-center justify-between gap-2"><span className="text-amber-300 font-bold">{agentWorkspace ? 'GINA CODING WORKSPACE' : 'GINA STUDIO ACTIVITY'}</span><span className="text-slate-500">{agentStatus}</span></div><div className="mt-1 text-slate-600">Detailed execution trace is available in the collapsible Agent Log below.</div></div>}
+            {(agentWorkspace || agentActivity.length > 0 || loading) && (
+              <div className="mb-2 rounded-lg border border-slate-800 bg-slate-950/90 px-3 py-2 text-[9px] font-mono shadow-[0_0_20px_rgba(16,185,129,0.06)]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-amber-300 font-bold tracking-wide">{agentWorkspace ? 'GINA CODING WORKSPACE' : 'GINA STUDIO ACTIVITY'}</span>
+                  <span className={`font-bold ${/error|fail/i.test(agentStatus) ? 'text-rose-400' : /ready|completed/i.test(agentStatus) ? 'text-emerald-400' : 'text-amber-300'}`}>
+                    ● {agentStatus}
+                  </span>
+                </div>
+                {agentActivity.length === 0 ? (
+                  <div className="mt-1.5 text-slate-600">Waiting for live steps…</div>
+                ) : (
+                  <div className="mt-2 max-h-48 space-y-1 overflow-y-auto custom-scrollbar">
+                    {agentActivity.slice(-16).map((entry, i) => {
+                      const text = typeof entry === 'string' ? entry : entry.text;
+                      const path = typeof entry === 'string' ? undefined : entry.path;
+                      const command = typeof entry === 'string' ? undefined : entry.command;
+                      const isErr = (typeof entry !== 'string' && entry.status === 'error') || /fail|error|✗/i.test(text);
+                      const isOk = /✓|complete|ready/i.test(text) && !isErr;
+                      return (
+                        <div
+                          key={`act-${i}-${(path || text).slice(0, 24)}`}
+                          className={`rounded border px-2 py-1.5 text-[8px] leading-relaxed ${
+                            isErr
+                              ? 'border-rose-500/30 bg-rose-950/25 text-rose-200'
+                              : isOk
+                                ? 'border-emerald-500/20 bg-emerald-950/15 text-emerald-100/90'
+                                : 'border-slate-800 bg-slate-900/80 text-slate-300'
+                          }`}
+                        >
+                          <pre className="whitespace-pre-wrap m-0 font-mono">{text}</pre>
+                          {(path || command) && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {path && (
+                                <button
+                                  type="button"
+                                  onClick={() => void openWorkspaceFile(path)}
+                                  className="rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[8px] font-bold text-sky-300 hover:bg-sky-500/20"
+                                >
+                                  📄 {path.split(/[/\\]/).pop()}
+                                </button>
+                              )}
+                              {command && (
+                                <span className="rounded border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 text-[7px] text-violet-200 truncate max-w-full">
+                                  $ {command.slice(0, 100)}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           {messages.map((message, index) => (
               <div key={`${message.role}-${index}`} className={`rounded-lg border p-3 text-xs leading-relaxed ${message.role === 'user' ? 'ml-10 bg-emerald-500/5 border-emerald-500/20 text-slate-200' : 'mr-10 bg-slate-900 border-slate-800 text-slate-300'}`}>
                 <div className="text-[9px] font-mono uppercase tracking-wider text-slate-600 mb-1 flex items-center justify-between">
@@ -2152,14 +2658,17 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
                   </div>
                 );
               })()}
-            </div>
-            <aside className="col-span-12 xl:col-span-4 min-w-0 overflow-hidden rounded-lg border border-slate-800 bg-slate-950/90 flex flex-col">
+              </div>
+            )}
+            right={(
+              <aside className="min-w-0 h-full overflow-hidden bg-slate-950/90 flex flex-col" style={ginaPanelStyle()}>
               <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-3 py-2">
                 <div className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-widest text-slate-300"><Search className="w-3 h-3 text-sky-400" /> Interactive Preview</div>
                 {activePreviewContent?.type === 'html' ? (
                   <div className="flex items-center gap-1">
                     <button type="button" onClick={() => setWebAppView('preview')} className={`rounded px-2 py-1 text-[8px] font-bold uppercase tracking-wider ${webAppView === 'preview' ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' : 'text-slate-500 hover:text-slate-300 border border-transparent'}`}>Preview</button>
                     <button type="button" onClick={() => setWebAppView('code')} className={`rounded px-2 py-1 text-[8px] font-bold uppercase tracking-wider ${webAppView === 'code' ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30' : 'text-slate-500 hover:text-slate-300 border border-transparent'}`}>Code</button>
+                    <button type="button" onClick={() => downloadCodeFile('gina-web-app.html', activePreviewContent.content, 'text/html;charset=utf-8')} className="rounded border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-sky-300 hover:bg-sky-500/20 flex items-center gap-1"><FileDown className="w-3 h-3" /> Download</button>
                     <button type="button" onClick={() => void saveCodeBlock('gina-web-app.html', activePreviewContent.content, 'web-app-html')} className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/20">Save HTML</button>
                   </div>
                 ) : <span className="text-[8px] font-mono text-slate-600">LIVE FRAME</span>}
@@ -2195,8 +2704,10 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
                 ) : <div className="whitespace-pre-wrap break-words text-[10px] leading-relaxed text-slate-300">{renderMarkdownLinks(activePreviewContent.content)}</div>}
               </div>
               {messages.some(m => m.webSources?.length) && <div className="border-t border-slate-800 p-2 space-y-1.5">{messages.flatMap(m => m.webSources || []).slice(0,6).map((source, i) => <button type="button" key={`${source.url}-${i}`} onClick={() => setActivePreviewContent({type:'web', title:source.title || source.source || source.url, content:source.snippet || source.url, url:source.url})} className="w-full rounded border border-slate-800 bg-slate-900/70 px-2 py-1.5 text-left hover:border-sky-500/30"><div className="flex items-center gap-1 text-[9px] font-semibold text-sky-300 truncate"><Globe2 className="w-2.5 h-2.5 shrink-0" />{source.title || source.url}</div></button>)}</div>}
-            </aside>
-          </div>
+              </aside>
+            )}
+          />
+
 
 
           <AgentExecutionTrace
@@ -2207,7 +2718,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
             telemetry={lastTelemetry}
             runtimeTelemetry={runtimeTelemetry}
             hardwareTelemetry={hardwareTelemetry}
-            onClear={() => setExecutionLog([])}
+            onClear={() => { setExecutionLog([]); setAgentActivity([]); }}
+            onOpenFile={(path) => { void openWorkspaceFile(path); }}
           />
           {lastTelemetry && (
             <div className="mt-1.5 flex items-center gap-1.5 text-[8px] font-mono text-slate-600">

@@ -20,17 +20,25 @@ interface VideoStudioProps {
   onClearCache?: () => void;
 }
 
-// Wan 2.1 1.3B is running on an 8GB RTX 3070 Ti. Keep the UI inside the
-// tested conservative envelope: one temporal sequence, <=73 frames and <=393,216 pixels.
+// Wan 2.1 1.3B on 8GB RTX 3070 Ti — 16 fps base:
+// Native VRAM (fast): ≤49 frames / ≤3.0s / ≤832×480 (lower res always allowed)
+// Spillover (slow): 50–81 frames / 4–5s / max 640×480 (lower res always allowed)
+// Architectural hard cap: 81 frames (~5s)
 const durationOptions = [
-  { seconds: 1, frames: 25, label: '1.0s · 25 frames', vram: 'Safest · 512×512' },
-  { seconds: 2, frames: 49, label: '2.0s · 49 frames', vram: 'Safe · 512×512' },
-  { seconds: 3, frames: 73, label: '3.0s · 73 frames', vram: 'Safe ceiling · 512×512 / 512×768' },
+  { seconds: 1, frames: 17, label: '1.0s · 17 frames', vram: 'Native VRAM · fastest', tier: 'native' as const, maxW: 832, maxH: 480 },
+  { seconds: 2, frames: 33, label: '2.0s · 33 frames', vram: 'Native VRAM · balanced', tier: 'native' as const, maxW: 832, maxH: 480 },
+  { seconds: 3, frames: 49, label: '3.0s · 49 frames', vram: 'Native VRAM ceiling · 8GB', tier: 'native' as const, maxW: 832, maxH: 480 },
+  { seconds: 4, frames: 65, label: '4.0s · 65 frames', vram: 'Spillover · slow · ≤640×480', tier: 'spillover' as const, maxW: 640, maxH: 480 },
+  { seconds: 5, frames: 81, label: '5.0s · 81 frames', vram: 'Spillover max · ≤640×480', tier: 'spillover' as const, maxW: 640, maxH: 480 },
 ];
 
 const videoResolutionPresets = [
-  { label: '512 × 512 · 1:1 Safest', width: 512, height: 512, ratio: '1:1', vram: 'LOWEST VRAM' },
-  { label: '512 × 768 · 9:16 Vertical', width: 512, height: 768, ratio: '9:16', vram: 'HIGHER VRAM · 3s max' },
+  { label: '480 × 320 · Extra low', width: 480, height: 320, ratio: '3:2', vram: 'Lowest VRAM · all durations' },
+  { label: '512 × 384 · Low', width: 512, height: 384, ratio: '4:3', vram: 'Low VRAM · all durations' },
+  { label: '512 × 512 · 1:1 Compact', width: 512, height: 512, ratio: '1:1', vram: 'Low VRAM · native OK' },
+  { label: '640 × 360 · 16:9 Low', width: 640, height: 360, ratio: '16:9', vram: 'Spillover-friendly' },
+  { label: '640 × 480 · 4:3', width: 640, height: 480, ratio: '4:3', vram: 'Spillover max / native OK' },
+  { label: '832 × 480 · 16:9 Native', width: 832, height: 480, ratio: '16:9', vram: 'Native only · ≤3s / 49f' },
 ];
 
 const motionScalePresets = [
@@ -62,60 +70,98 @@ interface VideoPreset {
 
 const videoParameterPresets: VideoPreset[] = [
   {
-    id: 'safe_1s_square',
-    name: 'Safe · 1.0s',
-    badge: '512×512 · 25 frames · Lowest VRAM',
-    description: 'Fastest conservative Wan 2.1 1.3B option for the 8GB RTX 3070 Ti. One temporal sequence at 24fps.',
+    id: 'native_1s',
+    name: 'Native · 1.0s',
+    badge: '832×480 · 17 frames · 16fps',
+    description: 'Fastest Native VRAM pass — stays fully on the 8GB GPU. Best for quick tests.',
     icon: '🚀',
     motionScale: 0.8,
     durationSec: 1,
-    frames: 25,
-    fps: 24,
+    frames: 17,
+    fps: 16,
     steps: 18,
     cfgScale: 3.0,
-    resolutionLabel: '512 × 512 · 1:1 Safest',
-    width: 512,
-    height: 512,
+    resolutionLabel: '832 × 480 · 16:9 Native',
+    width: 832,
+    height: 480,
     cameraMotion: 'None / Static Camera',
     isSafe8GB: true,
     interpolationMultiplier: 1
   },
   {
-    id: 'safe_2s_square',
-    name: 'Safe · 2.0s',
-    badge: '512×512 · 49 frames · Balanced',
-    description: 'Balanced short clip with 49 temporal frames and batch size 1. Recommended general-purpose starting point.',
+    id: 'native_2s',
+    name: 'Native · 2.0s',
+    badge: '832×480 · 33 frames · 16fps',
+    description: 'Balanced Native VRAM clip. Ideal base for 2×/4× RIFE stretch to 4–8s without diffusion OOM.',
     icon: '✨',
     motionScale: 1.0,
     durationSec: 2,
-    frames: 49,
-    fps: 24,
+    frames: 33,
+    fps: 16,
     steps: 18,
     cfgScale: 3.0,
-    resolutionLabel: '512 × 512 · 1:1 Safest',
-    width: 512,
-    height: 512,
+    resolutionLabel: '832 × 480 · 16:9 Native',
+    width: 832,
+    height: 480,
     cameraMotion: 'Slow Cinematic Pan',
     isSafe8GB: true,
     interpolationMultiplier: 1
   },
   {
-    id: 'safe_3s_vertical',
-    name: 'Safe Ceiling · 3.0s',
-    badge: '512×768 · 73 frames · 24fps',
-    description: 'Longest direct Wan 2.1 1.3B option in Gina\'s conservative 8GB envelope. Best choice for Shorts/Reels.',
-    icon: '📱',
+    id: 'native_3s_ceiling',
+    name: 'Native Ceiling · 3.0s',
+    badge: '832×480 · 49 frames · 16fps',
+    description: 'Native VRAM ceiling for 8GB. Stay at ≤49 frames to avoid system-RAM swap and 15+ min renders.',
+    icon: '🛡️',
     motionScale: 1.0,
     durationSec: 3,
-    frames: 73,
-    fps: 24,
+    frames: 49,
+    fps: 16,
     steps: 18,
     cfgScale: 3.0,
-    resolutionLabel: '512 × 768 · 9:16 Vertical',
-    width: 512,
-    height: 768,
+    resolutionLabel: '832 × 480 · 16:9 Native',
+    width: 832,
+    height: 480,
     cameraMotion: 'Slow Dolly Push In',
     isSafe8GB: true,
+    interpolationMultiplier: 1
+  },
+  {
+    id: 'spillover_4s',
+    name: 'Spillover · 4.0s',
+    badge: '640×480 · 65 frames · SLOW',
+    description: '4s spillover path (65 frames @ 16fps). Max 640×480; lower resolutions allowed. Needs headroom in system RAM.',
+    icon: '⏳',
+    motionScale: 1.0,
+    durationSec: 4,
+    frames: 65,
+    fps: 16,
+    steps: 16,
+    cfgScale: 3.0,
+    resolutionLabel: '640 × 480 · 4:3',
+    width: 640,
+    height: 480,
+    cameraMotion: 'Slow Cinematic Pan',
+    isSafe8GB: false,
+    interpolationMultiplier: 1
+  },
+  {
+    id: 'spillover_5s',
+    name: 'Spillover · 5.0s',
+    badge: '640×480 · 81 frames · SLOW',
+    description: 'Architectural max of base Wan 2.1 (81 frames). Max 640×480 (lower OK). Spills into system RAM — needs ≥32GB RAM; expect long renders.',
+    icon: '⚠️',
+    motionScale: 1.0,
+    durationSec: 5,
+    frames: 81,
+    fps: 16,
+    steps: 16,
+    cfgScale: 3.0,
+    resolutionLabel: '640 × 480 · 4:3',
+    width: 640,
+    height: 480,
+    cameraMotion: 'Slow Cinematic Pan',
+    isSafe8GB: false,
     interpolationMultiplier: 1
   }
 ];
@@ -171,13 +217,13 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
   const [prompt, setPrompt] = useState('A majestic black dragon breathing fiery embers in an obsidian cavern, slow cinematic camera pan, 8k resolution');
   const [negativePrompt, setNegativePrompt] = useState('blurry, static, distorted motion, flickering, low resolution, bad anatomy');
   const [showNegative, setShowNegative] = useState(false);
-  const [selectedDuration, setSelectedDuration] = useState(1); // Wan temporal length uses 24 intervals/sec + first frame
-  const [customFrames, setCustomFrames] = useState(25);
-  const [fps, setFps] = useState(24);
+  const [selectedDuration, setSelectedDuration] = useState(2); // default Native 2.0s @ 16fps
+  const [customFrames, setCustomFrames] = useState(33);
+  const [fps, setFps] = useState(16);
   const [motionScale, setMotionScale] = useState(1.0);
-  const [resolution, setResolution] = useState('512 × 512 · 1:1 Compact Square');
-  const [width, setWidth] = useState(512);
-  const [height, setHeight] = useState(512);
+  const [resolution, setResolution] = useState('832 × 480 · 16:9 Native');
+  const [width, setWidth] = useState(832);
+  const [height, setHeight] = useState(480);
   const [seed, setSeed] = useState(Math.floor(Math.random() * 1000000000));
   const [isRandomSeed, setIsRandomSeed] = useState(true);
   const [steps, setSteps] = useState(18);
@@ -187,7 +233,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
   const [savingAsset, setSavingAsset] = useState(false);
   const [diagLoading, setDiagLoading] = useState(false);
   const [diagResult, setDiagResult] = useState<any>(null);
-  const [activePresetId, setActivePresetId] = useState<string>('compact_fast');
+  const [activePresetId, setActivePresetId] = useState<string>('native_2s');
   const [interpolationMultiplier, setInterpolationMultiplier] = useState<1 | 2 | 4>(1);
   const [showStitchModal, setShowStitchModal] = useState(false);
 
@@ -251,7 +297,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
       const videoCapability = (data.capabilities || data).capabilities?.find?.((c:any) => c.id === 'wan-video') || (data.capabilities || []).find?.((c:any) => c.id === 'wan-video');
       const models = Array.isArray(data.models) ? data.models : [];
       const wanModel = models.find((m:any) => /wan2\.1.*1\.3b/i.test(String(m.fileName || m.name || '')));
-      const report = { comfyResponsive: Boolean(data.comfy?.connected ?? data.runtime?.comfyConnected ?? data.comfyConnected ?? true), modelFound: Boolean(wanModel || videoCapability), modelFile: wanModel?.fileName || 'wan2.1_t2v_1.3B_bf16.safetensors', capability: videoCapability, recommendations: [] };
+      const report = { comfyResponsive: Boolean(data.comfy?.connected ?? data.runtime?.comfyConnected ?? data.comfyConnected ?? true), modelFound: Boolean(wanModel || videoCapability), modelFile: wanModel?.fileName || 'Wan2_1-T2V-1_3B_fp8_e4m3fn.safetensors', capability: videoCapability, recommendations: [] };
       setDiagResult(report);
       if (report.comfyResponsive && report.modelFound) {
         onAddLog('INFO', 'Diagnostic PASSED: ComfyUI is responsive and the active Wan 2.1 video capability is available.');
@@ -320,7 +366,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
       steps,
       cfg: cfgScale,
       camera_motion: cameraMotion,
-      model: 'wan2.1_t2v_1.3B_bf16.safetensors'
+      model: 'Wan2_1-T2V-1_3B_fp8_e4m3fn.safetensors'
     });
 
     if (!resultJob) {
@@ -606,29 +652,63 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
               </span>
             </div>
 
-            {/* Duration Selector */}
+            {/* Duration Selector — Native VRAM (≤3s/49f) vs RAM spillover (5s/81f) */}
             <div className="space-y-2">
-              <label className="text-[11px] font-semibold text-slate-300">Target Duration (8GB VRAM Safe Bounds)</label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {durationOptions.map((opt) => (
-                  <button
-                    key={opt.seconds}
-                    type="button"
-                    onClick={() => setSelectedDuration(opt.seconds)}
-                    className={`p-2.5 rounded border text-left transition-colors ${
-                      selectedDuration === opt.seconds
-                        ? 'bg-emerald-500/10 border-emerald-500 text-emerald-300'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="text-xs font-bold">{opt.seconds}.0 Seconds</div>
-                    <div className="text-[9px] font-mono text-slate-500 mt-0.5">{opt.frames} frames</div>
-                    <div className={`text-[8px] font-mono mt-1 ${selectedDuration === opt.seconds ? 'text-emerald-400' : 'text-slate-600'}`}>
-                      {opt.vram}
-                    </div>
-                  </button>
-                ))}
+              <label className="text-[11px] font-semibold text-slate-300">Target Duration · 16 fps base</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {durationOptions.map((opt) => {
+                  const active = selectedDuration === opt.seconds;
+                  const spill = opt.tier === 'spillover';
+                  return (
+                    <button
+                      key={opt.seconds}
+                      type="button"
+                      onClick={() => {
+                        setSelectedDuration(opt.seconds);
+                        setCustomFrames(opt.frames);
+                        setFps(16);
+                        // Only clamp resolution if current size exceeds this duration's max; lower res always OK
+                        setWidth((w) => {
+                          const next = Math.min(w, opt.maxW);
+                          if (next !== w || spill) {
+                            onAddLog(
+                              spill ? 'WARN' : 'INFO',
+                              spill
+                                ? `Spillover ${opt.seconds}s: max ${opt.maxW}×${opt.maxH} (lower res OK). Expect slower renders / RAM use.`
+                                : `Native ${opt.seconds}s: up to ${opt.maxW}×${opt.maxH}; lower resolutions allowed.`
+                            );
+                          }
+                          return next;
+                        });
+                        setHeight((h) => Math.min(h, opt.maxH));
+                        setResolution((label) => {
+                          const match = videoResolutionPresets.find(p => p.width <= opt.maxW && p.height <= opt.maxH && (p.width === Math.min(width, opt.maxW) || p.label === label));
+                          if (match) return match.label;
+                          return `${Math.min(width, opt.maxW)} × ${Math.min(height, opt.maxH)}`;
+                        });
+                      }}
+                      className={`p-2.5 rounded border text-left transition-colors ${
+                        active
+                          ? spill
+                            ? 'bg-amber-500/10 border-amber-500 text-amber-200'
+                            : 'bg-emerald-500/10 border-emerald-500 text-emerald-300'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-xs font-bold">{opt.seconds}.0 Seconds</div>
+                      <div className="text-[9px] font-mono text-slate-500 mt-0.5">{opt.frames} frames</div>
+                      <div className={`text-[8px] font-mono mt-1 ${active ? (spill ? 'text-amber-400' : 'text-emerald-400') : 'text-slate-600'}`}>
+                        {opt.vram}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
+              <p className="text-[9px] text-slate-500 leading-relaxed">
+                <span className="text-emerald-400 font-semibold">Native VRAM</span> ≤49 frames / 3s keeps the job on the 8GB GPU.
+                <span className="text-amber-400 font-semibold"> Spillover 5s</span> hits the Wan 2.1 architectural max (81 frames) and will page into system RAM.
+                For 10–15s clips: chain I2V segments or use RIFE 2×/4× on a stable 2s native pass.
+              </p>
             </div>
 
             {/* Motion Scale Slider */}
@@ -664,24 +744,22 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
                   AI Frame Interpolation (ComfyUI RIFE VFI)
                 </label>
                 <span className="text-[10px] font-mono font-bold text-emerald-400">
-                  {interpolationMultiplier === 1 ? '1× (Native 25fps)' : interpolationMultiplier === 2 ? '2× RIFE (50fps Smooth)' : '4× RIFE (60fps Slomo)'}
+                  {interpolationMultiplier === 1 ? '1× (Native 16fps)' : interpolationMultiplier === 2 ? '2× RIFE (~32fps)' : '4× RIFE (~64fps)'}
                 </span>
               </div>
 
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { mult: 1 as const, label: '1× Off', sub: '25 Raw Frames', badge: '1.0s @ 25fps', safe: true },
-                  { mult: 2 as const, label: '2× RIFE Smooth', sub: '50 Interp Frames', badge: '50fps Smooth · 8GB Safe', safe: true },
-                  { mult: 4 as const, label: '4× RIFE Slomo', sub: '100 Interp Frames', badge: '60fps Slomo · 8GB Safe', safe: true }
+                  { mult: 1 as const, label: '1× Off', sub: 'Native frames', badge: '16fps · no stretch', safe: true },
+                  { mult: 2 as const, label: '2× RIFE Smooth', sub: '2s → ~4s feel', badge: '~32fps · 8GB safe', safe: true },
+                  { mult: 4 as const, label: '4× RIFE Stretch', sub: '2s → ~8s feel', badge: '~64fps · 8GB safe', safe: true }
                 ].map((item) => (
                   <button
                     key={item.mult}
                     type="button"
                     onClick={() => {
                       setInterpolationMultiplier(item.mult);
-                      if (item.mult === 1) setFps(25);
-                      if (item.mult === 2) setFps(50);
-                      if (item.mult === 4) setFps(60);
+                      setFps(16);
                       onAddLog('INFO', `Frame Interpolation set to ${item.label} (${item.badge})`);
                     }}
                     className={`p-2 rounded border text-left transition-colors cursor-pointer ${
@@ -704,30 +782,47 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
             </div>
           </div>
 
-          {/* Resolution & Format */}
+          {/* Resolution & Format — any size at or below the active duration max */}
           <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-4 space-y-3">
             <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
               <Layers className="w-3.5 h-3.5 text-emerald-400" />
               Resolution & Aspect Ratio
             </label>
+            <p className="text-[9px] text-slate-500">
+              Lower resolutions are always allowed. Options above the current duration max are disabled
+              (native ≤832×480 · spillover 4–5s ≤640×480).
+            </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {videoResolutionPresets.map((preset) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  onClick={() => handleResolutionChange(preset.label)}
-                  className={`p-2.5 rounded border text-left transition-colors ${
-                    resolution === preset.label
-                      ? 'bg-emerald-500/10 border-emerald-500 text-emerald-300'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="text-xs font-bold">{preset.width} × {preset.height}</div>
-                  <div className="text-[9px] font-mono text-slate-500 mt-0.5">{preset.ratio} Ratio</div>
-                  <div className="text-[8px] font-mono text-emerald-400 mt-1">{preset.vram}</div>
-                </button>
-              ))}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {videoResolutionPresets.map((preset) => {
+                const dur = durationOptions.find(d => d.seconds === selectedDuration) || durationOptions[1];
+                const allowed = preset.width <= dur.maxW && preset.height <= dur.maxH;
+                const active = width === preset.width && height === preset.height;
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    disabled={!allowed}
+                    onClick={() => {
+                      if (!allowed) return;
+                      handleResolutionChange(preset.label);
+                    }}
+                    className={`p-2.5 rounded border text-left transition-colors ${
+                      !allowed
+                        ? 'bg-slate-950/40 border-slate-900 text-slate-600 opacity-50 cursor-not-allowed'
+                        : active
+                          ? 'bg-emerald-500/10 border-emerald-500 text-emerald-300'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="text-xs font-bold">{preset.width} × {preset.height}</div>
+                    <div className="text-[9px] font-mono text-slate-500 mt-0.5">{preset.ratio} Ratio</div>
+                    <div className={`text-[8px] font-mono mt-1 ${active ? 'text-emerald-400' : allowed ? 'text-slate-500' : 'text-slate-600'}`}>
+                      {allowed ? preset.vram : `Exceeds ${dur.seconds}s max ${dur.maxW}×${dur.maxH}`}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ginaPanelStyle } from './ResizablePanels';
 import {
   Activity,
   AlertTriangle,
@@ -9,15 +10,22 @@ import {
   Database,
   Gauge,
   GitBranch,
+  Loader2,
   Terminal,
   Trash2
 } from 'lucide-react';
+import { smoothSamples } from '../lib/ginaMath';
 
 interface TraceExecutionEntry {
   id: string;
   title: string;
   details: string;
   status: 'running' | 'complete' | 'error';
+  /** epoch ms when the step started */
+  startedAt?: number;
+  /** epoch ms when the step finished */
+  endedAt?: number;
+  kind?: 'command' | 'workflow' | 'info' | 'tool';
 }
 
 interface TraceTelemetry {
@@ -46,15 +54,24 @@ interface TraceHardwareTelemetry {
   thermalBrakeActive?: boolean;
 }
 
+export type AgentActivityItem = {
+  text: string;
+  path?: string;
+  command?: string;
+  kind?: 'command' | 'file' | 'read' | 'edit' | 'info' | 'error';
+  status?: 'running' | 'complete' | 'error';
+};
+
 interface AgentExecutionTraceProps {
   studioMode: string;
   agentStatus: string;
-  agentActivity: string[];
+  agentActivity: Array<string | AgentActivityItem>;
   executionLog: TraceExecutionEntry[];
   telemetry?: TraceTelemetry | null;
   runtimeTelemetry?: TraceTelemetry | null;
   hardwareTelemetry?: TraceHardwareTelemetry | null;
   onClear: () => void;
+  onOpenFile?: (path: string) => void;
 }
 
 const clamp = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min, value));
@@ -62,35 +79,98 @@ const clamp = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min,
 const formatNumber = (value: number | undefined, digits = 0) =>
   Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '0';
 
-const uniqueActivity = (items: string[]) => {
-  const seen = new Set<string>();
-  return items.filter(item => {
-    const normalized = String(item || '').trim();
-    if (!normalized || seen.has(normalized)) return false;
-    seen.add(normalized);
-    return true;
-  }).slice(-12);
+/** Format elapsed ms as "12s" / "1m 28s" / "1h 2m 05s". */
+const formatElapsed = (ms: number): string => {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${m}m ${String(s).padStart(2, '0')}s`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`;
+  return `${s}s`;
 };
 
-const Sparkline: React.FC<{ values: number[]; max?: number; label: string; suffix?: string }> = ({ values, max, label, suffix = '' }) => {
+const normalizeActivity = (items: Array<string | AgentActivityItem>): AgentActivityItem[] => {
+  const seen = new Set<string>();
+  const out: AgentActivityItem[] = [];
+  for (const item of items) {
+    const entry: AgentActivityItem = typeof item === 'string' ? { text: item } : item;
+    const key = `${entry.kind || ''}|${entry.path || ''}|${entry.text}`.trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(entry);
+  }
+  return out.slice(-40);
+};
+
+const Sparkline: React.FC<{ values: number[]; max?: number; label: string; suffix?: string; color?: string }> = ({
+  values,
+  max,
+  label,
+  suffix = '',
+  color = '#38bdf8'
+}) => {
   const safeValues = values.length ? values : [0];
-  const ceiling = Math.max(1, max || Math.max(...safeValues));
+  const ceiling = Math.max(1e-6, max || Math.max(...safeValues, 0));
+  const width = 240;
+  const height = 56;
+  const padX = 4;
+  const padY = 6;
+  const n = safeValues.length;
+  const points = safeValues.map((value, index) => {
+    const x = padX + (n <= 1 ? width / 2 : (index / (n - 1)) * (width - padX * 2));
+    const y = height - padY - clamp(value / ceiling, 0, 1) * (height - padY * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const linePath = points.length ? `M ${points.join(' L ')}` : '';
+  const areaPath = points.length
+    ? `M ${padX},${height - padY} L ${points.join(' L ')} L ${width - padX},${height - padY} Z`
+    : '';
+  const last = safeValues[safeValues.length - 1] ?? 0;
+
   return (
     <div className="rounded-md border border-slate-800 bg-slate-950/80 p-2.5">
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
         <span className="text-[8px] font-bold uppercase tracking-widest text-slate-500">{label}</span>
-        <span className="text-[8px] font-mono text-slate-400">{formatNumber(safeValues[safeValues.length - 1], 1)}{suffix}</span>
+        <span className="text-[8px] font-mono tabular-nums text-slate-300">
+          {formatNumber(last, 1)}{suffix}
+        </span>
       </div>
-      <div className="flex h-14 items-end gap-px overflow-hidden rounded bg-slate-900/80 px-1 pt-1">
-        {safeValues.map((value, index) => (
-          <div
-            key={index}
-            className="min-w-[2px] flex-1 rounded-t bg-sky-400/70"
-            style={{ height: `${Math.max(3, (clamp(value / ceiling, 0, 1) * 100))}%` }}
-            title={`${formatNumber(value, 1)}${suffix}`}
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-14 w-full overflow-visible rounded bg-slate-900/80"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={`${label} ${formatNumber(last, 1)}${suffix}`}
+      >
+        <defs>
+          <linearGradient id={`spark-fill-${label.replace(/\s+/g, '-')}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {/* baseline grid */}
+        <line x1={padX} y1={height - padY} x2={width - padX} y2={height - padY} stroke="#1e293b" strokeWidth="1" />
+        {areaPath && (
+          <path d={areaPath} fill={`url(#spark-fill-${label.replace(/\s+/g, '-')})`} stroke="none" />
+        )}
+        {linePath && (
+          <path
+            d={linePath}
+            fill="none"
+            stroke={color}
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
           />
-        ))}
-      </div>
+        )}
+        {/* latest point marker */}
+        {points.length > 0 && (() => {
+          const [lx, ly] = points[points.length - 1].split(',').map(Number);
+          return <circle cx={lx} cy={ly} r="2.25" fill={color} stroke="#0f172a" strokeWidth="1" />;
+        })()}
+      </svg>
     </div>
   );
 };
@@ -122,24 +202,49 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
   telemetry,
   runtimeTelemetry,
   hardwareTelemetry,
-  onClear
+  onClear,
+  onOpenFile
 }) => {
   const [expanded, setExpanded] = useState(true);
   const [tokenSamples, setTokenSamples] = useState<number[]>([]);
   const [vramSamples, setVramSamples] = useState<number[]>([]);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null);
 
   const activeTelemetry = runtimeTelemetry || telemetry;
   const tps = Number(activeTelemetry?.completionTokensPerSecond || activeTelemetry?.tokensPerSecond || 0);
   const vramUsed = Number(hardwareTelemetry?.vramUsedMB || 0);
   const vramTotal = Number(hardwareTelemetry?.vramTotalMB || 8192);
 
-  useEffect(() => {
-    setTokenSamples(prev => [...prev, tps].slice(-36));
-  }, [tps]);
+  const statusIsError = /error|fail/i.test(agentStatus);
+  const statusIsActive = /working|thinking|search|generat|read|edit|run|inspect|routing|received|rendering|preparing/i.test(agentStatus);
 
+  // Live "Working for Xm Ys" clock — ticks while a step is active.
   useEffect(() => {
-    setVramSamples(prev => [...prev, vramUsed].slice(-36));
-  }, [vramUsed]);
+    if (statusIsActive && sessionStartedAt == null) {
+      setSessionStartedAt(Date.now());
+    }
+    if (!statusIsActive && /ready|completed|error/i.test(agentStatus)) {
+      // keep last sessionStartedAt so completed duration remains visible until clear
+    }
+    const id = window.setInterval(() => setNowMs(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, [statusIsActive, agentStatus, sessionStartedAt]);
+
+  // Sample on value change AND on a steady interval so sparklines keep
+  // animating while a long generation holds a stable tok/s reading.
+  useEffect(() => {
+    setTokenSamples(prev => [...prev, tps].slice(-48));
+    setVramSamples(prev => [...prev, vramUsed].slice(-48));
+    const id = window.setInterval(() => {
+      setTokenSamples(prev => [...prev, tps].slice(-48));
+      setVramSamples(prev => [...prev, vramUsed].slice(-48));
+    }, 1200);
+    return () => window.clearInterval(id);
+  }, [tps, vramUsed]);
+
+  const smoothedTokenSamples = useMemo(() => smoothSamples(tokenSamples, 0.4), [tokenSamples]);
+  const smoothedVramSamples = useMemo(() => smoothSamples(vramSamples, 0.35), [vramSamples]);
 
   const contextItems = useMemo(() => {
     const raw = activeTelemetry?.contextBreakdown || {};
@@ -150,14 +255,52 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
   }, [activeTelemetry?.contextBreakdown]);
 
   const contextTotal = contextItems.reduce((sum, item) => sum + item.value, 0);
-  const activity = uniqueActivity(agentActivity);
+  const activity = normalizeActivity(agentActivity);
   const hasTelemetry = Boolean(activeTelemetry || hardwareTelemetry);
-  const statusIsError = /error|fail/i.test(agentStatus);
-  const statusIsActive = /working|thinking|search|generat|read|edit|run|inspect|routing/i.test(agentStatus);
+
+  const workingElapsedMs = sessionStartedAt != null ? nowMs - sessionStartedAt : 0;
+  const runningEntry = executionLog.find(e => e.status === 'running');
+  const stepElapsedMs = runningEntry?.startedAt != null ? nowMs - runningEntry.startedAt : workingElapsedMs;
+
+  const STORAGE_H = 'gina.ui.agentLogHeightPx';
+  const [logHeight, setLogHeight] = useState(() => {
+    try {
+      const v = Number(localStorage.getItem(STORAGE_H));
+      if (Number.isFinite(v) && v >= 160) return Math.min(900, v);
+    } catch {}
+    return 280;
+  });
+  const dragRef = useRef(false);
+  const shellRef = useRef<HTMLElement | null>(null);
+
+  const onMove = useCallback((e: PointerEvent) => {
+    if (!dragRef.current || !shellRef.current) return;
+    const top = shellRef.current.getBoundingClientRect().top;
+    const next = Math.min(900, Math.max(160, e.clientY - top));
+    setLogHeight(next);
+    try { localStorage.setItem(STORAGE_H, String(Math.round(next))); } catch {}
+  }, []);
+  const onUp = useCallback(() => {
+    dragRef.current = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }, []);
+  useEffect(() => {
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [onMove, onUp]);
 
   return (
-    <section className="rounded-lg border border-slate-800 bg-slate-950/95 overflow-hidden">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2">
+    <section
+      ref={shellRef as any}
+      className="relative bg-slate-950/95 overflow-hidden flex flex-col"
+      style={{ ...ginaPanelStyle(), height: expanded ? logHeight : undefined, minHeight: expanded ? 160 : undefined }}
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2 shrink-0">
         <button
           type="button"
           onClick={() => setExpanded(value => !value)}
@@ -169,12 +312,26 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
           <span className={`text-[8px] font-mono ${statusIsError ? 'text-rose-400' : statusIsActive ? 'text-amber-300' : 'text-emerald-400'}`}>
             ● {agentStatus}
           </span>
+          {statusIsActive && (
+            <span className="inline-flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-mono font-bold text-amber-300">
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              Working for {formatElapsed(stepElapsedMs)}
+            </span>
+          )}
+          {!statusIsActive && sessionStartedAt != null && workingElapsedMs > 0 && (
+            <span className="text-[8px] font-mono text-slate-600">
+              last run {formatElapsed(workingElapsedMs)}
+            </span>
+          )}
         </button>
         <div className="flex items-center gap-2">
           <span className="hidden text-[8px] font-mono text-slate-600 sm:inline">{studioMode}</span>
           <button
             type="button"
-            onClick={onClear}
+            onClick={() => {
+              setSessionStartedAt(null);
+              onClear();
+            }}
             className="rounded border border-slate-800 bg-slate-900 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-slate-600 hover:text-slate-200"
             title="Clear current execution trace"
           >
@@ -188,56 +345,139 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
           <TraceSection
             title="Execution Timeline"
             icon={<GitBranch className="mr-1 inline h-3 w-3 text-violet-400" />}
-            summary={`${executionLog.length} event${executionLog.length === 1 ? '' : 's'}`}
+            summary={`${executionLog.length} event${executionLog.length === 1 ? '' : 's'}${statusIsActive ? ` · live ${formatElapsed(stepElapsedMs)}` : ''}`}
             open
           >
             {executionLog.length === 0 ? (
               <div className="text-[8px] font-mono text-slate-600">No execution events yet.</div>
             ) : (
-              <div className="space-y-1">
-                {executionLog.map((entry, index) => (
-                  <details key={entry.id} open={entry.status === 'running' && index === executionLog.length - 1} className="rounded border border-slate-800/80 bg-slate-900/60">
-                    <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-1.5">
-                      {entry.status === 'error'
-                        ? <AlertTriangle className="h-3 w-3 text-rose-400" />
-                        : entry.status === 'running'
-                          ? <Activity className="h-3 w-3 text-amber-300" />
-                          : <CheckCircle2 className="h-3 w-3 text-emerald-400" />}
-                      <span className="min-w-0 flex-1 truncate text-[8px] font-bold text-slate-300">{entry.title}</span>
-                      <span className="text-[7px] font-mono text-slate-600">#{index + 1}</span>
-                    </summary>
-                    <pre className="border-t border-slate-800/70 px-2 py-2 text-[8px] leading-relaxed text-slate-500 whitespace-pre-wrap">{entry.details}</pre>
-                  </details>
-                ))}
+              <div className="space-y-1.5">
+                {executionLog.map((entry, index) => {
+                  const isRunning = entry.status === 'running';
+                  const elapsed = entry.startedAt != null
+                    ? (entry.endedAt ?? nowMs) - entry.startedAt
+                    : null;
+                  const kindLabel =
+                    entry.kind === 'command' ? 'Ran command'
+                      : entry.kind === 'tool' ? 'Tool call'
+                        : entry.kind === 'workflow' ? 'Workflow'
+                          : 'Step';
+                  const kindBadge =
+                    entry.kind === 'command'
+                      ? 'bg-violet-500/15 text-violet-300 border-violet-500/30'
+                      : entry.kind === 'tool'
+                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                        : entry.kind === 'workflow'
+                          ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                          : 'bg-slate-800 text-slate-400 border-slate-700';
+                  return (
+                    <details
+                      key={entry.id}
+                      open={isRunning || index >= executionLog.length - 3}
+                      className={`rounded-md border bg-slate-900/60 transition-shadow ${
+                        entry.status === 'error'
+                          ? 'border-rose-500/40 shadow-[0_0_12px_rgba(244,63,94,0.12)]'
+                          : isRunning
+                            ? 'border-amber-500/40 shadow-[0_0_14px_rgba(251,191,36,0.15)]'
+                            : entry.status === 'complete'
+                              ? 'border-emerald-500/20'
+                              : 'border-slate-800/80'
+                      }`}
+                    >
+                      <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5">
+                        {entry.status === 'error'
+                          ? <AlertTriangle className="h-3 w-3 shrink-0 text-rose-400" />
+                          : isRunning
+                            ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-amber-300" />
+                            : <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-400" />}
+                        <span className={`rounded border px-1.5 py-0.5 text-[7px] font-bold uppercase tracking-wider shrink-0 ${kindBadge}`}>
+                          {kindLabel}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[9px] font-semibold text-slate-100">
+                          {entry.title}
+                        </span>
+                        {elapsed != null && (
+                          <span className={`text-[8px] font-mono tabular-nums ${isRunning ? 'text-amber-300 font-bold' : 'text-slate-500'}`}>
+                            {isRunning ? `Working for ${formatElapsed(elapsed)}` : formatElapsed(elapsed)}
+                          </span>
+                        )}
+                        <span className="text-[7px] font-mono text-slate-700">#{index + 1}</span>
+                      </summary>
+                      <pre className="border-t border-slate-800/70 bg-slate-950/50 px-2.5 py-2 text-[8px] leading-relaxed text-slate-300 whitespace-pre-wrap font-mono">
+                        {entry.details}
+                      </pre>
+                    </details>
+                  );
+                })}
               </div>
             )}
           </TraceSection>
 
-          {activity.length > 0 && (
-            <TraceSection
-              title="Live Agent Trace"
-              icon={<Terminal className="mr-1 inline h-3 w-3 text-sky-400" />}
-              summary={`${activity.length} unique live event${activity.length === 1 ? '' : 's'}`}
-              open={statusIsActive}
-            >
-              <div className="max-h-48 space-y-1 overflow-auto">
-                {activity.map((entry, index) => (
-                  <pre key={`${index}-${entry.slice(0, 30)}`} className="rounded border border-slate-800 bg-slate-900/70 px-2 py-1.5 text-[8px] leading-relaxed text-slate-500 whitespace-pre-wrap">{entry}</pre>
-                ))}
+          <TraceSection
+            title="Live Agent Trace"
+            icon={<Terminal className="mr-1 inline h-3 w-3 text-sky-400" />}
+            summary={activity.length ? `${activity.length} live event${activity.length === 1 ? '' : 's'}` : 'waiting…'}
+            open={statusIsActive || activity.length > 0}
+          >
+            {activity.length === 0 ? (
+              <div className="text-[8px] font-mono text-slate-600">No live agent events yet — steps appear here as Gina works.</div>
+            ) : (
+              <div className="max-h-64 space-y-1.5 overflow-auto">
+                {activity.map((entry, index) => {
+                  const text = entry.text || '';
+                  const isExec = entry.kind === 'command' || /EXEC_STEP|Ran a command|command/i.test(text);
+                  const isFile = entry.kind === 'file' || entry.kind === 'read' || entry.kind === 'edit' || /FILE_STEP|Wrote|Read|Edited/i.test(text);
+                  const isErr = entry.status === 'error' || entry.kind === 'error' || /fail|error|✗/i.test(text);
+                  return (
+                    <div
+                      key={`${index}-${(entry.path || text).slice(0, 40)}`}
+                      className={`rounded-md border px-2.5 py-1.5 text-[8px] leading-relaxed font-mono ${
+                        isErr
+                          ? 'border-rose-500/30 bg-rose-950/30 text-rose-200'
+                          : isExec
+                            ? 'border-violet-500/25 bg-violet-950/20 text-violet-100'
+                            : isFile
+                              ? 'border-sky-500/25 bg-sky-950/20 text-sky-100'
+                              : 'border-slate-800 bg-slate-900/70 text-slate-300'
+                      }`}
+                    >
+                      <pre className="whitespace-pre-wrap m-0">{text}</pre>
+                      {(entry.path || entry.command) && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          {entry.path && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenFile?.(entry.path!)}
+                              className="inline-flex items-center gap-1 rounded border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-[8px] font-bold text-sky-300 hover:bg-sky-500/20"
+                              title={`Open ${entry.path}`}
+                            >
+                              📄 {entry.path.split(/[/\\]/).pop()}
+                            </button>
+                          )}
+                          {entry.command && (
+                            <span className="rounded border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 text-[7px] text-violet-200 truncate max-w-full">
+                              $ {entry.command.slice(0, 120)}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            </TraceSection>
-          )}
+            )}
+          </TraceSection>
 
           {hasTelemetry && (
             <TraceSection
               title="Runtime Telemetry"
               icon={<Gauge className="mr-1 inline h-3 w-3 text-emerald-400" />}
               summary={`${formatNumber(tps, 1)} tok/s · ${formatNumber(vramUsed / 1024, 2)} / ${formatNumber(vramTotal / 1024, 2)} GB VRAM`}
-              open={false}
+              open={Number(activeTelemetry?.promptTokens || 0) + Number(activeTelemetry?.completionTokens || 0) > 0 || statusIsActive}
             >
               <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
-                <Sparkline values={tokenSamples} label="Token Throughput" suffix=" tok/s" />
-                <Sparkline values={vramSamples.map(value => value / 1024)} max={vramTotal / 1024} label="VRAM Allocation" suffix=" GB" />
+                <Sparkline values={smoothedTokenSamples} label="Token Throughput" suffix=" tok/s" color="#38bdf8" />
+                <Sparkline values={smoothedVramSamples.map(value => value / 1024)} max={vramTotal / 1024} label="VRAM Allocation" suffix=" GB" color="#34d399" />
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
                 <div className="rounded border border-slate-800 bg-slate-900/60 p-2"><div className="text-[7px] uppercase tracking-widest text-slate-600">Prompt</div><div className="mt-1 text-[10px] font-mono text-slate-300">{Number(activeTelemetry?.promptTokens || 0).toLocaleString()}</div></div>
@@ -247,6 +487,39 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
               </div>
             </TraceSection>
           )}
+
+          <TraceSection
+            title="MCP / Tool Logs"
+            icon={<Terminal className="mr-1 inline h-3 w-3 text-amber-400" />}
+            summary={
+              activity.filter(e => /mcp|tool|FILE_STEP|EXEC_STEP|BROADCASTER|validator/i.test(e)).length
+                ? `${activity.filter(e => /mcp|tool|FILE_STEP|EXEC_STEP|BROADCASTER|validator/i.test(e)).length} tool events`
+                : studioMode === 'web-app'
+                  ? 'Web App Studio (no MCP tools)'
+                  : 'No MCP tool calls yet'
+            }
+            open={false}
+          >
+            {(() => {
+              const mcpEntries = activity.filter(e => /mcp|tool|FILE_STEP|EXEC_STEP|BROADCASTER|validator|tool-call|tools\/call/i.test(e));
+              if (mcpEntries.length === 0) {
+                return (
+                  <div className="text-[8px] font-mono text-slate-600">
+                    {studioMode === 'web-app'
+                      ? 'Web App Studio is an artifact lane — it does not invoke MCP tools. Tool/MCP logs appear here for Code Engine and agent runs.'
+                      : 'Waiting for MCP tool calls or agent file/exec steps…'}
+                  </div>
+                );
+              }
+              return (
+                <div className="max-h-40 space-y-1 overflow-auto">
+                  {mcpEntries.slice(-16).map((entry, index) => (
+                    <pre key={`mcp-${index}-${entry.slice(0, 24)}`} className="rounded border border-slate-800 bg-slate-900/70 px-2 py-1.5 text-[8px] leading-relaxed text-slate-500 whitespace-pre-wrap">{entry}</pre>
+                  ))}
+                </div>
+              );
+            })()}
+          </TraceSection>
 
           {contextItems.length > 0 && (
             <TraceSection
@@ -288,8 +561,23 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
           )}
         </div>
       )}
+    {expanded && (
+        <div
+          role="separator"
+          aria-label="Resize agent log height"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            dragRef.current = true;
+            document.body.style.cursor = 'row-resize';
+            document.body.style.userSelect = 'none';
+          }}
+          className="absolute bottom-0 left-0 z-20 h-2 w-full cursor-row-resize hover:bg-emerald-500/30 active:bg-emerald-500/50"
+          title="Drag to resize agent log height"
+        />
+      )}
     </section>
   );
 };
+
 
 export default AgentExecutionTrace;
