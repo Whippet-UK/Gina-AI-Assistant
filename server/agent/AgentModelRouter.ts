@@ -96,12 +96,12 @@ export function routeAgentModel(
   opts: { hasImage?: boolean; availableModels?: string[] } = {}
 ): ModelRoute {
   const text = String(prompt || '');
-  const hasImage = Boolean(opts.hasImage) || /\\b(image|photo|picture|screenshot|vision|visual)\\b/i.test(text);
+  const hasImage = Boolean(opts.hasImage) || /\b(image|photo|picture|screenshot|vision|visual)\b/i.test(text);
   const coder =
-    /\\b(code|coding|typescript|javascript|python|component|function|bug|fix|edit|refactor|compile|build|test|repository|repo)\\b/i.test(text) ||
+    /\b(code|coding|typescript|javascript|python|component|function|bug|fix|edit|refactor|compile|build|test|repository|repo)\b/i.test(text) ||
     intent === 'code-task' ||
     intent === 'file-operation';
-  const research = intent === 'web-research' || /\\b(research|documentation|latest|current|look up|search)\\b/i.test(text);
+  const research = intent === 'web-research' || /\b(research|documentation|latest|current|look up|search)\b/i.test(text);
 
   if (hasImage) {
     const endpoint = AGENT_MODEL_CATALOG['qwen-vl'];

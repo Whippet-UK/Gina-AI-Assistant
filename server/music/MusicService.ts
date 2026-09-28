@@ -429,16 +429,31 @@ export class MusicService {
     }
   }
 
+  private aceHealthCache: { at: number; value: { ok: boolean; detail?: string } } | null = null;
+
   private async getAceStepHealth(): Promise<{ ok: boolean; detail?: string }> {
+    const ttl = Math.max(3000, Number(process.env.ACESTEP_HEALTH_CACHE_MS || 8000));
+    if (this.aceHealthCache && Date.now() - this.aceHealthCache.at < ttl) {
+      return this.aceHealthCache.value;
+    }
     try {
       const response = await this.fetchWithTimeout(`${this.getAceStepBaseUrl()}/health`, {}, 5000);
-      if (!response.ok) return { ok: false, detail: `HTTP ${response.status}` };
+      if (!response.ok) {
+        const value = { ok: false, detail: `HTTP ${response.status}` };
+        this.aceHealthCache = { at: Date.now(), value };
+        return value;
+      }
       const payload: any = await response.json();
-      return payload?.code === 200 || payload?.data?.status === "ok"
-        ? { ok: true }
-        : { ok: false, detail: payload?.error || "ACE-Step health response was not ready" };
+      const value =
+        payload?.code === 200 || payload?.data?.status === "ok"
+          ? { ok: true }
+          : { ok: false, detail: payload?.error || "ACE-Step health response was not ready" };
+      this.aceHealthCache = { at: Date.now(), value };
+      return value;
     } catch (error: any) {
-      return { ok: false, detail: error?.message || "ACE-Step API is not reachable" };
+      const value = { ok: false, detail: error?.message || "ACE-Step API is not reachable" };
+      this.aceHealthCache = { at: Date.now(), value };
+      return value;
     }
   }
 

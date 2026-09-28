@@ -5,19 +5,18 @@ set "ACE_URL=http://127.0.0.1:8101"
 set "UV_EXE="
 cd /d "%ACE_ROOT%"
 if not exist "%ACE_ROOT%\pyproject.toml" (
-  echo [ERROR] ACE-Step is not installed. Run scripts\Install_ACEStep_Singing.bat first.
+  echo [%date% %time%] [ERROR] ACE-Step is not installed. Run scripts\Install_ACEStep_Singing.bat first.
   pause
   exit /b 1
 )
 
-REM Resolve uv from PATH or the locations used by the official Windows installer.
 where uv >nul 2>&1
 if not errorlevel 1 set "UV_EXE=uv"
 if not defined UV_EXE if exist "%USERPROFILE%\.local\bin\uv.exe" set "UV_EXE=%USERPROFILE%\.local\bin\uv.exe"
 if not defined UV_EXE if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\uv.exe" set "UV_EXE=%LOCALAPPDATA%\Microsoft\WinGet\Links\uv.exe"
 
 if not defined UV_EXE (
-  echo [ERROR] uv is not available.
+  echo [%date% %time%] [ERROR] uv is not available.
   echo Run scripts\Install_ACEStep_Singing.bat first; it installs uv automatically.
   pause
   exit /b 1
@@ -34,6 +33,11 @@ set "ACESTEP_OFFLOAD_DIT_TO_CPU=true"
 set "ACESTEP_INIT_LLM=true"
 set "ACESTEP_LM_OFFLOAD_TO_CPU=true"
 
+rem Quiet terminal: hide routine GET /health access lines (INFO). Warnings/errors still show.
+rem Gina caches health for ~8s so the UI does not hammer this endpoint.
+set "UVICORN_LOG_LEVEL=warning"
+set "ACESTEP_LOG_LEVEL=WARNING"
+
 if /i "%~1"=="--restart" goto KILL_OLD
 if /i "%~1"=="-restart" goto KILL_OLD
 if /i "%~1"=="/restart" goto KILL_OLD
@@ -41,14 +45,14 @@ if /i "%~1"=="restart" goto KILL_OLD
 goto CHECK_RUNNING
 
 :KILL_OLD
-echo Stopping existing ACE-Step processes on port 8101...
+echo [%date% %time%] Stopping existing ACE-Step processes on port 8101...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$conns = Get-NetTCPConnection -LocalPort 8101 -ErrorAction SilentlyContinue; foreach($c in $conns){ try { Stop-Process -Id $c.OwningProcess -Force -ErrorAction Stop } catch {} }"
 timeout /t 1 /nobreak >nul
 
 :CHECK_RUNNING
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$c=Get-NetTCPConnection -LocalPort 8101 -State Listen -ErrorAction SilentlyContinue; if($c){exit 0}else{exit 1}"
 if not errorlevel 1 (
-  echo ACE-Step API is already running.
+  echo [%date% %time%] ACE-Step API is already running.
   echo If you need to restart it to reload environment variables, run:
   echo   scripts\Start_ACEStep_Singing_API.bat --restart
   pause
@@ -58,10 +62,10 @@ if not errorlevel 1 (
 echo ==========================================
 echo ACE-Step 1.5 - Gina Singing API
 echo ==========================================
-echo API: %ACE_URL%
-echo LM : acestep-5Hz-lm-0.6B
-echo PyTorch backend: ON
-echo CPU offload: ON
+echo [%date% %time%] API: %ACE_URL%
+echo [%date% %time%] LM : acestep-5Hz-lm-0.6B
+echo [%date% %time%] Access log level: WARNING (health probes suppressed)
+echo [%date% %time%] CPU offload: ON
 echo.
 echo Starting ACE-Step REST API...
 echo The first start may download the model files.
@@ -70,7 +74,7 @@ echo.
 "%UV_EXE%" run --no-sync acestep-api --host 127.0.0.1 --port 8101 --init-llm --lm-model-path acestep-5Hz-lm-0.6B
 if errorlevel 1 (
   echo.
-  echo [ERROR] ACE-Step API exited with an error.
+  echo [%date% %time%] [ERROR] ACE-Step API exited with an error.
   echo If dependencies were not installed, run scripts\Install_ACEStep_Singing.bat again.
   pause
   exit /b 1

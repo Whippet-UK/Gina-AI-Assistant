@@ -30,15 +30,12 @@ function compileSkillsPrompt(skills: AgentSkill[]): string {
 
 export async function loadAgentSkills(projectRoot?: string): Promise<AgentSkill[]> {
   const root = projectRoot || process.cwd();
-  const authoritativeDir = path.join(root, ".gina", "docs", "agent_skills");
-  const fallbackDir = path.join(root, "docs", "agent_skills");
-  // The .gina tree is the authoritative runtime skill source. Only fall back to
-  // the legacy docs tree when the authoritative tree does not exist, preventing
-  // duplicate/obsolete skills from being compiled into every prompt.
-  const candidates = fsSync.existsSync(authoritativeDir) ? [authoritativeDir] : [fallbackDir];
+  const candidates = [
+    path.join(root, ".gina", "docs", "agent_skills"),
+    path.join(root, "docs", "agent_skills"),
+  ];
 
   const results: AgentSkill[] = [];
-  const seen = new Set<string>();
 
   for (const dir of candidates) {
     if (!fsSync.existsSync(dir)) continue;
@@ -51,11 +48,8 @@ export async function loadAgentSkills(projectRoot?: string): Promise<AgentSkill[
           if (entry.name.endsWith(".txt") || entry.name.endsWith(".md")) {
             const content = await fs.readFile(fullPath, "utf-8");
             const name = entry.name.replace(/\.(txt|md)$/i, "").replace(/_/g, " ");
-            const id = entry.name.toLowerCase();
-            if (seen.has(id)) continue;
-            seen.add(id);
             results.push({
-              id,
+              id: entry.name.toLowerCase(),
               name,
               category: "Core",
               content,
@@ -68,11 +62,8 @@ export async function loadAgentSkills(projectRoot?: string): Promise<AgentSkill[
             if (sub.endsWith(".md") || sub.endsWith(".txt")) {
               const subPath = path.join(fullPath, sub);
               const content = await fs.readFile(subPath, "utf-8");
-              const id = entry.name.toLowerCase() + '-' + sub.toLowerCase();
-              if (seen.has(id)) continue;
-              seen.add(id);
               results.push({
-                id,
+                id: `${entry.name}-${sub}`.toLowerCase(),
                 name: `${entry.name} - ${sub.replace(/\.(txt|md)$/i, "")}`,
                 category: entry.name,
                 content,

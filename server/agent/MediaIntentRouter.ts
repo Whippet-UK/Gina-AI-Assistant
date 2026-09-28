@@ -36,12 +36,22 @@ export function detectMediaIntent(text: string, hasImageAttachment = false): Gin
   const editVerb = EDIT_VERB.test(normalized);
   const referencePhrase = REFERENCE_PHRASE.test(normalized);
 
+  // Interactive HTML / Canvas / WebGL apps are NOT ComfyUI image jobs.
+  // Phrases like "create … visual aesthetic … canvas" must not lock Qwen Coder.
+  const htmlArtifact = /\b(html5?|canvas|webgl|tailwind|standalone\s+html|single[- ]file|vanilla\s*js|\.html\b|web\s*app|orbital|gravity\s+sim|particle\s+sim|requestAnimationFrame)\b/i.test(normalized)
+    && !/\b(png|jpe?g|webp|comfyui?|flux|sdxl|stable\s*diffusion|midjourney|photograph|photo\s+of)\b/i.test(normalized);
+  if (htmlArtifact) {
+    return { intent:'chat', create:false, modify:false, explicit:false, confidence:'high', reason:'html/canvas web-app artifact — not image generation' };
+  }
+
   const geographicVisual = GEOGRAPHIC_VISUAL.test(normalized) && /\b(view|image|picture|photo|shot|render|map|visual|scene)\b/i.test(normalized);
   const directVisualRequest = DIRECT_VISUAL.test(normalized) && /\b(image|picture|photo|photograph|visual|view|scene|render|illustration|portrait)\b/i.test(normalized);
   const videoCreation = !questionOrAnalysis && videoNoun && createVerb;
-  const imageCreation = !questionOrAnalysis && !videoNoun && createVerb && imageNoun;
+  // Require a real image noun beyond the vague word "visual" alone
+  const strongImageNoun = /\b(image|picture|photo|photograph|artwork|illustration|portrait|wallpaper|logo|icon)\b/i.test(normalized);
+  const imageCreation = !questionOrAnalysis && !videoNoun && createVerb && strongImageNoun;
   const descriptiveStatement = DESCRIPTIVE_STATEMENT.test(normalized);
-  const bareImagePrompt = !questionOrAnalysis && !descriptiveStatement && !videoNoun && imageNoun && normalized.length >= 20 && !QUESTION_MARK.test(normalized);
+  const bareImagePrompt = !questionOrAnalysis && !descriptiveStatement && !videoNoun && strongImageNoun && normalized.length >= 20 && !QUESTION_MARK.test(normalized);
 
   const additiveEdit = /\b(?:add|overlay|append|place|put)\b/i.test(normalized) && /\b(?:without|don't|do not|keep|preserve|unchanged|only)\b/i.test(normalized);
   const modify = hasImageAttachment && editVerb && (referencePhrase || !questionOrAnalysis) && (!videoNoun || additiveEdit);

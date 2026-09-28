@@ -16,8 +16,26 @@ function globToRegExp(pattern:string):RegExp {
   return new RegExp(out+'$','i');
 }
 
+/** Repair common model path typos before sandbox checks. */
+function normalizePathInput(input:string, root:string):string {
+  let raw=String(input||'.').trim().replace(/\0/g,'');
+  if(!raw) raw='.';
+  // C:/Gina_AI.ginaworkspaces/Foo  →  C:/Gina_AI/.gina/workspaces/Foo
+  raw=raw.replace(/([/\\])Gina_AI\.ginaworkspaces([/\\])/gi, `$1Gina_AI$1.gina$1workspaces$1`);
+  raw=raw.replace(/Gina_AI\.ginaworkspaces/gi, `Gina_AI${path.sep}.gina${path.sep}workspaces`);
+  // C:/Gina_AI.gina/workspaces → C:/Gina_AI/.gina/workspaces
+  raw=raw.replace(/([/\\])Gina_AI\.gina([/\\])/gi, `$1Gina_AI$1.gina$1`);
+  // Prefer forward/back slash consistency for resolve
+  const sep=path.sep;
+  raw=raw.replace(/[/\\]+/g, sep);
+  // Bare workspace-style paths: "Gina-AI-Assistant/src/x" under active upload area is handled by caller;
+  // if it starts with workspaces/ without .gina, prefix it.
+  if(/^workspaces[/\\]/i.test(raw)) raw=path.join('.gina', raw);
+  return raw;
+}
+
 function safeJoin(root:string, input:string):string {
-  const raw=String(input||'.').trim();
+  const raw=normalizePathInput(input, root);
   const candidate=path.resolve(path.isAbsolute(raw)?raw:path.join(root,raw));
   const base=path.resolve(root);
   if(candidate!==base && !candidate.toLowerCase().startsWith(base.toLowerCase()+path.sep)) throw new Error(`Filesystem path is outside the allowed Gina root: ${raw}`);

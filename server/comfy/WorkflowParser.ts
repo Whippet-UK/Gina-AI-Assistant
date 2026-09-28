@@ -36,6 +36,12 @@ const aliases: Record<string, { key: string; inputs: string[]; classes?: string[
   height: [{ key: 'height', inputs: ['height'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage', 'EmptyHunyuanLatentVideo', 'EmptyLatentVideo'] }],
   // Keep video temporal length separate from sample batch size. Wan 2.1 video batch_size is normally 1;
   // frame_count/length/num_frames are temporal controls and must never be aliased to batch_size.
+  // UI sends parameters.frames — must bind to EmptyHunyuanLatentVideo.length (was hardcoded 25 → always ~1s).
+  frames: [{
+    key: 'frames',
+    inputs: ['length', 'frame_count', 'num_frames', 'frames'],
+    classes: ['EmptyHunyuanLatentVideo', 'EmptyLatentVideo', 'EmptyMochiLatentVideo', 'WanImageToVideo', 'Wan22ImageToVideoLatent']
+  }],
   batchSize: [{ key: 'batch_size', inputs: ['batch_size'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage'] }],
   model: [{ key: 'model', inputs: ['ckpt_name'], classes: ['CheckpointLoaderSimple', 'CheckpointLoader', 'UNETLoader'] }],
   fps: [{ key: 'fps', inputs: ['frame_rate', 'fps'], classes: ['VHS_VideoCombine', 'SaveAnimatedWEBP', 'SaveAnimatedPNG'] }],
