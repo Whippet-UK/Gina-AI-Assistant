@@ -15,6 +15,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { smoothSamples } from '../lib/ginaMath';
+import { PanelResizeGrip, useResizablePanel } from './PanelResizeGrip';
 
 interface TraceExecutionEntry {
   id: string;
@@ -176,23 +177,102 @@ const Sparkline: React.FC<{ values: number[]; max?: number; label: string; suffi
 };
 
 const TraceSection: React.FC<{
+  id: string;
   title: string;
   icon: React.ReactNode;
   summary?: string;
   open?: boolean;
+  defaultHeight?: number;
+  minHeight?: number;
+  maxHeight?: number;
   children: React.ReactNode;
-}> = ({ title, icon, summary, open = false, children }) => (
-  <details open={open} className="group rounded-md border border-slate-800 bg-slate-950/80">
-    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2">
-      <div className="flex min-w-0 items-center gap-2">
-        <ChevronRight className="h-3 w-3 shrink-0 text-slate-600 transition-transform group-open:rotate-90" />
-        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">{icon}{title}</span>
-      </div>
-      {summary && <span className="truncate text-[8px] font-mono text-slate-600">{summary}</span>}
-    </summary>
-    <div className="border-t border-slate-800/80 p-2.5">{children}</div>
-  </details>
-);
+}> = ({
+  id,
+  title,
+  icon,
+  summary,
+  open: controlledOpen = false,
+  defaultHeight = 160,
+  minHeight = 60,
+  maxHeight = 700,
+  children
+}) => {
+  const [isOpen, setIsOpen] = useState(controlledOpen);
+  const {
+    panelRef,
+    height,
+    width,
+    resetWidth,
+    onBottomPointerDown,
+    onRightPointerDown,
+    onCornerPointerDown
+  } = useResizablePanel({
+    storageKey: `gina.ui.trace.${id}`,
+    defaultHeight,
+    minHeight,
+    maxHeight
+  });
+
+  useEffect(() => {
+    if (controlledOpen) setIsOpen(true);
+  }, [controlledOpen]);
+
+  return (
+    <div
+      ref={panelRef}
+      className="relative rounded-md border border-slate-800 bg-slate-950/80 flex flex-col transition-[border-color,background-color]"
+      style={{
+        width: width ? `${width}px` : '100%'
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setIsOpen(v => !v)}
+        className="flex cursor-pointer w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-slate-900/50 transition-colors select-none shrink-0"
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <ChevronRight className={`h-3 w-3 shrink-0 text-slate-500 transition-transform ${isOpen ? 'rotate-90 text-emerald-400' : ''}`} />
+          <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300 flex items-center">{icon}{title}</span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {width && (
+            <span className="text-[7px] font-mono text-emerald-400/80 bg-slate-900 px-1 rounded border border-slate-800">
+              {width}px wide
+            </span>
+          )}
+          {summary && <span className="truncate text-[8px] font-mono text-slate-500">{summary}</span>}
+        </div>
+      </button>
+      {isOpen && (
+        <>
+          <div
+            className="border-t border-slate-800/80 p-2.5 overflow-y-auto custom-scrollbar"
+            style={{ height: `${height}px`, minHeight: `${minHeight}px` }}
+          >
+            {children}
+          </div>
+          <PanelResizeGrip
+            onBottomPointerDown={onBottomPointerDown}
+            onRightPointerDown={onRightPointerDown}
+            onCornerPointerDown={onCornerPointerDown}
+            onResetWidth={resetWidth}
+            width={width}
+            height={height}
+            label={title}
+          />
+        </>
+      )}
+      {!isOpen && onRightPointerDown && (
+        <PanelResizeGrip
+          onRightPointerDown={onRightPointerDown}
+          onResetWidth={resetWidth}
+          width={width}
+          label={title}
+        />
+      )}
+    </div>
+  );
+};
 
 export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
   studioMode,
@@ -262,43 +342,10 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
   const runningEntry = executionLog.find(e => e.status === 'running');
   const stepElapsedMs = runningEntry?.startedAt != null ? nowMs - runningEntry.startedAt : workingElapsedMs;
 
-  const STORAGE_H = 'gina.ui.agentLogHeightPx';
-  const [logHeight, setLogHeight] = useState(() => {
-    try {
-      const v = Number(localStorage.getItem(STORAGE_H));
-      if (Number.isFinite(v) && v >= 160) return Math.min(900, v);
-    } catch {}
-    return 280;
-  });
-  const dragRef = useRef(false);
-  const shellRef = useRef<HTMLElement | null>(null);
-
-  const onMove = useCallback((e: PointerEvent) => {
-    if (!dragRef.current || !shellRef.current) return;
-    const top = shellRef.current.getBoundingClientRect().top;
-    const next = Math.min(900, Math.max(160, e.clientY - top));
-    setLogHeight(next);
-    try { localStorage.setItem(STORAGE_H, String(Math.round(next))); } catch {}
-  }, []);
-  const onUp = useCallback(() => {
-    dragRef.current = false;
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-  }, []);
-  useEffect(() => {
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-  }, [onMove, onUp]);
-
   return (
     <section
-      ref={shellRef as any}
       className="relative bg-slate-950/95 overflow-hidden flex flex-col"
-      style={{ ...ginaPanelStyle(), height: expanded ? logHeight : undefined, minHeight: expanded ? 160 : undefined }}
+      style={ginaPanelStyle()}
     >
       <div className="flex items-center justify-between gap-3 border-b border-slate-800 px-3 py-2 shrink-0">
         <button
@@ -341,12 +388,14 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
       </div>
 
       {expanded && (
-        <div className="space-y-2 p-2">
+        <div className="space-y-2 p-2 overflow-x-auto custom-scrollbar">
           <TraceSection
+            id="executionTimeline"
             title="Execution Timeline"
             icon={<GitBranch className="mr-1 inline h-3 w-3 text-violet-400" />}
             summary={`${executionLog.length} event${executionLog.length === 1 ? '' : 's'}${statusIsActive ? ` · live ${formatElapsed(stepElapsedMs)}` : ''}`}
             open
+            defaultHeight={170}
           >
             {executionLog.length === 0 ? (
               <div className="text-[8px] font-mono text-slate-600">No execution events yet.</div>
@@ -414,15 +463,17 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
           </TraceSection>
 
           <TraceSection
+            id="liveAgentTrace"
             title="Live Agent Trace"
             icon={<Terminal className="mr-1 inline h-3 w-3 text-sky-400" />}
             summary={activity.length ? `${activity.length} live event${activity.length === 1 ? '' : 's'}` : 'waiting…'}
             open={statusIsActive || activity.length > 0}
+            defaultHeight={170}
           >
             {activity.length === 0 ? (
               <div className="text-[8px] font-mono text-slate-600">No live agent events yet — steps appear here as Gina works.</div>
             ) : (
-              <div className="max-h-64 space-y-1.5 overflow-auto">
+              <div className="space-y-1.5">
                 {activity.map((entry, index) => {
                   const text = entry.text || '';
                   const isExec = entry.kind === 'command' || /EXEC_STEP|Ran a command|command/i.test(text);
@@ -470,10 +521,12 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
 
           {hasTelemetry && (
             <TraceSection
+              id="runtimeTelemetry"
               title="Runtime Telemetry"
               icon={<Gauge className="mr-1 inline h-3 w-3 text-emerald-400" />}
               summary={`${formatNumber(tps, 1)} tok/s · ${formatNumber(vramUsed / 1024, 2)} / ${formatNumber(vramTotal / 1024, 2)} GB VRAM`}
               open={Number(activeTelemetry?.promptTokens || 0) + Number(activeTelemetry?.completionTokens || 0) > 0 || statusIsActive}
+              defaultHeight={180}
             >
               <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
                 <Sparkline values={smoothedTokenSamples} label="Token Throughput" suffix=" tok/s" color="#38bdf8" />
@@ -489,19 +542,21 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
           )}
 
           <TraceSection
+            id="mcpToolLogs"
             title="MCP / Tool Logs"
             icon={<Terminal className="mr-1 inline h-3 w-3 text-amber-400" />}
             summary={
-              activity.filter(e => /mcp|tool|FILE_STEP|EXEC_STEP|BROADCASTER|validator/i.test(e)).length
-                ? `${activity.filter(e => /mcp|tool|FILE_STEP|EXEC_STEP|BROADCASTER|validator/i.test(e)).length} tool events`
+              activity.filter(e => /mcp|tool|FILE_STEP|EXEC_STEP|BROADCASTER|validator/i.test(e.text)).length
+                ? `${activity.filter(e => /mcp|tool|FILE_STEP|EXEC_STEP|BROADCASTER|validator/i.test(e.text)).length} tool events`
                 : studioMode === 'web-app'
                   ? 'Web App Studio (no MCP tools)'
                   : 'No MCP tool calls yet'
             }
             open={false}
+            defaultHeight={140}
           >
             {(() => {
-              const mcpEntries = activity.filter(e => /mcp|tool|FILE_STEP|EXEC_STEP|BROADCASTER|validator|tool-call|tools\/call/i.test(e));
+              const mcpEntries = activity.filter(e => /mcp|tool|FILE_STEP|EXEC_STEP|BROADCASTER|validator|tool-call|tools\/call/i.test(e.text));
               if (mcpEntries.length === 0) {
                 return (
                   <div className="text-[8px] font-mono text-slate-600">
@@ -512,9 +567,9 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
                 );
               }
               return (
-                <div className="max-h-40 space-y-1 overflow-auto">
+                <div className="space-y-1 overflow-auto">
                   {mcpEntries.slice(-16).map((entry, index) => (
-                    <pre key={`mcp-${index}-${entry.slice(0, 24)}`} className="rounded border border-slate-800 bg-slate-900/70 px-2 py-1.5 text-[8px] leading-relaxed text-slate-500 whitespace-pre-wrap">{entry}</pre>
+                    <pre key={`mcp-${index}-${entry.text.slice(0, 24)}`} className="rounded border border-slate-800 bg-slate-900/70 px-2 py-1.5 text-[8px] leading-relaxed text-slate-500 whitespace-pre-wrap">{entry.text}</pre>
                   ))}
                 </div>
               );
@@ -523,9 +578,12 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
 
           {contextItems.length > 0 && (
             <TraceSection
+              id="contextAllocation"
               title="Context Allocation"
               icon={<Database className="mr-1 inline h-3 w-3 text-cyan-400" />}
               summary={`${contextItems.length} active context sources`}
+              open={false}
+              defaultHeight={130}
             >
               <div className="space-y-1.5">
                 {contextItems.map(item => {
@@ -547,9 +605,12 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
 
           {hardwareTelemetry && (
             <TraceSection
+              id="hardwareSafety"
               title="Hardware / Safety"
               icon={<Cpu className="mr-1 inline h-3 w-3 text-amber-400" />}
               summary={hardwareTelemetry.thermalBrakeActive ? 'THERMAL BRAKE' : `${formatNumber(hardwareTelemetry.gpuUtilizationPercent, 0)}% GPU`}
+              open={false}
+              defaultHeight={110}
             >
               <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                 <div className="rounded border border-slate-800 bg-slate-900/60 p-2"><div className="text-[7px] uppercase tracking-widest text-slate-600">VRAM</div><div className="mt-1 text-[10px] font-mono text-slate-300">{formatNumber(vramUsed / 1024, 2)} / {formatNumber(vramTotal / 1024, 2)} GB</div></div>
@@ -560,20 +621,6 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
             </TraceSection>
           )}
         </div>
-      )}
-    {expanded && (
-        <div
-          role="separator"
-          aria-label="Resize agent log height"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            dragRef.current = true;
-            document.body.style.cursor = 'row-resize';
-            document.body.style.userSelect = 'none';
-          }}
-          className="absolute bottom-0 left-0 z-20 h-2 w-full cursor-row-resize hover:bg-emerald-500/30 active:bg-emerald-500/50"
-          title="Drag to resize agent log height"
-        />
       )}
     </section>
   );

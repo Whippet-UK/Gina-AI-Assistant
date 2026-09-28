@@ -1,5 +1,229 @@
 # v1.20.14 — Phase 61 — Local AI Commercial Savings & Performance Telemetry Engine
 
+- **Target File Path:** `/src/components/ResizablePanels.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    export const ResizableSplit: React.FC<SplitProps> = ({
+      left,
+      right,
+      defaultLeftPct = 50,
+      defaultHeightPx = 600,
+      minHeightPx = 400,
+      maxHeightPx = 1600,
+      initialMode = '900x600'
+    }) => {
+      const [layoutMode, setLayoutMode] = useState<'900x600' | 'split'>(...);
+      const [heightPx, setHeightPx] = useState(() => {
+        const val = readNum(STORAGE_HEIGHT, 600, minHeightPx, maxHeightPx);
+        if (val < 600 || val === 420 || val === 460 || val === 560) {
+          try { localStorage.setItem(STORAGE_HEIGHT, '600'); } catch {}
+          return 600;
+        }
+        return val;
+      });
+      // 900x600 dual pane mode: both left & right panes explicitly styled width: 900px, minWidth: 900px, height: 600px with horizontal scroll guard
+    }
+    ```
+  - **Why:** Configured the Gina Assistant Response window and Interactive Preview window to be explicitly 900 × 600 px (900px width and 600px height for each window) by default. Cleared and upgraded any stale cached heights (420, 460, 560) in localStorage to 600px. Added quick one-click presets: `★ 900 × 600 (Both Windows)`, `Fit Width (50 / 50)`, `Video Ratio (58 / 42)`, `Height (600px)`, and live `900 × 600 px (Both Windows)` dimension telemetry badge.
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    <div className={`col-span-12 ${showEngineConfig ? 'lg:col-span-9' : 'lg:col-span-12'} bg-slate-950/80 p-3 sm:p-5 shadow-sm min-h-[640px] flex flex-col flex-1 min-w-0 overflow-hidden`}>
+      <ResizableSplit
+        className="flex-1 min-w-0"
+        defaultLeftPct={50}
+        defaultHeightPx={600}
+        minHeightPx={400}
+        initialMode="900x600"
+        left={...}
+        right={...}
+      />
+    ```
+  - **Why:** Updated the Local AI workspace to 900 × 600 px dual windows (Gina Assistant Response + Interactive Preview), raised the container min-height to 640px, and set empty state min-heights to 320px.
+
+- **Target File Path:** `/src/components/ResizablePanels.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    export const ResizableSplit: React.FC<SplitProps> = ({
+      left,
+      right,
+      defaultLeftPct = 50,
+      minLeftPct = 25,
+      maxLeftPct = 75,
+      className = '',
+      resizableHeight = true,
+      defaultHeightPx = 420,
+      minHeightPx = 280,
+      maxHeightPx = 1200,
+      showPresets = true
+    }) => {
+      ...
+      // Quick preset buttons for 50/50 Equal (Same Size), Video Suite (58/42), and Video Height (420px)
+    }
+    ```
+  - **Why:** Configured the Gina Assistant Response window and the Interactive Preview window to be the exact same size by default (50% / 50% split) and standardizing the workspace height to 420px (matching the Video suite preview card height). Added interactive split presets (`50 / 50 Equal`, `Video Suite 58/42`, `Video Height 420px`) and live dimension telemetry.
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    <ResizableSplit
+      className="flex-1 min-w-0"
+      defaultLeftPct={50}
+      defaultHeightPx={420}
+      minHeightPx={280}
+      left={(
+        <div className="h-full min-h-0 overflow-y-auto custom-scrollbar space-y-3 p-3 bg-slate-950/80 flex flex-col" style={ginaPanelStyle()}>
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2 px-1 shrink-0">
+            <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              Gina Assistant Response
+            </label>
+            <span className="text-[10px] font-mono text-slate-500">Qwen 2.5 Local LLM</span>
+          </div>
+          ...
+      right={(
+        <aside className="min-w-0 h-full overflow-hidden bg-slate-950/90 flex flex-col" style={ginaPanelStyle()}>
+          <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-3 py-2 shrink-0">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-200">
+              <Search className="w-3.5 h-3.5 text-sky-400" />
+              <span>Interactive Preview</span>
+            </div>
+            ...
+          <div className="relative aspect-[16/10] w-full max-h-full bg-slate-950 rounded-lg border border-slate-800 overflow-hidden flex items-center justify-center">
+            ...
+    ```
+  - **Why:** Aligned both the Gina assistant response window and the Interactive Preview window with symmetric header chrome, matched default sizing to 50% / 50% split and 420px height, and matched the Video Output Preview 16:10 container format.
+
+
+- **Target File Path:** `/src/components/PanelResizeGrip.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    export function useResizablePanel({ storageKey, defaultHeight, minHeight = 50, maxHeight = 1200, defaultWidth = null, minWidth = 240, maxWidth = 3840 }) {
+      ...
+      // Window capture event listeners with pointer-events shielding on iframes and touch-action: none
+      window.addEventListener('pointermove', onPointerMove, { capture: true, passive: false });
+      window.addEventListener('pointerup', onPointerUp, { capture: true });
+      window.addEventListener('pointercancel', onPointerUp, { capture: true });
+    }
+    export const PanelResizeGrip: React.FC<PanelResizeGripProps> = ({ onBottomPointerDown, onRightPointerDown, onCornerPointerDown, onResetWidth, label, width, height }) => {
+      // Grey pill on bottom edge + right edge vertical bar + bottom-right corner grip
+    }
+    ```
+  - **Why:** Resolved issue where vertical drag was being cancelled inside scroll containers by replacing fragile element pointer capture with bulletproof window capture phase listeners, adding touch-action: none, and shielding iframes during drag. Added independent width, height, and corner handles with localStorage persistence and width reset capability.
+
+- **Target File Path:** `/src/components/AgentExecutionTrace.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    <TraceSection id="executionTimeline" ... />
+    <TraceSection id="liveAgentTrace" ... />
+    <TraceSection id="runtimeTelemetry" ... />
+    <TraceSection id="mcpToolLogs" ... />
+    <TraceSection id="contextAllocation" ... />
+    <TraceSection id="hardwareSafety" ... />
+    ```
+  - **Why:** Removed restrictive `maxWidth: '100%'` preventing panel width adjustments, ensured all 6 trace panels own their own independent height grip (the grey pill) and right-edge width grip in both open and collapsed states, and enabled horizontal scrolling on parent container.
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    const telemetryPanel = useResizablePanel({ storageKey: 'gina.ui.widget.telemetry', defaultHeight: 170, minHeight: 70 });
+    const electricityPanel = useResizablePanel({ storageKey: 'gina.ui.widget.electricity', defaultHeight: 160, minHeight: 70 });
+    const commercialPanel = useResizablePanel({ storageKey: 'gina.ui.widget.commercial', defaultHeight: 170, minHeight: 70 });
+    const llamaLogPanel = useResizablePanel({ storageKey: 'gina.ui.widget.llamaLog', defaultHeight: 120, minHeight: 50 });
+    const bottomEnginePanel = useResizablePanel({ storageKey: 'gina.ui.widget.bottomEngine', defaultHeight: 170, minHeight: 70 });
+    const promptBoxPanel = useResizablePanel({ storageKey: 'gina.ui.widget.promptBox', defaultHeight: 52, minHeight: 44 });
+    ```
+  - **Why:** Connected all 5 studio panels (Local AI Telemetry, Power & Cost, Commercial Benchmarks, llama-server diagnostic log, Local Inference Engine) and the Message box to independent resizable panel hooks with right-edge width grips and bottom grey pill height grips. Textarea retains native vertical resize in the bottom-right corner.
+
+- **Target File Path:** `/src/components/PanelResizeGrip.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    export const PanelResizeGrip: React.FC<PanelResizeGripProps> = ({ onResize, className = '', label = 'Resize panel height' }) => {
+      ...
+      return (
+        <div role="separator" aria-label={label} onPointerDown={handlePointerDown} className={`w-full flex items-center justify-center py-1.5 cursor-row-resize select-none group border-t border-slate-800/40 hover:bg-slate-800/40 active:bg-slate-800/70 transition-colors ${className}`}>
+          <div className="w-10 h-1 rounded-full bg-slate-600 group-hover:bg-slate-400 group-active:bg-emerald-400 transition-colors shadow-sm" />
+        </div>
+      );
+    };
+    export function usePanelHeight(storageKey: string, defaultHeight: number, minHeight = 60, maxHeight = 900) { ... }
+    ```
+  - **Why:** Created reusable independent panel resize grip displaying the signature grey pill on the bottom edge with smooth pointer delta tracking and persistent localStorage height management.
+
+- **Target File Path:** `/src/components/AgentExecutionTrace.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    const TraceSection: React.FC<{ id: string; title: string; ... }> = ({ id, title, defaultHeight = 160, ... }) => {
+      const [height, handleResize] = usePanelHeight(`gina.ui.panelHeight.${id}`, defaultHeight, minHeight, maxHeight);
+      return (
+        <div className="rounded-md border border-slate-800 bg-slate-950/80 overflow-hidden flex flex-col transition-all">
+          ...
+          {isOpen && (
+            <>
+              <div className="border-t border-slate-800/80 p-2.5 overflow-y-auto custom-scrollbar flex-1" style={{ height: `${height}px`, minHeight: `${minHeight}px` }}>{children}</div>
+              <PanelResizeGrip onResize={handleResize} label={`Resize ${title} height`} />
+            </>
+          )}
+        </div>
+      );
+    };
+    ```
+  - **Why:** Separated all 6 agent log sections (Execution Timeline, Live Agent Trace, Runtime Telemetry, MCP / Tool Logs, Context Allocation, Hardware / Safety) into independent resizable panels with bottom grey pill grips, eliminating dependence on the global Agent Log container height.
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    // Telemetry, Power & Cost, Commercial Benchmarks, llama-server diagnostic log, Local Inference Engine
+    <div className="overflow-y-auto custom-scrollbar flex-1 pr-0.5 space-y-1.5" style={{ height: `${telemetryHeight}px`, minHeight: '70px' }}>...</div>
+    <PanelResizeGrip onResize={handleTelemetryResize} label="Resize Local AI Telemetry height" />
+
+    // Message box native vertical resize
+    <textarea ... className="flex-1 min-h-[44px] resize-y overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 pr-28 pb-4 text-xs text-slate-200 outline-none focus:border-emerald-500/50 disabled:opacity-50 leading-relaxed custom-scrollbar" style={{ resize: 'vertical' }} />
+    ```
+  - **Why:** Equipped Local AI Telemetry, Power & Cost, Commercial Benchmarks, llama-server diagnostic log, and Local Inference Engine with independent height grips, and enabled native vertical resize on the bottom-right corner of the message box.
+
+
+- **Target File Path:** `/server/proxy/ProxySavingsEngine.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    public classifyMode(prompt: string, explicitMode?: string): OperationalMode {
+      return this.classifyIntent(prompt, explicitMode);
+    }
+    ```
+  - **Why:** Added `classifyMode` method as an alias to `classifyIntent` so `createProxyClassifierMiddleware` can invoke `classifyMode` without TypeScript error TS2339.
+
+- **Target File Path:** `/src/components/AgentExecutionTrace.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    activity.filter(e => /mcp|tool|FILE_STEP|EXEC_STEP|BROADCASTER|validator/i.test(e.text)).length
+    const mcpEntries = activity.filter(e => /mcp|tool|FILE_STEP|EXEC_STEP|BROADCASTER|validator|tool-call|tools\/call/i.test(e.text));
+    {mcpEntries.slice(-16).map((entry, index) => (
+      <pre key={`mcp-${index}-${entry.text.slice(0, 24)}`} ...>{entry.text}</pre>
+    ))}
+    ```
+  - **Why:** Resolved error TS2345/TS2339/TS2322 by accessing `.text` on normalized `AgentActivityItem` objects in the MCP / Tool Logs trace section.
+
+- **Target File Path:** `/src/components/GinaPromptStation.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    import { ..., HeartCrack, ... } from 'lucide-react';
+    <button ...><HeartCrack className="w-3.5 h-3.5" /></button>
+    ```
+  - **Why:** Replaced non-existent `HeartCracked` import and JSX element with valid `HeartCrack` from `lucide-react`.
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    interface LocalLlmPropsTelemetry {
+      ...
+      contextBreakdown?: Record<string, number>;
+    }
+    logGina('Agent started', `runId ${id}\nWorkspace: ${workspaceRel}\nThinking… planning first inspection`, 'running', { kind: 'info' });
+    ```
+  - **Why:** Resolved TS2304 `executionRoot` not defined by using `workspaceRel`, and added optional `contextBreakdown` field to `LocalLlmPropsTelemetry` interface to match telemetry updates.
+
+
 - **Target File Path:** `/server/proxy/ProxySavingsEngine.ts`
   - **Exact Code Snippet:**
     ```typescript

@@ -6,6 +6,7 @@ import { useGenerationJob } from '../context/GenerationJobContext';
 import { WebBrowserInspectorModal } from './WebBrowserInspectorModal';
 import { AgentExecutionTrace } from './AgentExecutionTrace';
 import { initGinaMath } from '../lib/ginaMath';
+import { PanelResizeGrip, useResizablePanel } from './PanelResizeGrip';
 
 interface LocalLlmStatus {
   configured: boolean;
@@ -86,6 +87,7 @@ interface LocalLlmPropsTelemetry {
   toolCalls: number;
   source: 'local' | 'web' | 'local+web';
   webProvider?: string | null;
+  contextBreakdown?: Record<string, number>;
 }
 
 interface LocalLlmStudioProps {
@@ -110,6 +112,13 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   const [showEngineConfig, setShowEngineConfig] = useState(false);
   const [showBottomEngineConfig, setShowBottomEngineConfig] = useState(false);
   const [showDetailedTelemetry, setShowDetailedTelemetry] = useState(true);
+  const telemetryPanel = useResizablePanel({ storageKey: 'gina.ui.widget.telemetry', defaultHeight: 170, minHeight: 70 });
+  const electricityPanel = useResizablePanel({ storageKey: 'gina.ui.widget.electricity', defaultHeight: 160, minHeight: 70 });
+  const commercialPanel = useResizablePanel({ storageKey: 'gina.ui.widget.commercial', defaultHeight: 170, minHeight: 70 });
+  const llamaLogPanel = useResizablePanel({ storageKey: 'gina.ui.widget.llamaLog', defaultHeight: 120, minHeight: 50 });
+  const [llamaLogOpen, setLlamaLogOpen] = useState(false);
+  const bottomEnginePanel = useResizablePanel({ storageKey: 'gina.ui.widget.bottomEngine', defaultHeight: 170, minHeight: 70 });
+  const promptBoxPanel = useResizablePanel({ storageKey: 'gina.ui.widget.promptBox', defaultHeight: 52, minHeight: 44 });
   const [status, setStatus] = useState<LocalLlmStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [thinkingSource, setThinkingSource] = useState<'local'|'web'|'local+web'>('local');
@@ -1588,7 +1597,7 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
     editedFilesRef.current = new Set();
     readFilesRef.current = new Set();
     commandsRunRef.current = 0;
-    logGina('Agent started', `runId ${id}\nWorkspace: ${executionRoot}\nThinking… planning first inspection`, 'running', { kind: 'info' });
+    logGina('Agent started', `runId ${id}\nWorkspace: ${workspaceRel}\nThinking… planning first inspection`, 'running', { kind: 'info' });
     await new Promise<void>((resolve, reject) => {
       const es = new EventSource(`/api/agent/runs/${encodeURIComponent(id)}/stream`);
       const finish = () => { es.close(); resolve(); };
@@ -2007,7 +2016,7 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
     if (!anyVisible) return null;
 
     return (
-      <div className="my-2 space-y-2">
+      <div className="my-2 space-y-2 overflow-x-auto custom-scrollbar">
         {widgetOrder.map((wId, idx) => {
           if (wId === 'telemetry' && showTelemetryWidget) {
             const isMin = minimizedWidgets.telemetry;
@@ -2020,7 +2029,12 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
 
             if (isMin) {
               return (
-                <div key="widget-telemetry" className="rounded-lg border border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center justify-between text-[10px] font-mono transition-all">
+                <div
+                  ref={telemetryPanel.panelRef}
+                  key="widget-telemetry"
+                  className="rounded-lg border border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center justify-between text-[10px] font-mono transition-all"
+                  style={{ width: telemetryPanel.width ? `${telemetryPanel.width}px` : '100%' }}
+                >
                   <div className="flex items-center gap-2 cursor-pointer flex-1 min-w-0" onClick={() => toggleSingleWidgetMin('telemetry')}>
                     <Activity className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     <span className="font-bold text-slate-200">TELEMETRY</span>
@@ -2043,8 +2057,13 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
             }
 
             return (
-              <div key="widget-telemetry" className="rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 transition-all">
-                <div className="flex items-center justify-between mb-2">
+              <div
+                ref={telemetryPanel.panelRef}
+                key="widget-telemetry"
+                className="relative rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 transition-all flex flex-col"
+                style={{ width: telemetryPanel.width ? `${telemetryPanel.width}px` : '100%' }}
+              >
+                <div className="flex items-center justify-between mb-2 shrink-0">
                   <div className="flex items-center gap-1.5">
                     <Activity className="w-3.5 h-3.5 text-emerald-400" />
                     <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">LOCAL AI TELEMETRY</span>
@@ -2053,6 +2072,11 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
+                    {telemetryPanel.width && (
+                      <span className="text-[7px] font-mono text-emerald-400/80 bg-slate-900 px-1 rounded border border-slate-800">
+                        {telemetryPanel.width}px wide
+                      </span>
+                    )}
                     <span className="text-[8px] font-mono text-slate-600 hidden sm:inline">LIVE · 1s</span>
                     <button type="button" onClick={() => moveWidget('telemetry', 'up')} disabled={idx === 0} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
                     <button type="button" onClick={() => moveWidget('telemetry', 'down')} disabled={idx === widgetOrder.length - 1} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
@@ -2061,51 +2085,62 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                   </div>
                 </div>
 
-                {isWatchdogTriggered && (
-                  <div className="mb-2 p-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-300 text-[8px] font-mono flex items-center justify-between">
-                    <span className="font-bold flex items-center gap-1">
-                      <Zap className="w-3 h-3 text-amber-400" />
-                      WATCHDOG ALERT: Token generation speed below 10 TPS ({tps} tok/s). Potential VRAM KV-cache bottleneck or context saturation.
-                    </span>
-                    <span className="text-slate-400">RTX 3070 Ti 8GB Sentinel</span>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
-                  <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
-                    <div className="text-[7px] uppercase tracking-widest text-slate-600">Generation</div>
-                    <div className="mt-0.5 text-[11px] font-bold font-mono text-emerald-300">{tps} tok/s</div>
-                  </div>
-                  <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
-                    <div className="text-[7px] uppercase tracking-widest text-slate-600">Tokens</div>
-                    <div className="mt-0.5 text-[11px] font-bold font-mono text-slate-200">{totalToks.toLocaleString()}</div>
-                    <div className="text-[7px] font-mono text-slate-600">prompt + completion</div>
-                  </div>
-                  <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
-                    <div className="text-[7px] uppercase tracking-widest text-slate-600">Latency</div>
-                    <div className="mt-0.5 text-[11px] font-bold font-mono text-slate-200">{durSec}s</div>
-                    <div className="text-[7px] font-mono text-slate-600">{lastTelemetry?.iteration != null ? `iteration ${lastTelemetry.iteration}` : 'per turn'}</div>
-                  </div>
-                  <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
-                    <div className="text-[7px] uppercase tracking-widest text-slate-600">VRAM</div>
-                    <div className="mt-0.5 flex items-center gap-1 text-[11px] font-bold font-mono text-slate-200">
-                      <Gauge className="w-3 h-3 text-sky-400" />
-                      {hardwareTelemetry ? `${hardwareTelemetry.vramUsedMB.toLocaleString()} MB` : '—'}
+                <div className="overflow-y-auto custom-scrollbar flex-1 pr-0.5 space-y-1.5" style={{ height: `${telemetryPanel.height}px`, minHeight: '70px' }}>
+                  {isWatchdogTriggered && (
+                    <div className="mb-2 p-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-300 text-[8px] font-mono flex items-center justify-between">
+                      <span className="font-bold flex items-center gap-1">
+                        <Zap className="w-3 h-3 text-amber-400" />
+                        WATCHDOG ALERT: Token generation speed below 10 TPS ({tps} tok/s). Potential VRAM KV-cache bottleneck or context saturation.
+                      </span>
+                      <span className="text-slate-400">RTX 3070 Ti 8GB Sentinel</span>
                     </div>
-                    <div className="text-[7px] font-mono text-slate-600">of {vramTotal.toLocaleString()} MB</div>
+                  )}
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
+                    <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-600">Generation</div>
+                      <div className="mt-0.5 text-[11px] font-bold font-mono text-emerald-300">{tps} tok/s</div>
+                    </div>
+                    <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-600">Tokens</div>
+                      <div className="mt-0.5 text-[11px] font-bold font-mono text-slate-200">{totalToks.toLocaleString()}</div>
+                      <div className="text-[7px] font-mono text-slate-600">prompt + completion</div>
+                    </div>
+                    <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-600">Latency</div>
+                      <div className="mt-0.5 text-[11px] font-bold font-mono text-slate-200">{durSec}s</div>
+                      <div className="text-[7px] font-mono text-slate-600">{lastTelemetry?.iteration != null ? `iteration ${lastTelemetry.iteration}` : 'per turn'}</div>
+                    </div>
+                    <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-600">VRAM</div>
+                      <div className="mt-0.5 flex items-center gap-1 text-[11px] font-bold font-mono text-slate-200">
+                        <Gauge className="w-3 h-3 text-sky-400" />
+                        {hardwareTelemetry ? `${hardwareTelemetry.vramUsedMB.toLocaleString()} MB` : '—'}
+                      </div>
+                      <div className="text-[7px] font-mono text-slate-600">of {vramTotal.toLocaleString()} MB</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-1.5 grid grid-cols-2 md:grid-cols-6 gap-1 text-[7px] font-mono">
+                    <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">GPU {hardwareTelemetry?.gpuUtilizationPercent ?? 0}%</span>
+                    <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">TEMP {hardwareTelemetry?.gpuTempC ?? 0}°C</span>
+                    <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">POWER {hardwareTelemetry?.gpuPowerW ?? 0}W</span>
+                    <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">ITER/s {runtimeTelemetry?.iterationsPerSecond != null ? runtimeTelemetry.iterationsPerSecond.toFixed(2) : '—'}</span>
+                    <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">TOOLS {lastTelemetry?.toolCalls ?? runtimeTelemetry?.toolCalls ?? 0}</span>
+                    <span className={`rounded bg-slate-900 px-1.5 py-1 ${hardwareTelemetry?.thermalBrakeActive ? 'text-amber-400' : 'text-slate-500'}`}>
+                      {hardwareTelemetry?.thermalBrakeActive ? 'THERMAL BRAKE' : 'THERMAL OK'}
+                    </span>
                   </div>
                 </div>
-
-                <div className="mt-1.5 grid grid-cols-2 md:grid-cols-6 gap-1 text-[7px] font-mono">
-                  <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">GPU {hardwareTelemetry?.gpuUtilizationPercent ?? 0}%</span>
-                  <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">TEMP {hardwareTelemetry?.gpuTempC ?? 0}°C</span>
-                  <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">POWER {hardwareTelemetry?.gpuPowerW ?? 0}W</span>
-                  <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">ITER/s {runtimeTelemetry?.iterationsPerSecond != null ? runtimeTelemetry.iterationsPerSecond.toFixed(2) : '—'}</span>
-                  <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">TOOLS {lastTelemetry?.toolCalls ?? runtimeTelemetry?.toolCalls ?? 0}</span>
-                  <span className={`rounded bg-slate-900 px-1.5 py-1 ${hardwareTelemetry?.thermalBrakeActive ? 'text-amber-400' : 'text-slate-500'}`}>
-                    {hardwareTelemetry?.thermalBrakeActive ? 'THERMAL BRAKE' : 'THERMAL OK'}
-                  </span>
-                </div>
+                <PanelResizeGrip
+                  onBottomPointerDown={telemetryPanel.onBottomPointerDown}
+                  onRightPointerDown={telemetryPanel.onRightPointerDown}
+                  onCornerPointerDown={telemetryPanel.onCornerPointerDown}
+                  onResetWidth={telemetryPanel.resetWidth}
+                  width={telemetryPanel.width}
+                  height={telemetryPanel.height}
+                  label="Local AI Telemetry"
+                />
               </div>
             );
           }
@@ -2127,7 +2162,12 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
 
             if (isMin) {
               return (
-                <div key="widget-electricity" className="rounded-lg border border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center justify-between text-[10px] font-mono transition-all">
+                <div
+                  ref={electricityPanel.panelRef}
+                  key="widget-electricity"
+                  className="rounded-lg border border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center justify-between text-[10px] font-mono transition-all"
+                  style={{ width: electricityPanel.width ? `${electricityPanel.width}px` : '100%' }}
+                >
                   <div className="flex items-center gap-2 cursor-pointer flex-1 min-w-0" onClick={() => toggleSingleWidgetMin('electricity')}>
                     <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     <span className="font-bold text-slate-200">POWER &amp; COST</span>
@@ -2150,8 +2190,13 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
             }
 
             return (
-              <div key="widget-electricity" className="rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 transition-all">
-                <div className="flex items-center justify-between mb-1.5">
+              <div
+                ref={electricityPanel.panelRef}
+                key="widget-electricity"
+                className="relative rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 transition-all flex flex-col"
+                style={{ width: electricityPanel.width ? `${electricityPanel.width}px` : '100%' }}
+              >
+                <div className="flex items-center justify-between mb-1.5 shrink-0">
                   <div className="flex items-center gap-1.5">
                     <Zap className="w-3.5 h-3.5 text-amber-400" />
                     <span className="text-[8px] font-bold uppercase tracking-widest text-slate-300">WHOLE-PC ELECTRICITY &amp; RUNNING COST</span>
@@ -2160,6 +2205,11 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
+                    {electricityPanel.width && (
+                      <span className="text-[7px] font-mono text-emerald-400/80 bg-slate-900 px-1 rounded border border-slate-800">
+                        {electricityPanel.width}px wide
+                      </span>
+                    )}
                     <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold ${isDayRate ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'}`}>
                       {isDayRate ? 'DAY (£0.3157/kWh)' : 'NIGHT (£0.1390/kWh)'}
                     </span>
@@ -2170,38 +2220,49 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
-                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                    <div className="text-[7px] uppercase tracking-widest text-slate-500">Whole PC Draw</div>
-                    <div className="mt-0.5 text-[10px] font-bold font-mono text-amber-300">{powerW}W <span className="text-[7px] font-normal text-slate-400">({powerKw.toFixed(3)} kW)</span></div>
-                    <div className="text-[6px] font-mono text-slate-500">CPU {cpuPowerW || '—'}W · GPU {gpuPowerW}W · Other {otherPowerW}W</div>
-                  </div>
-                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                    <div className="text-[7px] uppercase tracking-widest text-slate-500">Running Cost</div>
-                    <div className="mt-0.5 text-[10px] font-bold font-mono text-emerald-400">
-                      £{hourlyCostPounds.toFixed(4)}/hr · {hourlyCostPence.toFixed(2)}p/hr
+                <div className="overflow-y-auto custom-scrollbar flex-1 pr-0.5 space-y-1.5" style={{ height: `${electricityPanel.height}px`, minHeight: '70px' }}>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
+                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Whole PC Draw</div>
+                      <div className="mt-0.5 text-[10px] font-bold font-mono text-amber-300">{powerW}W <span className="text-[7px] font-normal text-slate-400">({powerKw.toFixed(3)} kW)</span></div>
+                      <div className="text-[6px] font-mono text-slate-500">CPU {cpuPowerW || '—'}W · GPU {gpuPowerW}W · Other {otherPowerW}W</div>
                     </div>
-                    <div className="text-[6px] font-mono text-slate-600">at £{rateKwh.toFixed(4)}/kWh</div>
-                  </div>
-                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                    <div className="text-[7px] uppercase tracking-widest text-slate-500">Session Cost</div>
-                    <div className="mt-0.5 text-[10px] font-bold font-mono text-amber-300">
-                      £{sessionElectricityCost.toFixed(4)}
+                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Running Cost</div>
+                      <div className="mt-0.5 text-[10px] font-bold font-mono text-emerald-400">
+                        £{hourlyCostPounds.toFixed(4)}/hr · {hourlyCostPence.toFixed(2)}p/hr
+                      </div>
+                      <div className="text-[6px] font-mono text-slate-600">at £{rateKwh.toFixed(4)}/kWh</div>
                     </div>
-                    <div className="text-[6px] font-mono text-slate-600">accumulated runtime</div>
-                  </div>
-                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                    <div className="text-[7px] uppercase tracking-widest text-slate-500">Est. 24h Cost</div>
-                    <div className="mt-0.5 text-[10px] font-bold font-mono text-slate-200">
-                      £{estimatedDailyCost.toFixed(2)}/day
+                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Session Cost</div>
+                      <div className="mt-0.5 text-[10px] font-bold font-mono text-amber-300">
+                        £{sessionElectricityCost.toFixed(4)}
+                      </div>
+                      <div className="text-[6px] font-mono text-slate-600">accumulated runtime</div>
                     </div>
-                    <div className="text-[6px] font-mono text-slate-600">incl. £0.5472 standing</div>
+                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Est. 24h Cost</div>
+                      <div className="mt-0.5 text-[10px] font-bold font-mono text-slate-200">
+                        £{estimatedDailyCost.toFixed(2)}/day
+                      </div>
+                      <div className="text-[6px] font-mono text-slate-600">incl. £0.5472 standing</div>
+                    </div>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center justify-between text-[7px] font-mono text-slate-500 pt-1 border-t border-slate-900">
+                    <span>Day: £0.3157/kWh · Night: £0.1390/kWh · Standing: £0.5472/day · Cost shown in £/hr and p/hr</span>
+                    <span className="text-slate-400 font-semibold">Power source: {powerSource}</span>
                   </div>
                 </div>
-                <div className="mt-1 flex flex-wrap items-center justify-between text-[7px] font-mono text-slate-500 pt-1 border-t border-slate-900">
-                  <span>Day: £0.3157/kWh · Night: £0.1390/kWh · Standing: £0.5472/day · Cost shown in £/hr and p/hr</span>
-                  <span className="text-slate-400 font-semibold">Power source: {powerSource}</span>
-                </div>
+                <PanelResizeGrip
+                  onBottomPointerDown={electricityPanel.onBottomPointerDown}
+                  onRightPointerDown={electricityPanel.onRightPointerDown}
+                  onCornerPointerDown={electricityPanel.onCornerPointerDown}
+                  onResetWidth={electricityPanel.resetWidth}
+                  width={electricityPanel.width}
+                  height={electricityPanel.height}
+                  label="Power & Cost"
+                />
               </div>
             );
           }
@@ -2211,7 +2272,12 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
 
             if (isMin) {
               return (
-                <div key="widget-commercial" className="rounded-lg border border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center justify-between text-[10px] font-mono transition-all">
+                <div
+                  ref={commercialPanel.panelRef}
+                  key="widget-commercial"
+                  className="rounded-lg border border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center justify-between text-[10px] font-mono transition-all"
+                  style={{ width: commercialPanel.width ? `${commercialPanel.width}px` : '100%' }}
+                >
                   <div className="flex items-center gap-2 cursor-pointer flex-1 min-w-0" onClick={() => toggleSingleWidgetMin('commercial')}>
                     <DollarSign className="w-3.5 h-3.5 text-sky-400 shrink-0" />
                     <span className="font-bold text-slate-200">COMMERCIAL BENCHMARK</span>
@@ -2234,8 +2300,13 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
             }
 
             return (
-              <div key="widget-commercial" className="rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 transition-all">
-                <div className="flex items-center justify-between mb-1.5">
+              <div
+                ref={commercialPanel.panelRef}
+                key="widget-commercial"
+                className="relative rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 transition-all flex flex-col"
+                style={{ width: commercialPanel.width ? `${commercialPanel.width}px` : '100%' }}
+              >
+                <div className="flex items-center justify-between mb-1.5 shrink-0">
                   <div className="flex items-center gap-1.5">
                     <DollarSign className="w-3.5 h-3.5 text-sky-400" />
                     <span className="text-[8px] font-bold uppercase tracking-widest text-slate-300">COMMERCIAL PRICING BENCHMARKS (GBP £)</span>
@@ -2244,6 +2315,11 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
+                    {commercialPanel.width && (
+                      <span className="text-[7px] font-mono text-emerald-400/80 bg-slate-900 px-1 rounded border border-slate-800">
+                        {commercialPanel.width}px wide
+                      </span>
+                    )}
                     <span className="text-[8px] font-mono text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
                       Ledger Total: £{commercialLedgerData.totalGbp.toFixed(2)}
                     </span>
@@ -2254,36 +2330,47 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
-                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                    <div className="text-[7px] uppercase tracking-widest text-slate-500">Local Architecture</div>
-                    <div className="mt-0.5 text-[10px] font-bold font-mono text-slate-200">{resolvedLocalArch.arch}</div>
-                    <div className="text-[6px] font-mono text-emerald-400">{resolvedLocalArch.tier}</div>
-                  </div>
-                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                    <div className="text-[7px] uppercase tracking-widest text-slate-500">1-to-1 Commercial Twin</div>
-                    <div className="mt-0.5 text-[10px] font-bold font-mono text-sky-300">{resolvedLocalArch.twin}</div>
-                    <div className="text-[6px] font-mono text-slate-500">In £{resolvedLocalArch.inputRate.toFixed(4)} · Out £{resolvedLocalArch.outputRate.toFixed(4)}/1M</div>
-                  </div>
-                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                    <div className="text-[7px] uppercase tracking-widest text-slate-500">Turn Savings</div>
-                    <div className="mt-0.5 text-[10px] font-bold font-mono text-emerald-400">
-                      £{latestTurnSavingsGbp.toFixed(4)}
+                <div className="overflow-y-auto custom-scrollbar flex-1 pr-0.5 space-y-1.5" style={{ height: `${commercialPanel.height}px`, minHeight: '70px' }}>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
+                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Local Architecture</div>
+                      <div className="mt-0.5 text-[10px] font-bold font-mono text-slate-200">{resolvedLocalArch.arch}</div>
+                      <div className="text-[6px] font-mono text-emerald-400">{resolvedLocalArch.tier}</div>
                     </div>
-                    <div className="text-[6px] font-mono text-slate-600">{latestTurnTokens.total.toLocaleString()} tokens avoided</div>
-                  </div>
-                  <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                    <div className="text-[7px] uppercase tracking-widest text-slate-500">SQLite Transactions</div>
-                    <div className="mt-0.5 text-[10px] font-bold font-mono text-slate-200">
-                      {commercialLedgerData.totalTransactions} runs
+                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-500">1-to-1 Commercial Twin</div>
+                      <div className="mt-0.5 text-[10px] font-bold font-mono text-sky-300">{resolvedLocalArch.twin}</div>
+                      <div className="text-[6px] font-mono text-slate-500">In £{resolvedLocalArch.inputRate.toFixed(4)} · Out £{resolvedLocalArch.outputRate.toFixed(4)}/1M</div>
                     </div>
-                    <div className="text-[6px] font-mono text-slate-600">ai_commercial_savings.db</div>
+                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Turn Savings</div>
+                      <div className="mt-0.5 text-[10px] font-bold font-mono text-emerald-400">
+                        £{latestTurnSavingsGbp.toFixed(4)}
+                      </div>
+                      <div className="text-[6px] font-mono text-slate-600">{latestTurnTokens.total.toLocaleString()} tokens avoided</div>
+                    </div>
+                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
+                      <div className="text-[7px] uppercase tracking-widest text-slate-500">SQLite Transactions</div>
+                      <div className="mt-0.5 text-[10px] font-bold font-mono text-slate-200">
+                        {commercialLedgerData.totalTransactions} runs
+                      </div>
+                      <div className="text-[6px] font-mono text-slate-600">ai_commercial_savings.db</div>
+                    </div>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center justify-between text-[7px] font-mono text-slate-500 pt-1 border-t border-slate-900">
+                    <span>Formula: ((In/1M)*Rate) + ((Out/1M)*Rate) + (Images*Vision) + (VideoSec*Video) · 1 USD = 0.78 GBP</span>
+                    <span className="text-slate-400 font-semibold">Vision: £{resolvedLocalArch.visionRate.toFixed(2)}/1k · Video: £{resolvedLocalArch.videoRate.toFixed(2)}/min</span>
                   </div>
                 </div>
-                <div className="mt-1 flex flex-wrap items-center justify-between text-[7px] font-mono text-slate-500 pt-1 border-t border-slate-900">
-                  <span>Formula: ((In/1M)*Rate) + ((Out/1M)*Rate) + (Images*Vision) + (VideoSec*Video) · 1 USD = 0.78 GBP</span>
-                  <span className="text-slate-400 font-semibold">Vision: £{resolvedLocalArch.visionRate.toFixed(2)}/1k · Video: £{resolvedLocalArch.videoRate.toFixed(2)}/min</span>
-                </div>
+                <PanelResizeGrip
+                  onBottomPointerDown={commercialPanel.onBottomPointerDown}
+                  onRightPointerDown={commercialPanel.onRightPointerDown}
+                  onCornerPointerDown={commercialPanel.onCornerPointerDown}
+                  onResetWidth={commercialPanel.resetWidth}
+                  width={commercialPanel.width}
+                  height={commercialPanel.height}
+                  label="Commercial Benchmarks"
+                />
               </div>
             );
           }
@@ -2361,7 +2448,7 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
           </div>
         )}
 
-        <div className={`col-span-12 ${showEngineConfig ? 'lg:col-span-9' : 'lg:col-span-12'} bg-slate-950/80 p-3 sm:p-5 shadow-sm min-h-[420px] flex flex-col flex-1 min-w-0 overflow-hidden`} style={ginaPanelStyle()}>
+        <div className={`col-span-12 ${showEngineConfig ? 'lg:col-span-9' : 'lg:col-span-12'} bg-slate-950/80 p-3 sm:p-5 shadow-sm min-h-[640px] flex flex-col flex-1 min-w-0 overflow-hidden`} style={ginaPanelStyle()}>
           <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3 border-b border-slate-800 pb-3 mb-3 min-w-0 shrink-0">
             <div className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-emerald-400" />
@@ -2493,17 +2580,28 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
           )}
 
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
-            <div className="text-[9px] font-mono text-slate-600 uppercase tracking-wider">Workspace · drag divider / bottom edge to resize</div>
+            <div className="text-[9px] font-mono text-slate-600 uppercase tracking-wider">Workspace · 900 × 600 Dual Windows (Gina Assistant Response + Interactive Preview)</div>
             <PanelChromeControls />
           </div>
           <ResizableSplit
             className="flex-1 min-w-0"
-            defaultLeftPct={62}
-            defaultHeightPx={560}
+            defaultLeftPct={50}
+            defaultHeightPx={600}
+            minHeightPx={400}
+            initialMode="900x600"
             left={(
-              <div className="h-full min-h-0 overflow-y-auto custom-scrollbar space-y-3 p-3 bg-slate-950/80" style={ginaPanelStyle()}>
+              <div className="h-full min-h-0 overflow-y-auto custom-scrollbar space-y-3 p-3 bg-slate-950/80 flex flex-col" style={ginaPanelStyle()}>
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2 px-1 shrink-0">
+                  <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                    Gina Assistant Response
+                  </label>
+                  <span className="text-[10px] font-mono text-slate-500">
+                    Qwen 2.5 Local LLM
+                  </span>
+                </div>
 
-            {!messages.length && <div className="h-full min-h-[400px] flex items-center justify-center text-center text-slate-600 text-xs"><div><Zap className="w-6 h-6 mx-auto mb-2 text-slate-700" /><p>Start Qwen locally to chat with Gina.</p><p className="text-[10px] mt-1">No cloud provider is used.</p></div></div>}
+            {!messages.length && <div className="h-full min-h-[320px] flex items-center justify-center text-center text-slate-600 text-xs"><div><Zap className="w-6 h-6 mx-auto mb-2 text-slate-700" /><p>Start Qwen locally to chat with Gina.</p><p className="text-[10px] mt-1">No cloud provider is used.</p></div></div>}
             {(agentWorkspace || agentActivity.length > 0 || loading) && (
               <div className="mb-2 rounded-lg border border-slate-800 bg-slate-950/90 px-3 py-2 text-[9px] font-mono shadow-[0_0_20px_rgba(16,185,129,0.06)]">
                 <div className="flex items-center justify-between gap-2">
@@ -2662,8 +2760,11 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
             )}
             right={(
               <aside className="min-w-0 h-full overflow-hidden bg-slate-950/90 flex flex-col" style={ginaPanelStyle()}>
-              <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-3 py-2">
-                <div className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-widest text-slate-300"><Search className="w-3 h-3 text-sky-400" /> Interactive Preview</div>
+              <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-3 py-2 shrink-0">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-200">
+                  <Search className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Interactive Preview</span>
+                </div>
                 {activePreviewContent?.type === 'html' ? (
                   <div className="flex items-center gap-1">
                     <button type="button" onClick={() => setWebAppView('preview')} className={`rounded px-2 py-1 text-[8px] font-bold uppercase tracking-wider ${webAppView === 'preview' ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' : 'text-slate-500 hover:text-slate-300 border border-transparent'}`}>Preview</button>
@@ -2671,7 +2772,7 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                     <button type="button" onClick={() => downloadCodeFile('gina-web-app.html', activePreviewContent.content, 'text/html;charset=utf-8')} className="rounded border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-sky-300 hover:bg-sky-500/20 flex items-center gap-1"><FileDown className="w-3 h-3" /> Download</button>
                     <button type="button" onClick={() => void saveCodeBlock('gina-web-app.html', activePreviewContent.content, 'web-app-html')} className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/20">Save HTML</button>
                   </div>
-                ) : <span className="text-[8px] font-mono text-slate-600">LIVE FRAME</span>}
+                ) : <span className="text-[8px] font-mono text-slate-500">LIVE PREVIEW</span>}
               </div>
               {activePreviewContent?.type === 'html' && savedCodeFiles['web-app-html'] && (
                 <div className="border-b border-slate-800 px-3 py-1.5 text-[8px] font-mono text-emerald-400 truncate">Saved: {savedCodeFiles['web-app-html'].path}</div>
@@ -2680,16 +2781,16 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                 <div className="mx-3 mt-2 rounded border border-rose-500/30 bg-rose-500/10 px-2.5 py-2 text-[9px] text-rose-300">Web App runtime error: {webAppRuntimeError}</div>
               )}
               <div className="flex-1 min-h-0 overflow-auto p-3">
-                {!activePreviewContent ? <div className="h-full min-h-[260px] flex items-center justify-center text-center text-slate-600 text-[10px]">Web sources, HTML layouts and live response scraps will appear here.</div> : activePreviewContent.type === 'html' ? (
+                {!activePreviewContent ? <div className="h-full min-h-[320px] flex items-center justify-center text-center text-slate-600 text-[10px]">Web sources, HTML layouts and live response scraps will appear here.</div> : activePreviewContent.type === 'html' ? (
                   webAppView === 'code' ? (
-                    <pre className="h-full min-h-[320px] overflow-auto rounded border border-slate-800 bg-slate-950 p-3 text-[9px] leading-relaxed text-slate-300 whitespace-pre-wrap break-words"><code>{activePreviewContent.content}</code></pre>
+                    <pre className="h-full min-h-[260px] overflow-auto rounded border border-slate-800 bg-slate-950 p-3 text-[9px] leading-relaxed text-slate-300 whitespace-pre-wrap break-words"><code>{activePreviewContent.content}</code></pre>
                   ) : (
-                    <iframe ref={webAppIframeRef} title={activePreviewContent.title} sandbox="allow-scripts allow-forms" srcDoc={buildWebAppPreviewHtml(activePreviewContent.content, webAppStorageNamespace || makeWebAppStorageNamespace(activePreviewContent.content))} className="h-full min-h-[320px] w-full rounded border border-slate-800 bg-white" />
+                    <iframe ref={webAppIframeRef} title={activePreviewContent.title} sandbox="allow-scripts allow-forms" srcDoc={buildWebAppPreviewHtml(activePreviewContent.content, webAppStorageNamespace || makeWebAppStorageNamespace(activePreviewContent.content))} className="h-full min-h-[260px] w-full rounded border border-slate-800 bg-white" />
                   )
                 ) : activePreviewContent.type === 'video' ? (
-                  <div className="flex h-full min-h-[320px] items-center justify-center rounded border border-slate-800 bg-slate-950 p-2">
+                  <div className="relative aspect-[16/10] w-full max-h-full bg-slate-950 rounded-lg border border-slate-800 overflow-hidden flex items-center justify-center">
                     {activePreviewContent.url || activePreviewContent.content ? (
-                      <video controls playsInline className="max-h-full max-w-full rounded" src={activePreviewContent.url || activePreviewContent.content}>
+                      <video controls playsInline className="w-full h-full object-contain bg-black" src={activePreviewContent.url || activePreviewContent.content}>
                         Your browser cannot play this local video.
                       </video>
                     ) : (
@@ -2844,16 +2945,67 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
           {widgetDockPosition === 'above' && renderMovableWidgetsMatrix()}
 
           {status?.recentLog?.length ? (
-            <details className="mt-1.5 rounded border border-slate-800 bg-slate-950/60">
-              <summary className="cursor-pointer px-2 py-1 text-[8px] font-bold uppercase tracking-widest text-slate-600">llama-server diagnostic log</summary>
-              <pre className="px-2 pb-1.5 text-[8px] font-mono text-slate-600 whitespace-pre-wrap max-h-24 overflow-auto">{status.recentLog.join('\n')}</pre>
-            </details>
+            <div
+              ref={llamaLogPanel.panelRef}
+              className="relative mt-1.5 rounded-lg border border-slate-800 bg-slate-950/60 flex flex-col transition-all"
+              style={{ width: llamaLogPanel.width ? `${llamaLogPanel.width}px` : '100%' }}
+            >
+              <button
+                type="button"
+                onClick={() => setLlamaLogOpen(v => !v)}
+                className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-900/50 cursor-pointer select-none transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <ChevronRight className={`h-3 w-3 text-slate-500 transition-transform ${llamaLogOpen ? 'rotate-90 text-emerald-400' : ''}`} />
+                  <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400">llama-server diagnostic log</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {llamaLogPanel.width && (
+                    <span className="text-[7px] font-mono text-emerald-400/80 bg-slate-900 px-1 rounded border border-slate-800">
+                      {llamaLogPanel.width}px wide
+                    </span>
+                  )}
+                  <span className="text-[7px] font-mono text-slate-600">{status.recentLog.length} lines</span>
+                </div>
+              </button>
+              {llamaLogOpen && (
+                <>
+                  <pre
+                    className="border-t border-slate-800/80 px-3 py-2 text-[8px] font-mono text-slate-400 whitespace-pre-wrap overflow-y-auto custom-scrollbar flex-1"
+                    style={{ height: `${llamaLogPanel.height}px`, minHeight: '50px' }}
+                  >
+                    {status.recentLog.join('\n')}
+                  </pre>
+                  <PanelResizeGrip
+                    onBottomPointerDown={llamaLogPanel.onBottomPointerDown}
+                    onRightPointerDown={llamaLogPanel.onRightPointerDown}
+                    onCornerPointerDown={llamaLogPanel.onCornerPointerDown}
+                    onResetWidth={llamaLogPanel.resetWidth}
+                    width={llamaLogPanel.width}
+                    height={llamaLogPanel.height}
+                    label="llama-server diagnostic log"
+                  />
+                </>
+              )}
+              {!llamaLogOpen && (
+                <PanelResizeGrip
+                  onRightPointerDown={llamaLogPanel.onRightPointerDown}
+                  onResetWidth={llamaLogPanel.resetWidth}
+                  width={llamaLogPanel.width}
+                  label="llama-server diagnostic log"
+                />
+              )}
+            </div>
           ) : null}
 
           {pdfNotice && <div className={`mb-2 p-2 rounded border text-[9px] ${pdfNotice.startsWith('PDF saved:') ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-rose-500/30 bg-rose-500/5 text-rose-300'}`}>{pdfNotice}</div>}
 
-          <section className="rounded-lg border border-slate-800 bg-slate-950/90 overflow-hidden">
-            <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+          <section
+            ref={bottomEnginePanel.panelRef}
+            className="relative rounded-lg border border-slate-800 bg-slate-950/90 flex flex-col transition-all"
+            style={{ width: bottomEnginePanel.width ? `${bottomEnginePanel.width}px` : '100%' }}
+          >
+            <div className="flex items-center justify-between gap-3 px-3 py-2.5 shrink-0">
               <div className="flex min-w-0 items-center gap-2">
                 <Bot className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
                 <div className="min-w-0">
@@ -2863,30 +3015,59 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                   </div>
                 </div>
               </div>
-              <button type="button" onClick={() => setShowBottomEngineConfig(v => !v)} className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/20">
-                {showBottomEngineConfig ? 'Hide Config' : 'Show Config'}
-              </button>
+              <div className="flex items-center gap-2">
+                {bottomEnginePanel.width && (
+                  <span className="text-[7px] font-mono text-emerald-400/80 bg-slate-900 px-1 rounded border border-slate-800">
+                    {bottomEnginePanel.width}px wide
+                  </span>
+                )}
+                <button type="button" onClick={() => setShowBottomEngineConfig(v => !v)} className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/20">
+                  {showBottomEngineConfig ? 'Hide Config' : 'Show Config'}
+                </button>
+              </div>
             </div>
             {showBottomEngineConfig && (
-              <div className="border-t border-slate-800 px-3 py-2.5">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                  <button type="button" onClick={() => void runAction('restart','qwen')} disabled={loading || status?.engine === 'qwen'} className="rounded border border-slate-700 bg-slate-900 p-2 text-left hover:border-emerald-500/40 disabled:opacity-40">
-                    <div className="text-[9px] font-bold text-slate-200">Qwen 2.5-VL 7B</div><div className="text-[7px] text-slate-500">Vision / multimodal</div>
-                  </button>
-                  <button type="button" onClick={() => void runAction('restart','qwen-coder')} disabled={loading || status?.engine === 'qwen-coder'} className="rounded border border-slate-700 bg-slate-900 p-2 text-left hover:border-emerald-500/40 disabled:opacity-40">
-                    <div className="text-[9px] font-bold text-slate-200">Qwen Coder 7B</div><div className="text-[7px] text-amber-300">Text / code</div>
-                  </button>
-                  <button type="button" onClick={() => void runAction('restart','qwen3.5')} disabled={loading || status?.engine === 'qwen3.5'} className="rounded border border-slate-700 bg-slate-900 p-2 text-left hover:border-emerald-500/40 disabled:opacity-40">
-                    <div className="text-[9px] font-bold text-slate-200">Qwen3.5 9B</div><div className="text-[7px] text-sky-300">Multimodal</div>
-                  </button>
+              <>
+                <div
+                  className="border-t border-slate-800 px-3 py-2.5 overflow-y-auto custom-scrollbar flex-1"
+                  style={{ height: `${bottomEnginePanel.height}px`, minHeight: '70px' }}
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <button type="button" onClick={() => void runAction('restart','qwen')} disabled={loading || status?.engine === 'qwen'} className="rounded border border-slate-700 bg-slate-900 p-2 text-left hover:border-emerald-500/40 disabled:opacity-40">
+                      <div className="text-[9px] font-bold text-slate-200">Qwen 2.5-VL 7B</div><div className="text-[7px] text-slate-500">Vision / multimodal</div>
+                    </button>
+                    <button type="button" onClick={() => void runAction('restart','qwen-coder')} disabled={loading || status?.engine === 'qwen-coder'} className="rounded border border-slate-700 bg-slate-900 p-2 text-left hover:border-emerald-500/40 disabled:opacity-40">
+                      <div className="text-[9px] font-bold text-slate-200">Qwen Coder 7B</div><div className="text-[7px] text-amber-300">Text / code</div>
+                    </button>
+                    <button type="button" onClick={() => void runAction('restart','qwen3.5')} disabled={loading || status?.engine === 'qwen3.5'} className="rounded border border-slate-700 bg-slate-900 p-2 text-left hover:border-emerald-500/40 disabled:opacity-40">
+                      <div className="text-[9px] font-bold text-slate-200">Qwen3.5 9B</div><div className="text-[7px] text-sky-300">Multimodal</div>
+                    </button>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => void runAction('start')} disabled={loading || !status?.configured || !!status?.running} className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300 disabled:opacity-40">Start</button>
+                    <button type="button" onClick={() => void runAction('stop')} disabled={loading || !status?.running} className="rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-slate-300 disabled:opacity-40">Stop</button>
+                    <button type="button" onClick={() => void runAction('restart')} disabled={loading || !status?.configured} className="rounded border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-sky-300 disabled:opacity-40">Restart</button>
+                    <span className="self-center text-[8px] font-mono text-slate-600 truncate">{status?.modelPath || 'Local model path unavailable'}</span>
+                  </div>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => void runAction('start')} disabled={loading || !status?.configured || !!status?.running} className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300 disabled:opacity-40">Start</button>
-                  <button type="button" onClick={() => void runAction('stop')} disabled={loading || !status?.running} className="rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-slate-300 disabled:opacity-40">Stop</button>
-                  <button type="button" onClick={() => void runAction('restart')} disabled={loading || !status?.configured} className="rounded border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-sky-300 disabled:opacity-40">Restart</button>
-                  <span className="self-center text-[8px] font-mono text-slate-600 truncate">{status?.modelPath || 'Local model path unavailable'}</span>
-                </div>
-              </div>
+                <PanelResizeGrip
+                  onBottomPointerDown={bottomEnginePanel.onBottomPointerDown}
+                  onRightPointerDown={bottomEnginePanel.onRightPointerDown}
+                  onCornerPointerDown={bottomEnginePanel.onCornerPointerDown}
+                  onResetWidth={bottomEnginePanel.resetWidth}
+                  width={bottomEnginePanel.width}
+                  height={bottomEnginePanel.height}
+                  label="Local Inference Engine"
+                />
+              </>
+            )}
+            {!showBottomEngineConfig && (
+              <PanelResizeGrip
+                onRightPointerDown={bottomEnginePanel.onRightPointerDown}
+                onResetWidth={bottomEnginePanel.resetWidth}
+                width={bottomEnginePanel.width}
+                label="Local Inference Engine"
+              />
             )}
           </section>
 
@@ -2918,10 +3099,32 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
             )}
             {fileAttachError && <div className="mb-2 p-2 rounded border border-rose-500/20 bg-rose-500/5 text-[9px] text-rose-300">{fileAttachError}</div>}
 
-            <div className="relative flex gap-2">
-              <textarea ref={promptInputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (input.trim() || attachedFiles.length) void sendMessage(); } }} disabled={!status?.ready || loading} rows={1} placeholder={status?.ready ? 'Message Gina… (Enter to send, Shift+Enter for a new line)' : 'Start the local LLM first…'} className="flex-1 min-h-[44px] max-h-[200px] resize-none overflow-y-hidden rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 pr-24 text-xs text-slate-200 outline-none focus:border-emerald-500/50 disabled:opacity-50 leading-relaxed" />
-              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!status?.ready || loading || attachedFiles.length >= maxLocalAiFiles} title={status?.engine === 'qwen-coder' ? 'Qwen Coder accepts text/code files and project ZIP archives. Image attachments require a multimodal vision model.' : 'Attach a supported local file, image or ZIP archive'} className="absolute right-14 bottom-2 h-9 px-2.5 rounded-lg border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5" /> Attach</button>
-              {loading ? <button onClick={() => void cancelChat()} className="absolute right-2 bottom-2 w-9 h-9 rounded-full border border-rose-500/50 bg-rose-500/15 text-rose-300 flex items-center justify-center" title="Stop inference and flush VRAM"><Square className="w-3.5 h-3.5 fill-current" /></button> : <button onClick={() => void sendMessage()} disabled={!status?.ready || (!input.trim() && !attachedFiles.length)} className="absolute right-2 bottom-2 w-9 h-9 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center disabled:opacity-30" title="Send"><span className="text-base font-black leading-none">↑</span></button>}
+            <div
+              ref={promptBoxPanel.panelRef}
+              className="relative flex flex-col transition-all"
+              style={{ width: promptBoxPanel.width ? `${promptBoxPanel.width}px` : '100%' }}
+            >
+              <div className="relative flex gap-2 w-full">
+                <textarea
+                  ref={promptInputRef}
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (input.trim() || attachedFiles.length) void sendMessage(); } }}
+                  disabled={!status?.ready || loading}
+                  rows={1}
+                  placeholder={status?.ready ? 'Message Gina… (Enter to send, Shift+Enter for a new line)' : 'Start the local LLM first…'}
+                  className="flex-1 min-h-[44px] resize-y overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 pr-28 pb-4 text-xs text-slate-200 outline-none focus:border-emerald-500/50 disabled:opacity-50 leading-relaxed custom-scrollbar"
+                  style={{ resize: 'vertical' }}
+                />
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!status?.ready || loading || attachedFiles.length >= maxLocalAiFiles} title={status?.engine === 'qwen-coder' ? 'Qwen Coder accepts text/code files and project ZIP archives. Image attachments require a multimodal vision model.' : 'Attach a supported local file, image or ZIP archive'} className="absolute right-14 bottom-2.5 h-9 px-2.5 rounded-lg border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5" /> Attach</button>
+                {loading ? <button onClick={() => void cancelChat()} className="absolute right-2 bottom-2.5 w-9 h-9 rounded-full border border-rose-500/50 bg-rose-500/15 text-rose-300 flex items-center justify-center" title="Stop inference and flush VRAM"><Square className="w-3.5 h-3.5 fill-current" /></button> : <button onClick={() => void sendMessage()} disabled={!status?.ready || (!input.trim() && !attachedFiles.length)} className="absolute right-2 bottom-2.5 w-9 h-9 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center disabled:opacity-30" title="Send"><span className="text-base font-black leading-none">↑</span></button>}
+              </div>
+              <PanelResizeGrip
+                onRightPointerDown={promptBoxPanel.onRightPointerDown}
+                onResetWidth={promptBoxPanel.resetWidth}
+                width={promptBoxPanel.width}
+                label="Message box"
+              />
             </div>
           </div>
 

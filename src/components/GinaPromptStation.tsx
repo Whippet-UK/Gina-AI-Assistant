@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
-  ChevronRight, Terminal, FileCode, Clipboard, Heart, HeartCracked,
+  ChevronRight, Terminal, FileCode, Clipboard, Heart, HeartCrack,
   RefreshCw, Cpu, Zap, Activity, Copy, Send
 } from 'lucide-react';
 import type { LogEntry, SystemTelemetry } from '../types';
@@ -213,7 +213,7 @@ export default function GinaPromptStation({ telemetry, logs }: GinaPromptStation
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => void copyResponse()} disabled={!response} className="p-1 text-zinc-500 hover:text-zinc-300 disabled:text-zinc-800" title="Copy response"><Clipboard className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => setVote(vote === 'up' ? null : 'up')} disabled={!response} className={`p-1 ${vote === 'up' ? 'text-emerald-400' : 'text-zinc-500'} disabled:text-zinc-800`} title="Upvote"><Heart className="w-3.5 h-3.5" /></button>
-            <button type="button" onClick={() => setVote(vote === 'down' ? null : 'down')} disabled={!response} className={`p-1 ${vote === 'down' ? 'text-rose-400' : 'text-zinc-500'} disabled:text-zinc-800`} title="Downvote"><HeartCracked className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => setVote(vote === 'down' ? null : 'down')} disabled={!response} className={`p-1 ${vote === 'down' ? 'text-rose-400' : 'text-zinc-500'} disabled:text-zinc-800`} title="Downvote"><HeartCrack className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={clearScreen} className="p-1 text-zinc-500 hover:text-rose-400 flex items-center gap-1 border border-zinc-900 px-2 py-0.5 rounded bg-zinc-900/20"><RefreshCw className="w-3 h-3" /> Reset history</button>
             <div className="w-4 h-4 rounded-full bg-[#e05638]/10 text-[#e05638] flex items-center justify-center font-bold text-[9px]">✳</div>
           </div>

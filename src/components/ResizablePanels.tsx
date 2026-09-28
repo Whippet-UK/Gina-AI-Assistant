@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-const STORAGE_SPLIT = 'gina.ui.chatSplitPct';
-const STORAGE_HEIGHT = 'gina.ui.workspaceHeightPx';
-const STORAGE_BORDER = 'gina.ui.panelBorderPx';
-const STORAGE_RADIUS = 'gina.ui.panelRadiusPx';
+export const STORAGE_SPLIT = 'gina.ui.chatSplitPct';
+export const STORAGE_HEIGHT = 'gina.ui.workspaceHeightPx';
+export const STORAGE_BORDER = 'gina.ui.panelBorderPx';
+export const STORAGE_RADIUS = 'gina.ui.panelRadiusPx';
+export const STORAGE_LAYOUT_MODE = 'gina.ui.workspaceLayoutMode';
 
 function readNum(key: string, fallback: number, min: number, max: number): number {
   try {
@@ -48,7 +49,7 @@ export const ginaPanelStyle = (extra?: React.CSSProperties): React.CSSProperties
 type SplitProps = {
   left: React.ReactNode;
   right: React.ReactNode;
-  /** Default left width % (chat / response). Video-preview-like: ~58–65 */
+  /** Default left width % (chat / response). Defaults to 50% for equal sizing with Interactive Preview */
   defaultLeftPct?: number;
   minLeftPct?: number;
   maxLeftPct?: number;
@@ -58,29 +59,69 @@ type SplitProps = {
   defaultHeightPx?: number;
   minHeightPx?: number;
   maxHeightPx?: number;
+  showPresets?: boolean;
+  initialMode?: '900x600' | 'split';
 };
 
 /**
- * Horizontal split: large primary pane (left) + secondary pane (right),
- * with a drag handle. Optional bottom-edge height drag.
+ * Horizontal split / 900x600 dual workspace:
+ * Primary pane (Gina Assistant response) + secondary pane (Interactive Preview).
+ * Default: 900 × 600 px both windows, with optional 50/50 responsive split and vertical/horizontal resizing.
  * Sizes persist in localStorage.
  */
 export const ResizableSplit: React.FC<SplitProps> = ({
   left,
   right,
-  defaultLeftPct = 62,
-  minLeftPct = 35,
-  maxLeftPct = 80,
+  defaultLeftPct = 50,
+  minLeftPct = 25,
+  maxLeftPct = 75,
   className = '',
   resizableHeight = true,
-  defaultHeightPx = 560,
-  minHeightPx = 320,
-  maxHeightPx = 1200
+  defaultHeightPx = 600,
+  minHeightPx = 400,
+  maxHeightPx = 1600,
+  showPresets = true,
+  initialMode = '900x600'
 }) => {
-  const [leftPct, setLeftPct] = useState(() => readNum(STORAGE_SPLIT, defaultLeftPct, minLeftPct, maxLeftPct));
-  const [heightPx, setHeightPx] = useState(() => readNum(STORAGE_HEIGHT, defaultHeightPx, minHeightPx, maxHeightPx));
+  const [layoutMode, setLayoutMode] = useState<'900x600' | 'split'>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_LAYOUT_MODE);
+      if (saved === 'split') return 'split';
+    } catch {}
+    return initialMode || '900x600';
+  });
+
+  const [leftPct, setLeftPct] = useState(() => {
+    const val = readNum(STORAGE_SPLIT, defaultLeftPct, minLeftPct, maxLeftPct);
+    if (Math.abs(val - 62) < 0.5 || Math.abs(val - 58.33) < 0.5) return defaultLeftPct;
+    return val;
+  });
+
+  const [heightPx, setHeightPx] = useState(() => {
+    const val = readNum(STORAGE_HEIGHT, defaultHeightPx, minHeightPx, maxHeightPx);
+    // Automatically upgrade any legacy or stale height (420, 460, 560, or < 600) to 600px
+    if (val < 600 || val === 420 || val === 460 || val === 560) {
+      try { localStorage.setItem(STORAGE_HEIGHT, '600'); } catch {}
+      return 600;
+    }
+    return val;
+  });
   const shellRef = useRef<HTMLDivElement>(null);
   const dragging = useRef<'x' | 'y' | null>(null);
+
+  const applyPresetSplit = (pct: number) => {
+    setLeftPct(pct);
+    try {
+      localStorage.setItem(STORAGE_SPLIT, String(Math.round(pct * 10) / 10));
+    } catch {}
+  };
+
+  const applyPresetHeight = (h: number) => {
+    setHeightPx(h);
+    try {
+      localStorage.setItem(STORAGE_HEIGHT, String(Math.round(h)));
+    } catch {}
+  };
 
   const onPointerMove = useCallback(
     (e: PointerEvent) => {
@@ -139,22 +180,120 @@ export const ResizableSplit: React.FC<SplitProps> = ({
       className={`relative flex min-w-0 flex-col ${className}`}
       style={resizableHeight ? { height: heightPx, minHeight: minHeightPx } : undefined}
     >
-      <div className="flex min-h-0 flex-1 min-w-0">
-        <div className="min-h-0 min-w-0 overflow-hidden flex flex-col" style={{ width: `${leftPct}%`, flex: 'none' }}>
-          {left}
+      {showPresets && (
+        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-1.5 px-0.5 text-[9px] font-mono text-slate-500 shrink-0 select-none">
+          <div className="flex items-center gap-1.5">
+            <span className="uppercase tracking-wider text-slate-400 font-bold">Presets:</span>
+            <button
+              type="button"
+              onClick={() => {
+                setLayoutMode('900x600');
+                setHeightPx(600);
+                try {
+                  localStorage.setItem(STORAGE_LAYOUT_MODE, '900x600');
+                  localStorage.setItem(STORAGE_HEIGHT, '600');
+                } catch {}
+              }}
+              className={`px-2.5 py-0.5 rounded border transition-colors cursor-pointer ${
+                layoutMode === '900x600' && heightPx === 600
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 font-bold shadow-[0_0_12px_rgba(16,185,129,0.2)]'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+              title="Set both Gina Assistant Response and Interactive Preview windows to exactly 900 × 600 px"
+            >
+              ★ 900 × 600 (Both Windows)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLayoutMode('split');
+                applyPresetSplit(50);
+                try { localStorage.setItem(STORAGE_LAYOUT_MODE, 'split'); } catch {}
+              }}
+              className={`px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                layoutMode === 'split' && Math.abs(leftPct - 50) < 1
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+              title="Fit container width with 50% / 50% equal split"
+            >
+              Fit Width (50 / 50)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLayoutMode('split');
+                applyPresetSplit(58.33);
+                try { localStorage.setItem(STORAGE_LAYOUT_MODE, 'split'); } catch {}
+              }}
+              className={`px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                layoutMode === 'split' && Math.abs(leftPct - 58.33) < 1
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+              title="Video Suite column ratio (58% controls / 42% preview)"
+            >
+              Video Ratio (58 / 42)
+            </button>
+            <button
+              type="button"
+              onClick={() => applyPresetHeight(600)}
+              className={`px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                heightPx === 600
+                  ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 font-bold'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+              title="Set height to 600px"
+            >
+              Height (600px)
+            </button>
+          </div>
+          <div className="text-[8px] text-slate-500 flex items-center gap-1.5 font-mono">
+            {layoutMode === '900x600' ? (
+              <span className="text-emerald-400 font-bold border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                900 × 600 px (Both Windows)
+              </span>
+            ) : (
+              <>
+                <span className="text-slate-400 font-bold">{Math.round(leftPct)}%</span>
+                <span>Response</span>
+                <span>/</span>
+                <span className="text-slate-400 font-bold">{Math.round(100 - leftPct)}%</span>
+                <span>Preview</span>
+                <span>·</span>
+                <span className="text-slate-400 font-bold">{Math.round(heightPx)}px H</span>
+              </>
+            )}
+          </div>
         </div>
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize chat and preview"
-          onPointerDown={startX}
-          className="group relative z-10 w-2 shrink-0 cursor-col-resize bg-slate-900/80 hover:bg-emerald-500/30 active:bg-emerald-500/50 transition-colors"
-          title="Drag to resize"
-        >
-          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-slate-700 group-hover:bg-emerald-400/60" />
+      )}
+      {layoutMode === '900x600' ? (
+        <div className="flex min-h-0 flex-1 min-w-0 overflow-x-auto custom-scrollbar pb-1 gap-2 items-stretch">
+          <div className="min-h-0 shrink-0 overflow-hidden flex flex-col" style={{ width: '900px', minWidth: '900px', flex: '0 0 900px' }}>
+            {left}
+          </div>
+          <div className="min-h-0 shrink-0 overflow-hidden flex flex-col" style={{ width: '900px', minWidth: '900px', flex: '0 0 900px' }}>
+            {right}
+          </div>
         </div>
-        <div className="min-h-0 min-w-0 flex-1 overflow-hidden flex flex-col">{right}</div>
-      </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 min-w-0">
+          <div className="min-h-0 min-w-0 overflow-hidden flex flex-col" style={{ width: `${leftPct}%`, flex: 'none' }}>
+            {left}
+          </div>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize chat and preview"
+            onPointerDown={startX}
+            className="group relative z-10 w-2 shrink-0 cursor-col-resize bg-slate-900/80 hover:bg-emerald-500/30 active:bg-emerald-500/50 transition-colors"
+            title="Drag to resize width"
+          >
+            <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-slate-700 group-hover:bg-emerald-400/60" />
+          </div>
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden flex flex-col">{right}</div>
+        </div>
+      )}
       {resizableHeight && (
         <div
           role="separator"

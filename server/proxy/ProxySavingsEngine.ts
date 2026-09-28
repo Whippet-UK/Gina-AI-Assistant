@@ -597,6 +597,10 @@ export class ProxySavingsEngine {
    * 1. 5-Mode Telemetry Classifier Middleware:
    * Inspects the context payload or target routes to dynamically classify requests into their target vector streams
    */
+  public classifyMode(prompt: string, explicitMode?: string): OperationalMode {
+    return this.classifyIntent(prompt, explicitMode);
+  }
+
   public classifyIntent(prompt: string, explicitMode?: string): OperationalMode {
     if (explicitMode && ['web_search', 'web_app', 'code_engine', 'image_studio', 'video_generation'].includes(explicitMode)) {
       return explicitMode as OperationalMode;
