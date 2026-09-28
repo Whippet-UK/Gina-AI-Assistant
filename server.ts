@@ -75,7 +75,20 @@ const HOST = process.env.HOST || (isWin ? "127.0.0.1" : "0.0.0.0");
 const COMFY_URL = process.env.COMFY_URL || "http://127.0.0.1:8188";
 const GINA_ROOT = process.env.GINA_ROOT || (isWin ? "C:\\Gina_AI" : process.cwd());
 const COMFY_ROOT = process.env.COMFY_ROOT || (isWin ? "C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI" : path.join(process.cwd(), "ComfyUI"));
-const FLUX_GGUF = process.env.FLUX_GGUF || "FLUX.1-lite-pure-Q4_0.gguf";
+
+/** Prefer Comfy-visible Wan T2V filenames (order = preference). */
+const WAN_I2V_UNET_CANDIDATES = [
+  'wan2.1-i2v-14b-480p-Q4_K_M.gguf',
+  'wan2.1_i2v_14B_480p_Q4_K_M.gguf',
+];
+
+const WAN_T2V_UNET_CANDIDATES = [
+  'Wan2_1-T2V-1_3B_fp8_e4m3fn.safetensors',
+  'wan2.1_t2v_1.3B_FP8.safetensors',
+  'wan2.1_t2v_1.3B_bf16.safetensors',
+];
+
+const FLUX_GGUF = process.env.FLUX_GGUF || "flux1-dev-Q4_K_M.gguf";
 const FLUX_CLIP_L = process.env.FLUX_CLIP_L || "clip_l.safetensors";
 const FLUX_T5 = process.env.FLUX_T5 || "t5xxl_fp8_e4m3fn.safetensors";
 const FLUX_VAE = process.env.FLUX_VAE || "ae.safetensors";
@@ -212,7 +225,7 @@ const initialOomIncidents: OomIncident[] = [
     timestamp: new Date(nowInitMs - 40 * 60 * 1000).toISOString(),
     timeLabel: new Date(nowInitMs - 40 * 60 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     modelId: "wan_video_21",
-    modelName: "Wan 2.1 1.3B BF16",
+    modelName: "Wan 2.1 1.3B FP8",
     workflowId: "wan_video",
     vramUsedMB: 7610,
     nodeStage: "VAEDecode (Node #6)",
@@ -236,7 +249,7 @@ const initialOomIncidents: OomIncident[] = [
     timestamp: new Date(nowInitMs - 12 * 60 * 1000).toISOString(),
     timeLabel: new Date(nowInitMs - 12 * 60 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     modelId: "flux_lite",
-    modelName: "FLUX.1 Lite High Precision",
+    modelName: "FLUX.1 Dev Q4_K_M",
     workflowId: "flux_lite_image",
     vramUsedMB: 7520,
     nodeStage: "UNETLoader (Node #2)",
@@ -248,7 +261,7 @@ const initialOomIncidents: OomIncident[] = [
     timestamp: new Date(nowInitMs - 4 * 60 * 1000).toISOString(),
     timeLabel: new Date(nowInitMs - 4 * 60 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     modelId: "wan_video_21",
-    modelName: "Wan 2.1 1.3B BF16",
+    modelName: "Wan 2.1 1.3B FP8",
     workflowId: "wan_video",
     vramUsedMB: 7490,
     nodeStage: "VAEDecode (Node #6)",
@@ -261,8 +274,8 @@ const oomIncidentsStore: OomIncident[] = [...initialOomIncidents];
 
 const modelMetadataRegistry: Record<string, { name: string; filename: string; vramFootprintMB: number; color: string; runs: number }> = {
   juggernaut_xl_v9: { name: "Juggernaut-XL v9 Photorealism (SDXL)", filename: "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors", vramFootprintMB: 6200, color: "#22d3ee", runs: 42 },
-  flux_lite: { name: "FLUX.1 Lite GGUF (High-Precision)", filename: "FLUX.1-lite-pure-Q4_0.gguf", vramFootprintMB: 5900, color: "#10b981", runs: 32 },
-  wan_video_21: { name: "Wan 2.1 1.3B BF16 (Video)", filename: "wan2.1_t2v_1.3B_bf16.safetensors", vramFootprintMB: 5200, color: "#38bdf8", runs: 28 },
+  flux_lite: { name: "FLUX.1 Dev Q4_K_M (Low-VRAM)", filename: "flux1-dev-Q4_K_M.gguf", vramFootprintMB: 5900, color: "#10b981", runs: 32 },
+  wan_video_21: { name: "Wan 2.1 1.3B FP8 (Video)", filename: "Wan2_1-T2V-1_3B_fp8_e4m3fn.safetensors", vramFootprintMB: 5200, color: "#38bdf8", runs: 28 },
   hunyuan_video: { name: "Hunyuan Video (3D Attention)", filename: "hunyuan-video.safetensors", vramFootprintMB: 7100, color: "#f43f5e", runs: 12 },
   geneva_fp8: { name: "Geneva 1.12B FP8", filename: "geneva_1-12b_fp8.safetensors", vramFootprintMB: 4800, color: "#a855f7", runs: 9 },
   qwen_25_vl_7b: { name: "Qwen 2.5-VL 7B Q4_K_M + mmproj-F16", filename: "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf", vramFootprintMB: 4700, color: "#f59e0b", runs: 38 },
@@ -987,8 +1000,19 @@ const AIDA64_AGENT_SENSORS = [
 let agentFullAccess = process.env.GINA_AGENT_FULL_ACCESS !== '0';
 const agentAudit: Array<{ timestamp:string; action:string; parameters:any; success:boolean; resultPreview?:string }> = [];
 
+function normalizeAgentPathInput(input: string): string {
+  let raw = String(input || '.').trim().replace(/\0/g, '');
+  if (!raw) raw = '.';
+  // Model typo: C:/Gina_AI.ginaworkspaces/Foo → C:/Gina_AI/.gina/workspaces/Foo
+  raw = raw.replace(/([/\\])Gina_AI\.ginaworkspaces([/\\])/gi, `$1Gina_AI$1.gina$1workspaces$1`);
+  raw = raw.replace(/Gina_AI\.ginaworkspaces/gi, `Gina_AI${path.sep}.gina${path.sep}workspaces`);
+  raw = raw.replace(/([/\\])Gina_AI\.gina([/\\])/gi, `$1Gina_AI$1.gina$1`);
+  if (/^workspaces[/\\]/i.test(raw)) raw = path.join('.gina', raw);
+  return raw;
+}
+
 function resolveAgentPath(input: string): string {
-  const raw = String(input || '').trim();
+  const raw = normalizeAgentPathInput(input);
   const candidate = path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(GINA_ROOT, raw);
   const root = path.resolve(GINA_ROOT);
   if (candidate !== root && !candidate.toLowerCase().startsWith(root.toLowerCase() + path.sep)) {
@@ -2907,6 +2931,44 @@ function sanitizeUserFacingAssistantText(input: string, mode: 'web_search' | 'we
   return text;
 }
 
+/** Dedicated Web App lane — never runs media/image routing. Safe for Qwen Coder. */
+app.post("/api/llm/web-app", async (req, res) => {
+  try {
+    const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+    const validMessages = messages
+      .filter((message: any) => message && ["system", "user", "assistant"].includes(message.role) && typeof message.content === "string")
+      .map((message: any) => ({ role: message.role, content: String(message.content) }));
+    if (!validMessages.some((m: any) => m.role === 'user')) {
+      return res.status(400).json({ error: "A user message is required." });
+    }
+    const webAppData = await localLlm.chat(validMessages, {
+      temperature: Number.isFinite(Number(req.body?.temperature)) ? Number(req.body.temperature) : 0.35,
+      maxTokens: Number.isFinite(Number(req.body?.maxTokens)) ? Math.min(8192, Math.max(512, Number(req.body.maxTokens))) : 6144,
+      suite: 'Web App Studio',
+      telemetrySource: 'local',
+      includeAgentSkills: false,
+      contextBreakdown: {
+        system: validMessages.filter((m: any) => m.role === 'system').reduce((n: any, m: any) => n + String(m.content || '').length, 0),
+        conversation: validMessages.filter((m: any) => m.role !== 'system').reduce((n: any, m: any) => n + String(m.content || '').length, 0),
+        rag: 0, learnedKnowledge: 0, liveWeb: 0, capability: 0, skills: 0
+      }
+    });
+    if (webAppData?.choices?.[0]?.message && typeof webAppData.choices[0].message === 'object') {
+      const message = webAppData.choices[0].message;
+      if (typeof message.content === 'string') message.content = sanitizeUserFacingAssistantText(message.content, 'web_app');
+    }
+    webAppData.ginaTelemetry = {
+      ...(webAppData.ginaTelemetry || {}),
+      source: 'local', webSearched: false, webProvider: null, browserUsed: false,
+      inference: 'local', webSources: [], webAppStudio: true
+    };
+    return res.json(webAppData);
+  } catch (error: any) {
+    recordDashboardError(error?.message || 'Web App Studio failed.', { source: 'llm-web-app', method: req.method, url: req.originalUrl, status: 500, stack: error?.stack });
+    res.status(500).json({ error: error?.message || 'Web App Studio failed.' });
+  }
+});
+
 app.post("/api/llm/chat", async (req, res) => {
   try {
     const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
@@ -2916,14 +2978,43 @@ app.post("/api/llm/chat", async (req, res) => {
 
     const nonSystem = validMessages.filter((m:any) => m.role !== 'system');
     const rawLatestUser = [...nonSystem].reverse().find((m:any) => m.role === 'user')?.content || '';
-    const requestedStudioMode = String(req.body?.studioMode || '').trim().toLowerCase();
+
+    // FIRST: Web App Studio — before PDF, media intent, or capability routing.
+    // Coder must be allowed to emit HTML/canvas apps without imageGenerationPolicy.
+    const isWebAppStudioEarly = String(req.body?.suite || '').trim().toLowerCase() === 'web app studio'
+      || String(req.body?.studioMode || '').trim().toLowerCase() === 'web-app';
+    if (isWebAppStudioEarly) {
+      if (!nonSystem.some((m:any) => m.role === 'user')) {
+        return res.status(400).json({ error: "A user message is required." });
+      }
+      const webAppData = await localLlm.chat(validMessages, {
+        temperature: Number.isFinite(Number(req.body?.temperature)) ? Number(req.body.temperature) : 0.35,
+        maxTokens: Number.isFinite(Number(req.body?.maxTokens)) ? Math.min(8192, Math.max(512, Number(req.body.maxTokens))) : 6144,
+        suite: 'Web App Studio',
+        telemetrySource: 'local',
+        includeAgentSkills: false,
+        contextBreakdown: {
+          system: validMessages.filter((m:any)=>m.role==='system').reduce((n:any,m:any)=>n+String(m.content||'').length,0),
+          conversation: validMessages.filter((m:any)=>m.role!=='system').reduce((n:any,m:any)=>n+String(m.content||'').length,0),
+          rag: 0, learnedKnowledge: 0, liveWeb: 0, capability: 0, skills: 0
+        }
+      });
+      if (webAppData?.choices?.[0]?.message && typeof webAppData.choices[0].message === 'object') {
+        const message = webAppData.choices[0].message;
+        if (typeof message.content === 'string') message.content = sanitizeUserFacingAssistantText(message.content, 'web_app');
+      }
+      webAppData.ginaTelemetry = {
+        ...(webAppData.ginaTelemetry || {}),
+        source: 'local', webSearched: false, webProvider: null, browserUsed: false,
+        inference: 'local', webSources: [], webAppStudio: true
+      };
+      return res.json(webAppData);
+    }
 
     // PDF requests are handled by the real local PDF writer. If the user pasted a
     // document (CV/resume/text) in the same message, save that document; otherwise
     // save Gina's most recent response. Never claim a PDF exists without verifying it.
-    const wantsPdf = (!requestedStudioMode || requestedStudioMode === 'local-chat') &&
-      /\bpdf\b/i.test(rawLatestUser) &&
-      /\b(save|export|write|put|create|make|convert|generate|download)\b/i.test(rawLatestUser);
+    const wantsPdf = /\bpdf\b/i.test(rawLatestUser) && /\b(save|export|write|put|create|make|convert|generate|download)\b/i.test(rawLatestUser);
     if (wantsPdf) {
       const previousAssistant = [...validMessages].reverse().find((m:any) => m.role === 'assistant')?.content || '';
       const looksLikeDocument = rawLatestUser.length > 700 ||
@@ -2948,34 +3039,12 @@ app.post("/api/llm/chat", async (req, res) => {
       return res.status(400).json({ error: "A user message is required." });
     }
 
-    // Tool-mode isolation: Web App Studio is a dedicated local artifact lane.
-    // It must run before media/web/agent arbitration so an app prompt can never be
-    // hijacked by a keyword such as "image", "search", or "BBC" from prior context.
-    const isWebAppStudio = requestedStudioMode === 'web-app' || String(req.body?.suite || '').trim().toLowerCase() === 'web app studio';
-    if (isWebAppStudio) {
-      const isolatedMessages = [
-        { role:'system', content:'You are Gina Web App Studio. Build the requested interactive web app as a single self-contained HTML document. Return ONLY the complete HTML document, with inline CSS and JavaScript, no markdown fences, no explanation, no web search, no external tool calls.' },
-        { role:'user', content:rawLatestUser.slice(0, 12000) }
-      ];
-      const webAppData = await localLlm.chat(isolatedMessages, {
-        temperature: Number.isFinite(Number(req.body?.temperature)) ? Number(req.body.temperature) : 0.45,
-        maxTokens: Number.isFinite(Number(req.body?.maxTokens)) ? Math.min(4096, Math.max(512, Number(req.body?.maxTokens))) : 3072,
-        suite:'Web App Studio',
-        telemetrySource:'local',
-        includeAgentSkills:false,
-        contextBreakdown:{ system:isolatedMessages[0].content.length, conversation:isolatedMessages[1].content.length, rag:0, learnedKnowledge:0, liveWeb:0, capability:0, skills:0 }
-      });
-      if (webAppData?.choices?.[0]?.message && typeof webAppData.choices[0].message === 'object') {
-        const message=webAppData.choices[0].message;
-        if (typeof message.content === 'string') message.content=sanitizeUserFacingAssistantText(message.content,'web_app');
-      }
-      webAppData.ginaTelemetry={...(webAppData.ginaTelemetry||{}),source:'local',webSearched:false,webProvider:null,browserUsed:false,inference:'local',webSources:[],webAppStudio:true};
-      return res.json(webAppData);
-    }
-
     const rawImageForIntent = Array.isArray(req.body?.attachments) ? req.body.attachments.find((a:any)=>a?.kind==='image' && typeof a.localPath==='string') : null;
     const imageIntent = detectMediaIntent(rawLatestUser, Boolean(rawImageForIntent));
-    if (imageIntent.explicit) {
+    // Never route HTML/canvas artifact language into Comfy — even outside Web App Studio.
+    const looksLikeHtmlArtifact = /\b(html5?|canvas|webgl|tailwind|standalone\s+html|vanilla\s*js|web\s*app|requestAnimationFrame)\b/i.test(rawLatestUser)
+      && !/\b(png|jpe?g|webp|comfyui?|flux|sdxl|photograph|photo\s+of)\b/i.test(rawLatestUser);
+    if (imageIntent.explicit && !looksLikeHtmlArtifact) {
       const rawImage = Array.isArray(req.body?.attachments) ? req.body.attachments.find((a:any)=>a?.kind==='image' && typeof a.localPath==='string') : null;
       let generationAttachment:any = rawImage;
       if (generationAttachment) {
@@ -2992,11 +3061,12 @@ app.post("/api/llm/chat", async (req, res) => {
     // Ground current/time-sensitive requests with a server-side clock plus live web verification.
     // This happens before local inference so the model cannot invent a stale date/time.
     const routedIntent = routeRuntimeIntent(rawLatestUser);
-    // Mode arbitration is explicit: Web Search is the only UI lane allowed to
-    // request live web grounding. Generic chat no longer gets web access because
-    // a keyword such as "current" or "search" appeared in an unrelated prompt.
-    const route = requestedStudioMode === 'web-search'
-      ? { ...routedIntent, intent:'web-research' as const, requiresWeb:true, requiresProjectContext:false, requiresSkills:false, operational:false, confidence:1, reason:'Explicit Web Search Studio mode' }
+    // Final server-side live-web arbitration. This is deliberately independent of
+    // the React client and catches natural variants such as "most recent news"
+    // even if a future router regression misses the phrase. It can only promote a
+    // request into web research; it can never promote it into coding or repair.
+    const route = routedIntent.intent === 'general-chat' && /\b(?:news|headline|headlines|breaking news|top stories|latest|most recent|current|today|recent|bbc|reuters|guardian|sky news|cnn)\b/i.test(rawLatestUser)
+      ? { ...routedIntent, intent:'web-research' as const, requiresWeb:true, requiresProjectContext:false, requiresSkills:false, confidence:Math.max(routedIntent.confidence, .97), reason:'Server live-information arbitration' }
       : routedIntent;
     const capabilityRegistry = getCapabilityIntelligenceRegistry();
     const capabilityPlan = planCapabilityIntent(rawLatestUser, capabilityRegistry);
@@ -3012,10 +3082,9 @@ app.post("/api/llm/chat", async (req, res) => {
       });
     }
 
-    const usesPersistentKnowledge = route.intent === 'knowledge-query' || route.intent === 'code-task' || route.intent === 'file-operation';
-    const ragGrounding = usesPersistentKnowledge ? localRag.getGroundingContext(rawLatestUser, route.intent === 'code-task' || route.intent === 'file-operation' ? 1200 : 600) : '';
-    const learnedGrounding = usesPersistentKnowledge
-      ? await knowledgeBase.promptContext(rawLatestUser, route.intent === 'code-task' || route.intent === 'file-operation' ? 2400 : 1200).catch(() => '')
+    const ragGrounding = route.intent === 'general-chat' ? localRag.getGroundingContext(rawLatestUser, 180) : '';
+    const learnedGrounding = !route.requiresWeb && route.intent !== 'network-diagnostic' && route.intent !== 'capability-query'
+      ? await knowledgeBase.promptContext(rawLatestUser, route.intent === 'code-task' || route.intent === 'file-operation' ? 2400 : 1400).catch(() => '')
       : '';
     const suppliedWebGrounding = req.body?.webGrounding && typeof req.body.webGrounding?.text === 'string'
       ? { text:String(req.body.webGrounding.text).slice(0, 18000), webSearched:true, provider:String(req.body.webGrounding.provider || 'verified web search'), engine:String(req.body.webGrounding.engine || 'HTTP fetcher'), sources:Array.isArray(req.body.webGrounding.sources) ? req.body.webGrounding.sources.slice(0,8) : [] }
@@ -3139,7 +3208,7 @@ app.get("/api/diagnostics/wan21", async (_req, res) => {
 });
 
 app.get("/api/diagnostics/check-model", async (_req, res) => {
-  const targetPath = "C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\diffusion_models\\wan2.1_t2v_1.3B_bf16.safetensors";
+  const targetPath = "C:\\Gina_AI\\ComfyUI_windows_portable\\ComfyUI\\models\\diffusion_models\\Wan2_1-T2V-1_3B_fp8_e4m3fn.safetensors";
   try {
     const stat = await fs.stat(targetPath);
     res.json({
@@ -3387,12 +3456,12 @@ const AVAILABLE_PREWARM_MODELS: PreWarmModelDef[] = [
     description: 'Default local vision/text assistant. This is an LLM sidecar, not a ComfyUI checkpoint; the pre-warm entry arms the Qwen target without forcing it resident alongside Juggernaut on the 8GB GPU.'
   },
   {
-    id: 'flux_lite', name: 'FLUX.1 Lite High Precision', filename: FLUX_GGUF,
+    id: 'flux_lite', name: 'FLUX.1 Dev Q4_K_M', filename: FLUX_GGUF,
     workflowId: 'flux_lite_image', type: 'image', vramFootprintMB: 5900,
     description: 'Optional high-precision image lane using FLUX.1 Lite GGUF with UMT5 XXL.'
   },
   {
-    id: 'wan_video_21', name: 'Wan 2.1 1.3B BF16', filename: 'wan2.1_t2v_1.3B_bf16.safetensors',
+    id: 'wan_video_21', name: 'Wan 2.1 1.3B FP8', filename: 'Wan2_1-T2V-1_3B_fp8_e4m3fn.safetensors',
     workflowId: 'wan_video', type: 'video', vramFootprintMB: 5200,
     description: 'Native ComfyUI Wan 2.1 text-to-video workflow using local UMT5, Wan VAE and optional CLIP Vision assets.'
   },
@@ -3643,7 +3712,7 @@ app.get("/api/diagnostics/oom-frequency", (req, res) => {
   const highRiskModel = sortedModels[0]?.modelName || "Hunyuan Video";
 
   const recommendations = [
-    "Hunyuan Video (7.1GB base) accounts for high memory pressure: keep direct generation on the Wan 2.1 1.3B BF16 safe lane for 8GB RTX 3070 Ti hardware.",
+    "Hunyuan Video (7.1GB base) accounts for high memory pressure: keep direct generation on the Wan 2.1 1.3B FP8 safe lane for 8GB RTX 3070 Ti hardware.",
     "VAEDecode stage accounts for video memory spikes: Cap frame batches to <=73 frames (3s @ 24fps) or use tiled VAE decoding.",
     "Bark Small & XTTS v2 operate safely via SUNO_OFFLOAD_CPU and CPU fallback to protect the 7372 MB VRAM cage.",
     "FLUX.1 Lite GGUF & SDXL Juggernaut-XL: auto-dispatch /free ensures mutual cache eviction between image, video, LLM, and audio passes."
@@ -4199,7 +4268,7 @@ async function runGifSequentialStory(parentJob: any) {
   const cfg = Number(story.cfg ?? parameters.cfg ?? 3.5);
   const sampler = String(story.sampler || parameters.sampler || 'euler_ancestral');
   const scheduler = String(story.scheduler || parameters.scheduler || 'normal');
-  const model = story.model || parameters.model || 'wan2.1_t2v_1.3B_bf16.safetensors';
+  const model = story.model || parameters.model || 'Wan2_1-T2V-1_3B_fp8_e4m3fn.safetensors';
   const compression = Math.max(0, Math.min(100, Number(parameters.compression ?? 50)));
   const useFinalFrame = story.useFinalFrame !== false;
   const storyRife = String(story.rife || 'off');
@@ -5315,22 +5384,39 @@ app.post('/api/gif-studio/export', async (req,res) => {
 
 
 function validateWanVideoParameters(parameters: Record<string, any>) {
-  const width = Math.max(64, Math.round(Number(parameters.width) || 512));
-  const height = Math.max(64, Math.round(Number(parameters.height) || 512));
-  const frames = Math.max(9, Math.round(Number(parameters.frames) || 25));
-  const fps = Math.max(1, Math.min(30, Math.round(Number(parameters.fps) || 24)));
-  const requestedDuration = Math.max(0.25, Number(parameters.duration_sec) || 1);
-  const duration = Math.min(3, requestedDuration);
-  const steps = Math.max(1, Math.min(24, Math.round(Number(parameters.steps) || 18)));
-  if (width * height > 393216) {
-    throw new Error(`Wan 2.1 1.3B safety gate: ${width}×${height} exceeds the conservative 393,216-pixel limit for Gina's 8GB GPU.`);
+  // Native VRAM (fast): ≤49 frames / ≤3s / ≤832×480 @ 16fps
+  // RAM spillover: ≤81 frames / ≤5s / 640×480 only (Wan architectural max)
+  let width = Math.max(64, Math.round(Number(parameters.width) || 832));
+  let height = Math.max(64, Math.round(Number(parameters.height) || 480));
+  const fps = Math.max(1, Math.min(30, Math.round(Number(parameters.fps) || 16)));
+  const requestedDuration = Math.max(0.25, Number(parameters.duration_sec) || 2);
+  const duration = Math.min(5, requestedDuration);
+  let frames = Math.round(Number(parameters.frames) || 0);
+  if (!Number.isFinite(frames) || frames < 9) {
+    frames = Math.max(9, Math.min(81, Math.round(duration * fps) + 1));
   }
-  if (frames > 73) {
-    throw new Error(`Wan 2.1 1.3B safety gate: ${frames} frames exceeds the 73-frame / ~3 second limit for Gina's 8GB GPU.`);
+  frames = Math.max(9, Math.min(81, frames));
+  const steps = Math.max(1, Math.min(24, Math.round(Number(parameters.steps) || 18)));
+  const spillover = frames > 49 || duration > 3;
+  // Clamp to envelope max only — lower resolutions always allowed.
+  if (spillover) {
+    width = Math.min(width, 640);
+    height = Math.min(height, 480);
+  } else {
+    width = Math.min(width, 832);
+    height = Math.min(height, 480);
+  }
+  if (width * height > 832 * 480) {
+    throw new Error(`Wan 2.1 1.3B safety gate: ${width}×${height} exceeds the Native VRAM pixel budget (832×480).`);
+  }
+  if (frames > 81) {
+    throw new Error(`Wan 2.1 architectural limit is 81 frames (~5s @ 16fps). For longer clips chain I2V segments or use RIFE interpolation.`);
   }
   if (frames < 9) throw new Error('Wan 2.1 requires at least 9 temporal frames.');
-  if (requestedDuration > 3) throw new Error("Wan 2.1 1.3B direct generation is limited to 3 seconds on Gina's 8GB GPU. Use the GIF/Story tools for longer compositions.");
-  return { ...parameters, width, height, frames, batch_size: 1, fps, duration_sec: duration, steps };
+  if (requestedDuration > 5) {
+    throw new Error("Wan 2.1 direct generation is limited to 5 seconds (81 frames). Use I2V chaining or RIFE for longer videos.");
+  }
+  return { ...parameters, width, height, frames, batch_size: 1, fps, duration_sec: duration, steps, __wanEnvelope: spillover ? 'spillover' : 'native' };
 }
 
 app.post("/api/jobs", async (req, res) => {
@@ -5418,6 +5504,7 @@ app.post("/api/jobs", async (req, res) => {
   if (workflowId === 'wan_video') {
     try {
       parameters = validateWanVideoParameters(parameters);
+      console.log(`[Wan 2.1] validated frames=${parameters.frames} fps=${parameters.fps} duration_sec=${parameters.duration_sec} size=${parameters.width}x${parameters.height} envelope=${parameters.__wanEnvelope}`);
     } catch (error:any) {
       return res.status(422).json({ ok:false, error:error?.message || 'Wan 2.1 safety validation failed.', workflowId });
     }
@@ -5468,6 +5555,36 @@ app.post("/api/jobs", async (req, res) => {
     const rawWorkflow = applyBindings(definition.workflow, definition.bindings, parameters);
     const dimensionLockedWorkflow = enforceAida64WorkflowDimensions(rawWorkflow, parameters.width, parameters.height);
     const workflow = await adaptWorkflowForComfySession(dimensionLockedWorkflow);
+
+    // Wan 2.1: force temporal length + output fps even if an older cached binding map omitted `frames`.
+    if (workflowId === 'wan_video') {
+      const frameCount = Math.max(9, Math.min(81, Math.round(Number(parameters.frames) || 33)));
+      const outFps = Math.max(1, Math.min(30, Math.round(Number(parameters.fps) || 16)));
+      for (const node of Object.values(workflow) as any[]) {
+        if (!node?.inputs || typeof node.inputs !== 'object') continue;
+        const cls = String(node.class_type || '');
+        if (/UNETLoader/i.test(cls) && Object.prototype.hasOwnProperty.call(node.inputs, 'unet_name')) {
+          const current = String(node.inputs.unet_name || '');
+          const preferred = String(parameters.model || parameters.unet_name || WAN_T2V_UNET_CANDIDATES[0]);
+          // Always prefer the Comfy-visible FP8 community name when caller still has legacy aliases.
+          if (/wan2\.1_t2v_1\.3B_FP8|wan2\.1_t2v_1\.3B_bf16/i.test(current) || !current) {
+            node.inputs.unet_name = preferred;
+          }
+        }
+        if (/EmptyHunyuanLatentVideo|EmptyLatentVideo|EmptyMochiLatentVideo|WanImageToVideo/i.test(cls)) {
+          if (Object.prototype.hasOwnProperty.call(node.inputs, 'length')) node.inputs.length = frameCount;
+          if (Object.prototype.hasOwnProperty.call(node.inputs, 'frame_count')) node.inputs.frame_count = frameCount;
+          if (Object.prototype.hasOwnProperty.call(node.inputs, 'num_frames')) node.inputs.num_frames = frameCount;
+          if (Object.prototype.hasOwnProperty.call(node.inputs, 'width')) node.inputs.width = Number(parameters.width) || node.inputs.width;
+          if (Object.prototype.hasOwnProperty.call(node.inputs, 'height')) node.inputs.height = Number(parameters.height) || node.inputs.height;
+        }
+        if (/VHS_VideoCombine|SaveAnimatedWEBP|SaveAnimatedPNG/i.test(cls)) {
+          if (Object.prototype.hasOwnProperty.call(node.inputs, 'frame_rate')) node.inputs.frame_rate = outFps;
+          if (Object.prototype.hasOwnProperty.call(node.inputs, 'fps')) node.inputs.fps = outFps;
+        }
+      }
+      console.log(`[Wan 2.1] job frames=${frameCount} fps=${outFps} size=${parameters.width}x${parameters.height} duration_sec=${parameters.duration_sec} envelope=${parameters.__wanEnvelope || 'n/a'}`);
+    }
 
     if (workflowId === 'flux_lite_image') {
       const promptNode = textImageAudit?.promptNodeId ? workflow[textImageAudit.promptNodeId] : null;
@@ -5790,30 +5907,65 @@ app.post("/api/audit", async (_req, res) => {
 
 async function normalizeWanVideoOutput(job: any, output: any) {
   if (job?.workflowId !== 'wan_video' || !output?.file?.filename) return output;
-  const targetDuration = Math.max(0.25, Math.min(3, Number(job.parameters?.duration_sec) || 1));
+  const params = job.parameters || {};
+  const fps = Math.max(1, Number(params.fps) || 16);
+  const frames = Math.max(0, Number(params.frames) || 0);
+  // Prefer explicit duration_sec; else derive from frames/fps. NEVER default to 1s when frames request longer.
+  let targetDuration = Number(params.duration_sec);
+  if (!Number.isFinite(targetDuration) || targetDuration <= 0) {
+    targetDuration = frames >= 9 ? frames / fps : 0;
+  }
+  // Architectural max ~5s; do not hard-cap at 1s or 3s.
+  targetDuration = Math.max(0.25, Math.min(5, targetDuration || (frames >= 9 ? frames / fps : 1)));
   const ext = path.extname(String(output.file.filename)).toLowerCase();
   if (!['.mp4', '.webm', '.mkv', '.mov'].includes(ext)) return output;
 
   const tempInput = path.join(os.tmpdir(), `gina-wan-input-${job.id}${ext}`);
-  const safeName = `wan21_${job.id.slice(0, 8)}_exact_${targetDuration.toFixed(2).replace('.', '_')}s${ext}`;
-  const target = path.join(GIF_STUDIO_MEDIA_ROOT, safeName);
+  const safeName = `wan21_${job.id.slice(0, 8)}_${Math.round(targetDuration * 100) / 100}s${ext}`.replace(/\./g, '_').replace('_s', 's');
+  const target = path.join(GIF_STUDIO_MEDIA_ROOT, `wan21_${job.id.slice(0, 8)}_${targetDuration.toFixed(2).replace('.', 'p')}s${ext}`);
   try {
     const sourceUrl = /^https?:\/\//i.test(String(output.url || '')) ? String(output.url) : `${COMFY_URL}${String(output.url || '')}`;
     const source = await fetch(sourceUrl, { signal: AbortSignal.timeout(20000) });
     if (!source.ok) throw new Error(`Unable to read Wan video output (HTTP ${source.status}).`);
     await fs.writeFile(tempInput, Buffer.from(await source.arrayBuffer()));
     await fs.mkdir(GIF_STUDIO_MEDIA_ROOT, { recursive:true });
-    await execFileAsync('ffmpeg', [
-      '-y', '-i', tempInput, '-t', targetDuration.toFixed(3),
-      '-c', 'copy', '-avoid_negative_ts', 'make_zero', target
-    ], { windowsHide:true, timeout:120000, maxBuffer:2*1024*1024 });
+
+    // Probe source duration — only trim if longer than target; never silently force 1s.
+    let sourceDuration = 0;
+    try {
+      const probe = await execFileAsync('ffprobe', [
+        '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', tempInput
+      ], { windowsHide:true, timeout:30000, maxBuffer:1024*1024 });
+      sourceDuration = Math.max(0, parseFloat(String(probe.stdout || '').trim()) || 0);
+    } catch { /* probe optional */ }
+
+    console.log(`[Wan Video] normalize job=${job.id.slice(0,8)} frames=${frames} fps=${fps} duration_sec=${params.duration_sec} target=${targetDuration}s source=${sourceDuration || '?'}s`);
+
+    // If source is already within 5% of target (or shorter), keep original — do not re-encode/trim to 1s.
+    if (sourceDuration > 0 && sourceDuration <= targetDuration * 1.05) {
+      return {
+        ...output,
+        normalizedDurationSeconds: sourceDuration,
+        requestedDurationSeconds: targetDuration,
+        frameCount: frames || null
+      };
+    }
+
+    const ffmpegArgs = ['-y', '-i', tempInput];
+    if (sourceDuration > targetDuration * 1.05) {
+      ffmpegArgs.push('-t', targetDuration.toFixed(3));
+    }
+    ffmpegArgs.push('-c', 'copy', '-avoid_negative_ts', 'make_zero', target);
+    await execFileAsync('ffmpeg', ffmpegArgs, { windowsHide:true, timeout:120000, maxBuffer:2*1024*1024 });
     const stat = await fs.stat(target);
     if (!stat.isFile() || stat.size < 1000) throw new Error('Wan duration normalization produced an invalid output file.');
     return {
       ...output,
-      url: `/api/gif-studio/media/${encodeURIComponent(safeName)}`,
-      file: { ...output.file, filename:safeName, subfolder:'', type:'output' },
-      normalizedDurationSeconds: targetDuration
+      url: `/api/gif-studio/media/${encodeURIComponent(path.basename(target))}`,
+      file: { ...output.file, filename: path.basename(target), subfolder:'', type:'output' },
+      normalizedDurationSeconds: targetDuration,
+      requestedDurationSeconds: targetDuration,
+      frameCount: frames || null
     };
   } catch (error:any) {
     console.warn(`[Wan Video] Exact-duration normalization skipped for ${job.id}: ${error?.message || error}`);
@@ -6226,17 +6378,33 @@ app.get("/api/music/status", async (_req, res) => {
   }
 });
 
+// Cache ACE /health so UI polls (every ~1–2s) do not flood the ACE terminal with access logs.
+let aceStepHealthCache: { at: number; body: any } | null = null;
+const ACE_HEALTH_CACHE_MS = Math.max(3000, Number(process.env.ACESTEP_HEALTH_CACHE_MS || 8000));
+
 app.get("/api/music/ace-step/status", async (_req, res) => {
   const baseUrl = process.env.ACESTEP_API_URL || "http://127.0.0.1:8101";
+  if (aceStepHealthCache && Date.now() - aceStepHealthCache.at < ACE_HEALTH_CACHE_MS) {
+    return res.json(aceStepHealthCache.body);
+  }
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);
     const response = await fetch(`${baseUrl}/health`, { signal: controller.signal });
     clearTimeout(timer);
     const payload: any = await response.json().catch(() => ({}));
-    res.json({ ok: response.ok && (payload?.code === 200 || payload?.data?.status === "ok"), baseUrl, detail: payload?.error || null });
+    const body = {
+      ok: response.ok && (payload?.code === 200 || payload?.data?.status === "ok"),
+      baseUrl,
+      detail: payload?.error || null,
+      cachedMs: ACE_HEALTH_CACHE_MS
+    };
+    aceStepHealthCache = { at: Date.now(), body };
+    res.json(body);
   } catch (error: any) {
-    res.json({ ok: false, baseUrl, detail: error?.message || "ACE-Step API is not reachable" });
+    const body = { ok: false, baseUrl, detail: error?.message || "ACE-Step API is not reachable", cachedMs: ACE_HEALTH_CACHE_MS };
+    aceStepHealthCache = { at: Date.now(), body };
+    res.json(body);
   }
 });
 

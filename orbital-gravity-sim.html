@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Orbital Gravity · Cyberpunk</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0f172a; }
+    canvas { display: block; width: 100%; height: 100%; }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #334155, #64748b);
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #22d3ee;
+      box-shadow: 0 0 12px #22d3ee;
+      cursor: pointer;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border: none;
+      border-radius: 50%;
+      background: #22d3ee;
+      box-shadow: 0 0 12px #22d3ee;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100">
+  <canvas id="c"></canvas>
+
+  <div id="panel" class="fixed top-4 left-4 z-20 bg-slate-900/80 backdrop-blur-md border border-slate-700/50 rounded-xl p-5 shadow-2xl w-72 select-none">
+    <div class="mb-4">
+      <div class="text-cyan-300 font-bold tracking-widest text-xs uppercase">Orbital Core</div>
+      <div class="text-slate-500 text-[10px] mt-0.5 font-mono">click canvas to spawn · cyberpunk gravity</div>
+    </div>
+
+    <label class="block mb-4">
+      <div class="flex justify-between items-center mb-1.5">
+        <span class="text-slate-400 font-semibold uppercase text-xs tracking-wider">Central Gravity</span>
+        <span id="gVal" class="text-cyan-300 font-mono text-xs">10.0</span>
+      </div>
+      <input id="gravity" type="range" min="0" max="25" step="0.5" value="10" />
+    </label>
+
+    <label class="block mb-4">
+      <div class="flex justify-between items-center mb-1.5">
+        <span class="text-slate-400 font-semibold uppercase text-xs tracking-wider">Bounce Elasticity</span>
+        <span id="bVal" class="text-fuchsia-300 font-mono text-xs">0.75</span>
+      </div>
+      <input id="bounce" type="range" min="0" max="1" step="0.05" value="0.75" />
+    </label>
+
+    <label class="block mb-5">
+      <div class="flex justify-between items-center mb-1.5">
+        <span class="text-slate-400 font-semibold uppercase text-xs tracking-wider">Time Rate</span>
+        <span id="tVal" class="text-amber-300 font-mono text-xs">1.0</span>
+      </div>
+      <input id="timeRate" type="range" min="0" max="2" step="0.1" value="1" />
+    </label>
+
+    <div class="flex items-center justify-between text-[10px] font-mono text-slate-500 mb-3">
+      <span>Objects: <span id="count" class="text-emerald-300">0</span></span>
+      <span id="fps" class="text-slate-400">60 fps</span>
+    </div>
+
+    <button id="clearBtn" type="button"
+      class="w-full rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 py-2 text-xs font-bold uppercase tracking-wider text-fuchsia-300 shadow-[0_0_20px_rgba(236,72,153,0.25)] hover:bg-fuchsia-500/20 hover:border-fuchsia-400/60 transition">
+      Clear All Objects
+    </button>
+  </div>
+
+  <script>
+(function () {
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var panel = document.getElementById('panel');
+  var gravityEl = document.getElementById('gravity');
+  var bounceEl = document.getElementById('bounce');
+  var timeEl = document.getElementById('timeRate');
+  var gVal = document.getElementById('gVal');
+  var bVal = document.getElementById('bVal');
+  var tVal = document.getElementById('tVal');
+  var countEl = document.getElementById('count');
+  var fpsEl = document.getElementById('fps');
+  var clearBtn = document.getElementById('clearBtn');
+
+  var cx = 0, cy = 0, dpr = 1;
+  var bodies = [];
+  var NEON = ['#2de2e6', '#39ff14', '#e8ff3c', '#b967ff', '#ff6b35'];
+  var lastTs = 0;
+  var fpsSmooth = 60;
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(window.innerWidth * dpr);
+    canvas.height = Math.floor(window.innerHeight * dpr);
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx = window.innerWidth * 0.5;
+    cy = window.innerHeight * 0.5;
+  }
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+
+  function spawn(x, y) {
+    var color = NEON[(Math.random() * NEON.length) | 0];
+    var angle = rand(0, Math.PI * 2);
+    var speed = rand(40, 160);
+    bodies.push({
+      x: x,
+      y: y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      r: rand(3, 7),
+      color: color
+    });
+    countEl.textContent = String(bodies.length);
+  }
+
+  function inPanel(clientX, clientY) {
+    var rect = panel.getBoundingClientRect();
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  }
+
+  canvas.addEventListener('pointerdown', function (e) {
+    if (inPanel(e.clientX, e.clientY)) return;
+    spawn(e.clientX, e.clientY);
+  }, { passive: true });
+
+  clearBtn.addEventListener('click', function () {
+    bodies = [];
+    countEl.textContent = '0';
+  });
+
+  gravityEl.addEventListener('input', function () { gVal.textContent = parseFloat(gravityEl.value).toFixed(1); });
+  bounceEl.addEventListener('input', function () { bVal.textContent = parseFloat(bounceEl.value).toFixed(2); });
+  timeEl.addEventListener('input', function () { tVal.textContent = parseFloat(timeEl.value).toFixed(1); });
+
+  window.addEventListener('resize', resize, { passive: true });
+  resize();
+
+  // seed a few bodies
+  for (var i = 0; i < 12; i++) {
+    spawn(cx + rand(-220, 220), cy + rand(-160, 160));
+  }
+
+  function drawCore() {
+    ctx.save();
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = '#ff2a5f';
+    ctx.fillStyle = '#ff2a5f';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 10, 0, Math.PI * 2);
+    ctx.fill();
+    // outer halo
+    var g = ctx.createRadialGradient(cx, cy, 4, cx, cy, 42);
+    g.addColorStop(0, 'rgba(255,42,95,0.55)');
+    g.addColorStop(1, 'rgba(255,42,95,0)');
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 42, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function step(dt) {
+    var G = parseFloat(gravityEl.value);
+    var bounce = parseFloat(bounceEl.value);
+    var rate = parseFloat(timeEl.value);
+    var t = dt * rate;
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+
+    for (var i = 0; i < bodies.length; i++) {
+      var b = bodies[i];
+      var dx = cx - b.x;
+      var dy = cy - b.y;
+      var dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      // central pull ~ G / dist (softened)
+      var soft = Math.max(dist, 28);
+      var acc = (G * 1200) / (soft * soft);
+      b.vx += (dx / dist) * acc * t;
+      b.vy += (dy / dist) * acc * t;
+      b.x += b.vx * t;
+      b.y += b.vy * t;
+
+      // walls
+      if (b.x - b.r < 0) { b.x = b.r; b.vx *= -bounce; }
+      if (b.x + b.r > w) { b.x = w - b.r; b.vx *= -bounce; }
+      if (b.y - b.r < 0) { b.y = b.r; b.vy *= -bounce; }
+      if (b.y + b.r > h) { b.y = h - b.r; b.vy *= -bounce; }
+    }
+  }
+
+  function drawBodies() {
+    for (var i = 0; i < bodies.length; i++) {
+      var b = bodies[i];
+      ctx.save();
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = b.color;
+      ctx.fillStyle = b.color;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function frame(ts) {
+    if (!lastTs) lastTs = ts;
+    var dt = Math.min(0.033, (ts - lastTs) / 1000);
+    lastTs = ts;
+    var fps = dt > 0 ? 1 / dt : 60;
+    fpsSmooth = fpsSmooth * 0.9 + fps * 0.1;
+    fpsEl.textContent = Math.round(fpsSmooth) + ' fps';
+
+    // trail fade — do NOT clearRect fully
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.2)';
+    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+    step(dt);
+    drawCore();
+    drawBodies();
+    requestAnimationFrame(frame);
+  }
+
+  // initial paint
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+  requestAnimationFrame(frame);
+})();
+  </script>
+</body>
+</html>
