@@ -66,8 +66,6 @@ jobs:
                   "  if (workflowId === 'flux_lite_image') {\n    const llmStatus = await localLlm.getStatus();\n    if (llmStatus.engine !== 'qwen' || !llmStatus.multimodal) {\n      return res.status(409).json({ ok:false, error:'FLUX.1 Lite high-precision mode requires Qwen 2.5-VL Vision Mode with mmproj-F16.', workflowId, llmEngine:llmStatus.engine, multimodal:llmStatus.multimodal });\n    }\n  }\n\n",
                   "")
           replace("server.ts", "FLUX.1 Lite high-precision text mode cannot use Wan 2.1's UMT5 model", "FLUX.1 Dev text mode cannot use Wan 2.1's UMT5 model")
-          replace("server.ts", "flux_lite_image ? 'flux_lite'", "flux_lite_image ? 'flux_dev'")
-          replace("server.ts", ": 'flux_lite'));", ": 'flux_dev'));")
 
           replace("src/components/VRAMHistoryGraph.tsx", "FLUX Lite", "FLUX.1 Dev")
           replace("src/components/VRAMOomFrequencyChart.tsx", "flux_lite:", "flux_dev:")
