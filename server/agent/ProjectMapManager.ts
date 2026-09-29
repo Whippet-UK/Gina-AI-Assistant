@@ -40,8 +40,8 @@ export class ProjectMapManager {
         name: 'Image Studio (Create Studio)',
         category: 'Frontend',
         primaryFiles: ['src/components/PromptStudio.tsx', 'src/components/gina-image/GinaImageInput.tsx', 'src/components/gina-image/GinaImagePreview.tsx', 'src/components/gina-image/GinaImageSettings.tsx', 'src/components/gina-image/GinaInpaintCanvas.tsx'],
-        description: 'High-speed image generation with photorealism and high-precision lanes.',
-        engineBindings: ['Juggernaut-XL v9 (default)', 'FLUX.1 Lite GGUF (high-precision alternate)'],
+        description: 'High-speed image generation with photorealism and the FLUX.1 Dev Q4_K_M alternate lane.',
+        engineBindings: ['Juggernaut-XL v9 (default)', 'FLUX.1 Dev Q4_K_M GGUF (alternate image lane)'],
         relatedSurfaces: ['AIDA64 Studio', 'Prompt Studio', 'ComfyUI Engine Proxy']
       },
       {

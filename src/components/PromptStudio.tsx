@@ -317,8 +317,8 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
   const workflowModelLabel =
     /juggernaut/i.test(String(workflowModelValue))
       ? 'Juggernaut-XL v9 Photorealism'
-      : workflowModelValue === 'FLUX.1-lite-pure-Q4_0.gguf'
-      ? 'FLUX.1 Lite GGUF Q4_0'
+      : workflowModelValue === 'flux1-dev-Q4_K_M.gguf'
+      ? 'FLUX.1 Dev GGUF Q4_K_M'
       : String(workflowModelValue);
 
   // Active Output Detection
@@ -847,13 +847,13 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     // 8GB shared-GPU envelope. Only untouched settings are auto-adjusted.
     if (!manualImageSettings.current.performance) setPerformance('quality');
     if (!manualImageSettings.current.imageNumber) setImageNumber(1);
-    if (!manualImageSettings.current.steps) setSteps(highPrecisionText ? 4 : 24);
+    if (!manualImageSettings.current.steps) setSteps(highPrecisionText ? 25 : 24);
     if (!manualImageSettings.current.guidanceScale) setGuidanceScale(highPrecisionText ? 3.0 : 5.0);
     if (!manualImageSettings.current.sampler) setSampler('dpmpp_2m');
     if (!manualImageSettings.current.scheduler) setScheduler('karras');
     if (!manualImageSettings.current.denoise) setDenoise(referenceImage ? 0.70 : 1.0);
 
-    onAddLog('INFO', `Applied meticulous Qwen Vision reconstruction prompt and auto-tuned untouched image settings for ${highPrecisionText ? 'FLUX.1 Lite' : 'Juggernaut-XL v9'} quality.`);
+    onAddLog('INFO', `Applied meticulous Qwen Vision reconstruction prompt and auto-tuned untouched image settings for ${highPrecisionText ? 'FLUX.1 Dev' : 'Juggernaut-XL v9'} quality.`);
   };
 
   return (

@@ -725,3 +725,8 @@ Rules:
 - `Start_Factory.bat` runs the audio dependency audit inside the active `g_env`, eliminating the recurring package/interpreter mismatch.
 - Bark now enables CPU offload alongside small-model mode for the 8 GB VRAM target.
 - Voice SQLite probes the actual file and falls back to `.gina/data/audio` if the primary database cannot be opened.
+## 2026-09-29 — FLUX.1 Dev Q4_K_M Image-Lane Migration
+- Target files: /server.ts, /server/capabilities/CapabilityManager.ts, /src/components/PromptStudio.tsx, /src/components/gina-image/GinaImageSettings.tsx, /src/components/gina-image/GinaImagePreview.tsx, /src/components/VRAMHistoryGraph.tsx, /src/components/VRAMOomFrequencyChart.tsx, /server/comfy/WorkflowRegistry.ts, /server/agent/ProjectMapManager.ts.
+- Exact policy change: FLUX image generation now uses flux1-dev-Q4_K_M.gguf + clip_l.safetensors + t5xxl_fp8_e4m3fn.safetensors; the obsolete FLUX.1 Lite/UMT5 identity and the Qwen 2.5-VL mmproj-F16 hard gate were removed from the active FLUX path.
+- Compatibility: the existing flux_lite_image workflow ID remains as a legacy technical identifier so existing local workflow files do not break; it no longer represents a FLUX.1 Lite model.
+- UI: model/status copy now reports FLUX.1 Dev Q4_K_M and the model selector sends flux1-dev-Q4_K_M.gguf.

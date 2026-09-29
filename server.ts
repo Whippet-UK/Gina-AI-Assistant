@@ -2576,13 +2576,13 @@ app.post("/api/llm/cancel", async (_req, res) => {
 
 
 function imageGenerationPolicy(engine: 'qwen' | 'qwen-coder' | 'qwen3.5', multimodal: boolean, hasReference: boolean, highPrecision = false, hasMask = false) {
-  if (engine === 'qwen-coder') throw new Error('Qwen Coder is text-only and cannot route image generation. Switch to Qwen 2.5-VL Vision or Qwen3.5 Vision.');
-  if (!multimodal) throw new Error('Qwen 2.5-VL Vision Mode requires its mmproj projector.');
+  if (engine === 'qwen-coder') throw new Error('Qwen Coder is text-only and cannot route image generation. Switch to a vision-capable image prompt engine.');
   if (highPrecision) return {
     workflowId: 'flux_lite_image',
-    generationModel: 'FLUX.1 Lite GGUF + UMT5 XXL',
-    lane: 'qwen-vision-flux-lite' as const
+    generationModel: 'FLUX.1 Dev GGUF Q4_K_M + T5-XXL FP8',
+    lane: 'flux-dev' as const
   };
+  if (!multimodal) throw new Error('The selected local vision engine requires its mmproj projector for Juggernaut image routing.');
   return {
     workflowId: hasMask ? 'sdxl_juggernaut_inpaint' : hasReference ? 'sdxl_juggernaut_reference' : 'sdxl_juggernaut',
     generationModel: 'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors (SDXL)',
@@ -3456,9 +3456,9 @@ const AVAILABLE_PREWARM_MODELS: PreWarmModelDef[] = [
     description: 'Default local vision/text assistant. This is an LLM sidecar, not a ComfyUI checkpoint; the pre-warm entry arms the Qwen target without forcing it resident alongside Juggernaut on the 8GB GPU.'
   },
   {
-    id: 'flux_lite', name: 'FLUX.1 Dev Q4_K_M', filename: FLUX_GGUF,
+    id: 'flux_dev', name: 'FLUX.1 Dev Q4_K_M', filename: FLUX_GGUF,
     workflowId: 'flux_lite_image', type: 'image', vramFootprintMB: 5900,
-    description: 'Optional high-precision image lane using FLUX.1 Lite GGUF with UMT5 XXL.'
+    description: 'FLUX.1 Dev Q4_K_M image lane using the genuine FLUX T5-XXL text encoder.'
   },
   {
     id: 'wan_video_21', name: 'Wan 2.1 1.3B FP8', filename: 'Wan2_1-T2V-1_3B_fp8_e4m3fn.safetensors',
@@ -3715,7 +3715,7 @@ app.get("/api/diagnostics/oom-frequency", (req, res) => {
     "Hunyuan Video (7.1GB base) accounts for high memory pressure: keep direct generation on the Wan 2.1 1.3B FP8 safe lane for 8GB RTX 3070 Ti hardware.",
     "VAEDecode stage accounts for video memory spikes: Cap frame batches to <=73 frames (3s @ 24fps) or use tiled VAE decoding.",
     "Bark Small & XTTS v2 operate safely via SUNO_OFFLOAD_CPU and CPU fallback to protect the 7372 MB VRAM cage.",
-    "FLUX.1 Lite GGUF & SDXL Juggernaut-XL: auto-dispatch /free ensures mutual cache eviction between image, video, LLM, and audio passes."
+    "FLUX.1 Dev GGUF & SDXL Juggernaut-XL: auto-dispatch /free ensures mutual cache eviction between image, video, LLM, and audio passes."
   ];
 
   res.json({
@@ -4710,7 +4710,7 @@ function ffmpegTextArgs(text: string, x: number, y: number, fontSize: number, st
   return `drawtext=fontfile='${esc(fontFile)}':textfile='${esc(textFile)}':fontcolor=white:fontsize=${safeSize}:bordercolor=black:borderw=${safeStroke}:x=(w*${safeX/100})-text_w/2:y=(h*${safeY/100})-text_h/2`;
 }
 
-async function sanitizeLocalFluxLiteWorkflow() {
+async function sanitizeLocalFluxDevWorkflow() {
   const dirs = [LOCAL_WORKFLOW_DIR, GINA_WORKFLOW_DIR].filter(Boolean);
   for (const dir of dirs) {
     const filePath = path.join(dir, 'flux_lite_image.json');
@@ -4720,7 +4720,7 @@ async function sanitizeLocalFluxLiteWorkflow() {
         if (content.includes('umt5_xxl_fp8_e4m3fn_scaled.safetensors')) {
           const sanitized = content.replace(/umt5_xxl_fp8_e4m3fn_scaled\.safetensors/g, 't5xxl_fp8_e4m3fn.safetensors');
           await fs.writeFile(filePath, sanitized, 'utf8');
-          console.log(`[Workflow Healing] Reconciled FLUX DualCLIPLoader text encoder to t5xxl_fp8_e4m3fn.safetensors in ${filePath}`);
+          console.log(`[Workflow Healing] Reconciled FLUX.1 Dev DualCLIPLoader text encoder to t5xxl_fp8_e4m3fn.safetensors in ${filePath}`);
         }
       }
     } catch (e: any) {
@@ -5424,13 +5424,6 @@ app.post("/api/jobs", async (req, res) => {
   let parameters = req.body?.parameters || {};
   if (!workflowId) return res.status(400).json({ error: "workflowId is required" });
 
-  if (workflowId === 'flux_lite_image') {
-    const llmStatus = await localLlm.getStatus();
-    if (llmStatus.engine !== 'qwen' || !llmStatus.multimodal) {
-      return res.status(409).json({ ok:false, error:'FLUX.1 Lite high-precision mode requires Qwen 2.5-VL Vision Mode with mmproj-F16.', workflowId, llmEngine:llmStatus.engine, multimodal:llmStatus.multimodal });
-    }
-  }
-
   if (workflowId === 'gif_story') {
     let job: any;
     try {
@@ -5594,7 +5587,7 @@ app.post("/api/jobs", async (req, res) => {
       // Check for incompatible UMT5 text encoder in FLUX DualCLIPLoader
       const clipNode = Object.values(workflow).find((n: any) => n?.class_type === 'DualCLIPLoader') as any;
       if (clipNode && /umt5/i.test(String(clipNode.inputs?.clip_name2 || ''))) {
-        throw new Error("FLUX.1 Lite high-precision text mode cannot use Wan 2.1's UMT5 model ('umt5_xxl_fp8_e4m3fn_scaled.safetensors', vocab size 256,384). A genuine FLUX T5-XXL text encoder (vocab size 32,128, e.g. 't5xxl_fp8_e4m3fn.safetensors' or 't5xxl_fp8_e4m3fn_scaled.safetensors') is required in ComfyUI/models/clip/.");
+        throw new Error("FLUX.1 Dev text mode cannot use Wan 2.1's UMT5 model ('umt5_xxl_fp8_e4m3fn_scaled.safetensors', vocab size 256,384). A genuine FLUX T5-XXL text encoder (vocab size 32,128, e.g. 't5xxl_fp8_e4m3fn.safetensors' or 't5xxl_fp8_e4m3fn_scaled.safetensors') is required in ComfyUI/models/clip/.");
       }
 
       jobManager.update(job.id, { parameters: { ...job.parameters, __generationAudit: { ...textImageAudit, actualPrompt: actualPrompt.slice(0, 2000), mode: 'text-to-image', steps: workflow['8']?.inputs?.steps, sampler: workflow['7']?.inputs?.sampler_name, scheduler: workflow['8']?.inputs?.scheduler, width: workflow['9']?.inputs?.width, height: workflow['9']?.inputs?.height } } });
@@ -6817,7 +6810,7 @@ async function startServer() {
     });
   }
 
-  await sanitizeLocalFluxLiteWorkflow();
+  await sanitizeLocalFluxDevWorkflow();
   await workflowRegistry.scan();
   comfyWebSocket.start();
   startComfyWatchdog();
