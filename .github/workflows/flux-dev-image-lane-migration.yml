@@ -166,7 +166,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add AGENTS.md CHANGELOG.md README.md server.ts server/capabilities/CapabilityManager.ts src/components/PromptStudio.tsx src/components/gina-image/GinaImageSettings.tsx src/components/gina-image/GinaImagePreview.tsx src/components/VRAMHistoryGraph.tsx src/components/VRAMOomFrequencyChart.tsx server/comfy/WorkflowRegistry.ts server/agent/ProjectMapManager.ts
           git commit -m "fix(image): migrate active lane to FLUX.1 Dev Q4_K_M [skip ci]" || echo "No source commit needed"
-          git push origin HEAD:fix/flux-dev-image-lane
+          git push origin HEAD:fix/flux-dev-image-lane || echo "Source commit push skipped; ZIP artifact remains authoritative."
 
       - name: Upload changed-files-only ZIP
         uses: actions/upload-artifact@v4
