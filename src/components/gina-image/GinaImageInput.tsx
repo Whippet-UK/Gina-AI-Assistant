@@ -43,6 +43,7 @@ interface GinaImageInputProps {
   inpaintMask?: { filename: string; previewUrl: string } | null;
   onSetInpaintMask?: (mask: { filename: string; previewUrl: string } | null) => void;
   onTriggerInpaint?: (additionalPrompt?: string) => void;
+  visionEngine?: 'qwen3.5' | 'qwen';
 }
 
 export const GinaImageInput: React.FC<GinaImageInputProps> = ({
@@ -66,7 +67,8 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
   onApplyDescribedPrompt,
   inpaintMask,
   onSetInpaintMask,
-  onTriggerInpaint
+  onTriggerInpaint,
+  visionEngine = 'qwen3.5'
 }) => {
   // Smarter tab tracking array layer
   const [activeTab, setActiveTab] = useState<InputImageTab>('image_prompt');
@@ -102,6 +104,10 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
   
   // Upscale / Variation state
   const [variationMethod, setVariationMethod] = useState<'disabled' | 'subtle' | 'strong' | 'upscale_15' | 'upscale_2' | 'upscale_fast_2'>('disabled');
+  // Gina-AI-Assistant-style order of processing for enhance/upscale relative to Image Prompt mixture
+  const [orderOfProcessing, setOrderOfProcessing] = useState<'before_first' | 'after_last'>('before_first');
+  // Advanced panel under Image Prompt (weight/stop/mode per slot)
+  const [imagePromptAdvanced, setImagePromptAdvanced] = useState(false);
 
   // Inpaint / Outpaint state
   const [inpaintMethod, setInpaintMethod] = useState<'default' | 'improve_detail' | 'modify_content'>('default');
@@ -296,7 +302,7 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
       const response = await fetch('/api/llm/describe-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: referenceImage.filename, contentType: describeContentType })
+        body: JSON.stringify({ filename: referenceImage.filename, contentType: describeContentType, engine: visionEngine })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.ok || !data.description) {
@@ -314,7 +320,7 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
 
   return (
     <div className="bg-[#121722] border border-[#2b3347] rounded-xl overflow-hidden shadow-2xl transition-all">
-      {/* Fooocus-style Sub-tabs header */}
+      {/* Gina-AI-Assistant-style Sub-tabs header */}
       <div className="flex border-b border-[#21262d] bg-[#0d111a] px-2 pt-1 gap-1 overflow-x-auto">
         <button
           type="button"
@@ -445,25 +451,26 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
               </div>
             )}
 
-            {/* Variation & Upscale Radios */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-              {[
-                { id: 'disabled', label: 'Disabled', desc: 'Standard generation' },
-                { id: 'subtle', label: 'Vary (Subtle)', desc: 'Small adjustments, preserves character' },
-                { id: 'strong', label: 'Vary (Strong)', desc: 'Re-imagines prompt layout and textures' },
-                { id: 'upscale_15', label: 'Upscale (1.5x)', desc: 'Crisp enlargement with detail injection' },
-                { id: 'upscale_2', label: 'Upscale (2x)', desc: 'Ultra-high resolution doubling' },
-                { id: 'upscale_fast_2', label: 'Upscale (Fast 2x)', desc: 'Fast bilinear + detail pass' }
-              ].map((m) => (
-                <label
-                  key={m.id}
-                  className={`p-2.5 rounded-lg border cursor-pointer transition-all flex flex-col justify-between ${
-                    variationMethod === m.id
-                      ? 'border-blue-500 bg-blue-500/10 text-white shadow'
-                      : 'border-[#262d3e] bg-[#0c101a] text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
+            {/* Variation & Upscale Radios — Gina-AI-Assistant layout */}
+            <div>
+              <div className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider mb-2">Upscale or Variation:</div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                {[
+                  { id: 'disabled', label: 'Disabled' },
+                  { id: 'subtle', label: 'Vary (Subtle)' },
+                  { id: 'strong', label: 'Vary (Strong)' },
+                  { id: 'upscale_15', label: 'Upscale (1.5x)' },
+                  { id: 'upscale_2', label: 'Upscale (2x)' },
+                  { id: 'upscale_fast_2', label: 'Upscale (Fast 2x)' }
+                ].map((m) => (
+                  <label
+                    key={m.id}
+                    className={`px-3 py-2 rounded-lg border cursor-pointer transition-all flex items-center gap-2 ${
+                      variationMethod === m.id
+                        ? 'border-blue-500 bg-blue-500/15 text-white shadow'
+                        : 'border-[#262d3e] bg-[#0c101a] text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
                     <input
                       type="radio"
                       name="variation_method"
@@ -479,123 +486,183 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
                       }}
                       className="accent-blue-500"
                     />
-                    <span className="font-bold text-xs">{m.label}</span>
-                  </div>
-                  <span className="text-[10px] text-zinc-500 mt-1 leading-tight">{m.desc}</span>
-                </label>
-              ))}
+                    <span className="font-semibold text-xs">{m.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Order of Processing — Before First / After Last Enhancement */}
+            <div className="pt-2 border-t border-[#1e2433]">
+              <div className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider mb-1">Order of Processing</div>
+              <p className="text-[10px] text-zinc-500 mb-2">
+                Use before to enhance small details and after to enhance large areas.
+              </p>
+              <div className="flex flex-wrap gap-2 text-xs">
+                {[
+                  { id: 'before_first', label: 'Before First Enhancement' },
+                  { id: 'after_last', label: 'After Last Enhancement' }
+                ].map((o) => (
+                  <label
+                    key={o.id}
+                    className={`px-3 py-2 rounded-lg border cursor-pointer transition-all flex items-center gap-2 ${
+                      orderOfProcessing === o.id
+                        ? 'border-blue-500 bg-blue-500/15 text-white shadow'
+                        : 'border-[#262d3e] bg-[#0c101a] text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="order_of_processing"
+                      value={o.id}
+                      checked={orderOfProcessing === o.id}
+                      onChange={() => setOrderOfProcessing(o.id as 'before_first' | 'after_last')}
+                      className="accent-blue-500"
+                    />
+                    <span className="font-semibold text-xs">{o.label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
         )}
-        {/* TAB 2: Image Prompt (4 Slots with ImagePrompt, FaceSwap, PyraCanny, CPDS) */}
+        {/* TAB 2: Image Prompt — Gina-AI-Assistant-style 2×2 drop zones (Image Mixture Engine) */}
         {activeTab === 'image_prompt' && (
-          <div className="space-y-4">
-            {/* Slot selector: Image 1, Image 2, Image 3, Image 4 */}
-            <div className="flex items-center justify-between gap-2 border-b border-[#21262d] pb-2">
-              <div className="flex items-center gap-1">
-                {[1, 2, 3, 4].map((slotId) => (
-                  <button
-                    key={slotId}
-                    type="button"
-                    onClick={() => setActiveSlot(slotId)}
-                    className={`px-3 py-1 rounded-md text-xs font-mono font-bold transition-all ${
-                      activeSlot === slotId
-                        ? 'bg-blue-600 text-white shadow'
-                        : 'bg-[#182030] text-zinc-400 hover:text-white border border-[#2b354d]'
-                    }`}
-                  >
-                    Image {slotId}
-                    {slotId === 1 && referenceImage && <span className="ml-1 text-emerald-300">●</span>}
-                  </button>
-                ))}
-              </div>
-
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] text-zinc-400">
+                Drop up to 4 reference images. Slot 1 is the primary identity/style anchor so edits (e.g. &quot;add sunglasses&quot;) stay on the same subject.
+              </p>
               {activeOutputUrl && (
                 <button
                   type="button"
                   onClick={onUseActiveOutput}
-                  className="text-blue-400 hover:text-blue-300 font-mono text-[10px] underline flex items-center gap-1"
+                  className="text-blue-400 hover:text-blue-300 font-mono text-[10px] underline shrink-0"
                 >
                   Use Active Output
                 </button>
               )}
             </div>
 
-            {/* Active Slot Configuration */}
-            {activeSlot === 1 ? (
-              <div>
-                {!referenceImage ? (
+            <div className="grid grid-cols-2 gap-3">
+              {slots.map((slot, idx) => {
+                const isPrimary = idx === 0;
+                const displayImg = isPrimary ? (referenceImage || localImageBackup || slot.image) : slot.image;
+                return (
                   <div
+                    key={slot.id}
+                    className={`relative rounded-xl border min-h-[140px] flex flex-col items-center justify-center transition-all ${
+                      displayImg
+                        ? 'border-[#38415c] bg-[#0a0e17]'
+                        : 'border-dashed border-[#2d3548] bg-[#0d121c] hover:border-blue-500/50 cursor-pointer'
+                    }`}
                     onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                     onDragLeave={() => setDragOver(false)}
-                    onDrop={handleDrop}
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all ${
-                      dragOver ? 'border-blue-500 bg-blue-500/10' : 'border-[#2d3548] hover:border-blue-500/50 bg-[#0a0e17]'
-                    }`}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragOver(false);
+                      const file = e.dataTransfer.files?.[0];
+                      if (!file) return;
+                      setActiveSlot(slot.id);
+                      void onUploadImage(file);
+                    }}
+                    onClick={() => {
+                      setActiveSlot(slot.id);
+                      if (!displayImg) fileInputRef.current?.click();
+                    }}
                   >
-                    <Upload className="w-5 h-5 mx-auto text-zinc-500 mb-1.5" />
-                    <div className="text-xs font-bold text-zinc-200">
-                      {uploading ? 'Uploading to ComfyUI…' : 'Drop Image 1 Here or Click to Upload'}
-                    </div>
-                    <div className="text-[10px] text-zinc-500 mt-0.5 font-mono">
-                      PNG · JPG · WEBP · BMP · GIF · 12 MB MAX
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-[#0a0e17] rounded-xl border border-[#282f42] p-3 flex items-center gap-3">
-                    <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-[#38415c] shrink-0 bg-black">
-                      <img src={referenceImage.previewUrl} alt="Reference Preview" className="w-full h-full object-cover" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-zinc-200 truncate font-mono">{referenceImage.name}</span>
-                        <button
-                          type="button"
-                          onClick={() => onSetReferenceImage(null)}
-                          className="p-1 text-zinc-500 hover:text-rose-400"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <div className="text-[10px] text-zinc-500 font-mono">
-                        {(referenceImage.bytes / 1024 / 1024).toFixed(2)} MB · ComfyUI: <span className="text-emerald-400">{referenceImage.filename}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 4 Fooocus Modes: ImagePrompt, FaceSwap, PyraCanny, CPDS */}
-                <div className="mt-3">
-                  <div className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider mb-1.5">Control Mode</div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {[
-                      { id: 'image_prompt', label: 'ImagePrompt', icon: <Sparkles className="w-3.5 h-3.5 text-blue-400" />, desc: 'Style & visual atmosphere' },
-                      { id: 'face_swap', label: 'FaceSwap', icon: <User className="w-3.5 h-3.5 text-emerald-400" />, desc: 'Facial likeness transfer' },
-                      { id: 'pyracanny', label: 'PyraCanny', icon: <Scissors className="w-3.5 h-3.5 text-purple-400" />, desc: 'Contour & edge structure' },
-                      { id: 'cpds', label: 'CPDS', icon: <Grid className="w-3.5 h-3.5 text-amber-400" />, desc: '3D depth & geometry' }
-                    ].map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => handleModeChange(m.id as InputImageMode)}
-                        className={`p-2 rounded-lg border text-left flex flex-col justify-between transition-all ${
-                          mode === m.id
-                            ? 'bg-blue-600/20 border-blue-500 text-white shadow'
-                            : 'bg-[#0d121c] border-[#22283a] text-zinc-400 hover:text-zinc-200'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 font-bold text-xs">
-                          {m.icon}
-                          <span>{m.label}</span>
+                    {displayImg ? (
+                      <>
+                        <img
+                          src={displayImg.previewUrl}
+                          alt={`Slot ${slot.id}`}
+                          className="absolute inset-0 w-full h-full object-cover rounded-xl opacity-90"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent rounded-xl" />
+                        <div className="relative z-10 w-full p-2 flex items-end justify-between mt-auto">
+                          <span className="text-[10px] font-mono text-white/90 truncate max-w-[70%]">
+                            {displayImg.name || `Image ${slot.id}`}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isPrimary) {
+                                onSetReferenceImage(null);
+                                setLocalImageBackup(null);
+                              }
+                              setSlots(prev => prev.map((s, i) => i === idx ? { ...s, image: null } : s));
+                            }}
+                            className="p-1 rounded bg-black/50 text-zinc-300 hover:text-rose-400"
+                            title="Clear slot"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                        <span className="text-[9px] text-zinc-500 mt-1">{m.desc}</span>
-                      </button>
-                    ))}
+                        {isPrimary && (
+                          <span className="absolute top-2 left-2 text-[9px] font-mono font-bold bg-emerald-600/80 text-white px-1.5 py-0.5 rounded">
+                            PRIMARY
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-center px-3 py-6 pointer-events-none">
+                        <div className="text-sm font-semibold text-zinc-300">Drop Image Here</div>
+                        <div className="text-[11px] text-zinc-500 my-0.5">- or -</div>
+                        <div className="text-sm font-semibold text-zinc-300">Click to Upload</div>
+                        {!isPrimary && (
+                          <div className="text-[9px] text-zinc-600 mt-2 font-mono">Slot {slot.id}</div>
+                        )}
+                      </div>
+                    )}
                   </div>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={imagePromptAdvanced}
+                  onChange={(e) => setImagePromptAdvanced(e.target.checked)}
+                  className="accent-blue-500 rounded"
+                />
+                <span className="text-xs text-zinc-300 font-medium">Advanced</span>
+              </label>
+            </div>
+
+            {imagePromptAdvanced && (
+              <div className="space-y-3 pt-2 border-t border-[#1e2433]">
+                <div className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider">
+                  Active slot: Image {activeSlot} — Control Mode
                 </div>
-                {/* Sliders: Image Weight & Stop At */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 pt-3 border-t border-[#1e2433]">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'image_prompt', label: 'ImagePrompt', icon: <Sparkles className="w-3.5 h-3.5 text-blue-400" />, desc: 'Style & atmosphere' },
+                    { id: 'face_swap', label: 'FaceSwap', icon: <User className="w-3.5 h-3.5 text-emerald-400" />, desc: 'Facial likeness' },
+                    { id: 'pyracanny', label: 'PyraCanny', icon: <Scissors className="w-3.5 h-3.5 text-purple-400" />, desc: 'Edge structure' },
+                    { id: 'cpds', label: 'CPDS', icon: <Grid className="w-3.5 h-3.5 text-amber-400" />, desc: 'Depth & geometry' }
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => handleModeChange(m.id as InputImageMode)}
+                      className={`p-2 rounded-lg border text-left flex flex-col transition-all ${
+                        mode === m.id
+                          ? 'bg-blue-600/20 border-blue-500 text-white shadow'
+                          : 'bg-[#0d121c] border-[#22283a] text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-xs">
+                        {m.icon}
+                        <span>{m.label}</span>
+                      </div>
+                      <span className="text-[9px] text-zinc-500 mt-1">{m.desc}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400 mb-1">
                       <span>Image Weight:</span>
@@ -611,7 +678,6 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
                       className="w-full accent-blue-500 h-1.5 bg-zinc-800 rounded-lg cursor-pointer"
                     />
                   </div>
-
                   <div>
                     <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400 mb-1">
                       <span>Stop At:</span>
@@ -629,21 +695,19 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
                   </div>
                 </div>
               </div>
-            ) : (
-              <div className="bg-[#0c101a] border border-[#21262d] rounded-xl p-6 text-center text-zinc-500 text-xs">
-                <div className="font-semibold text-zinc-300 mb-1">Image Slot {activeSlot}</div>
-                <p className="text-[11px] max-w-sm mx-auto">
-                  Slot 1 is your active primary reference. Additional multi-image slots can be uploaded for multi-control synthesis (ImagePrompt + FaceSwap combo).
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setActiveSlot(1)}
-                  className="mt-3 px-3 py-1.5 rounded-lg bg-blue-600/20 border border-blue-500/40 text-blue-300 text-xs font-mono hover:bg-blue-600/30"
-                >
-                  Configure Primary Image 1
-                </button>
-              </div>
             )}
+
+            <p className="text-[10px] text-zinc-500">
+              * &quot;Image Prompt&quot; is powered by Fooocus Image Mixture Engine (v1.0.1).{' '}
+              <a
+                href="https://github.com/Whippet-UK/Gina-AI-Assistant"
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-400 hover:underline"
+              >
+                Documentation
+              </a>
+            </p>
           </div>
         )}
 
@@ -870,7 +934,7 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
         {activeTab === 'describe' && (
           <div className="space-y-4">
             <div className="text-xs text-zinc-400">
-              Upload an image to automatically deconstruct it into a meticulous reconstruction prompt. The description is pixel-grounded by Qwen Vision and is applied to the main prompt automatically.
+              Upload an image to automatically deconstruct it into a meticulous reconstruction prompt. The description is pixel-grounded by the selected vision engine (Qwen3.5 or Qwen 2.5-VL) and is applied to the main prompt automatically.
             </div>
 
             <div className="flex items-center gap-4 text-xs">
