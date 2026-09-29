@@ -3444,3 +3444,9 @@ className={... 'sm:w-[18rem]' ...}
 - **Target File Path:** `/src/components/StudioWorkspace.tsx`
   - **Exact Code Area:** Changed the workspace brand label from `GINA LOCAL AI STUDIO` to `GINA ASSISTANT`.
   - **Why:** Keep the primary workspace consistently branded as the new Gina Assistant rather than presenting it as a separate studio/product surface.
+## 2026-09-29 — FLUX.1 Dev Q4_K_M Active Image-Lane Migration
+
+- Replaced the active FLUX.1 Lite model identity with flux1-dev-Q4_K_M.gguf in the capability registry and Image Studio selector.
+- Removed the /api/jobs hard gate that incorrectly required Qwen 2.5-VL + mmproj-F16.gguf before a direct FLUX image job could run.
+- Updated active status/telemetry copy to report FLUX.1 Dev and the genuine T5-XXL encoder.
+- Retained flux_lite_image only as a backward-compatible workflow identifier so existing local workflow files remain usable; it no longer denotes the retired Lite model.

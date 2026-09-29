@@ -68,14 +68,14 @@ export const VRAMHistoryGraph: React.FC<VRAMHistoryGraphProps> = ({
     }
     if (workflowId === 'flux_lite_image') {
       const fluxStages: Record<string,string> = {
-        '1':'Node 1: FLUX Lite UNET Load', '2':'Node 2: Text Encoders',
+        '1':'Node 1: FLUX.1 Dev UNET Load', '2':'Node 2: Text Encoders',
         '3':'Node 3: VAE Load', '4':'Node 4: Positive Conditioning',
         '5':'Node 5: Guidance', '6':'Node 6: Noise',
         '7':'Node 7: Sampler', '8':'Node 8: Scheduler',
         '9':'Node 9: Latent Canvas', '10':'Node 10: Advanced Sampling',
         '11':'Node 11: VAE Decode', '12':'Node 12: PNG Output'
       };
-      return fluxStages[numId] || `Node ${nodeId}: FLUX Lite Processing`;
+      return fluxStages[numId] || `Node ${nodeId}: FLUX.1 Dev Processing`;
     }
     return `Node ${nodeId}: Active Processing`;
   };
