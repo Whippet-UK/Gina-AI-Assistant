@@ -52,7 +52,6 @@ jobs:
           replace("server/capabilities/CapabilityManager.ts",
                   "{id:'flux-lite-image',label:'FLUX.1 Lite High Precision',type:'image',status:flux&&imageW.length?'validated':flux?'installed':'unavailable',workflowIds:imageW.filter((id:string)=>/flux_lite/i.test(id)),modelIds:['flux-lite-gguf','clip-l','t5xxl-fp8'],notes:['Optional high-precision text-in-image lane using T5-XXL FP8.']},",
                   "{id:'flux-dev-image',label:'FLUX.1 Dev Q4_K_M',type:'image',status:flux&&imageW.length?'validated':flux?'installed':'unavailable',workflowIds:imageW.filter((id:string)=>/flux/i.test(id)),modelIds:['flux-dev-gguf','clip-l','t5xxl-fp8'],notes:['Optional FLUX.1 Dev text-in-image lane using T5-XXL FP8.']},")
-          replace("server/capabilities/CapabilityManager.ts", "/flux_lite/i.test(id)", "/flux/i.test(id)")
 
           replace("server.ts",
                   "  if (engine === 'qwen-coder') throw new Error('Qwen Coder is text-only and cannot route image generation. Switch to Qwen 2.5-VL Vision or Qwen3.5 Vision.');\n  if (!multimodal) throw new Error('Qwen 2.5-VL Vision Mode requires its mmproj projector.');\n  if (highPrecision) return {\n    workflowId: 'flux_lite_image',\n    generationModel: 'FLUX.1 Lite GGUF + UMT5 XXL',\n    lane: 'qwen-vision-flux-lite' as const\n  };",
