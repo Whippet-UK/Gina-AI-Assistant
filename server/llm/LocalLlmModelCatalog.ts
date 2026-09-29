@@ -20,7 +20,7 @@ export const LOCAL_LLM_MODELS: Record<LocalLlmEngine, LocalLlmModelDefinition> =
   qwen: {
     engine: "qwen",
     label: "Qwen 2.5-VL 7B",
-    description: "Q4_K_M vision-language model with the existing F16 multimodal projector.",
+    description: "Optional VL vision lane. Q4_K_M + mmproj-F16.gguf (3584). Not required for FLUX/SDXL generation.",
     role: "vision",
     modelFile: "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
     mmprojFile: "mmproj-F16.gguf",
@@ -43,8 +43,8 @@ export const LOCAL_LLM_MODELS: Record<LocalLlmEngine, LocalLlmModelDefinition> =
   },
   "qwen3.5": {
     engine: "qwen3.5",
-    label: "Qwen3.5 9B",
-    description: "Q4_K_M Qwen3.5-9B model (4096 text hidden size). Vision uses the model-matched mmproj-BF16.gguf projector; the Qwen 2.5-VL-only mmproj-F16.gguf (3584) is ignored automatically.",
+    label: "Qwen3.5 9B (Default)",
+    description: "Primary reasoning/vision engine. Q4_K_M + mmproj-BF16.gguf (4096). Independent of FLUX/SDXL Comfy lanes.",
     role: "general-vision",
     modelFile: "Qwen3.5-9B-Q4_K_M.gguf",
     // Qwen3.5-9B's official config reports a 4096 text hidden size, and mmproj-BF16.gguf is its
