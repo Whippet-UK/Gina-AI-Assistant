@@ -1599,7 +1599,7 @@ export const GINA_CODE_CATEGORIES: { id: string; label: string }[] = [
 export const GINA_WEB_APP_CODE_PROFILES: CodeProfile[] = GINA_CODE_PROFILES.filter((p) =>
   p.category === 'frontend' ||
   p.category === 'fullstack' ||
-  /web|html|react|vue|next|svelte|tailwind|css|vite|landing|dom|spa|browser|ui|frontend|dashboard/i.test(
+  /web|html|react|vue|next|svelte|tailwind|css|vite|landing|dom|spa|browser|ui|frontend|dashboard|node|express|api|fastapi|flask|websocket|rest|server|http|graphql|wasm/i.test(
     `${p.id} ${p.name} ${p.category} ${p.settings?.targetEnvironment || ''} ${p.positivePrompt}`
   )
 );

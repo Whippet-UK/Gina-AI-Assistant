@@ -2346,10 +2346,21 @@ app.post("/api/llm/engine", async (req, res) => {
     // Switching the local engine is an explicit VRAM-affecting operation. Stop
     // the current llama-server first, release ComfyUI memory, then start the
     // requested engine so the selector and runtime cannot disagree.
-    await fetch(`${COMFY_URL}/free`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ unload_models:true, free_memory:true }), signal:AbortSignal.timeout(5000) }).catch(() => null);
+    await fetch(`${COMFY_URL}/free`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ unload_models:true, free_memory:true }), signal:AbortSignal.timeout(2000) }).catch(() => null);
     await localLlm.setEngine(engine as 'qwen'|'qwen-coder'|'qwen3.5');
-    const status = await localLlm.start();
-    res.json({ success:true, status });
+    const isConfigured = await localLlm.isConfigured();
+    let status;
+    if (isConfigured) {
+      try {
+        status = await localLlm.start();
+      } catch (startErr: any) {
+        status = await localLlm.getStatus().catch(() => null);
+        return res.json({ success: true, status, warning: startErr?.message || 'Engine selected, but runtime start failed.' });
+      }
+    } else {
+      status = await localLlm.getStatus().catch(() => null);
+    }
+    res.json({ success:true, status, configured: isConfigured });
   } catch (error:any) {
     res.status(500).json({ success:false, error:error?.message || 'Failed to switch local LLM engine.', status:await localLlm.getStatus().catch(()=>null) });
   }

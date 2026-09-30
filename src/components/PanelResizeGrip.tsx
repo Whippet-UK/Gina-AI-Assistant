@@ -62,7 +62,8 @@ const defaultPositionFor = (storageKey: string): PanelPosition => {
     'gina.ui.widget.commercial': { x: 0, y: 0 },
     'gina.ui.widget.llamaLog': { x: 0, y: 0 },
     'gina.ui.widget.bottomEngine': { x: 0, y: 0 },
-    'gina.ui.widget.promptBox': { x: 0, y: 0 }
+    'gina.ui.widget.promptBox': { x: 0, y: 0 },
+    'gina.ui.widget.agentLog': { x: 0, y: 0 }
   };
   return defaults[storageKey] || { x: 0, y: 0 };
 };

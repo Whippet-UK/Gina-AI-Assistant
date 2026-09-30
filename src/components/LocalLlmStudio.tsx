@@ -128,6 +128,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   const [llamaLogOpen, setLlamaLogOpen] = useState(false);
   const bottomEnginePanel = useResizablePanel({ storageKey: 'gina.ui.widget.bottomEngine', defaultHeight: 170, minHeight: 70 });
   const promptBoxPanel = useResizablePanel({ storageKey: 'gina.ui.widget.promptBox', defaultHeight: 52, minHeight: 44 });
+  const agentLogPanel = useResizablePanel({ storageKey: 'gina.ui.widget.agentLog', defaultHeight: 300, minHeight: 60 });
   const [status, setStatus] = useState<LocalLlmStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [thinkingSource, setThinkingSource] = useState<'local'|'web'|'local+web'>('local');
@@ -3304,16 +3305,19 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                     rows={1}
                     placeholder={status?.ready ? 'Message Gina… (Enter to send, Shift+Enter for a new line)' : 'Start the local LLM first…'}
                     className="flex-1 min-h-[44px] resize-y overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 pr-28 pb-4 text-xs text-slate-200 outline-none focus:border-emerald-500/50 disabled:opacity-50 leading-relaxed custom-scrollbar"
-                    style={{ resize: 'vertical' }}
+                    style={{ height: promptBoxPanel.height ? `${promptBoxPanel.height}px` : undefined, minHeight: '44px', resize: 'vertical' }}
                   />
                   <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!status?.ready || loading || attachedFiles.length >= maxLocalAiFiles} title={status?.engine === 'qwen-coder' ? 'Qwen Coder accepts text/code files and project ZIP archives. Image attachments require a multimodal vision model.' : 'Attach a supported local file, image or ZIP archive'} className="absolute right-14 bottom-2.5 h-9 px-2.5 rounded-lg border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5" /> Attach</button>
                   {loading ? <button onClick={() => void cancelChat()} className="absolute right-2 bottom-2.5 w-9 h-9 rounded-full border border-rose-500/50 bg-rose-500/15 text-rose-300 flex items-center justify-center" title="Stop inference and flush VRAM"><Square className="w-3.5 h-3.5 fill-current" /></button> : <button onClick={() => void sendMessage()} disabled={!status?.ready || (!input.trim() && !attachedFiles.length)} className="absolute right-2 bottom-2.5 w-9 h-9 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center disabled:opacity-30" title="Send"><span className="text-base font-black leading-none">↑</span></button>}
                 </div>
                 <PanelResizeGrip
+                  onBottomPointerDown={promptBoxPanel.onBottomPointerDown}
                   onRightPointerDown={promptBoxPanel.onRightPointerDown}
+                  onCornerPointerDown={promptBoxPanel.onCornerPointerDown}
                   onResetWidth={promptBoxPanel.resetWidth}
                   width={promptBoxPanel.width}
-                  label="Message box"
+                  height={promptBoxPanel.height}
+                  label="Prompt input"
                 />
               </div>
             </MovableResizableWrapper>
@@ -3325,17 +3329,33 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
 
           {/* Agent log sits BELOW the prompt so the Message box stays next to the dual windows */}
           <MovableResizableWrapper id="gina-agent-log" className="w-full mt-2">
-            <AgentExecutionTrace
-              studioMode={studioMode}
-              agentStatus={agentStatus}
-              agentActivity={agentActivity}
-              executionLog={executionLog}
-              telemetry={lastTelemetry}
-              runtimeTelemetry={runtimeTelemetry}
-              hardwareTelemetry={hardwareTelemetry}
-              onClear={() => { setExecutionLog([]); setAgentActivity([]); }}
-              onOpenFile={(path) => { void openWorkspaceFile(path); }}
-            />
+            <div
+              ref={agentLogPanel.panelRef}
+              className="relative flex flex-col transition-all"
+              style={{ width: agentLogPanel.width ? `${agentLogPanel.width}px` : '100%' }}
+            >
+              <AgentExecutionTrace
+                studioMode={studioMode}
+                agentStatus={agentStatus}
+                agentActivity={agentActivity}
+                executionLog={executionLog}
+                telemetry={lastTelemetry}
+                runtimeTelemetry={runtimeTelemetry}
+                hardwareTelemetry={hardwareTelemetry}
+                onClear={() => { setExecutionLog([]); setAgentActivity([]); }}
+                onOpenFile={(path) => { void openWorkspaceFile(path); }}
+                height={agentLogPanel.height}
+              />
+              <PanelResizeGrip
+                onBottomPointerDown={agentLogPanel.onBottomPointerDown}
+                onRightPointerDown={agentLogPanel.onRightPointerDown}
+                onCornerPointerDown={agentLogPanel.onCornerPointerDown}
+                onResetWidth={agentLogPanel.resetWidth}
+                width={agentLogPanel.width}
+                height={agentLogPanel.height}
+                label="GINA Agent Log"
+              />
+            </div>
           </MovableResizableWrapper>
           {lastTelemetry && (
             <div className="mt-1.5 flex items-center gap-1.5 text-[8px] font-mono text-slate-600">

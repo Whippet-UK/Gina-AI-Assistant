@@ -10,6 +10,7 @@ import {
   Database,
   Gauge,
   GitBranch,
+  GripVertical,
   Loader2,
   Terminal,
   Trash2
@@ -73,6 +74,7 @@ interface AgentExecutionTraceProps {
   hardwareTelemetry?: TraceHardwareTelemetry | null;
   onClear: () => void;
   onOpenFile?: (path: string) => void;
+  height?: number;
 }
 
 const clamp = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min, value));
@@ -283,7 +285,8 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
   runtimeTelemetry,
   hardwareTelemetry,
   onClear,
-  onOpenFile
+  onOpenFile,
+  height
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [tokenSamples, setTokenSamples] = useState<number[]>([]);
@@ -353,6 +356,7 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
           onClick={() => setExpanded(value => !value)}
           className="flex min-w-0 items-center gap-2 text-left"
         >
+          <GripVertical className="h-3.5 w-3.5 text-slate-600 shrink-0 hover:text-slate-400" />
           {expanded ? <ChevronDown className="h-3.5 w-3.5 text-slate-500" /> : <ChevronRight className="h-3.5 w-3.5 text-slate-500" />}
           <Activity className="h-3.5 w-3.5 text-emerald-400" />
           <span className="text-[9px] font-bold uppercase tracking-widest text-slate-200">GINA AGENT LOG</span>
@@ -388,7 +392,10 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
       </div>
 
       {expanded && (
-        <div className="space-y-2 p-2 overflow-x-auto custom-scrollbar">
+        <div
+          className="space-y-2 p-2 overflow-x-auto overflow-y-auto custom-scrollbar"
+          style={height ? { maxHeight: `${height}px` } : undefined}
+        >
           <TraceSection
             id="executionTimeline"
             title="Execution Timeline"

@@ -276,7 +276,10 @@ export const GinaStudioProfilePicker: React.FC<GinaStudioProfilePickerProps> = (
     if (activeKind === 'image-studio') return GINA_IMAGE_CATEGORIES;
     if (activeKind === 'video-generation') return GINA_VIDEO_CATEGORIES;
     if (activeKind === 'agents') return GINA_AGENT_CATEGORIES;
-    if (activeKind === 'web-code') return GINA_CODE_CATEGORIES.filter((c) => ['frontend', 'fullstack', 'general'].includes(c.id));
+    if (activeKind === 'web-code') {
+      const activeCats = new Set(GINA_WEB_APP_CODE_PROFILES.map((p) => p.category));
+      return GINA_CODE_CATEGORIES.filter((c) => activeCats.has(c.id));
+    }
     return GINA_CODE_CATEGORIES;
   }, [activeKind]);
 
@@ -444,8 +447,10 @@ export const GinaStudioProfilePicker: React.FC<GinaStudioProfilePickerProps> = (
           </div>
         )}
         {filtered.map((p) => {
-          const active = selectedId === p.id || agentProfileId === p.id || codeProfileId === p.id;
           const isAgent = 'avatar' in p || GINA_AGENT_PROFILES.some((a) => a.id === p.id);
+          const active = isAgent
+            ? (agentProfileId === p.id || (activeKind === 'agents' && selectedId === p.id))
+            : (codeProfileId === p.id || (activeKind !== 'agents' && selectedId === p.id));
           const iconName = ('icon' in p && p.icon) || (isAgent ? 'Bot' : 'Code2');
           return (
             <button

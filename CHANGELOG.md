@@ -1,3 +1,101 @@
+# v1.20.16 — POST /api/llm/engine Resiliency, Web Profiles Expansion & Complete Drag Handles
+
+- **Target File Path:** `/server.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    app.post("/api/llm/engine", async (req, res) => {
+      try {
+        const engine = String(req.body?.engine || '').toLowerCase();
+        if (!Object.prototype.hasOwnProperty.call(LOCAL_LLM_MODELS, engine)) return res.status(400).json({ success:false, error:`Engine must be one of: ${Object.keys(LOCAL_LLM_MODELS).join(', ')}.` });
+        await fetch(`${COMFY_URL}/free`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ unload_models:true, free_memory:true }), signal:AbortSignal.timeout(2000) }).catch(() => null);
+        await localLlm.setEngine(engine as 'qwen'|'qwen-coder'|'qwen3.5');
+        const isConfigured = await localLlm.isConfigured();
+        let status;
+        if (isConfigured) {
+          try {
+            status = await localLlm.start();
+          } catch (startErr: any) {
+            status = await localLlm.getStatus().catch(() => null);
+            return res.json({ success: true, status, warning: startErr?.message || 'Engine selected, but runtime start failed.' });
+          }
+        } else {
+          status = await localLlm.getStatus().catch(() => null);
+        }
+        res.json({ success:true, status, configured: isConfigured });
+      } catch (error:any) {
+        res.status(500).json({ success:false, error:error?.message || 'Failed to switch local LLM engine.', status:await localLlm.getStatus().catch(()=>null) });
+      }
+    });
+    ```
+  - **Why:** Prevented HTTP 500 error when switching local LLM engine when model weights or llama-server executable are not installed on disk. Returning status and warnings gracefully avoids triggering critical dashboard API errors.
+
+- **Target File Path:** `/src/data/ginaCodeProfiles.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    export const GINA_WEB_APP_CODE_PROFILES: CodeProfile[] = GINA_CODE_PROFILES.filter((p) =>
+      p.category === 'frontend' ||
+      p.category === 'fullstack' ||
+      /web|html|react|vue|next|svelte|tailwind|css|vite|landing|dom|spa|browser|ui|frontend|dashboard|node|express|api|fastapi|flask|websocket|rest|server|http|graphql|wasm/i.test(
+        `${p.id} ${p.name} ${p.category} ${p.settings?.targetEnvironment || ''} ${p.positivePrompt}`
+      )
+    );
+    ```
+  - **Why:** Expanded Web App Code Profiles to include web APIs, backend services (Express, Node, FastAPI), WebSockets, REST, and GraphQL profiles.
+
+- **Target File Path:** `/src/components/GinaStudioProfilePicker.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    if (activeKind === 'web-code') {
+      const activeCats = new Set(GINA_WEB_APP_CODE_PROFILES.map((p) => p.category));
+      return GINA_CODE_CATEGORIES.filter((c) => activeCats.has(c.id));
+    }
+    const isAgent = 'avatar' in p || GINA_AGENT_PROFILES.some((a) => a.id === p.id);
+    const active = isAgent
+      ? (agentProfileId === p.id || (activeKind === 'agents' && selectedId === p.id))
+      : (codeProfileId === p.id || (activeKind !== 'agents' && selectedId === p.id));
+    ```
+  - **Why:** Dynamically populated category filters from all active web app code profiles and isolated profile highlight state to prevent cross-lighting between agent and code profile tabs.
+
+- **Target File Path:** `/src/components/PanelResizeGrip.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    'gina.ui.widget.promptBox': { x: 0, y: 0 },
+    'gina.ui.widget.agentLog': { x: 0, y: 0 }
+    ```
+  - **Why:** Registered `gina.ui.widget.agentLog` in `defaultPositionFor` so the GINA AGENT LOG panel supports position and dimension persistence.
+
+- **Target File Path:** `/src/components/AgentExecutionTrace.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    <GripVertical className="h-3.5 w-3.5 text-slate-600 shrink-0 hover:text-slate-400" />
+    ```
+  - **Why:** Added visible drag handle indicator and supported `height` prop for outer panel height resizing.
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    const agentLogPanel = useResizablePanel({ storageKey: 'gina.ui.widget.agentLog', defaultHeight: 300, minHeight: 60 });
+    <PanelResizeGrip
+      onBottomPointerDown={promptBoxPanel.onBottomPointerDown}
+      onRightPointerDown={promptBoxPanel.onRightPointerDown}
+      onCornerPointerDown={promptBoxPanel.onCornerPointerDown}
+      onResetWidth={promptBoxPanel.resetWidth}
+      width={promptBoxPanel.width}
+      height={promptBoxPanel.height}
+      label="Prompt input"
+    />
+    <PanelResizeGrip
+      onBottomPointerDown={agentLogPanel.onBottomPointerDown}
+      onRightPointerDown={agentLogPanel.onRightPointerDown}
+      onCornerPointerDown={agentLogPanel.onCornerPointerDown}
+      onResetWidth={agentLogPanel.resetWidth}
+      width={agentLogPanel.width}
+      height={agentLogPanel.height}
+      label="GINA Agent Log"
+    />
+    ```
+  - **Why:** Fully connected drag handles (right border width resize, bottom bar height resize, corner dual resize) for both prompt input and GINA AGENT LOG.
+
 # Local AI Studio — AI Agent Profiles & Web App Code Profiles Unification + Movable Handles
 
 - **Target File Path:** `/src/data/ginaCodeProfiles.ts`
