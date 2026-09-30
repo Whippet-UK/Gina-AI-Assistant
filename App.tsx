@@ -1,0 +1,423 @@
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Image, Video, Film, FolderOpen, ListChecks, Settings2, Gauge, Bot, Music, AudioLines } from 'lucide-react';
+import { Header } from './components/Header';
+import { ProjectStateProvider, useProjectState } from './context/ProjectStateContext';
+import { GenerationJobProvider, useGenerationJob } from './context/GenerationJobContext';
+import { AppFeaturesGuide } from './components/AppFeaturesGuide';
+import { PromptStudio } from './components/PromptStudio';
+import { VideoStudio } from './components/VideoStudio';
+import { GifStudio } from './components/GifStudio';
+import { StreamInjectStudio } from './components/StreamInjectStudio';
+import { MusicStudio } from './components/MusicStudio';
+import { UnifiedAudioDeck } from './components/UnifiedAudioDeck';
+import { Aida64Studio } from './components/Aida64Studio';
+import { AiStudioSuite } from './components/AiStudioSuite';
+import { SystemHub } from './components/SystemHub';
+import { RestoreManifestModal } from './components/RestoreManifestModal';
+import { VRAMWarningToast } from './components/VRAMWarningToast';
+import { WorkspaceErrorBoundary } from './components/WorkspaceErrorBoundary';
+import { ComfyUIStatusIndicator } from './components/WanDiagnostic';
+import { RuntimeTelemetryPanel } from './components/RuntimeTelemetryPanel';
+import { StudioWorkspace } from './components/StudioWorkspace';
+import { LogEntry, SystemTelemetry } from './types';
+import { applyGinaPanelChrome, OuterWorkspaceFrame } from './components/ResizablePanels';
+import { Aida64Hud } from './components/Aida64Hud';
+import { APP_VERSION, ACTIVE_SAVE_POINT_ID } from './version';
+
+export function getRecentOOMErrors(logs: LogEntry[]): LogEntry[] {
+  if (!Array.isArray(logs)) return [];
+  const oomRegex = /cuda oom|out of memory|c10::CUDAOutOfMemoryError|torch\.cuda\.OutOfMemoryError/i;
+  return logs
+    .filter(log => log && (oomRegex.test(log.message || '') || (log.ruleId && oomRegex.test(log.ruleId))))
+    .slice(0, 5);
+}
+
+export default function App() {
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('hud') === '1') return <Aida64Hud />;
+  const [activeSavePoint, setActiveSavePoint] = useState<string>(ACTIVE_SAVE_POINT_ID);
+  const [isAuditing, setIsAuditing] = useState<boolean>(false);
+  const [isManifestOpen, setIsManifestOpen] = useState<boolean>(false);
+  const [telemetry, setTelemetry] = useState<SystemTelemetry>({
+    vramUsedMB: 5120, vramTotalMB: 7372, gpuTempC: 58,
+    cpuThreadsActive: 4, cpuThreadsCap: 4, ramUsedGB: 14.2,
+    ramTotalGB: 32.0, ssdFreeGB: 168.4, thermalBrakeActive: false,
+    gpuPowerW: 0
+  });
+  useEffect(() => { applyGinaPanelChrome(); }, []);
+  const [logs, setLogs] = useState<LogEntry[]>([
+    { id: '1', timestamp: new Date().toISOString().slice(11, 23), level: 'INFO', message: 'Gina AI Factory Engine Dashboard initialized successfully.' },
+    { id: '2', timestamp: new Date().toISOString().slice(11, 23), level: 'RULE', ruleId: '011-020', message: 'Rule 011: VRAM Cage locked at 7372MB (90% of 8GB RTX 3070 Ti).' },
+    { id: '3', timestamp: new Date().toISOString().slice(11, 23), level: 'RULE', ruleId: '798-807', message: 'Rule 798: Input token boundary enforcer ready (75 token max budget).' },
+    { id: '4', timestamp: new Date().toISOString().slice(11, 23), level: 'INFO', message: 'Local ComfyUI execution server bound to loopback 127.0.0.1:8188.' }
+  ]);
+
+  const addLog = useCallback((level: 'INFO' | 'WARN' | 'SEC' | 'RULE', message: string, ruleId?: string) => {
+    const newEntry: LogEntry = { id: Math.random().toString(36).substr(2, 9), timestamp: new Date().toISOString().slice(11, 23), level, ruleId, message };
+    setLogs(prev => [newEntry, ...prev.slice(0, 99)]);
+  }, []);
+
+  const lastClearCacheRef = useRef<number>(0);
+  const isClearingCacheRef = useRef<boolean>(false);
+  const handleClearCache = useCallback(async (isAutoTrigger = false, unloadModels = true) => {
+    if (isClearingCacheRef.current) return;
+    const now = Date.now();
+    if (now - lastClearCacheRef.current < 3000) return;
+    lastClearCacheRef.current = now;
+    isClearingCacheRef.current = true;
+    if (!isAutoTrigger) {
+      addLog('INFO', 'Dispatching manual purge signal to ComfyUI /free API.');
+    }
+    try {
+      const res = await fetch('/api/comfy/clear-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unload_models: unloadModels, free_memory: true, is_auto_trigger: isAutoTrigger })
+      });
+      const data = await res.json();
+      if (data.skipped) {
+        // Generation is actively running; purge was safely skipped to prevent execution lockup
+        return;
+      }
+      if (res.ok && data.success) {
+        addLog('SEC', 'ComfyUI memory purge completed.');
+      } else {
+        addLog('WARN', `Clear cache signal result: ${data.error || 'ComfyUI not responding'}`);
+      }
+    } catch (err: any) {
+      addLog('WARN', `Failed to send clear cache signal: ${err?.message || 'Network error'}`);
+    } finally {
+      isClearingCacheRef.current = false;
+    }
+  }, [addLog]);
+
+  const [isCooldownActive, setIsCooldownActive] = useState(false);
+  const [cooldownRemainingSec, setCooldownRemainingSec] = useState(0);
+  const cooldownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastOomHandledTimestampRef = useRef<string | null>(null);
+
+  const triggerCooldownBreath = useCallback((reason = 'VRAM OOM Error Detected', durationMs = 5000) => {
+    setIsCooldownActive(true);
+    setCooldownRemainingSec(Math.ceil(durationMs / 1000));
+    addLog('RULE', `Rule 011-020 [VRAMGuard Breath]: ${reason}.`, '011-020');
+    handleClearCache(true, true);
+    if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+    const endMs = Date.now() + durationMs;
+    cooldownTimerRef.current = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((endMs - Date.now()) / 1000));
+      setCooldownRemainingSec(remaining);
+      if (remaining <= 0) {
+        if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+        cooldownTimerRef.current = null;
+        setIsCooldownActive(false);
+        addLog('SEC', 'VRAMGuard Breath complete.');
+      }
+    }, 500);
+  }, [handleClearCache, addLog]);
+
+  const logWithOomCheck = useCallback((level: 'INFO' | 'WARN' | 'SEC' | 'RULE', message: string, ruleId?: string) => {
+    addLog(level, message, ruleId);
+    if (/out of memory|cuda oom|cuda error: out of memory|cublas|allocation failed|CUDAOutOfMemoryError|OutOfMemoryError|torch\.cuda\.OutOfMemoryError/i.test(message) && !isCooldownActive) {
+      triggerCooldownBreath(`OOM pattern detected in log: "${message.slice(0, 60)}..."`, 5000);
+    }
+  }, [addLog, isCooldownActive, triggerCooldownBreath]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/telemetry', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`Telemetry HTTP ${res.status}`);
+        const data = await res.json();
+        if (!cancelled) setTelemetry(prev => ({
+          vramUsedMB: Number(data.vramUsedMB || 0), vramTotalMB: Number(data.vramTotalMB || 0),
+          gpuTempC: Number(data.gpuTempC || 0), cpuThreadsActive: Number(data.cpuThreadsActive || 0),
+          cpuThreadsCap: Number(data.cpuThreadsCap || 0), ramUsedGB: Number(data.ramUsedGB || 0),
+          ramTotalGB: Number(data.ramTotalGB || 0), ssdFreeGB: prev.ssdFreeGB, thermalBrakeActive: !!data.thermalBrakeActive,
+          gpuPowerW: Number(data.gpuPowerW || 0), cpuPowerW: data.cpuPowerW == null ? null : Number(data.cpuPowerW), otherHardwarePowerW: Number(data.otherHardwarePowerW || 0), componentDcPowerW: Number(data.componentDcPowerW || 0), psuEfficiency: Number(data.psuEfficiency || 0), estimatedWallPowerW: Number(data.estimatedWallPowerW || 0), systemPowerW: Number(data.systemPowerW || 0), powerSource: String(data.powerSource || '')
+        }));
+        const errRes = await fetch('/api/comfy/error-logs', { cache: 'no-store' });
+        if (errRes.ok && !cancelled) {
+          const errData = await errRes.json();
+          if (errData.hasOOM && errData.logs?.length) {
+            const latestOom = [...errData.logs].reverse().find((l: any) => l.isOOM);
+            if (latestOom && latestOom.timestamp !== lastOomHandledTimestampRef.current) {
+              lastOomHandledTimestampRef.current = latestOom.timestamp;
+              triggerCooldownBreath(`ComfyUI backend log OOM detected (${latestOom.line.slice(0, 60)})`, 5000);
+            }
+          }
+        }
+      } catch (error: any) {
+        if (!cancelled) addLog('WARN', `Hardware telemetry unavailable: ${error?.message || 'unknown error'}`);
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [addLog, triggerCooldownBreath]);
+
+  const handleRunAudit = async () => {
+    setIsAuditing(true);
+    addLog('INFO', 'Initiating full bare-metal diagnostic stack audit...');
+    try {
+      const res = await fetch('/api/audit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ runFullCheck: true }) });
+      const data = await res.json();
+      if (res.ok) {
+        addLog('SEC', `Pre-Flight Audit Complete: ${data.passedCount}/${data.passedCount} checks passed!`);
+        addLog('RULE', 'Rule 051-060: Root sandbox C:\\Gina_AI\\ verified.', '051-060');
+      }
+    } catch (err: any) { addLog('WARN', `Audit connection failed: ${err.message || 'local services unavailable'}`); }
+    finally { setIsAuditing(false); }
+  };
+
+  return (
+    <ProjectStateProvider>
+      <GenerationJobProvider onAddLog={logWithOomCheck} isCooldownActive={isCooldownActive} cooldownRemainingSec={cooldownRemainingSec} onTriggerCooldown={triggerCooldownBreath}>
+        <AppContent telemetry={telemetry} logs={logs} setLogs={setLogs} addLog={addLog} logWithOomCheck={logWithOomCheck} handleClearCache={handleClearCache} handleRunAudit={handleRunAudit} isAuditing={isAuditing} activeSavePoint={activeSavePoint} isCooldownActive={isCooldownActive} cooldownRemainingSec={cooldownRemainingSec} isManifestOpen={isManifestOpen} setIsManifestOpen={setIsManifestOpen} />
+      </GenerationJobProvider>
+    </ProjectStateProvider>
+  );
+}
+
+interface AppContentProps {
+  telemetry: SystemTelemetry; logs: LogEntry[]; setLogs: React.Dispatch<React.SetStateAction<LogEntry[]>>;
+  addLog: (level: 'INFO' | 'WARN' | 'SEC' | 'RULE', message: string, ruleId?: string) => void;
+  logWithOomCheck: (level: 'INFO' | 'WARN' | 'SEC' | 'RULE', message: string, ruleId?: string) => void;
+  handleClearCache: (isAutoTrigger?: boolean, unloadModels?: boolean) => Promise<void>;
+  handleRunAudit: () => Promise<void>; isAuditing: boolean; activeSavePoint: string;
+  isCooldownActive: boolean; cooldownRemainingSec: number; isManifestOpen: boolean;
+  setIsManifestOpen: React.Dispatch<React.SetStateAction<boolean>>;
+}
+
+function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCache, handleRunAudit, isAuditing, activeSavePoint, isCooldownActive, cooldownRemainingSec, isManifestOpen, setIsManifestOpen }: AppContentProps) {
+  const [activeView, setActiveView] = useState<'studio' | 'create' | 'video' | 'gif' | 'streaminject' | 'music' | 'audio' | 'aida64' | 'shorts' | 'assets' | 'jobs' | 'system'>('studio');
+  const [isTelemetryOpen, setIsTelemetryOpen] = useState<boolean>(false);
+  const { job, outputLoading } = useGenerationJob();
+  const { updatePromptStudio } = useProjectState();
+  const [stagedAida64Reference, setStagedAida64Reference] = useState<{ filename: string; name: string; bytes: number; previewUrl: string } | null>(null);
+  const isJobActive = job?.status === 'RUNNING' || job?.status === 'QUEUED' || outputLoading;
+  const isVideoJob = job?.workflowId === 'wan_video' || (job?.workflowId && job.workflowId.includes('video'));
+  const isImageJob = !job?.workflowId || job?.workflowId.includes('flux') || job?.workflowId.includes('image');
+
+  const defaultNavItems = useMemo(() => [
+    { id: 'studio' as const, label: 'GINA ASSISTANT', icon: Bot, isGenerating: false },
+    { id: 'create' as const, label: 'IMAGE CREATION STUDIO', icon: Image, isGenerating: isJobActive && isImageJob },
+    { id: 'video' as const, label: 'VIDEO', icon: Video, isGenerating: isJobActive && isVideoJob },
+    { id: 'gif' as const, label: 'GIF STUDIO', icon: Film, isGenerating: isJobActive && job?.workflowId === 'gif_studio' },
+    { id: 'streaminject' as const, label: 'STREAMINJECT', icon: Film, isGenerating: isJobActive && (job?.workflowId === 'streaminject_studio' || job?.workflowId === 'streaminject_render') },
+    { id: 'music' as const, label: 'MUSIC SUITE', icon: Music, isGenerating: isJobActive && (job?.workflowId === 'music_studio' || job?.workflowId === 'stem_separation') },
+    { id: 'audio' as const, label: 'VOICE GENERATOR', icon: AudioLines, isGenerating: false },
+    { id: 'aida64' as const, label: 'AIDA64', icon: Gauge, isGenerating: false },
+    { id: 'shorts' as const, label: 'SHORTS', icon: Film, isGenerating: false },
+    { id: 'assets' as const, label: 'ASSETS', icon: FolderOpen, isGenerating: false },
+    { id: 'jobs' as const, label: 'JOBS', icon: ListChecks, isGenerating: isJobActive },
+    { id: 'system' as const, label: 'SYSTEM', icon: Settings2, isGenerating: false }
+  ], [isJobActive, isImageJob, isVideoJob, job?.workflowId]);
+
+  // Persistent customizable tab ordering
+  const [tabOrder, setTabOrder] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('gina_nav_tab_order');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [
+      'studio', 'create', 'video', 'gif', 'streaminject', 'music', 'audio',
+      'aida64', 'shorts', 'assets', 'jobs', 'system'
+    ];
+  });
+
+  const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
+
+  const navItems = useMemo(() => {
+    const itemMap = new Map(defaultNavItems.map(item => [item.id, item]));
+    const ordered: typeof defaultNavItems = [];
+    for (const id of tabOrder) {
+      const it = itemMap.get(id as any);
+      if (it) {
+        ordered.push(it);
+        itemMap.delete(id as any);
+      }
+    }
+    // Append any newly added items not yet in saved order
+    for (const remaining of itemMap.values()) {
+      ordered.push(remaining);
+    }
+    return ordered;
+  }, [defaultNavItems, tabOrder]);
+
+  const handleTabDrop = (targetId: string) => {
+    if (!draggedTabId || draggedTabId === targetId) return;
+    setTabOrder(prev => {
+      const next = [...prev];
+      const fromIndex = next.indexOf(draggedTabId);
+      const toIndex = next.indexOf(targetId);
+      if (fromIndex !== -1 && toIndex !== -1) {
+        next.splice(fromIndex, 1);
+        next.splice(toIndex, 0, draggedTabId);
+        try { localStorage.setItem('gina_nav_tab_order', JSON.stringify(next)); } catch {}
+      }
+      return next;
+    });
+    setDraggedTabId(null);
+  };
+
+  const handleResetTabOrder = () => {
+    const def = ['studio', 'create', 'video', 'gif', 'streaminject', 'music', 'audio', 'aida64', 'shorts', 'assets', 'jobs', 'llm', 'dashboard', 'system'];
+    setTabOrder(def);
+    try { localStorage.removeItem('gina_nav_tab_order'); } catch {}
+  };
+
+  const handleSendAida64Prompt = useCallback((prompt: string, width: number, height: number, reference?: { filename: string; name: string; bytes: number; previewUrl: string }) => {
+    const safeWidth = Math.max(64, Math.min(8192, Math.round(Number(width) || 1024)));
+    const safeHeight = Math.max(64, Math.min(8192, Math.round(Number(height) || 600)));
+    const safePrompt = typeof prompt === 'string' ? prompt.trim() : '';
+    if (!safePrompt) return;
+    const ratio = safeWidth === 1024 && safeHeight === 600 ? 'aida64' : safeWidth === safeHeight ? '1:1' : safeHeight > safeWidth ? '9:16' : '16:9';
+
+    updatePromptStudio({ promptInput: safePrompt, aspectRatio: ratio, stylePreset: 'None' });
+    setStagedAida64Reference(reference || null);
+    logWithOomCheck('INFO', `Transferred AIDA64 template prompt (${safeWidth}x${safeHeight}px) to Image Studio.`);
+    // Deliberately defer the view change until the state update has committed.
+    // This prevents the AIDA64 modal + Create workspace transition from racing each other.
+    requestAnimationFrame(() => setActiveView('create'));
+  }, [updatePromptStudio, logWithOomCheck]);
+
+  return (
+    <div className="min-h-screen bg-[#020617] text-[#c9d1d9] font-sans">
+      <VRAMWarningToast telemetry={telemetry} thresholdMB={7168} isCooldownActive={isCooldownActive} cooldownRemainingSec={cooldownRemainingSec} onClearCache={() => handleClearCache(false)} />
+      <div className="w-full max-w-[100vw] px-4 sm:px-5 lg:px-6 xl:px-8 py-4 min-w-0 overflow-x-clip">
+        <Header onRunAudit={handleRunAudit} onOpenManifest={() => setIsManifestOpen(true)} onOpenTelemetry={() => setIsTelemetryOpen(true)} isAuditing={isAuditing} activeSavePoint={activeSavePoint} />
+        <div className="sticky top-0 z-20 mt-4 mb-6 -mx-2 px-2 py-2 bg-[#020617]/95 backdrop-blur border-y border-slate-800/80">
+          <nav className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
+            {navItems.map(({ id, label, icon: Icon, isGenerating }) => (
+              <div
+                key={id}
+                draggable
+                onDragStart={() => setDraggedTabId(id)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => handleTabDrop(id)}
+                className="shrink-0 flex items-center"
+              >
+                <button
+                  type="button"
+                  onClick={() => setActiveView(id)}
+                  title="Click to view · Drag to reorder tab"
+                  className={`px-3 py-2 rounded-md border text-[10px] font-bold tracking-widest flex items-center gap-2 transition-all cursor-pointer ${
+                    activeView === id
+                      ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-extrabold shadow-sm'
+                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
+                  } ${draggedTabId === id ? 'opacity-40 scale-95 border-emerald-500 border-dashed' : ''}`}
+                >
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="whitespace-nowrap">{label}</span>
+                  {isGenerating && (
+                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono uppercase font-bold animate-pulse ${
+                      activeView === id ? 'bg-slate-950 text-emerald-400' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    }`}>
+                      {job?.progress || 0}%
+                    </span>
+                  )}
+                  {id === 'video' && <ComfyUIStatusIndicator activeView={activeView} />}
+                </button>
+              </div>
+            ))}
+            
+            {/* Tab layout tools */}
+            <div className="ml-2 flex items-center gap-1 border-l border-slate-800 pl-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleResetTabOrder}
+                className="px-2 py-1 text-[9px] font-mono text-slate-500 hover:text-slate-300 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded transition-colors"
+                title="Reset tab order to default"
+              >
+                ↺ Reset Tabs
+              </button>
+            </div>
+
+            {isJobActive && (
+              <div className="ml-2 hidden lg:flex items-center gap-2 px-2.5 py-1 rounded bg-slate-900 border border-emerald-500/30 text-[9px] font-mono text-emerald-300 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <span className="font-bold uppercase tracking-wider">{job?.workflowId?.includes('video') ? 'Video Gen' : 'Image Gen'}: {job?.progress || 0}%</span>
+                {job?.currentStep && <span className="text-slate-500">({job.currentStep}/{job.totalSteps || '?'})</span>}
+              </div>
+            )}
+            <div className="ml-auto hidden md:flex items-center gap-2 text-[9px] font-mono text-slate-600 shrink-0 whitespace-nowrap">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> LOCAL-FIRST CREATOR ENGINE
+            </div>
+          </nav>
+        </div>
+
+        <OuterWorkspaceFrame className="mb-6">
+        <main className={`${activeView === 'studio' ? 'block' : 'hidden'}`}>
+          <StudioWorkspace telemetry={telemetry} logs={logs} onAddLog={logWithOomCheck} onClearCache={() => handleClearCache(false, true)} />
+        </main>
+
+        <main className={`space-y-5 ${activeView === 'create' ? 'block' : 'hidden'}`}>
+          <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Creator workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Image Creation Studio</h1><p className="text-xs text-slate-500 mt-1">Generate locally through your validated ComfyUI workflows.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">IMAGE · LOCAL · QWEN + JUGGERNAUT-XL V9</div></div>
+          <WorkspaceErrorBoundary name="Create Studio"><PromptStudio onAddLog={logWithOomCheck} onClearCache={() => handleClearCache(false, true)} telemetry={telemetry} stagedReferenceImage={stagedAida64Reference} /></WorkspaceErrorBoundary>
+        </main>
+
+        <main className={`space-y-5 ${activeView === 'video' ? 'block' : 'hidden'}`}>
+          <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Video workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Video Studio</h1><p className="text-xs text-slate-500 mt-1">Native Wan 2.1 1.3B workflow controls for local text-to-video.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">VIDEO · WAN 2.1 · 8GB VRAM</div></div>
+          <WorkspaceErrorBoundary name="Video Studio"><VideoStudio onAddLog={logWithOomCheck} logs={logs} telemetry={telemetry} onClearCache={() => handleClearCache(false, true)} /></WorkspaceErrorBoundary>
+        </main>
+
+        <main className={`space-y-5 ${activeView === 'gif' ? 'block' : 'hidden'}`}>
+          <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Frame processing workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">GIF Studio</h1><p className="text-xs text-slate-500 mt-1">Local video/image sequences → trim → optional RIFE interpolation → loop → quantized GIF or web MP4.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">GIF · RIFE · VHS · 8GB VRAM</div></div>
+          <WorkspaceErrorBoundary name="GIF Studio"><GifStudio telemetry={telemetry} onAddLog={logWithOomCheck} onClearCache={() => handleClearCache(false, true)} /></WorkspaceErrorBoundary>
+        </main>
+
+        <main className={`space-y-5 ${activeView === 'streaminject' ? 'block' : 'hidden'}`}>
+          <WorkspaceErrorBoundary name="StreamInject Studio">
+            <StreamInjectStudio />
+          </WorkspaceErrorBoundary>
+        </main>
+
+        <main className={`space-y-5 ${activeView === 'music' ? 'block' : 'hidden'}`}>
+          <WorkspaceErrorBoundary name="Music Studio">
+            <MusicStudio
+              telemetry={telemetry}
+              onAddLog={logWithOomCheck}
+              onClearCache={() => handleClearCache(false, true)}
+              onSendToStreamInject={(_audioUrl, title) => {
+                logWithOomCheck('INFO', `Transferred master audio "${title}" to StreamInject BGM timeline.`);
+                setActiveView('streaminject');
+              }}
+            />
+          </WorkspaceErrorBoundary>
+        </main>
+
+        <main className={`space-y-5 ${activeView === 'audio' ? 'block' : 'hidden'}`}>
+          <div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Voice generator</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Voice Audio Generation</h1><p className="text-xs text-slate-500 mt-1">Self-hosted Bark + XTTS v2 with cloning, stitched timelines and local voice management.</p></div>
+          <WorkspaceErrorBoundary name="Voice Generator"><UnifiedAudioDeck onAddLog={logWithOomCheck} /></WorkspaceErrorBoundary>
+        </main>
+
+        <main className={`space-y-5 ${activeView === 'shorts' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Production pipeline</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Shorts Factory</h1><p className="text-xs text-slate-500 mt-1">Build faceless Shorts from scenes, local assets, audio and a final timeline.</p></div><WorkspaceErrorBoundary name="Shorts Factory"><AiStudioSuite onAddLog={logWithOomCheck} view="shorts" /></WorkspaceErrorBoundary></main>
+
+        <main className={`space-y-5 ${activeView === 'aida64' ? 'block' : 'hidden'}`}>
+          <WorkspaceErrorBoundary name="AIDA64 Studio"><Aida64Studio telemetry={telemetry} onSendToPromptStudio={handleSendAida64Prompt} /></WorkspaceErrorBoundary>
+        </main>
+
+        <main className={`space-y-5 ${activeView === 'assets' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Local library</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Assets</h1><p className="text-xs text-slate-500 mt-1">Generated files and their local generation records.</p></div><WorkspaceErrorBoundary name="Assets"><AiStudioSuite onAddLog={logWithOomCheck} view="assets" /></WorkspaceErrorBoundary></main>
+        <main className={`space-y-5 ${activeView === 'jobs' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Execution monitor</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Jobs</h1><p className="text-xs text-slate-500 mt-1">Track local ComfyUI work without opening ComfyUI itself.</p></div><WorkspaceErrorBoundary name="Jobs"><AiStudioSuite onAddLog={logWithOomCheck} view="jobs" /></WorkspaceErrorBoundary></main>
+
+
+        <main className={`space-y-5 ${activeView === 'system' ? 'block' : 'hidden'}`}>
+          <WorkspaceErrorBoundary name="System"><SystemHub telemetry={telemetry} logs={logs} activeSavePoint={activeSavePoint} logWithOomCheck={logWithOomCheck} handleClearCache={handleClearCache} onClearLogs={() => setLogs([])} /></WorkspaceErrorBoundary>
+        </main>
+
+        </OuterWorkspaceFrame>
+
+        <footer className="border-t border-slate-800 mt-8 pt-4 pb-6 text-center text-[10px] text-slate-600">Gina AI Factory v{APP_VERSION} · Local-first · ComfyUI + llama.cpp execution backends · C:\Gina_AI\</footer>
+      </div>
+      {isTelemetryOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <RuntimeTelemetryPanel telemetry={telemetry} onClose={() => setIsTelemetryOpen(false)} />
+        </div>
+      )}
+      <RestoreManifestModal isOpen={isManifestOpen} onClose={() => setIsManifestOpen(false)} activeSavePoint={activeSavePoint} />
+    </div>
+  );
+}

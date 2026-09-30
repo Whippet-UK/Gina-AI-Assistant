@@ -920,7 +920,7 @@ Canonical directory inspection action is list_directory. If a tool name is unava
 For repository work, use the dedicated workspace under C:\Gina_AI\.gina\workspaces. GitHub can be cloned, read, edited, validated, committed and pushed when credentials permit it. Never expose tokens in summaries or files.
 For uploads, import project ZIP archives into a dedicated workspace and inspect before editing. Reject path traversal and do not execute uploaded code unless the user explicitly asks. After import, inspect the workspace broadly enough to understand UI, server, workflow, configuration and documentation surfaces before editing.
 For location visualisation, distinguish factual map/satellite information from an artistic generated reconstruction. If accurate geographic data is unavailable locally, say so rather than inventing coordinates.
-Image policy: Qwen 2.5-VL + Juggernaut-XL v9 is primary. FLUX is an explicit alternate/high-precision image lane; do not use it for video. It is permitted only when the configured multimodal fallback is actually active or when the user explicitly selects the fallback/advanced engine.
+Image policy: ComfyUI image generation (Juggernaut-XL SDXL and FLUX.1 Dev Q4_K_M) is independent of the local Qwen vision engine. Qwen3.5 or Qwen 2.5-VL are optional for Describe/understand only; they are NOT required to run FLUX or SDXL. Do not block FLUX jobs based on LLM engine or mmproj state. Do not use FLUX for video.
 Use memory for durable facts, preferences, decisions, tasks and results. Use search/read tools instead of replaying the whole project context.
 If no tool action is needed, use action=none and give a concise answer.`
 
@@ -1437,6 +1437,31 @@ async function runAgentTool(action: string, parameters: any) {
     default: throw new Error(`Unknown agent action: ${action}`);
   }
 }
+
+
+app.get('/api/agent/github/repos', (_req, res) => {
+  res.json({
+    ok: true,
+    repos: [
+      {
+        id: 'gina-ai-assistant',
+        name: 'Gina-AI-Assistant',
+        owner: 'Whippet-UK',
+        url: 'https://github.com/Whippet-UK/Gina-AI-Assistant',
+        defaultBranch: 'main',
+        localPath: process.platform === 'win32' ? 'C:\\Gina_AI\\Gina-AI-Assistant' : undefined,
+      },
+      {
+        id: 'jinkybot',
+        name: 'Jinkybot',
+        owner: 'Whippet-UK',
+        url: 'https://github.com/Whippet-UK/Jinkybot',
+        defaultBranch: 'main',
+        localPath: process.platform === 'win32' ? 'C:\\Gina_AI\\Jinkybot' : undefined,
+      },
+    ],
+  });
+});
 
 app.get('/api/agent/tools', (_req, res) => {
   const actions = typeof _req.query?.actions === 'string' && _req.query.actions.trim() ? String(_req.query.actions).split(',').map(x=>x.trim()).filter(Boolean) : undefined;
@@ -2549,15 +2574,26 @@ app.post("/api/llm/describe-image", async (req, res) => {
     const stat = await fs.stat(localPath);
     if (!stat.isFile()) throw new Error('The selected reference image is not available in ComfyUI input storage.');
 
+    // Vision engine: qwen3.5 (default) or qwen (2.5-VL). Each uses its own matched mmproj.
+    const requestedEngine = String(req.body?.engine || '').toLowerCase();
+    const visionEngine = (requestedEngine === 'qwen' || requestedEngine === 'qwen3.5')
+      ? requestedEngine as 'qwen' | 'qwen3.5'
+      : (localLlm.getEngine() === 'qwen' ? 'qwen' : 'qwen3.5');
+    if (localLlm.getEngine() !== visionEngine) {
+      // Explicit VRAM-affecting switch so the active projector matches the text model.
+      await localLlm.setEngine(visionEngine);
+    }
+
     const contentType = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.webp' ? 'image/webp' : 'image/png';
-    // Send the actual image to Qwen Vision; this is pixel-grounded, not a simulated tag generator.
+    // Pixel-grounded vision: image bytes go to the selected multimodal Qwen engine + its mmproj.
     const vision = await localLlm.chat([
       { role:'system', content:`You are Gina's reconstruction-grade vision describer. Describe only what is visibly present in the attached image. Include subject appearance, pose, composition, camera/lens feel, lighting, colours, materials, background, spatial relationships, depth of field, textures, atmosphere, style and readable text. Be exhaustive and precise. Output one dense image-generation prompt only; do not add commentary or disclaimers.` },
       { role:'user', content:`Create a meticulous ${String(req.body?.contentType || 'photo')} reconstruction prompt from the attached image. Preserve exact visual hierarchy and do not invent unseen details.` }
     ], { temperature:0.1, maxTokens:1024 }, [{ name:filename, mime:contentType, localPath }]);
-    const description = String(vision?.choices?.[0]?.message?.content || '').trim();
-    if (!description) throw new Error('Qwen Vision returned an empty image description.');
-    res.json({ ok:true, description, model: (await localLlm.getStatus()).modelName, vision:true });
+    const description = String(vision?.choices?.[0]?.message?.content || vision?.choices?.[0]?.message?.reasoning_content || '').trim();
+    if (!description) throw new Error('Vision engine returned an empty image description.');
+    const st = await localLlm.getStatus();
+    res.json({ ok:true, description, model: st.modelName, engine: st.engine, vision:true, mmproj: st.mmprojPath || null });
   } catch (error:any) {
     recordDashboardError(error?.message || 'Image description failed.', { source:'llm-describe-image', method:req.method, url:req.originalUrl, status:503, stack:error?.stack });
     res.status(503).json({ ok:false, error:error?.message || 'Image description failed.' });
@@ -2966,6 +3002,83 @@ app.post("/api/llm/web-app", async (req, res) => {
   } catch (error: any) {
     recordDashboardError(error?.message || 'Web App Studio failed.', { source: 'llm-web-app', method: req.method, url: req.originalUrl, status: 500, stack: error?.stack });
     res.status(500).json({ error: error?.message || 'Web App Studio failed.' });
+  }
+});
+
+
+app.post("/api/llm/chat-stream", async (req, res) => {
+  try {
+    const status = await localLlm.getStatus();
+    if (!status?.ready) {
+      return res.status(503).json({ error: "Local LLM is not running. Start the local AI engine first." });
+    }
+    const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+    const validMessages = messages
+      .filter((message: any) => message && ["system", "user", "assistant"].includes(message.role) && (typeof message.content === "string" || Array.isArray(message.content)))
+      .map((message: any) => ({ role: message.role, content: message.content }));
+    if (!validMessages.some((m: any) => m.role === "user")) {
+      return res.status(400).json({ error: "A user message is required." });
+    }
+    const temperature = Number.isFinite(Number(req.body?.temperature)) ? Number(req.body.temperature) : 0.7;
+    const maxTokens = Number.isFinite(Number(req.body?.maxTokens))
+      ? Math.min(4096, Math.max(64, Number(req.body.maxTokens)))
+      : 512;
+    const port = Number(status.port) || 8080;
+    const host = String(process.env.GINA_LLM_HOST || "127.0.0.1");
+    const upstream = await fetch(`http://${host}:${port}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: validMessages,
+        temperature,
+        max_tokens: maxTokens,
+        stream: true,
+        chat_template_kwargs: { enable_thinking: false },
+      }),
+    });
+    if (!upstream.ok || !upstream.body) {
+      const errText = await upstream.text().catch(() => "");
+      return res.status(upstream.status || 502).json({
+        error: errText || `llama-server stream HTTP ${upstream.status}`,
+      });
+    }
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders?.();
+    const reader = (upstream.body as any).getReader?.();
+    if (!reader) {
+      // Node fetch body as web stream may need different consumption
+      const nodeStream = upstream.body as any;
+      if (typeof nodeStream.on === "function") {
+        nodeStream.on("data", (chunk: Buffer) => res.write(chunk));
+        nodeStream.on("end", () => res.end());
+        nodeStream.on("error", (e: any) => {
+          try { res.write(`data: ${JSON.stringify({ error: e?.message || "stream error" })}\n\n`); } catch {}
+          res.end();
+        });
+        req.on("close", () => { try { nodeStream.destroy?.(); } catch {} });
+        return;
+      }
+      return res.status(502).json({ error: "Streaming body unavailable from llama-server." });
+    }
+    const decoder = new TextDecoder();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(decoder.decode(value, { stream: true }));
+      }
+    } catch (e: any) {
+      try { res.write(`data: ${JSON.stringify({ error: e?.message || "stream interrupted" })}\n\n`); } catch {}
+    }
+    res.end();
+  } catch (error: any) {
+    if (!res.headersSent) {
+      res.status(500).json({ error: error?.message || "Chat stream failed." });
+    } else {
+      try { res.end(); } catch {}
+    }
   }
 });
 
@@ -5068,14 +5181,14 @@ app.post('/api/diagnostics/test-suite', async (req, res) => {
   await check('Image Generation','AIDA64 1024×600 preset lock',async()=>{
     const w:any = workflowRegistry.get('flux_lite_image');
     const latent:any = Object.values(w?.workflow || {}).find((n:any) => n?.class_type === 'EmptySD3LatentImage');
-    if (!latent) throw new Error('FLUX Lite latent node missing from flux_lite_image');
+    if (!latent) throw new Error('FLUX.1 Dev latent node missing from flux_lite_image');
     const baselineWidth = Number(latent.inputs?.width), baselineHeight = Number(latent.inputs?.height);
     if (baselineWidth !== 1024 || baselineHeight !== 1024) throw new Error(`flux_lite_image baseline is ${baselineWidth}×${baselineHeight}, expected 1024×1024`);
     const aidaWorkflow = enforceAida64WorkflowDimensions(w.workflow, 1024, 600);
     const aidaLatent:any = Object.values(aidaWorkflow || {}).find((n:any) => n?.class_type === 'EmptySD3LatentImage');
     const aidaWidth = Number(aidaLatent?.inputs?.width), aidaHeight = Number(aidaLatent?.inputs?.height);
     if (aidaWidth !== 1024 || aidaHeight !== 600) throw new Error(`AIDA64 preset lock resolved to ${aidaWidth}×${aidaHeight}, expected 1024×600`);
-    return {details:'FLUX Lite baseline is 1024×1024; AIDA64 request is locked to 1024×600 only when the preset is selected'};
+    return {details:'FLUX.1 Dev baseline is 1024×1024; AIDA64 request is locked to 1024×600 only when the preset is selected'};
   });
   await check('Image Generation','FLUX GGUF model file',async()=>{
     const modelPath = path.join(MODEL_ROOT, 'unet', FLUX_GGUF);
@@ -5419,6 +5532,137 @@ function validateWanVideoParameters(parameters: Record<string, any>) {
   return { ...parameters, width, height, frames, batch_size: 1, fps, duration_sec: duration, steps, __wanEnvelope: spillover ? 'spillover' : 'native' };
 }
 
+
+app.post("/api/image/remove-background", async (req, res) => {
+  try {
+    const filename = path.basename(String(req.body?.filename || "").trim());
+    const imageUrlRaw = String(req.body?.imageUrl || "").trim();
+    if (!filename && !imageUrlRaw) {
+      return res.status(400).json({ ok: false, error: "filename or imageUrl is required." });
+    }
+
+    const comfyRoot = process.env.COMFY_ROOT || COMFY_ROOT;
+    const pathCandidates: string[] = [];
+    if (filename) {
+      pathCandidates.push(
+        path.join(comfyRoot, "output", filename),
+        path.join(comfyRoot, "input", filename),
+        path.join(GINA_ROOT, ".gina", "uploads", filename),
+        path.join(GINA_ROOT, ".gina", "tmp", filename),
+      );
+      try {
+        for (const dir of [path.join(comfyRoot, "output"), path.join(comfyRoot, "input")]) {
+          const entries = await fs.readdir(dir, { withFileTypes: true });
+          for (const ent of entries) {
+            if (ent.isDirectory()) pathCandidates.push(path.join(dir, ent.name, filename));
+          }
+        }
+      } catch { /* optional */ }
+    }
+
+    let src: string | null = null;
+    for (const c of pathCandidates) {
+      try { await fs.access(c); src = c; break; } catch {}
+    }
+
+    // Prefer explicit preview URL / Comfy view fetch
+    const tryFetchToTemp = async (url: string): Promise<string | null> => {
+      try {
+        const viewRes = await fetch(url, { signal: AbortSignal.timeout(20000) });
+        if (!viewRes.ok) return null;
+        const buf = Buffer.from(await viewRes.arrayBuffer());
+        if (buf.length < 64) return null;
+        const tmpDir = path.join(GINA_ROOT, ".gina", "tmp");
+        await fs.mkdir(tmpDir, { recursive: true });
+        const safeName = filename || `comfy_${Date.now()}.png`;
+        const tmpPath = path.join(tmpDir, safeName);
+        await fs.writeFile(tmpPath, buf);
+        return tmpPath;
+      } catch {
+        return null;
+      }
+    };
+
+    if (!src && imageUrlRaw) {
+      // Absolute or relative preview URL from the UI
+      let abs = imageUrlRaw;
+      if (imageUrlRaw.startsWith("/")) abs = `http://127.0.0.1:${PORT}${imageUrlRaw}`;
+      else if (imageUrlRaw.startsWith("view?") || imageUrlRaw.includes("/view?")) {
+        abs = imageUrlRaw.startsWith("http") ? imageUrlRaw : `${COMFY_URL}/${imageUrlRaw.replace(/^\//, "")}`;
+      }
+      src = await tryFetchToTemp(abs);
+    }
+
+    if (!src && filename) {
+      const viewUrl = `${COMFY_URL}/view?${new URLSearchParams({ filename, subfolder: "", type: "output" }).toString()}`;
+      src = await tryFetchToTemp(viewUrl);
+    }
+
+    if (!src) {
+      return res.status(404).json({
+        ok: false,
+        error: `Image not found: ${filename || imageUrlRaw}. Looked under ${path.join(comfyRoot, "output")} and Comfy /view. Restart Gina server after updates, then click α while the preview is visible.`,
+        comfyRoot,
+        checked: pathCandidates.slice(0, 6),
+      });
+    }
+
+    const base = path.basename(src).replace(/\.[^.]+$/, "") || "image";
+    const outName = `transparent_${Date.now()}_${base}.png`;
+    const outPath = path.join(comfyRoot, "output", outName);
+    await fs.mkdir(path.dirname(outPath), { recursive: true });
+
+    const scriptCandidates = [
+      path.join(process.cwd(), "scripts", "remove_background.py"),
+      path.join(GINA_ROOT, "Gina-AI-Assistant", "scripts", "remove_background.py"),
+      path.join(GINA_ROOT, "scripts", "remove_background.py"),
+    ];
+    let script: string | null = null;
+    for (const s of scriptCandidates) {
+      try { await fs.access(s); script = s; break; } catch {}
+    }
+    if (!script) {
+      return res.status(500).json({ ok: false, error: `remove_background.py not found. Tried: ${scriptCandidates.join(" | ")}` });
+    }
+
+    const { spawn } = await import("child_process");
+    const pythonBins = process.platform === "win32" ? ["py", "python", "python3"] : ["python3", "python"];
+    let lastErr = "";
+    let ok = false;
+    for (const bin of pythonBins) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const args = bin === "py" ? ["-3", script!, src!, outPath] : [script!, src!, outPath];
+          const child = spawn(bin, args, { windowsHide: true });
+          let err = "";
+          child.stderr.on("data", (d) => { err += String(d); });
+          child.stdout.on("data", () => {});
+          child.on("exit", (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(err || `remove_background exited ${code} via ${bin}`));
+          });
+          child.on("error", reject);
+        });
+        ok = true;
+        break;
+      } catch (e: any) {
+        lastErr = e?.message || String(e);
+      }
+    }
+    if (!ok) {
+      throw new Error(
+        lastErr ||
+          "Background removal failed. rembg is OK on py -3; ensure Gina server was restarted and can spawn: py -3 scripts/remove_background.py"
+      );
+    }
+
+    const resultUrl = `${COMFY_URL}/view?${new URLSearchParams({ filename: outName, subfolder: "", type: "output" }).toString()}`;
+    res.json({ ok: true, filename: outName, imageUrl: resultUrl, source: src, script });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "Background removal failed." });
+  }
+});
+
 app.post("/api/jobs", async (req, res) => {
   const { workflowId } = req.body || {};
   let parameters = req.body?.parameters || {};
@@ -5528,6 +5772,8 @@ app.post("/api/jobs", async (req, res) => {
   }
   lastActiveWorkflowId = workflowId;
 
+  // FLUX.1 Dev (workflow id flux_lite_image) is ComfyUI-only.
+  // Do NOT gate on localLlm engine or mmproj — Qwen is unrelated to FLUX generation.
   let textImageAudit: any = null;
   try {
     if (workflowId === 'flux_lite_image') {
