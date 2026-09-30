@@ -63,10 +63,10 @@ import { runtimeTelemetry } from "./server/telemetry/RuntimeTelemetry.js";
 import JSZip from "jszip";
 import { WebSocketServer, WebSocket as WsClient } from "ws";
 import { ProxySavingsEngine, COMMERCIAL_RATES, createProxyClassifierMiddleware } from "./server/proxy/ProxySavingsEngine.js";
-
 // Note: Added the explicit .js extension to prevent standard ES module path resolution errors
 import imageRoutes from './server/routes/imageRoute.ts';
 import audioEngineRoute from './server/routes/audioEngineRoute.ts';
+import imageProcessorRouter from './server/tools/imageProcessor.ts'; // 👈 ADD THIS LINE HERE
 
 const app = express();
 const isWin = process.platform === "win32";
@@ -386,6 +386,7 @@ app.use(createProxyClassifierMiddleware(proxySavingsEngine));
 // Mount your new optimized image prompt router layer here:
 app.use("/api/llm", imageRoutes);
 app.use('/api/audio', audioEngineRoute);
+app.use('/api/tools', imageProcessorRouter); // 👈 ADD THIS LINE HERE
 app.use('/media/unified-audio', express.static(path.resolve(GINA_ROOT, 'media', 'unified_audio')));
 
 // Record every API failure centrally so the dashboard has the same diagnostic
