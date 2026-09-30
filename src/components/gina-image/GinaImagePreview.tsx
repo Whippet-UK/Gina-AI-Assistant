@@ -32,6 +32,8 @@ export interface GinaImagePreviewProps {
   promotingImage: boolean;
   keepNotification: string | null;
   onDownload: () => void;
+  onMakeTransparent?: () => void;
+  makingTransparent?: boolean;
   onSaveAsset: () => void;
   savingAsset: boolean;
   activeLayout: any | null;
@@ -55,6 +57,8 @@ export const GinaImagePreview: React.FC<GinaImagePreviewProps> = ({
   promotingImage,
   keepNotification,
   onDownload,
+  onMakeTransparent,
+  makingTransparent = false,
   onSaveAsset,
   savingAsset,
   activeLayout,
@@ -184,6 +188,17 @@ export const GinaImagePreview: React.FC<GinaImagePreviewProps> = ({
               >
                 <Download className="w-4 h-4" />
               </button>
+              {onMakeTransparent && (
+                <button
+                  type="button"
+                  onClick={onMakeTransparent}
+                  disabled={makingTransparent || !activeOutput}
+                  title="Remove background → true transparent PNG (watermark-ready)"
+                  className="p-2 rounded-lg bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/30 disabled:opacity-40"
+                >
+                  {makingTransparent ? '…' : 'α'}
+                </button>
+              )}
 
               {currentJobPrompt && (
                 <button

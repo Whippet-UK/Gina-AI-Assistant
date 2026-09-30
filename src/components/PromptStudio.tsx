@@ -139,6 +139,8 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
 
   // Gina Styles (Default to Gina V2)
   const [selectedStyles, setSelectedStyles] = useState<string[]>(['gina_v2']);
+  const TRANSPARENT_STYLE_IDS = new Set(['transparent_bg', 'watermark_logo', 'flat_vector', 'flat_icon']);
+  const isTransparentStyleActive = selectedStyles.some((id) => TRANSPARENT_STYLE_IDS.has(id));
 
   // Model Tab
   const [baseModel, setBaseModel] = useState('Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors');
@@ -168,6 +170,9 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     previewUrl: string;
   } | null>(null);
   const [additiveEditOnly, setAdditiveEditOnly] = useState(true);
+  const [visionEngine, setVisionEngine] = useState<'qwen3.5' | 'qwen'>('qwen3.5');
+  const [sharpening, setSharpening] = useState(0);
+  const [makingTransparent, setMakingTransparent] = useState(false);
   const [imageWeight, setImageWeight] = useState(0.85);
   const [stopAt, setStopAt] = useState(0.85);
   const [uploadingReference, setUploadingReference] = useState(false);
@@ -501,9 +506,14 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
 
     const { positive: rawPositive, negative: rawNegative } = buildFinalPrompt(cfg.promptInput);
     const additiveRequested = Boolean(referenceImage && additiveEditOnly);
+    const sharpBoost = sharpening > 0
+      ? (sharpening >= 1.2
+          ? ', razor-sharp focus, high edge acutance, crystalline micro-detail'
+          : ', sharp focus, clear edge detail')
+      : '';
     const positive = additiveRequested
-      ? `SOURCE PRESERVATION: keep the supplied image unchanged except for the newly requested additions. Preserve the existing subject, whippet, pose, fur, camera, background, lighting, colours and composition. ADD ONLY: ${rawPositive}`
-      : rawPositive;
+      ? `SOURCE PRESERVATION: keep the supplied image unchanged except for the newly requested additions. Preserve the existing subject, pose, camera, background, lighting, colours and composition. ADD ONLY: ${rawPositive}${sharpBoost}`
+      : `${rawPositive}${sharpBoost}`;
     const negative = additiveRequested
       ? `${rawNegative ? `${rawNegative}, ` : ''}do not alter, remove, replace, restyle, recolour, move, resize or redesign existing content; no global changes`
       : rawNegative;
@@ -530,9 +540,27 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
     const hasRef = Boolean(referenceImage);
     const hasMask = Boolean(referenceImage && inpaintMask);
     // Inpainting inside the mask requires adequate denoise (0.85) to cleanly transform dark fur to white, while SetLatentNoiseMask protects unmasked background 100%
-    const effectiveDenoise = hasMask ? 0.85 : hasRef ? (additiveRequested ? 0.32 : denoise) : 1.0;
+    // When a reference image is present, never run full denoise=1.0 (that invents a new subject).
+    // Additive edit → very low denoise; general edit with ref → clamp user denoise into 0.35–0.75.
+    const effectiveDenoise = hasMask
+      ? 0.85
+      : hasRef
+        ? (additiveRequested ? 0.32 : Math.min(0.75, Math.max(0.35, denoise === 1.0 ? 0.55 : denoise)))
+        : 1.0;
     if (controls.some((c) => c.key === 'denoise')) bound.denoise = effectiveDenoise;
     if (controls.some((c) => c.key === 'batch_size')) bound.batch_size = imageNumber;
+    if (controls.some((c) => c.key === 'image_weight' || c.key === 'cn_weight')) {
+      const wKey = controls.find((c) => c.key === 'image_weight' || c.key === 'cn_weight')!.key;
+      bound[wKey] = imageWeight;
+    }
+    if (controls.some((c) => c.key === 'stop_at' || c.key === 'cn_stop')) {
+      const sKey = controls.find((c) => c.key === 'stop_at' || c.key === 'cn_stop')!.key;
+      bound[sKey] = stopAt;
+    }
+    if (sharpening > 0 && controls.some((c) => c.key === 'sharpen' || c.key === 'sharpening')) {
+      const shKey = controls.find((c) => c.key === 'sharpen' || c.key === 'sharpening')!.key;
+      bound[shKey] = sharpening;
+    }
 
     // Seed logic
     const seedControl = controls.find((c) => ['seed', 'noise_seed'].includes(c.key));
@@ -564,9 +592,14 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
         setSelectedWorkflow(refWf.id);
       }
     } else if (referenceImage) {
-      if (targetWorkflow === 'sdxl_juggernaut' || targetWorkflow.startsWith('sdxl')) {
+      // Reference present = edit / identity lock. Prefer SDXL reference workflow so denoise
+      // actually conditions on the uploaded image. FLUX.1 Dev lane is pure txt2img today;
+      // keep FLUX only when user is not in additive-edit mode and explicitly selected flux.
+      if (targetWorkflow === 'sdxl_juggernaut' || targetWorkflow.startsWith('sdxl') || additiveRequested || targetWorkflow === 'flux_lite_image') {
         const refWf = workflows.find((w) => w.id === 'sdxl_juggernaut_reference' || w.id.includes('reference'));
-        if (refWf) targetWorkflow = refWf.id;
+        if (refWf && (additiveRequested || targetWorkflow !== 'flux_lite_image' || !highPrecisionText)) {
+          targetWorkflow = refWf.id;
+        }
       }
     } else if (targetWorkflow === 'sdxl_juggernaut_reference' || targetWorkflow === 'sdxl_juggernaut_inpaint') {
       const baseWf = workflows.find((w) => w.id === 'sdxl_juggernaut');
@@ -585,10 +618,20 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
 
     onAddLog(
       'INFO',
-      `[Gina Image Studio] Generating with ${workflowModelLabel} (${effectiveWidth}×${effectiveHeight}, ${steps} steps, seed ${effectiveSeed}${hasRef ? `, ref: ${referenceImage.filename}, denoise ${effectiveDenoise}` : ''}${hasMask ? `, mask: ${inpaintMask.filename}` : ''}${additiveRequested ? ', ADD-ONLY / SOURCE PRESERVATION' : ''}). Styles: [${selectedStyles.join(', ')}]${highPrecisionText ? ', HIGH PRECISION / FLUX.1 LITE' : ''}`
+      `[Gina Image Studio] Generating with ${workflowModelLabel} (${effectiveWidth}×${effectiveHeight}, ${steps} steps, seed ${effectiveSeed}${hasRef ? `, ref: ${referenceImage.filename}, denoise ${effectiveDenoise}` : ''}${hasMask ? `, mask: ${inpaintMask.filename}` : ''}${additiveRequested ? ', ADD-ONLY / SOURCE PRESERVATION' : ''}). Styles: [${selectedStyles.join(', ')}]${highPrecisionText ? ', HIGH PRECISION / FLUX.1 Dev' : ''}`
     );
 
-    await startJob(targetWorkflow, bound);
+    
+    if (isTransparentStyleActive) {
+      const tNeg = 'busy background, landscape, room, complex scene, gradient sky, textured backdrop, photograph of environment';
+      const tPos = 'isolated subject on pure solid white background, clean cutout edges, no environment';
+      if (bound.prompt && !/solid white background/i.test(String(bound.prompt))) bound.prompt = `${bound.prompt}, ${tPos}`;
+      if (bound.positive_prompt && !/solid white background/i.test(String(bound.positive_prompt))) bound.positive_prompt = `${bound.positive_prompt}, ${tPos}`;
+      const negKey = bound.negative_prompt != null ? 'negative_prompt' : bound.negative != null ? 'negative' : null;
+      if (negKey) bound[negKey] = `${bound[negKey] ? bound[negKey] + ', ' : ''}${tNeg}`;
+      else bound.negative_prompt = tNeg;
+    }
+await startJob(targetWorkflow, bound);
   };
 
   // Keyboard shortcut Ctrl+Enter to generate
@@ -721,6 +764,73 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
   };
 
   // Save to Library
+
+  const handleMakeTransparent = async () => {
+
+    const fromUrl = (url?: string | null) => {
+      if (!url) return null;
+      try {
+        const u = new URL(url, window.location.origin);
+        return u.searchParams.get('filename') || url.split('/').pop()?.split('?')[0] || null;
+      } catch {
+        return url.split('/').pop()?.split('?')[0] || null;
+      }
+    };
+    const filename =
+      (job as any)?.outputs?.[0]?.file?.filename ||
+      (job as any)?.outputs?.[0]?.filename ||
+      (typeof output?.outputs?.[0]?.file?.filename === 'string' ? output.outputs[0].file.filename : null) ||
+      fromUrl((job as any)?.outputs?.[0]?.url) ||
+      fromUrl(output?.outputs?.[0]?.url) ||
+      fromUrl(typeof activeOutput === 'string' ? activeOutput : null);
+    if (!filename) {
+      onAddLog('WARN', 'No generated image filename available for background removal.');
+      return;
+    }
+    setMakingTransparent(true);
+    const imageUrl =
+      (job as any)?.outputs?.[0]?.url ||
+      output?.outputs?.[0]?.url ||
+      (typeof activeOutput === 'string' ? activeOutput : null);
+    onAddLog('INFO', `Removing background from ${filename}${imageUrl ? ` (via preview URL)` : ''}…`);
+    try {
+      const response = await fetch('/api/image/remove-background', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, imageUrl })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      const resultUrl = data.imageUrl
+        ? `${data.imageUrl}${data.imageUrl.includes('?') ? '&' : '?'}t=${Date.now()}`
+        : null;
+      if (resultUrl) {
+        setLastCompletedImageUrl(resultUrl);
+        setSelectedHistoryUrl(resultUrl);
+        setHistory((prev) => {
+          if (prev.some((h) => h.url === resultUrl || (data.filename && h.url.includes(data.filename)))) {
+            return prev.map((h) =>
+              h.url.includes(String(data.filename || '')) ? { ...h, url: resultUrl } : h
+            );
+          }
+          return [
+            { id: `transparent-${Date.now()}`, url: resultUrl, prompt: 'Transparent PNG', timestamp: Date.now(), styles: selectedStyles },
+            ...prev,
+          ].slice(0, 24);
+        });
+      }
+      onAddLog('INFO', `Transparent PNG ready: ${data.filename}. Preview updated (true RGBA).`);
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      onAddLog('WARN', `Make Transparent failed: ${msg}. Install rembg into the same Python Gina uses (try: py -3 -m pip install -r requirements-background-removal.txt).`);
+      setKeepNotification(`α failed: ${msg.slice(0, 120)}`);
+      setTimeout(() => setKeepNotification(null), 5000);
+    } finally {
+      setMakingTransparent(false);
+    }
+  };
+
+
   const handleSaveAsset = async () => {
     if (!activeOutput || !job) return;
     setSavingAsset(true);
@@ -870,7 +980,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
                 GINA IMAGE STUDIO
               </h2>
               <span className="px-2 py-0.2 rounded bg-blue-500/15 border border-blue-500/30 text-[9px] text-blue-300 font-mono">
-                Qwen 2.5-VL + Juggernaut-XL v9
+                {(visionEngine === 'qwen' ? 'Qwen 2.5-VL' : 'Qwen3.5') + ' · ' + ((highPrecisionText || selectedWorkflow === 'flux_lite_image') ? 'FLUX.1 Dev' : 'Juggernaut-XL v9')}
               </span>
             </div>
             <p className="text-[10px] text-zinc-400 font-mono">
@@ -971,6 +1081,8 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
             lockSeed={lockSeed}
             promotingImage={promotingImage}
             keepNotification={keepNotification}
+            onMakeTransparent={handleMakeTransparent}
+            makingTransparent={makingTransparent}
             onDownload={handleDownload}
             onSaveAsset={handleSaveAsset}
             savingAsset={savingAsset}
@@ -1021,6 +1133,7 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
               inpaintMask={inpaintMask}
               onSetInpaintMask={setInpaintMask}
               onTriggerInpaint={handleTriggerInpaint}
+              visionEngine={visionEngine}
             />
           )}
 
@@ -1220,6 +1333,10 @@ export const PromptStudio: React.FC<PromptStudioProps> = ({
               onChangeScheduler={(value) => { manualImageSettings.current.scheduler = true; setScheduler(value); }}
               denoise={denoise}
               onChangeDenoise={(value) => { manualImageSettings.current.denoise = true; setDenoise(value); }}
+              sharpening={sharpening}
+              onChangeSharpening={setSharpening}
+              visionEngine={visionEngine}
+              onChangeVisionEngine={setVisionEngine}
               telemetry={telemetry}
               gpuName={gpuName}
               vramTotal={vramTotal}

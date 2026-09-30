@@ -73,13 +73,13 @@ export const ResizableSplit: React.FC<SplitProps> = ({
   left,
   right,
   defaultLeftPct = 50,
-  minLeftPct = 25,
-  maxLeftPct = 75,
+  minLeftPct = 8,
+  maxLeftPct = 92,
   className = '',
-  resizableHeight = true,
+  resizableHeight = false,
   defaultHeightPx = 600,
-  minHeightPx = 400,
-  maxHeightPx = 1600,
+  minHeightPx = 200,
+  maxHeightPx = 4000,
   showPresets = true,
   initialMode = '900x600'
 }) => {
@@ -98,13 +98,9 @@ export const ResizableSplit: React.FC<SplitProps> = ({
   });
 
   const [heightPx, setHeightPx] = useState(() => {
-    const val = readNum(STORAGE_HEIGHT, defaultHeightPx, minHeightPx, maxHeightPx);
-    // Automatically upgrade any legacy or stale height (420, 460, 560, or < 600) to 600px
-    if (val < 600 || val === 420 || val === 460 || val === 560) {
-      try { localStorage.setItem(STORAGE_HEIGHT, '600'); } catch {}
-      return 600;
-    }
-    return val;
+    // Free layout: do not force a locked height. Only apply stored height when
+    // resizableHeight is explicitly enabled by the parent.
+    return readNum(STORAGE_HEIGHT, defaultHeightPx, minHeightPx, maxHeightPx);
   });
   const shellRef = useRef<HTMLDivElement>(null);
   const dragging = useRef<'x' | 'y' | null>(null);
@@ -178,7 +174,9 @@ export const ResizableSplit: React.FC<SplitProps> = ({
     <div
       ref={shellRef}
       className={`relative flex min-w-0 flex-col ${className}`}
-      style={resizableHeight ? { height: heightPx, minHeight: minHeightPx } : undefined}
+      style={resizableHeight
+        ? { height: heightPx, minHeight: minHeightPx }
+        : { minHeight: Math.min(minHeightPx, 280) }}
     >
       {showPresets && (
         <div className="mb-1.5 flex flex-wrap items-center justify-between gap-1.5 px-0.5 text-[9px] font-mono text-slate-500 shrink-0 select-none">
@@ -268,32 +266,25 @@ export const ResizableSplit: React.FC<SplitProps> = ({
         </div>
       )}
       {layoutMode === '900x600' ? (
-        <div className="flex min-h-0 flex-1 min-w-0 overflow-x-auto custom-scrollbar pb-1 gap-2 items-stretch">
-          <div className="min-h-0 shrink-0 overflow-hidden flex flex-col" style={{ width: '900px', minWidth: '900px', flex: '0 0 900px' }}>
+        <div className="flex min-w-0 overflow-x-auto custom-scrollbar pb-1 gap-2 items-stretch" style={{ minHeight: resizableHeight ? undefined : 320 }}>
+          <div className="shrink-0 flex flex-col" style={{ width: '900px', minWidth: '900px', flex: '0 0 900px', minHeight: 320 }}>
             {left}
           </div>
-          <div className="min-h-0 shrink-0 overflow-hidden flex flex-col" style={{ width: '900px', minWidth: '900px', flex: '0 0 900px' }}>
+          <div className="shrink-0 flex flex-col" style={{ width: '900px', minWidth: '900px', flex: '0 0 900px', minHeight: 320 }}>
             {right}
           </div>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 min-w-0">
-          <div className="min-h-0 min-w-0 overflow-hidden flex flex-col" style={{ width: `${leftPct}%`, flex: 'none' }}>
+        <div className="flex min-w-0 items-stretch" style={{ minHeight: resizableHeight ? undefined : 320 }}>
+          <div className="min-w-0 flex flex-col" style={{ width: `${leftPct}%`, flex: 'none', minHeight: 320 }}>
             {left}
           </div>
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize chat and preview"
-            onPointerDown={startX}
-            className="group relative z-10 w-2 shrink-0 cursor-col-resize bg-slate-900/80 hover:bg-emerald-500/30 active:bg-emerald-500/50 transition-colors"
-            title="Drag to resize width"
-          >
-            <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-slate-700 group-hover:bg-emerald-400/60" />
-          </div>
-          <div className="min-h-0 min-w-0 flex-1 overflow-hidden flex flex-col">{right}</div>
+          {/* Width adjust only when parent opts in via resizableHeight legacy; default is free flow with a plain gap */}
+          <div className="w-1 shrink-0 bg-transparent" aria-hidden />
+          <div className="min-w-0 flex-1 flex flex-col" style={{ minHeight: 320 }}>{right}</div>
         </div>
       )}
+      {/* Horizontal height separator REMOVED by default — was locking Response/Preview height */}
       {resizableHeight && (
         <div
           role="separator"
@@ -375,7 +366,7 @@ export const OuterWorkspaceFrame: React.FC<{ children: React.ReactNode; classNam
     } else if (dragging.current === 'h') {
       const rect = shellRef.current.getBoundingClientRect();
       const h = e.clientY - rect.top;
-      const next = Math.min(2000, Math.max(280, h));
+      const next = Math.min(2000, Math.max(100, h));
       setMinHeightPx(next);
       try { localStorage.setItem(STORAGE_OUTER_H, String(Math.round(next))); } catch {}
     }

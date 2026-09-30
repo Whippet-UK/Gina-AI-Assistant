@@ -193,7 +193,7 @@ const TraceSection: React.FC<{
   summary,
   open: controlledOpen = false,
   defaultHeight = 160,
-  minHeight = 60,
+  minHeight = 40,
   maxHeight = 700,
   children
 }) => {
@@ -285,7 +285,7 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
   onClear,
   onOpenFile
 }) => {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [tokenSamples, setTokenSamples] = useState<number[]>([]);
   const [vramSamples, setVramSamples] = useState<number[]>([]);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -395,7 +395,7 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
             icon={<GitBranch className="mr-1 inline h-3 w-3 text-violet-400" />}
             summary={`${executionLog.length} event${executionLog.length === 1 ? '' : 's'}${statusIsActive ? ` · live ${formatElapsed(stepElapsedMs)}` : ''}`}
             open
-            defaultHeight={170}
+            defaultHeight={120}
           >
             {executionLog.length === 0 ? (
               <div className="text-[8px] font-mono text-slate-600">No execution events yet.</div>
@@ -468,7 +468,7 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
             icon={<Terminal className="mr-1 inline h-3 w-3 text-sky-400" />}
             summary={activity.length ? `${activity.length} live event${activity.length === 1 ? '' : 's'}` : 'waiting…'}
             open={statusIsActive || activity.length > 0}
-            defaultHeight={170}
+            defaultHeight={120}
           >
             {activity.length === 0 ? (
               <div className="text-[8px] font-mono text-slate-600">No live agent events yet — steps appear here as Gina works.</div>

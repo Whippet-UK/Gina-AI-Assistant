@@ -74,7 +74,7 @@ export const StudioWorkspace: React.FC<Props> = ({ telemetry, logs, onAddLog, on
   const [chatColWidth, setChatColWidth] = useState<number>(() => {
     try {
       const saved = localStorage.getItem('gina_studio_chat_width');
-      if (saved) return Math.max(280, Math.min(window.innerWidth * 0.75, Number(saved)));
+      if (saved) return Math.max(120, Math.min(window.innerWidth * 0.95, Number(saved)));
     } catch {}
     return Math.round(window.innerWidth * 0.40);
   });
@@ -83,7 +83,7 @@ export const StudioWorkspace: React.FC<Props> = ({ telemetry, logs, onAddLog, on
   useEffect(() => {
     if (!isDraggingSplit) return;
     const handleMouseMove = (e: MouseEvent) => {
-      const newWidth = Math.max(280, Math.min(window.innerWidth * 0.75, e.clientX));
+      const newWidth = Math.max(120, Math.min(window.innerWidth * 0.95, e.clientX));
       setChatColWidth(newWidth);
     };
     const handleMouseUp = () => {

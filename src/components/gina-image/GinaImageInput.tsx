@@ -698,7 +698,7 @@ export const GinaImageInput: React.FC<GinaImageInputProps> = ({
             )}
 
             <p className="text-[10px] text-zinc-500">
-              * &quot;Image Prompt&quot; is powered by Fooocus Image Mixture Engine (v1.0.1).{' '}
+              * &quot;Image Prompt&quot; is powered by Gina-AI-Assistant Image Mixture Engine (v1.20.16).{' '}
               <a
                 href="https://github.com/Whippet-UK/Gina-AI-Assistant"
                 target="_blank"

@@ -147,12 +147,12 @@ export const VRAMOomFrequencyChart: React.FC<VRAMOomFrequencyChartProps> = ({
           node: 'VAEDecode (Node #8)',
           err: 'VRAM pressure during temporal decode'
         },
-        flux_dev: {
-          name: 'FLUX.1 Dev Q4_K_M',
+        flux_lite: {
+          name: 'FLUX.1 Lite GGUF',
           workflow: 'flux_lite_image',
           vram: 6200,
           node: 'SamplerCustomAdvanced (Node #10)',
-          err: 'VRAM pressure during FLUX.1 Dev image generation'
+          err: 'VRAM pressure during optional high-precision image generation'
         },
         geneva_fp8: {
           name: 'Geneva 1.12B FP8',

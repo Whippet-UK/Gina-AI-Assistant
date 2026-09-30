@@ -4,7 +4,16 @@ import { Bot, Cpu, FileDown, MessageSquare, Mic, MicOff, Play, RotateCw, Square,
 import { LocalRagKnowledgePanel } from './LocalRagKnowledgePanel';
 import { useGenerationJob } from '../context/GenerationJobContext';
 import { WebBrowserInspectorModal } from './WebBrowserInspectorModal';
-import { AgentExecutionTrace } from './AgentExecutionTrace';
+import { AgentExecutionTrace } from './AgentExecutionTrace'
+import { resolveSearchProfile } from '../data/ginaSearchProfiles'
+import { resolveCodeProfile, type PythonVersion } from '../data/ginaCodeProfiles'
+import { GinaStudioProfilePicker } from './GinaStudioProfilePicker'
+import { GinaAgentProjectBar } from './GinaAgentProjectBar'
+import { AGENT_IMPORT_PROTOCOL } from '../data/ginaAgentProfiles'
+import { MovableResizableWrapper } from './MovableResizableWrapper'
+import { resolveVideoProfile, composeVideoPrompt } from '../data/ginaVideoProfiles';
+import { resolveImageProfile } from '../data/ginaImageProfiles';
+import { resolveAgentProfile, composeAgentSystemAddon } from '../data/ginaAgentProfiles';
 import { initGinaMath } from '../lib/ginaMath';
 import { PanelResizeGrip, useResizablePanel } from './PanelResizeGrip';
 
@@ -126,6 +135,12 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   const { job: generationJob, output: generationOutput, adoptJob, adoptCompletedOutput, updateJobProgress, cancelJob } = useGenerationJob();
   const [aiImageJobId, setAiImageJobId] = useState<string | null>(null);
   const [input, setInput] = useState('');
+  const [pythonVersion, setPythonVersion] = useState<PythonVersion>('3.11');
+  const [codeProfileId, setCodeProfileId] = useState<string | null>(null);
+  const [searchProfileId, setSearchProfileId] = useState<string | null>(null);
+  const [imageProfileId, setImageProfileId] = useState<string | null>(null);
+  const [videoProfileId, setVideoProfileId] = useState<string | null>(null);
+  const [agentProfileId, setAgentProfileId] = useState<string | null>(null);
   const historyModeRef = useRef(studioMode);
   const historyKey = `gina_studio_messages_${studioMode}`;
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
@@ -1750,13 +1765,15 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
         return;
       }
       if (studioMode === 'web-search') {
+        const searchCfg = resolveSearchProfile({ id: searchProfileId || undefined, query: typedText });
+        const searchQuery = searchCfg.query || typedText;
         const nextMessages: ChatMessage[] = [...messages, { role:'user', content:text }];
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null);
         setThinkingSource('web');
-        setAgentStatus('Searching the web…');
-        logGina('Searching the web…', `Query: ${typedText.slice(0, 200)}`, 'running', { kind: 'info' });
+        setAgentStatus(searchCfg.profileName !== 'Standard Search' ? `Search · ${searchCfg.profileName}` : 'Searching the web…');
+        logGina('Searching the web…', `Profile: ${searchCfg.profileName}${searchCfg.usedFallback ? ' (unknown shortcode → defaults)' : ''}\nDepth: ${searchCfg.settings.depth} · max ${searchCfg.settings.maxResults}\nQuery: ${searchQuery.slice(0, 200)}`, 'running', { kind: 'info' });
         try {
-          const searchResponse = await fetch('/api/agent/web-search', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query:typedText,maxResults:8}) });
+          const searchResponse = await fetch('/api/agent/web-search', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query:searchQuery,maxResults:8}) });
           const searchData = await searchResponse.json().catch(() => ({}));
           if (!searchResponse.ok) throw new Error(searchData?.error || `Live web search failed (HTTP ${searchResponse.status}).`);
           const results = Array.isArray(searchData?.results) ? searchData.results : [];
@@ -1791,11 +1808,13 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
       }
 
       if (studioMode === 'code-engine') {
+        const codeCfg = resolveCodeProfile({ id: codeProfileId || undefined, prompt: typedText, pythonVersion });
+        const codePrompt = [codeCfg.positivePrompt, codeCfg.prompt].filter(Boolean).join('\n\n') || typedText;
         const nextMessages: ChatMessage[]=[...messages,{role:'user',content:text}];
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null); setThinkingSource('local');
         logGina('Code Engine', 'Starting project agent · Thinking…', 'running', { kind: 'info', execKind: 'command' });
         try {
-          await runProjectAgent(typedText);
+          await runProjectAgent(codePrompt);
           logGina('Code Engine complete', `Files read: ${readFilesRef.current.size} · Edited: ${editedFilesRef.current.size} · Commands: ${commandsRunRef.current}`, 'complete', { kind: 'info', execKind: 'command' });
         } catch(err:any){
           logGina('Code Engine failed', err?.message||'Local coding task failed.', 'error', { kind: 'error', execKind: 'command' });
@@ -1806,6 +1825,9 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
       }
 
       if (studioMode === 'image-studio') {
+        const imageCfg = resolveImageProfile({ id: imageProfileId || undefined, prompt: typedText });
+        if (imageCfg.profileId) logGina('Image profile', imageCfg.profileName, 'running', { kind: 'info' });
+
         const nextMessages: ChatMessage[]=[...messages,{role:'user',content:text}];
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null); setThinkingSource('local');
         setAgentStatus('Generating image…');
@@ -1822,12 +1844,19 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
       }
 
       if (studioMode === 'video-generation') {
+        const videoCfg = resolveVideoProfile({ id: videoProfileId || undefined, prompt: typedText });
+        const videoPrompt = composeVideoPrompt(videoCfg) || typedText;
         const nextMessages: ChatMessage[]=[...messages,{role:'user',content:text}];
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null); setThinkingSource('local');
-        setAgentStatus('Generating video…');
-        logGina('Generating video…', 'Wan 2.1 1.3B pipeline requested', 'running', { kind: 'info' });
+        setAgentStatus(videoCfg.profileName !== 'Standard Video Generation' ? `Video · ${videoCfg.profileName}` : 'Generating video…');
+        logGina('Generating video…', `Profile: ${videoCfg.profileName}${videoCfg.usedFallback ? ' (unknown shortcode → defaults)' : ''}\n${videoCfg.settings.resolution} @ ${videoCfg.settings.frameRate}fps · ${videoCfg.settings.durationSeconds}s\nWan 2.1 pipeline`, 'running', { kind: 'info' });
         try {
-          window.dispatchEvent(new CustomEvent('gina-video-generation-request',{detail:{prompt:typedText}}));
+          window.dispatchEvent(new CustomEvent('gina-video-generation-request',{detail:{
+            prompt: videoPrompt,
+            profileId: videoCfg.profileId,
+            settings: videoCfg.settings,
+            advanced: videoCfg.advanced,
+          }}));
         } catch(err:any){
           logGina('Video generation failed', err?.message||'Could not start video job.', 'error', { kind: 'error' });
           setError(err?.message||'Local video generation could not be started.'); setLoading(false);
@@ -1905,11 +1934,19 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
       logGina('Thinking…', 'Generating a local model response', 'running', { kind: 'info' });
       setAgentStatus('Thinking…');
       chatAbortRef.current = controller;
-      const response = await fetch('/api/llm/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...nextMessages],
+      let reply = '';
+      let usedStream = false;
+      const agentCfg = resolveAgentProfile({ id: agentProfileId || undefined, prompt: typedText });
+      const importProtocolNote = attachedFiles.length
+        ? `\n\n${AGENT_IMPORT_PROTOCOL}\nImported/attached files this turn: ${attachedFiles.map(f => f.name).join(', ')}.`
+        : '';
+      const agentAddon = composeAgentSystemAddon(agentCfg);
+      if (agentCfg.profileId) {
+        logGina('Agent profile', agentCfg.profileName, 'running', { kind: 'info' });
+        setAgentStatus(`Agent · ${agentCfg.profileName}`);
+      }
+      const chatBody = {
+          messages: [{ role: 'system', content: [SYSTEM_PROMPT, agentAddon, importProtocolNote].filter(Boolean).join('\n\n') }, ...nextMessages],
           temperature: 0.7,
           maxTokens: 512,
           suite: 'Local AI',
@@ -1918,11 +1955,77 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
             name: file.name, mime: file.mime, localPath: file.localPath, kind: file.kind
           })),
           webGrounding,
-        }),
+        };
+      try {
+        const streamRes = await fetch('/api/llm/chat-stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+          body: JSON.stringify(chatBody),
+          signal: controller.signal,
+        });
+        if (streamRes.ok && streamRes.body) {
+          usedStream = true;
+          setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+          const reader = streamRes.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let spokenUpTo = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed.startsWith('data:')) continue;
+              const payload = trimmed.slice(5).trim();
+              if (!payload || payload === '[DONE]') continue;
+              try {
+                const json = JSON.parse(payload);
+                const delta = json?.choices?.[0]?.delta?.content ?? '';
+                if (typeof delta === 'string' && delta) {
+                  reply += delta;
+                  setMessages(prev => {
+                    const copy = [...prev];
+                    const last = copy[copy.length - 1];
+                    if (last?.role === 'assistant') copy[copy.length - 1] = { ...last, content: reply };
+                    return copy;
+                  });
+                  if (autoSpeak && voiceEnabled) {
+                    const slice = reply.slice(spokenUpTo);
+                    const parts = slice.match(/[^.!?]+[.!?]+/g);
+                    if (parts) {
+                      let consumed = 0;
+                      for (const part of parts) {
+                        consumed += part.length;
+                        const piece = part.trim();
+                        if (piece) void speakText(piece);
+                      }
+                      spokenUpTo += consumed;
+                    }
+                  }
+                }
+              } catch { /* partial SSE JSON */ }
+            }
+          }
+          if (autoSpeak && voiceEnabled && reply.slice(spokenUpTo).trim()) {
+            void speakText(reply.slice(spokenUpTo).trim());
+          }
+        }
+      } catch (streamErr: any) {
+        if (streamErr?.name === 'AbortError') throw streamErr;
+        usedStream = false;
+      }
+      let data: any = {};
+      if (!usedStream) {
+      const response = await fetch('/api/llm/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(chatBody),
         signal: controller.signal,
       });
       const responseText = await response.text();
-      let data: any = {};
       try { data = responseText.trim() ? JSON.parse(responseText) : {}; } catch { throw new Error(`Gina backend returned invalid JSON (HTTP ${response.status}).`); }
       if (!response.ok) {
         const diagnostic = data?.diagnostic?.recentLog?.slice?.(-3)?.join?.(' | ');
@@ -1931,7 +2034,6 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
       const msg = data?.choices?.[0]?.message;
       const extractReply = (m: any): string => {
         if (!m || typeof m !== 'object') return '';
-        // Never prefer hidden reasoning fields. The server sanitizes legacy thinking-model fallbacks.
         for (const raw of [m.content]) {
           if (typeof raw === 'string' && raw.trim()) return raw;
           if (Array.isArray(raw)) {
@@ -1941,7 +2043,9 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
         }
         return '';
       };
-      const reply = extractReply(msg);
+      reply = extractReply(msg);
+      }
+
       if (!reply.trim()) throw new Error('The local model returned an empty response.');
       const htmlPreview = reply.match(/```html\n?([\s\S]*?)```/i);
       const firstMarkdownLink = reply.match(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/);
@@ -1972,7 +2076,7 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
       }
       logGina('Response generated', `${Number(telemetry?.completionTokens || 0).toLocaleString()} completion tokens · ${Number(telemetry?.durationMs || 0)} ms`, 'complete', { kind: 'info' });
       setAgentStatus('COMPLETED');
-      setMessages(prev => [
+      if (!usedStream) setMessages(prev => [
         ...prev,
         {
           role: 'assistant',
@@ -1982,9 +2086,25 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
           browserEngine: telemetry?.browserEngine || null,
         }
       ]);
+      else {
+        setMessages(prev => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          if (last?.role === 'assistant') copy[copy.length - 1] = { ...last, content: reply.trim(), webSources: telemetry?.webSources || [], webProvider: telemetry?.webSearched ? (telemetry.webProvider || 'live web search') : null, browserEngine: telemetry?.browserEngine || null };
+          return copy;
+        });
+      }
       setAttachedFiles([]);
       setFileAttachError(null);
-      if (autoSpeak) void speakText(reply.trim());
+      if (!usedStream && autoSpeak && voiceEnabled) {
+        const sentences = reply.trim().match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [reply.trim()];
+        void (async () => {
+          for (const s of sentences) {
+            const piece = s.trim();
+            if (piece) await speakText(piece);
+          }
+        })();
+      }
     } catch (err: any) {
       pushExecutionLog('Execution Failed', err?.message || 'Local model request failed.', 'error');
       setAgentStatus('ERROR');
@@ -2029,9 +2149,9 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
 
             if (isMin) {
               return (
+                <MovableResizableWrapper id="widget-telemetry" key="widget-telemetry" collapsible title="Telemetry" className="w-full" resizable={false}>
                 <div
                   ref={telemetryPanel.panelRef}
-                  key="widget-telemetry"
                   className="rounded-lg border border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center justify-between text-[10px] font-mono transition-all"
                   style={{ width: telemetryPanel.width ? `${telemetryPanel.width}px` : '100%' }}
                 >
@@ -2053,13 +2173,14 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                     <button type="button" onClick={() => toggleWidget('telemetry')} className="p-1 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
                   </div>
                 </div>
+                </MovableResizableWrapper>
               );
             }
 
             return (
+              <MovableResizableWrapper id="widget-telemetry" key="widget-telemetry" collapsible title="Telemetry" className="w-full">
               <div
                 ref={telemetryPanel.panelRef}
-                key="widget-telemetry"
                 className="relative rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 transition-all flex flex-col"
                 style={{ width: telemetryPanel.width ? `${telemetryPanel.width}px` : '100%' }}
               >
@@ -2142,6 +2263,7 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                   label="Local AI Telemetry"
                 />
               </div>
+              </MovableResizableWrapper>
             );
           }
 
@@ -2162,9 +2284,9 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
 
             if (isMin) {
               return (
+                <MovableResizableWrapper id="widget-power" key="widget-electricity" collapsible title="Power & Cost" resizable={false} className="w-full">
                 <div
                   ref={electricityPanel.panelRef}
-                  key="widget-electricity"
                   className="rounded-lg border border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center justify-between text-[10px] font-mono transition-all"
                   style={{ width: electricityPanel.width ? `${electricityPanel.width}px` : '100%' }}
                 >
@@ -2186,13 +2308,14 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                     <button type="button" onClick={() => toggleWidget('electricity')} className="p-1 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
                   </div>
                 </div>
+                </MovableResizableWrapper>
               );
             }
 
             return (
+              <MovableResizableWrapper id="widget-power" key="widget-electricity" collapsible title="Power & Cost" className="w-full">
               <div
                 ref={electricityPanel.panelRef}
-                key="widget-electricity"
                 className="relative rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 transition-all flex flex-col"
                 style={{ width: electricityPanel.width ? `${electricityPanel.width}px` : '100%' }}
               >
@@ -2264,6 +2387,7 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                   label="Power & Cost"
                 />
               </div>
+            </MovableResizableWrapper>
             );
           }
 
@@ -2272,9 +2396,9 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
 
             if (isMin) {
               return (
+                <MovableResizableWrapper id="widget-commercial" key="widget-commercial" collapsible title="Commercial" resizable={false} className="w-full">
                 <div
                   ref={commercialPanel.panelRef}
-                  key="widget-commercial"
                   className="rounded-lg border border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center justify-between text-[10px] font-mono transition-all"
                   style={{ width: commercialPanel.width ? `${commercialPanel.width}px` : '100%' }}
                 >
@@ -2296,13 +2420,14 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                     <button type="button" onClick={() => toggleWidget('commercial')} className="p-1 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
                   </div>
                 </div>
+                </MovableResizableWrapper>
               );
             }
 
             return (
+              <MovableResizableWrapper id="widget-commercial" key="widget-commercial" collapsible title="Commercial" className="w-full">
               <div
                 ref={commercialPanel.panelRef}
-                key="widget-commercial"
                 className="relative rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 transition-all flex flex-col"
                 style={{ width: commercialPanel.width ? `${commercialPanel.width}px` : '100%' }}
               >
@@ -2372,6 +2497,7 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                   label="Commercial Benchmarks"
                 />
               </div>
+            </MovableResizableWrapper>
             );
           }
 
@@ -2586,9 +2712,14 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
           <ResizableSplit
             className="flex-1 min-w-0"
             defaultLeftPct={50}
-            defaultHeightPx={600}
-            minHeightPx={400}
-            initialMode="900x600"
+            resizableHeight={false}
+            showPresets={true}
+            defaultHeightPx={520}
+            minHeightPx={180}
+            maxHeightPx={4000}
+            minLeftPct={5}
+            maxLeftPct={95}
+            initialMode="split"
             left={(
               <div className="h-full min-h-0 overflow-y-auto custom-scrollbar space-y-3 p-3 bg-slate-950/80 flex flex-col" style={ginaPanelStyle()}>
                 <div className="flex items-center justify-between border-b border-slate-800 pb-2 px-1 shrink-0">
@@ -2746,14 +2877,14 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                 const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant');
                 const lastText = lastAssistant?.content || '';
                 return (
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950/90 px-2 py-1.5">
+                  <MovableResizableWrapper id="gina-response-actions" className="inline-block"><div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950/90 px-2 py-1.5">
                     <span className="mr-1 text-[8px] font-bold uppercase tracking-widest text-slate-600">RESPONSE</span>
                     <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(lastText); } catch {} }} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-emerald-500/40 hover:text-emerald-300">Copy</button>
                     <button type="button" onClick={() => void speakText(lastText)} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-sky-500/40 hover:text-sky-300"><Volume2 className="mr-1 inline h-3 w-3" />Audio</button>
                     <button type="button" onClick={() => onAddLog('INFO', 'Response marked helpful.')} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-emerald-500/40 hover:text-emerald-300">👍</button>
                     <button type="button" onClick={() => onAddLog('INFO', 'Response marked not helpful.')} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-rose-500/40 hover:text-rose-300">👎</button>
                     <button type="button" onClick={() => { const previousUser = [...messages].reverse().find(m => m.role === 'user'); if (previousUser?.content) { setInput(previousUser.content); requestAnimationFrame(() => void sendMessage(previousUser.content)); } }} disabled={loading} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-amber-500/40 hover:text-amber-300"><RotateCw className="mr-1 inline h-3 w-3" />Retry</button>
-                  </div>
+                  </div></MovableResizableWrapper>
                 );
               })()}
               </div>
@@ -2811,31 +2942,12 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
 
 
 
-          <AgentExecutionTrace
-            studioMode={studioMode}
-            agentStatus={agentStatus}
-            agentActivity={agentActivity}
-            executionLog={executionLog}
-            telemetry={lastTelemetry}
-            runtimeTelemetry={runtimeTelemetry}
-            hardwareTelemetry={hardwareTelemetry}
-            onClear={() => { setExecutionLog([]); setAgentActivity([]); }}
-            onOpenFile={(path) => { void openWorkspaceFile(path); }}
-          />
-          {lastTelemetry && (
-            <div className="mt-1.5 flex items-center gap-1.5 text-[8px] font-mono text-slate-600">
-              <span className="text-slate-500">{lastTelemetry.promptTokens.toLocaleString()}p</span>
-              <span className="text-slate-700">/</span>
-              <span className="text-slate-500">{lastTelemetry.completionTokens.toLocaleString()}c tokens</span>
-              <span className="text-slate-700">·</span>
-              <span className={lastTelemetry.webProvider ? 'text-sky-400' : 'text-slate-600'}>{lastTelemetry.webProvider ? `web: ${lastTelemetry.webProvider}` : 'local only'}</span>
-            </div>
-          )}
 
           {/* ============================================================== */}
           {/* SLEEK TOOL MODES SELECTOR & MOVABLE WIDGET DOCK CONTROL BAR */}
           {/* ============================================================== */}
-          <div className="mt-3 mb-2 flex flex-wrap items-center justify-between gap-2 p-1.5 rounded-xl border border-slate-800/80 bg-slate-950/85 backdrop-blur-md">
+          <MovableResizableWrapper id="gina-mode-bar" className="mt-3 mb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 p-1.5 rounded-xl border border-slate-800/80 bg-slate-950/85 backdrop-blur-md">
             {/* Sleek, professional tool mode pills */}
             <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar py-0.5">
               <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 pl-1.5 pr-1 select-none shrink-0">MODE:</span>
@@ -2940,9 +3052,65 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
               </button>
             </div>
           </div>
+          </MovableResizableWrapper>
 
           {/* DOCKED TOP: MOVABLE & RESIZABLE TELEMETRY WIDGETS MATRIX */}
           {widgetDockPosition === 'above' && renderMovableWidgetsMatrix()}
+
+          {(['web-search', 'code-engine', 'image-studio', 'video-generation', 'web-app'] as const).includes(studioMode as any) && (
+            <MovableResizableWrapper
+              id={`panel-profiles-${studioMode}`}
+              collapsible
+              title={
+                studioMode === 'web-search' ? 'Search Profiles'
+                : studioMode === 'image-studio' ? 'Image Profiles'
+                : studioMode === 'video-generation' ? 'Video Profiles'
+                : studioMode === 'web-app' ? 'AI Agent Profiles'
+                : 'Code Profiles'
+              }
+              className="mb-2"
+            >
+              <GinaStudioProfilePicker
+                mode={studioMode as 'web-search' | 'code-engine' | 'image-studio' | 'video-generation' | 'web-app'}
+                selectedId={
+                  studioMode === 'web-search' ? searchProfileId
+                  : studioMode === 'image-studio' ? imageProfileId
+                  : studioMode === 'video-generation' ? videoProfileId
+                  : studioMode === 'web-app' ? agentProfileId
+                  : codeProfileId
+                }
+                pythonVersion={pythonVersion}
+                onPythonVersionChange={setPythonVersion}
+                onSelect={(profile) => {
+                  if (studioMode === 'web-search') setSearchProfileId(profile.id);
+                  else if (studioMode === 'image-studio') setImageProfileId(profile.id);
+                  else if (studioMode === 'video-generation') setVideoProfileId(profile.id);
+                  else if (studioMode === 'web-app') setAgentProfileId(profile.id);
+                  else setCodeProfileId(profile.id);
+                }}
+                onInsertShortcode={(sc) => setInput((prev) => {
+                  const trimmed = prev.trim();
+                  if (/\[id:\s*['"][^'"]+['"]\s*\]/.test(trimmed)) {
+                    return prev.replace(/\[id:\s*['"][^'"]+['"]\s*\]\s*/i, sc);
+                  }
+                  return sc + (trimmed ? trimmed : '');
+                })}
+                className="mb-2"
+              />
+            </MovableResizableWrapper>
+          )}
+
+          {(studioMode === 'web-app' || agentProfileId === 'agent_coder' || studioMode === 'code-engine') && (
+            <MovableResizableWrapper id="panel-agent-project-tools" collapsible title="Coder Project Tools" className="mb-2">
+              <GinaAgentProjectBar
+                onLog={(level, message) => onAddLog(level as any, message)}
+                onSetInput={setInput}
+                onInjectSystemNote={(note) => {
+                  pushAgentActivity({ text: `[IMPORT_PROTOCOL]\n${note.slice(0, 1500)}\n[END_PROTOCOL]`, kind: 'info', status: 'running' });
+                }}
+              />
+            </MovableResizableWrapper>
+          )}
 
           {status?.recentLog?.length ? (
             <div
@@ -3000,7 +3168,8 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
 
           {pdfNotice && <div className={`mb-2 p-2 rounded border text-[9px] ${pdfNotice.startsWith('PDF saved:') ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-rose-500/30 bg-rose-500/5 text-rose-300'}`}>{pdfNotice}</div>}
 
-          <section
+          <MovableResizableWrapper id="panel-local-inference" collapsible title="Local Inference Engine" className="mt-1.5">
+            <section
             ref={bottomEnginePanel.panelRef}
             className="relative rounded-lg border border-slate-800 bg-slate-950/90 flex flex-col transition-all"
             style={{ width: bottomEnginePanel.width ? `${bottomEnginePanel.width}px` : '100%' }}
@@ -3070,6 +3239,7 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
               />
             )}
           </section>
+            </MovableResizableWrapper>
 
           <div className="mt-2.5 border-t border-slate-800 pt-2.5">
             <input
@@ -3130,6 +3300,29 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
 
           {/* DOCKED BOTTOM: MOVABLE & RESIZABLE TELEMETRY WIDGETS MATRIX */}
           {widgetDockPosition === 'below' && renderMovableWidgetsMatrix()}
+
+
+          {/* Agent log sits BELOW the prompt so the Message box stays next to the dual windows */}
+          <AgentExecutionTrace
+            studioMode={studioMode}
+            agentStatus={agentStatus}
+            agentActivity={agentActivity}
+            executionLog={executionLog}
+            telemetry={lastTelemetry}
+            runtimeTelemetry={runtimeTelemetry}
+            hardwareTelemetry={hardwareTelemetry}
+            onClear={() => { setExecutionLog([]); setAgentActivity([]); }}
+            onOpenFile={(path) => { void openWorkspaceFile(path); }}
+          />
+          {lastTelemetry && (
+            <div className="mt-1.5 flex items-center gap-1.5 text-[8px] font-mono text-slate-600">
+              <span className="text-slate-500">{lastTelemetry.promptTokens.toLocaleString()}p</span>
+              <span className="text-slate-700">/</span>
+              <span className="text-slate-500">{lastTelemetry.completionTokens.toLocaleString()}c tokens</span>
+              <span className="text-slate-700">·</span>
+              <span className={lastTelemetry.webProvider ? 'text-sky-400' : 'text-slate-600'}>{lastTelemetry.webProvider ? `web: ${lastTelemetry.webProvider}` : 'local only'}</span>
+            </div>
+          )}
 
           <div className="mt-2 text-[8px] font-mono text-slate-700">Local AI attachments stay on this machine: text/code/config ≤2 MB, images ≤12 MB in Vision Mode, ZIP project archives ≤100 MB · max 5 non-project attachments per turn. Project ZIPs are imported into a dedicated workspace and inspected locally; archives are no longer limited to 100 files. {status?.multimodal ? <span className="text-emerald-500">Vision attachments are enabled.</span> : <span>Image uploads are stored locally; switch to Qwen 2.5-VL Vision Mode or Qwen3.5 9B with its configured multimodal projector to enable pixel vision.</span>}</div>
           {(voiceAvailable || browserVoiceAvailable) && <div className="mt-2 flex flex-wrap items-center gap-2 text-[9px] font-mono text-slate-600"><Volume2 className="w-3 h-3" /> SPEECH RATE <input aria-label="Speech rate" type="range" min="-5" max="5" value={voiceRate} onChange={e=>setVoiceRate(Number(e.target.value))} /><span>{voiceRate > 0 ? '+' : ''}{voiceRate}</span><button onClick={testVoice} className="px-2 py-1 rounded border border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200">TEST</button>{speaking && <span className="text-emerald-400 animate-pulse">SPEAKING</span>}</div>}

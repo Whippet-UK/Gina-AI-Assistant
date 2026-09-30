@@ -46,7 +46,7 @@ export const AppFeaturesGuide: React.FC = () => {
       category: 'Image Inference',
       shortDesc: 'Vision-aware prompt engineering paired with Juggernaut-XL v9 SDXL generation, reference editing, dynamic workflow binding, and local output management.',
       details: [
-        'Qwen 2.5-VL 7B and the newly mapped Qwen3.5 9B are local multimodal options; Qwen Coder 7B remains the text-only coding mode. Image generation/editing routes to Juggernaut-XL v9 by default, with optional FLUX.1 Lite high-precision rendering.',
+        'Qwen 2.5-VL 7B and the newly mapped Qwen3.5 9B are local multimodal options; Qwen Coder 7B remains the text-only coding mode. Image generation/editing routes to Juggernaut-XL v9 by default, with optional FLUX.1 Dev Q4_K_M high-precision rendering.',
         'Dynamic Workflow Binding: Introspects the selected ComfyUI workflow and binds prompt, seed, steps, CFG, dimensions, and reference-image inputs without silently switching models.',
         'Token Budget & Parameter Control: Enforces safe token counts, seeds, CFG scales (1-10), and aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4).',
         'Direct ComfyUI Queueing: Compiles and dispatches JSON workflows directly to the local ComfyUI instance at 127.0.0.1:8188.',
@@ -120,7 +120,7 @@ export const AppFeaturesGuide: React.FC = () => {
       details: [
         'Qwen 2.5-VL 7B Q4_K_M with the configured mmproj-F16 projector handles image-aware prompt understanding locally.',
         'Create Studio routes Qwen image intent to Juggernaut-XL v9 SDXL for generation and sdxl_juggernaut_reference for edits.',
-        'FLUX.1 Lite remains an explicit high-precision alternate lane and is never silently selected after Keep Image.',
+        'FLUX.1 Dev Q4_K_M remains an explicit high-precision alternate lane and is never silently selected after Keep Image.',
         'VRAM guardrails treat Qwen and ComfyUI generation as separate resource targets on the 8GB RTX 3070 Ti.'
       ]
     },
@@ -553,7 +553,7 @@ export const AppFeaturesGuide: React.FC = () => {
                   </div>
                   <div className="text-slate-300 text-[11px] font-semibold">ComfyUI, llama.cpp & Audio Backend</div>
                   <p className="text-[10px] text-slate-400 leading-relaxed">
-                    ComfyUI on port 8188 (Juggernaut-XL, FLUX Lite, Wan 2.1, RIFE); llama-server on port 8080 (Qwen 2.5-VL/Coder); Python Unified Audio engine (Bark + XTTS v2) on dynamic RPC. Mutual cache purges protect the 8GB VRAM budget.
+                    ComfyUI on port 8188 (Juggernaut-XL, FLUX.1 Dev, Wan 2.1, RIFE); llama-server on port 8080 (Qwen 2.5-VL/Coder); Python Unified Audio engine (Bark + XTTS v2) on dynamic RPC. Mutual cache purges protect the 8GB VRAM budget.
                   </p>
                 </div>
 

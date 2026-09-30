@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Cpu, Download, RefreshCw, Activity, Lock } from 'lucide-react';
+import { ShieldCheck, Cpu, Download, RefreshCw, Activity, Lock, Moon, Sun } from 'lucide-react';
 import { APP_VERSION } from '../version';
+
+const THEME_KEY = 'gina.ui.theme';
 
 interface HeaderProps {
   onRunAudit: () => void;
@@ -18,6 +20,13 @@ export const Header: React.FC<HeaderProps> = ({
   activeSavePoint
 }) => {
   const [timeString, setTimeString] = useState<string>('');
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    try {
+      const saved = localStorage.getItem(THEME_KEY);
+      if (saved === 'light' || saved === 'dark') return saved;
+    } catch {}
+    return 'dark';
+  });
 
   useEffect(() => {
     const updateTime = () => {
@@ -28,6 +37,16 @@ export const Header: React.FC<HeaderProps> = ({
     const interval = setInterval(updateTime, 100);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle('light', theme === 'light');
+    root.classList.toggle('dark', theme === 'dark');
+    root.dataset.theme = theme;
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {}
+  }, [theme]);
 
   return (
     <header className="border-b border-slate-800 pb-3.5 mb-5 bg-slate-900/60 backdrop-blur-md p-3.5 rounded-lg border">
@@ -53,6 +72,15 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+            className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 hover:border-emerald-500/40 px-2.5 py-1 rounded text-xs font-mono text-slate-300 transition-colors cursor-pointer"
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? <Sun className="w-3.5 h-3.5 text-amber-300" /> : <Moon className="w-3.5 h-3.5 text-sky-400" />}
+            <span className="uppercase tracking-tight font-bold">{theme === 'dark' ? 'Dark' : 'Light'}</span>
+          </button>
           <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 px-2.5 py-1 rounded text-xs font-mono">
             <Activity className="w-3.5 h-3.5 text-emerald-400" />
             <span className="text-slate-500">STATUS:</span>

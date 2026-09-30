@@ -3,7 +3,7 @@ import {
   Settings, Palette, Cpu, Sliders, Check, RotateCcw,
   Sparkles, Search, Layers, Activity, Trash2, Info
 } from 'lucide-react';
-import { GINA_IMAGE_STYLES, GinaImageStyle } from '../../data/ginaImageStyles';
+import { GINA_IMAGE_STYLES, GINA_STYLE_CATEGORIES, GinaImageStyle } from '../../data/ginaImageStyles';
 import { SystemTelemetry } from '../../types';
 
 export type GinaSettingsTab = 'setting' | 'style' | 'model' | 'advanced';
@@ -35,22 +35,34 @@ export const GINA_ASPECT_RATIOS: AspectRatioOption[] = [
 
 export const GINA_PERFORMANCE_PRESETS = [
   {
-    id: 'speed',
-    label: 'Speed (Default)',
-    steps: 12,
-    desc: '12 Steps · Juggernaut-XL v9 balanced local generation'
-  },
-  {
     id: 'quality',
     label: 'Quality',
-    steps: 20,
-    desc: '20 Steps · Juggernaut-XL v9 photorealistic detail'
+    steps: 25,
+    desc: '25 Steps · FLUX.1 Dev / Juggernaut high-detail generation'
+  },
+  {
+    id: 'speed',
+    label: 'Speed',
+    steps: 12,
+    desc: '12 Steps · Balanced local generation'
   },
   {
     id: 'extreme_speed',
     label: 'Extreme Speed',
     steps: 8,
-    desc: '8 Steps · Fast Juggernaut-XL v9 draft generation'
+    desc: '8 Steps · Fast draft generation'
+  },
+  {
+    id: 'lightning',
+    label: 'Lightning',
+    steps: 4,
+    desc: '4 Steps · SDXL Lightning / distilled fast path'
+  },
+  {
+    id: 'hyper_sd',
+    label: 'Hyper-SD',
+    steps: 6,
+    desc: '6 Steps · Hyper-SD distilled quality/speed hybrid'
   }
 ];
 
@@ -80,6 +92,8 @@ interface GinaImageSettingsProps {
   onRandomizeSeed: () => void;
   highPrecisionText?: boolean;
   onToggleHighPrecisionText?: () => void;
+  visionEngine?: 'qwen3.5' | 'qwen';
+  onChangeVisionEngine?: (engine: 'qwen3.5' | 'qwen') => void;
 
   // Style tab
   selectedStyles: string[];
@@ -107,6 +121,8 @@ interface GinaImageSettingsProps {
   onChangeScheduler: (val: string) => void;
   denoise: number;
   onChangeDenoise: (val: number) => void;
+  sharpening?: number;
+  onChangeSharpening?: (val: number) => void;
 
   // Telemetry & Hardware
   telemetry?: SystemTelemetry;
@@ -141,6 +157,8 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
   onRandomizeSeed,
   highPrecisionText = false,
   onToggleHighPrecisionText,
+  visionEngine = 'qwen3.5',
+  onChangeVisionEngine,
   selectedStyles,
   onToggleStyle,
   onClearStyles,
@@ -162,6 +180,8 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
   onChangeScheduler,
   denoise,
   onChangeDenoise,
+  sharpening = 0,
+  onChangeSharpening,
   telemetry,
   gpuName,
   vramTotal,
@@ -479,18 +499,29 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
 
             {/* Category Filter Pills */}
             <div className="flex items-center gap-1 overflow-x-auto pb-1">
-              {['all', 'core', 'photo', 'art', 'scifi', 'atmosphere', 'special'].map((cat) => (
+              <button
+                type="button"
+                onClick={() => setStyleCategory('all')}
+                className={`px-2 py-0.5 rounded text-[10px] uppercase font-mono transition-all shrink-0 ${
+                  styleCategory === 'all'
+                    ? 'bg-blue-600 text-white font-bold'
+                    : 'bg-[#0a0e17] text-zinc-400 hover:text-white border border-[#252b3d]'
+                }`}
+              >
+                all
+              </button>
+              {GINA_STYLE_CATEGORIES.map((cat) => (
                 <button
-                  key={cat}
+                  key={cat.id}
                   type="button"
-                  onClick={() => setStyleCategory(cat)}
-                  className={`px-2 py-0.5 rounded text-[10px] uppercase font-mono transition-all ${
-                    styleCategory === cat
+                  onClick={() => setStyleCategory(cat.id)}
+                  className={`px-2 py-0.5 rounded text-[10px] uppercase font-mono transition-all shrink-0 ${
+                    styleCategory === cat.id
                       ? 'bg-blue-600 text-white font-bold'
                       : 'bg-[#0a0e17] text-zinc-400 hover:text-white border border-[#252b3d]'
                   }`}
                 >
-                  {cat}
+                  {cat.label}
                 </button>
               ))}
             </div>
@@ -545,7 +576,59 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
               <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-1.5 font-mono">
                 Active Generation Engine & Checkpoint
               </label>
+              
+            {/* Vision / reasoning engines for Describe & image understanding */}
+            <div className="mb-4">
+              <div className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider mb-2">Vision engine (Describe / understand)</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => onChangeVisionEngine?.('qwen3.5')}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    visionEngine === 'qwen3.5'
+                      ? 'bg-violet-950/40 border-violet-500 shadow-sm'
+                      : 'bg-[#0a0e17] border-[#252b3d] hover:border-zinc-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-white font-mono">Qwen3.5 9B</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono border ${
+                      visionEngine === 'qwen3.5'
+                        ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
+                        : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                    }`}>{visionEngine === 'qwen3.5' ? 'ACTIVE' : 'READY'}</span>
+                  </div>
+                  <div className="text-[10px] text-zinc-400 font-mono">Q4_K_M + mmproj-BF16 (4096)</div>
+                  <div className="text-[9px] text-emerald-400 font-mono mt-1">Default reasoning / vision lane</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onChangeVisionEngine?.('qwen')}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    visionEngine === 'qwen'
+                      ? 'bg-sky-950/40 border-sky-500 shadow-sm'
+                      : 'bg-[#0a0e17] border-[#252b3d] hover:border-zinc-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-white font-mono">Qwen 2.5-VL 7B</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono border ${
+                      visionEngine === 'qwen'
+                        ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
+                        : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                    }`}>{visionEngine === 'qwen' ? 'ACTIVE' : 'READY'}</span>
+                  </div>
+                  <div className="text-[10px] text-zinc-400 font-mono">Q4_K_M + mmproj-F16 (3584)</div>
+                  <div className="text-[9px] text-sky-400 font-mono mt-1">Legacy VL vision option</div>
+                </button>
+              </div>
+              <p className="text-[9px] text-zinc-500 mt-2">
+                Each vision model uses only its matched projector. FLUX / SDXL generation is independent and does not load these mmproj files.
+              </p>
+            </div>
+
+            <div className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider mb-2">Image generation model</div>
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -577,7 +660,7 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
                   type="button"
                   onClick={() => {
                     if (onSelectWorkflow) onSelectWorkflow('sdxl_juggernaut');
-                    onChangeBaseModel('flux1-dev-Q4_K_M.gguf');
+                    onChangeBaseModel('Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors');
                   }}
                   className={`p-3 rounded-lg border text-left transition-all ${
                     selectedWorkflow === 'sdxl_juggernaut'
@@ -598,6 +681,58 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
                   <div className="text-[10px] text-zinc-400 font-mono">RunDiffusionPhoto SDXL · Fooocus speed</div>
                   <div className="text-[9px] text-emerald-400 font-mono mt-1">~4.9 GB VRAM · 8-12s · Zero T5</div>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onSelectWorkflow) onSelectWorkflow('sdxl_juggernaut_reference');
+                    onChangeBaseModel('Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors');
+                  }}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    selectedWorkflow === 'sdxl_juggernaut_reference'
+                      ? 'bg-amber-950/40 border-amber-500 shadow-sm'
+                      : 'bg-[#0a0e17] border-[#252b3d] hover:border-zinc-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-white font-mono">SDXL Reference (Edit)</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono border ${
+                      selectedWorkflow === 'sdxl_juggernaut_reference'
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                        : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                    }`}>
+                      {selectedWorkflow === 'sdxl_juggernaut_reference' ? 'ACTIVE' : 'READY'}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-zinc-400 font-mono">Img2img · denoise preserves subject</div>
+                  <div className="text-[9px] text-amber-400 font-mono mt-1">Use when editing an uploaded image</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onSelectWorkflow) onSelectWorkflow('sdxl_juggernaut_inpaint');
+                    onChangeBaseModel('Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors');
+                  }}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    selectedWorkflow === 'sdxl_juggernaut_inpaint'
+                      ? 'bg-purple-950/40 border-purple-500 shadow-sm'
+                      : 'bg-[#0a0e17] border-[#252b3d] hover:border-zinc-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-white font-mono">SDXL Inpaint</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono border ${
+                      selectedWorkflow === 'sdxl_juggernaut_inpaint'
+                        ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                        : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                    }`}>
+                      {selectedWorkflow === 'sdxl_juggernaut_inpaint' ? 'ACTIVE' : 'READY'}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-zinc-400 font-mono">Masked region only · rest frozen</div>
+                  <div className="text-[9px] text-purple-400 font-mono mt-1">Paint mask in Inpaint tab</div>
+                </button>
               </div>
             </div>
 
@@ -606,7 +741,7 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
               <div className="p-2.5 rounded bg-[#0a0e17] border border-[#252b3d]">
                 <span className="text-zinc-500 block uppercase">Text Encoder</span>
                 <span className="text-zinc-300 font-bold truncate block">
-                  {selectedWorkflow === 'sdxl_juggernaut'
+                  {(selectedWorkflow || '').includes('sdxl') || (selectedWorkflow || '').includes('juggernaut')
                     ? 'SDXL Dual OpenCLIP + ViT-L'
                     : 't5xxl_fp8_e4m3fn.safetensors'}
                 </span>
@@ -614,7 +749,7 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
               <div className="p-2.5 rounded bg-[#0a0e17] border border-[#252b3d]">
                 <span className="text-zinc-500 block uppercase">VAE Decoder</span>
                 <span className="text-zinc-300 font-bold truncate block">
-                  {selectedWorkflow === 'sdxl_juggernaut'
+                  {(selectedWorkflow || '').includes('sdxl') || (selectedWorkflow || '').includes('juggernaut')
                     ? 'SDXL Baked Native VAE'
                     : 'ae.safetensors (FLUX VAE)'}
                 </span>
@@ -716,6 +851,28 @@ export const GinaImageSettings: React.FC<GinaImageSettingsProps> = ({
                   onChange={(e) => onChangeDenoise(parseFloat(e.target.value))}
                   className="w-full accent-blue-500"
                 />
+                <p className="text-[9px] text-zinc-500 mt-1">
+                  Lower denoise (0.3–0.7) keeps the uploaded reference subject when editing (e.g. add sunglasses). 1.0 = full new generation.
+                </p>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 mb-1">
+                  <span>Image Sharpening:</span>
+                  <span className="text-blue-300 font-bold">{(sharpening ?? 0).toFixed(2)}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  value={sharpening ?? 0}
+                  onChange={(e) => onChangeSharpening?.(parseFloat(e.target.value))}
+                  className="w-full accent-blue-500"
+                />
+                <p className="text-[9px] text-zinc-500 mt-1">
+                  0 = off · 0.5–1.0 mild edge boost · 1.5+ strong (may introduce artifacts).
+                </p>
               </div>
             </div>
 
