@@ -39,6 +39,8 @@ export interface MovableResizableWrapperProps {
   minHeight?: number;
   /** When false, only shows handle chrome without forcing absolute positioning */
   floating?: boolean;
+  collapsible?: boolean;
+  title?: string;
 }
 
 /**

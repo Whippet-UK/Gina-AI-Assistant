@@ -814,7 +814,7 @@ await startJob(targetWorkflow, bound);
             );
           }
           return [
-            { id: `transparent-${Date.now()}`, url: resultUrl, prompt: 'Transparent PNG', timestamp: Date.now(), styles: selectedStyles },
+            { id: `transparent-${Date.now()}`, url: resultUrl, prompt: 'Transparent PNG', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), styles: selectedStyles },
             ...prev,
           ].slice(0, 24);
         });

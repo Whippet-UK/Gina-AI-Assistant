@@ -73,8 +73,10 @@ import {
 import {
   GINA_CODE_PROFILES,
   GINA_CODE_CATEGORIES,
-  PYTHON_VERSIONS,
+  GINA_WEB_APP_CODE_PROFILES,
   filterCodeProfiles,
+  filterWebAppCodeProfiles,
+  PYTHON_VERSIONS,
   type CodeProfile,
   type PythonVersion,
 } from '../data/ginaCodeProfiles';
@@ -155,6 +157,8 @@ function ProfileIcon({ name, className }: { name?: string; className?: string })
 export interface GinaStudioProfilePickerProps {
   mode: StudioProfileMode;
   selectedId?: string | null;
+  agentProfileId?: string | null;
+  codeProfileId?: string | null;
   onSelect: (profile: AnyProfile) => void;
   onInsertShortcode?: (shortcode: string) => void;
   pythonVersion?: PythonVersion;
@@ -173,10 +177,10 @@ const MODE_META: Record<
     placeholder: 'Search profiles (news, research, product…)',
   },
   'code-engine': {
-    title: 'Code profiles',
+    title: 'Code Engine profiles',
     accent: 'text-violet-400',
     Icon: Code2,
-    placeholder: 'Search shortcodes (react, python, api…)',
+    placeholder: 'Search code shortcodes (react, python, api…)',
   },
   'image-studio': {
     title: 'Image profiles',
@@ -191,10 +195,10 @@ const MODE_META: Record<
     placeholder: 'Search profiles (cinematic, loop, product…)',
   },
   'web-app': {
-    title: 'AI Agent profiles',
-    accent: 'text-fuchsia-400',
-    Icon: Bot,
-    placeholder: 'Search agent roles (coder, research, ops…)',
+    title: 'Web App profiles',
+    accent: 'text-emerald-400',
+    Icon: Globe2,
+    placeholder: 'Search web app profiles (coder, react, html5…)',
   },
   agent: {
     title: 'AI Agent profiles',
@@ -204,48 +208,11 @@ const MODE_META: Record<
   },
 };
 
-function listForMode(mode: StudioProfileMode, query: string, category: string): AnyProfile[] {
-  let list: AnyProfile[] =
-    mode === 'web-search'
-      ? filterSearchProfiles(query)
-      : mode === 'image-studio'
-        ? filterImageProfiles(query)
-        : mode === 'video-generation'
-          ? filterVideoProfiles(query)
-          : mode === 'web-app' || mode === 'agent'
-            ? filterAgentProfiles(query)
-            : filterCodeProfiles(query);
-  if (category !== 'all') list = list.filter((p) => p.category === category);
-  return list;
-}
-
-function categoriesForMode(mode: StudioProfileMode) {
-  if (mode === 'web-search') return GINA_SEARCH_CATEGORIES;
-  if (mode === 'image-studio') return GINA_IMAGE_CATEGORIES;
-  if (mode === 'video-generation') return GINA_VIDEO_CATEGORIES;
-  if (mode === 'web-app' || mode === 'agent') return GINA_AGENT_CATEGORIES;
-  return GINA_CODE_CATEGORIES;
-}
-
-function totalCount(mode: StudioProfileMode) {
-  if (mode === 'web-search') return GINA_SEARCH_PROFILES.length;
-  if (mode === 'image-studio') return GINA_IMAGE_PROFILES.length;
-  if (mode === 'video-generation') return GINA_VIDEO_PROFILES.length;
-  if (mode === 'web-app' || mode === 'agent') return GINA_AGENT_PROFILES.length;
-  return GINA_CODE_PROFILES.length;
-}
-
-function defaultIconForMode(mode: StudioProfileMode): string {
-  if (mode === 'web-search') return 'Globe2';
-  if (mode === 'image-studio') return 'ImageIcon';
-  if (mode === 'video-generation') return 'Video';
-  if (mode === 'web-app' || mode === 'agent') return 'Bot';
-  return 'Code2';
-}
-
 export const GinaStudioProfilePicker: React.FC<GinaStudioProfilePickerProps> = ({
   mode,
   selectedId = null,
+  agentProfileId = null,
+  codeProfileId = null,
   onSelect,
   onInsertShortcode,
   pythonVersion = '3.11',
@@ -254,23 +221,165 @@ export const GinaStudioProfilePicker: React.FC<GinaStudioProfilePickerProps> = (
 }) => {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('all');
+
+  // Sub-tab for modes with dual profile choices:
+  // in 'web-app': 'agents' (AI Agent Profiles) vs 'web-code' (Web App Code Profiles)
+  // in 'code-engine': 'code' (Code Profiles) vs 'agents' (AI Agent Profiles)
+  const [subTab, setSubTab] = useState<'agents' | 'code' | 'web-code'>(() => {
+    if (mode === 'web-app') {
+      if (selectedId && GINA_WEB_APP_CODE_PROFILES.some((p) => p.id === selectedId)) return 'web-code';
+      return 'agents';
+    }
+    if (mode === 'code-engine') {
+      if (selectedId && GINA_AGENT_PROFILES.some((p) => p.id === selectedId)) return 'agents';
+      return 'code';
+    }
+    return 'agents';
+  });
+
+  const activeKind: 'web-search' | 'image-studio' | 'video-generation' | 'agents' | 'code' | 'web-code' =
+    mode === 'web-search'
+      ? 'web-search'
+      : mode === 'image-studio'
+      ? 'image-studio'
+      : mode === 'video-generation'
+      ? 'video-generation'
+      : mode === 'web-app'
+      ? subTab === 'web-code'
+        ? 'web-code'
+        : 'agents'
+      : mode === 'code-engine'
+      ? subTab === 'agents'
+        ? 'agents'
+        : 'code'
+      : 'agents';
+
   const meta = MODE_META[mode] || MODE_META['web-app'];
-  const Icon = meta.Icon;
-  const filtered = useMemo(() => listForMode(mode, query, category), [mode, query, category]);
-  const cats = categoriesForMode(mode);
-  const total = totalCount(mode);
+  const Icon =
+    activeKind === 'agents'
+      ? Bot
+      : activeKind === 'code' || activeKind === 'web-code'
+      ? Code2
+      : meta.Icon;
+
+  const accentColor =
+    activeKind === 'agents'
+      ? 'text-fuchsia-400'
+      : activeKind === 'web-code'
+      ? 'text-emerald-400'
+      : activeKind === 'code'
+      ? 'text-violet-400'
+      : meta.accent;
+
+  const cats = useMemo(() => {
+    if (activeKind === 'web-search') return GINA_SEARCH_CATEGORIES;
+    if (activeKind === 'image-studio') return GINA_IMAGE_CATEGORIES;
+    if (activeKind === 'video-generation') return GINA_VIDEO_CATEGORIES;
+    if (activeKind === 'agents') return GINA_AGENT_CATEGORIES;
+    if (activeKind === 'web-code') return GINA_CODE_CATEGORIES.filter((c) => ['frontend', 'fullstack', 'general'].includes(c.id));
+    return GINA_CODE_CATEGORIES;
+  }, [activeKind]);
+
+  const filtered = useMemo(() => {
+    let list: AnyProfile[] = [];
+    if (activeKind === 'web-search') list = filterSearchProfiles(query);
+    else if (activeKind === 'image-studio') list = filterImageProfiles(query);
+    else if (activeKind === 'video-generation') list = filterVideoProfiles(query);
+    else if (activeKind === 'agents') list = filterAgentProfiles(query);
+    else if (activeKind === 'web-code') list = filterWebAppCodeProfiles(query);
+    else list = filterCodeProfiles(query);
+
+    if (category !== 'all') list = list.filter((p) => p.category === category);
+    return list;
+  }, [activeKind, query, category]);
+
+  const total = useMemo(() => {
+    if (activeKind === 'web-search') return GINA_SEARCH_PROFILES.length;
+    if (activeKind === 'image-studio') return GINA_IMAGE_PROFILES.length;
+    if (activeKind === 'video-generation') return GINA_VIDEO_PROFILES.length;
+    if (activeKind === 'agents') return GINA_AGENT_PROFILES.length;
+    if (activeKind === 'web-code') return GINA_WEB_APP_CODE_PROFILES.length;
+    return GINA_CODE_PROFILES.length;
+  }, [activeKind]);
 
   const showPython =
-    mode === 'code-engine' &&
+    activeKind === 'code' &&
     (category === 'backend' ||
       category === 'all' ||
       /python|fastapi|flask|django/i.test(`${selectedId || ''} ${query}`));
 
+  const placeholderText =
+    activeKind === 'agents'
+      ? 'Search AI agent roles (coder, research, ops, debugger…)'
+      : activeKind === 'web-code'
+      ? 'Search web app code profiles (react, html5, landing, vue, css…)'
+      : meta.placeholder;
+
   return (
     <div className={`rounded-xl border border-slate-800 bg-slate-950/90 ${className}`}>
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2">
-        <Icon className={`h-3.5 w-3.5 shrink-0 ${meta.accent}`} />
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${accentColor}`} />
         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">{meta.title}</span>
+
+        {/* Dual-tab selector for Web App and Code Engine */}
+        {mode === 'web-app' && (
+          <div className="flex items-center gap-1 bg-slate-900/90 rounded-lg p-0.5 border border-slate-800">
+            <button
+              type="button"
+              onClick={() => { setSubTab('agents'); setCategory('all'); }}
+              className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider transition-all ${
+                subTab === 'agents'
+                  ? 'bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Bot className="w-2.5 h-2.5 inline mr-1" />
+              AI Agent Profiles ({GINA_AGENT_PROFILES.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => { setSubTab('web-code'); setCategory('all'); }}
+              className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider transition-all ${
+                subTab === 'web-code'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Code2 className="w-2.5 h-2.5 inline mr-1" />
+              Web App Code Profiles ({GINA_WEB_APP_CODE_PROFILES.length})
+            </button>
+          </div>
+        )}
+
+        {mode === 'code-engine' && (
+          <div className="flex items-center gap-1 bg-slate-900/90 rounded-lg p-0.5 border border-slate-800">
+            <button
+              type="button"
+              onClick={() => { setSubTab('code'); setCategory('all'); }}
+              className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider transition-all ${
+                subTab === 'code'
+                  ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Code2 className="w-2.5 h-2.5 inline mr-1" />
+              Code Profiles ({GINA_CODE_PROFILES.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => { setSubTab('agents'); setCategory('all'); }}
+              className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider transition-all ${
+                subTab === 'agents'
+                  ? 'bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Bot className="w-2.5 h-2.5 inline mr-1" />
+              AI Agent Profiles ({GINA_AGENT_PROFILES.length})
+            </button>
+          </div>
+        )}
+
         <span className="text-[9px] font-mono text-slate-600">
           {filtered.length}/{total}
         </span>
@@ -301,7 +410,7 @@ export const GinaStudioProfilePicker: React.FC<GinaStudioProfilePickerProps> = (
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={meta.placeholder}
+            placeholder={placeholderText}
             className="w-full rounded-lg border border-slate-800 bg-slate-900 py-1.5 pl-7 pr-7 text-[11px] text-slate-200 outline-none placeholder:text-slate-600 focus:border-slate-600"
           />
           {query && (
@@ -335,8 +444,9 @@ export const GinaStudioProfilePicker: React.FC<GinaStudioProfilePickerProps> = (
           </div>
         )}
         {filtered.map((p) => {
-          const active = selectedId === p.id;
-          const iconName = ('icon' in p && p.icon) || defaultIconForMode(mode);
+          const active = selectedId === p.id || agentProfileId === p.id || codeProfileId === p.id;
+          const isAgent = 'avatar' in p || GINA_AGENT_PROFILES.some((a) => a.id === p.id);
+          const iconName = ('icon' in p && p.icon) || (isAgent ? 'Bot' : 'Code2');
           return (
             <button
               key={p.id}
@@ -362,7 +472,7 @@ export const GinaStudioProfilePicker: React.FC<GinaStudioProfilePickerProps> = (
                       {(p as { avatar?: string }).avatar}
                     </span>
                   ) : (
-                    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-900 ${meta.accent}`}>
+                    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-900 ${accentColor}`}>
                       <ProfileIcon name={iconName} className="h-3.5 w-3.5" />
                     </span>
                   )}
@@ -370,7 +480,7 @@ export const GinaStudioProfilePicker: React.FC<GinaStudioProfilePickerProps> = (
                 </span>
                 <span className="shrink-0 text-[8px] font-mono text-slate-600">{p.category}</span>
               </div>
-              <div className={`mt-0.5 truncate font-mono text-[9px] ${meta.accent}`}>[id: '{p.id}']</div>
+              <div className={`mt-0.5 truncate font-mono text-[9px] ${accentColor}`}>[id: '{p.id}']</div>
             </button>
           );
         })}

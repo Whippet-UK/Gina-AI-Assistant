@@ -1594,3 +1594,22 @@ export const GINA_CODE_CATEGORIES: { id: string; label: string }[] = [
   { id: 'devops', label: 'DevOps' },
   { id: 'general', label: 'General' },
 ];
+
+/** All web-related code profiles extracted for Web App Studio */
+export const GINA_WEB_APP_CODE_PROFILES: CodeProfile[] = GINA_CODE_PROFILES.filter((p) =>
+  p.category === 'frontend' ||
+  p.category === 'fullstack' ||
+  /web|html|react|vue|next|svelte|tailwind|css|vite|landing|dom|spa|browser|ui|frontend|dashboard/i.test(
+    `${p.id} ${p.name} ${p.category} ${p.settings?.targetEnvironment || ''} ${p.positivePrompt}`
+  )
+);
+
+/** Filter web-app specific code profiles */
+export function filterWebAppCodeProfiles(query: string): CodeProfile[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return GINA_WEB_APP_CODE_PROFILES;
+  return GINA_WEB_APP_CODE_PROFILES.filter((p) => {
+    const hay = `${p.id} ${p.name} ${p.category} ${p.settings?.targetEnvironment || ''} ${p.positivePrompt}`.toLowerCase();
+    return q.split(/\s+/).every((token) => hay.includes(token));
+  });
+}

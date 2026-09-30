@@ -9,7 +9,7 @@ import { resolveSearchProfile } from '../data/ginaSearchProfiles'
 import { resolveCodeProfile, type PythonVersion } from '../data/ginaCodeProfiles'
 import { GinaStudioProfilePicker } from './GinaStudioProfilePicker'
 import { GinaAgentProjectBar } from './GinaAgentProjectBar'
-import { AGENT_IMPORT_PROTOCOL } from '../data/ginaAgentProfiles'
+import { AGENT_IMPORT_PROTOCOL, GINA_AGENT_PROFILES } from '../data/ginaAgentProfiles'
 import { MovableResizableWrapper } from './MovableResizableWrapper'
 import { resolveVideoProfile, composeVideoPrompt } from '../data/ginaVideoProfiles';
 import { resolveImageProfile } from '../data/ginaImageProfiles';
@@ -1491,9 +1491,15 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     pushExecutionLog('Web App · model request', 'POST /api/llm/web-app · dedicated HTML lane (no image routing)', 'running', 'command');
     pushAgentActivity('[EXEC_STEP: Local model inference]\n→ Endpoint: /api/llm/web-app\n→ Suite: Web App Studio\n→ Engine may be Coder — HTML only, never Comfy\n→ Waiting for complete HTML document…\n[END_STEP]');
 
+    const codeCfg = codeProfileId ? resolveCodeProfile({ id: codeProfileId, prompt: task, pythonVersion }) : null;
+    const agentCfg = agentProfileId ? resolveAgentProfile({ id: agentProfileId, prompt: task }) : null;
+    const agentAddon = agentCfg ? composeAgentSystemAddon(agentCfg) : '';
+    const codeGuideline = codeCfg?.positivePrompt ? `\n\nStyle & Tech Guidelines:\n${codeCfg.positivePrompt}` : '';
+
     const payload = {
+      task,
       messages: [
-        { role: 'system', content: 'You are Gina Web App Studio. Build the requested interactive web app as a single self-contained HTML document. Return ONLY the complete HTML document starting with <!DOCTYPE html>. Inline CSS and JavaScript only. No markdown fences, no explanation, no thinking process. Prefer CDN Tailwind if useful. JavaScript: use function declarations; declare variables before use; put scripts after DOM; never emit a raw </script> sequence inside JS strings. If persistence is needed, use localStorage.' },
+        { role: 'system', content: `You are Gina Web App Studio. Build the requested interactive web app as a single self-contained HTML document. Return ONLY the complete HTML document starting with <!DOCTYPE html>. Inline CSS and JavaScript only. No markdown fences, no explanation, no thinking process. Prefer CDN Tailwind if useful. JavaScript: use function declarations; declare variables before use; put scripts after DOM; never emit a raw </script> sequence inside JS strings. If persistence is needed, use localStorage.${agentAddon ? `\n\n${agentAddon}` : ''}${codeGuideline}` },
         { role: 'user', content: task }
       ],
       temperature: 0.35,
@@ -1809,10 +1815,12 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
 
       if (studioMode === 'code-engine') {
         const codeCfg = resolveCodeProfile({ id: codeProfileId || undefined, prompt: typedText, pythonVersion });
-        const codePrompt = [codeCfg.positivePrompt, codeCfg.prompt].filter(Boolean).join('\n\n') || typedText;
+        const agentCfg = agentProfileId ? resolveAgentProfile({ id: agentProfileId, prompt: typedText }) : null;
+        const agentAddon = agentCfg ? composeAgentSystemAddon(agentCfg) : '';
+        const codePrompt = [agentAddon, codeCfg.positivePrompt, codeCfg.prompt].filter(Boolean).join('\n\n') || typedText;
         const nextMessages: ChatMessage[]=[...messages,{role:'user',content:text}];
         setMessages(nextMessages); setInput(''); setLoading(true); setError(null); setThinkingSource('local');
-        logGina('Code Engine', 'Starting project agent · Thinking…', 'running', { kind: 'info', execKind: 'command' });
+        logGina('Code Engine', `Starting project agent${agentCfg?.profileName ? ` · Persona: ${agentCfg.profileName}` : ''}${codeCfg.profileName ? ` · Profile: ${codeCfg.profileName}` : ''}`, 'running', { kind: 'info', execKind: 'command' });
         try {
           await runProjectAgent(codePrompt);
           logGina('Code Engine complete', `Files read: ${readFilesRef.current.size} · Edited: ${editedFilesRef.current.size} · Commands: ${commandsRunRef.current}`, 'complete', { kind: 'info', execKind: 'command' });
@@ -3065,8 +3073,8 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                 studioMode === 'web-search' ? 'Search Profiles'
                 : studioMode === 'image-studio' ? 'Image Profiles'
                 : studioMode === 'video-generation' ? 'Video Profiles'
-                : studioMode === 'web-app' ? 'AI Agent Profiles'
-                : 'Code Profiles'
+                : studioMode === 'web-app' ? 'Web App & Agent Profiles'
+                : 'Code Engine & Agent Profiles'
               }
               className="mb-2"
             >
@@ -3076,17 +3084,28 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                   studioMode === 'web-search' ? searchProfileId
                   : studioMode === 'image-studio' ? imageProfileId
                   : studioMode === 'video-generation' ? videoProfileId
-                  : studioMode === 'web-app' ? agentProfileId
-                  : codeProfileId
+                  : studioMode === 'web-app' ? (agentProfileId || codeProfileId)
+                  : (codeProfileId || agentProfileId)
                 }
+                agentProfileId={agentProfileId}
+                codeProfileId={codeProfileId}
                 pythonVersion={pythonVersion}
                 onPythonVersionChange={setPythonVersion}
                 onSelect={(profile) => {
                   if (studioMode === 'web-search') setSearchProfileId(profile.id);
                   else if (studioMode === 'image-studio') setImageProfileId(profile.id);
                   else if (studioMode === 'video-generation') setVideoProfileId(profile.id);
-                  else if (studioMode === 'web-app') setAgentProfileId(profile.id);
-                  else setCodeProfileId(profile.id);
+                  else if (studioMode === 'web-app' || studioMode === 'code-engine') {
+                    if ('avatar' in profile || GINA_AGENT_PROFILES.some((a) => a.id === profile.id)) {
+                      setAgentProfileId(profile.id);
+                      onAddLog('INFO', `Selected Agent Profile: ${profile.name}`);
+                    } else {
+                      setCodeProfileId(profile.id);
+                      onAddLog('INFO', `Selected Code Profile: ${profile.name}`);
+                    }
+                  } else {
+                    setCodeProfileId(profile.id);
+                  }
                 }}
                 onInsertShortcode={(sc) => setInput((prev) => {
                   const trimmed = prev.trim();
@@ -3269,33 +3288,35 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
             )}
             {fileAttachError && <div className="mb-2 p-2 rounded border border-rose-500/20 bg-rose-500/5 text-[9px] text-rose-300">{fileAttachError}</div>}
 
-            <div
-              ref={promptBoxPanel.panelRef}
-              className="relative flex flex-col transition-all"
-              style={{ width: promptBoxPanel.width ? `${promptBoxPanel.width}px` : '100%' }}
-            >
-              <div className="relative flex gap-2 w-full">
-                <textarea
-                  ref={promptInputRef}
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (input.trim() || attachedFiles.length) void sendMessage(); } }}
-                  disabled={!status?.ready || loading}
-                  rows={1}
-                  placeholder={status?.ready ? 'Message Gina… (Enter to send, Shift+Enter for a new line)' : 'Start the local LLM first…'}
-                  className="flex-1 min-h-[44px] resize-y overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 pr-28 pb-4 text-xs text-slate-200 outline-none focus:border-emerald-500/50 disabled:opacity-50 leading-relaxed custom-scrollbar"
-                  style={{ resize: 'vertical' }}
+            <MovableResizableWrapper id="gina-prompt-input" className="w-full">
+              <div
+                ref={promptBoxPanel.panelRef}
+                className="relative flex flex-col transition-all"
+                style={{ width: promptBoxPanel.width ? `${promptBoxPanel.width}px` : '100%' }}
+              >
+                <div className="relative flex gap-2 w-full">
+                  <textarea
+                    ref={promptInputRef}
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (input.trim() || attachedFiles.length) void sendMessage(); } }}
+                    disabled={!status?.ready || loading}
+                    rows={1}
+                    placeholder={status?.ready ? 'Message Gina… (Enter to send, Shift+Enter for a new line)' : 'Start the local LLM first…'}
+                    className="flex-1 min-h-[44px] resize-y overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 pr-28 pb-4 text-xs text-slate-200 outline-none focus:border-emerald-500/50 disabled:opacity-50 leading-relaxed custom-scrollbar"
+                    style={{ resize: 'vertical' }}
+                  />
+                  <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!status?.ready || loading || attachedFiles.length >= maxLocalAiFiles} title={status?.engine === 'qwen-coder' ? 'Qwen Coder accepts text/code files and project ZIP archives. Image attachments require a multimodal vision model.' : 'Attach a supported local file, image or ZIP archive'} className="absolute right-14 bottom-2.5 h-9 px-2.5 rounded-lg border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5" /> Attach</button>
+                  {loading ? <button onClick={() => void cancelChat()} className="absolute right-2 bottom-2.5 w-9 h-9 rounded-full border border-rose-500/50 bg-rose-500/15 text-rose-300 flex items-center justify-center" title="Stop inference and flush VRAM"><Square className="w-3.5 h-3.5 fill-current" /></button> : <button onClick={() => void sendMessage()} disabled={!status?.ready || (!input.trim() && !attachedFiles.length)} className="absolute right-2 bottom-2.5 w-9 h-9 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center disabled:opacity-30" title="Send"><span className="text-base font-black leading-none">↑</span></button>}
+                </div>
+                <PanelResizeGrip
+                  onRightPointerDown={promptBoxPanel.onRightPointerDown}
+                  onResetWidth={promptBoxPanel.resetWidth}
+                  width={promptBoxPanel.width}
+                  label="Message box"
                 />
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!status?.ready || loading || attachedFiles.length >= maxLocalAiFiles} title={status?.engine === 'qwen-coder' ? 'Qwen Coder accepts text/code files and project ZIP archives. Image attachments require a multimodal vision model.' : 'Attach a supported local file, image or ZIP archive'} className="absolute right-14 bottom-2.5 h-9 px-2.5 rounded-lg border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5" /> Attach</button>
-                {loading ? <button onClick={() => void cancelChat()} className="absolute right-2 bottom-2.5 w-9 h-9 rounded-full border border-rose-500/50 bg-rose-500/15 text-rose-300 flex items-center justify-center" title="Stop inference and flush VRAM"><Square className="w-3.5 h-3.5 fill-current" /></button> : <button onClick={() => void sendMessage()} disabled={!status?.ready || (!input.trim() && !attachedFiles.length)} className="absolute right-2 bottom-2.5 w-9 h-9 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center disabled:opacity-30" title="Send"><span className="text-base font-black leading-none">↑</span></button>}
               </div>
-              <PanelResizeGrip
-                onRightPointerDown={promptBoxPanel.onRightPointerDown}
-                onResetWidth={promptBoxPanel.resetWidth}
-                width={promptBoxPanel.width}
-                label="Message box"
-              />
-            </div>
+            </MovableResizableWrapper>
           </div>
 
           {/* DOCKED BOTTOM: MOVABLE & RESIZABLE TELEMETRY WIDGETS MATRIX */}
@@ -3303,17 +3324,19 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
 
 
           {/* Agent log sits BELOW the prompt so the Message box stays next to the dual windows */}
-          <AgentExecutionTrace
-            studioMode={studioMode}
-            agentStatus={agentStatus}
-            agentActivity={agentActivity}
-            executionLog={executionLog}
-            telemetry={lastTelemetry}
-            runtimeTelemetry={runtimeTelemetry}
-            hardwareTelemetry={hardwareTelemetry}
-            onClear={() => { setExecutionLog([]); setAgentActivity([]); }}
-            onOpenFile={(path) => { void openWorkspaceFile(path); }}
-          />
+          <MovableResizableWrapper id="gina-agent-log" className="w-full mt-2">
+            <AgentExecutionTrace
+              studioMode={studioMode}
+              agentStatus={agentStatus}
+              agentActivity={agentActivity}
+              executionLog={executionLog}
+              telemetry={lastTelemetry}
+              runtimeTelemetry={runtimeTelemetry}
+              hardwareTelemetry={hardwareTelemetry}
+              onClear={() => { setExecutionLog([]); setAgentActivity([]); }}
+              onOpenFile={(path) => { void openWorkspaceFile(path); }}
+            />
+          </MovableResizableWrapper>
           {lastTelemetry && (
             <div className="mt-1.5 flex items-center gap-1.5 text-[8px] font-mono text-slate-600">
               <span className="text-slate-500">{lastTelemetry.promptTokens.toLocaleString()}p</span>

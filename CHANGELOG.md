@@ -1,3 +1,99 @@
+# Local AI Studio — AI Agent Profiles & Web App Code Profiles Unification + Movable Handles
+
+- **Target File Path:** `/src/data/ginaCodeProfiles.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    export const GINA_WEB_APP_CODE_PROFILES: CodeProfile[] = GINA_CODE_PROFILES.filter((p) =>
+      p.category === 'frontend' ||
+      p.category === 'fullstack' ||
+      /web|html|react|vue|next|svelte|tailwind|css|vite|landing|dom|spa|browser|ui|frontend|dashboard/i.test(
+        `${p.id} ${p.name} ${p.category} ${p.settings?.targetEnvironment || ''} ${p.positivePrompt}`
+      )
+    );
+    export function filterWebAppCodeProfiles(query: string): CodeProfile[] { ... }
+    ```
+  - **Why:** Extracted and exported all web-related code profiles into `GINA_WEB_APP_CODE_PROFILES` with a dedicated search filter for Web App Studio.
+
+- **Target File Path:** `/src/components/GinaStudioProfilePicker.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    {mode === 'web-app' && (
+      <div className="flex items-center gap-1 bg-slate-900/90 rounded-lg p-0.5 border border-slate-800">
+        <button onClick={() => setSubTab('agents')}>AI Agent Profiles ({GINA_AGENT_PROFILES.length})</button>
+        <button onClick={() => setSubTab('web-code')}>Web App Code Profiles ({GINA_WEB_APP_CODE_PROFILES.length})</button>
+      </div>
+    )}
+    {mode === 'code-engine' && (
+      <div className="flex items-center gap-1 bg-slate-900/90 rounded-lg p-0.5 border border-slate-800">
+        <button onClick={() => setSubTab('code')}>Code Profiles ({GINA_CODE_PROFILES.length})</button>
+        <button onClick={() => setSubTab('agents')}>AI Agent Profiles ({GINA_AGENT_PROFILES.length})</button>
+      </div>
+    )}
+    ```
+  - **Why:** Added dual-mode sub-tab navigation to both Web App and Code Engine studios. Users can now choose either AI Agent Profiles or Web App Code Profiles in Web App Studio, and Code Profiles or AI Agent Profiles in Code Engine Studio.
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    <MovableResizableWrapper id="gina-prompt-input" className="w-full">
+      <div ref={promptBoxPanel.panelRef} ...>
+        ...
+      </div>
+    </MovableResizableWrapper>
+
+    <MovableResizableWrapper id="gina-agent-log" className="w-full mt-2">
+      <AgentExecutionTrace ... />
+    </MovableResizableWrapper>
+    ```
+  - **Why:** Wrapped both the Message/Prompt Input box and the GINA AGENT LOG with `MovableResizableWrapper` so both components feature movable drag handles `[::]`, resize grips, and persistent layout coordinates.
+
+# GitHub Import Migration — TypeScript & Vite Build Stabilization
+
+- **Target File Path:** `/src/data/ginaAgentProfiles.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    positivePrompt:
+      `You are Gina's senior software engineer agent with full local project access under C:\\Gina_AI (read, write, edit, inspect, list, search)...`,
+    ...
+    systemAddon:
+      `PROJECT ROOT: C:\\Gina_AI (and nested repos such as Gina-AI-Assistant)...`
+    ```
+  - **Why:** Replaced multiline string literals using double and single quotes with ES6 template literals and properly escaped backslashes, resolving esbuild `Unterminated string literal` syntax error that prevented applet compilation.
+
+- **Target File Path:** `/src/components/GinaPromptStation.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    import {
+      ChevronRight, Terminal, FileCode, Clipboard, Heart, HeartCrack,
+      RefreshCw, Cpu, Zap, Activity, Copy, Send
+    } from 'lucide-react';
+    ...
+    <HeartCrack className="w-3.5 h-3.5" />
+    ```
+  - **Why:** Swapped non-existent icon export `HeartCracked` to valid Lucide icon `HeartCrack`.
+
+- **Target File Path:** `/src/components/MovableResizableWrapper.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    export interface MovableResizableWrapperProps {
+      ...
+      floating?: boolean;
+      collapsible?: boolean;
+      title?: string;
+    }
+    ```
+  - **Why:** Extended `MovableResizableWrapperProps` interface with optional `collapsible` and `title` properties used by `LocalLlmStudio.tsx`.
+
+- **Target File Path:** `/src/components/PromptStudio.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    return [
+      { id: `transparent-${Date.now()}`, url: resultUrl, prompt: 'Transparent PNG', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), styles: selectedStyles },
+      ...prev,
+    ].slice(0, 24);
+    ```
+  - **Why:** Fixed `HistoryItem` timestamp type mismatch in `handleMakeTransparent` from `number` to formatted `string`.
+
 # v1.20.14 — Phase 61 — Local AI Commercial Savings & Performance Telemetry Engine
 
 - **Target File Path:** `/src/components/ResizablePanels.tsx`
