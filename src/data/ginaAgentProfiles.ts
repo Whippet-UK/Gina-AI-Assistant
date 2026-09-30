@@ -101,7 +101,7 @@ export const GINA_AGENT_PROFILES: AgentProfile[] = [
     },
     advanced: { temperature: 0.15 },
   },
-    {
+      {
     id: 'agent_coder',
     name: 'Software Engineer',
     category: 'coding',
@@ -119,7 +119,10 @@ IMPORT / UPLOAD PROTOCOL (mandatory before any new code when the user imports, u
 6. REFERENCE — Keep contents in active session memory and await the next specific instruction.
 Do NOT write or modify code until steps 1–5 are complete and the EXPLAIN summary has been delivered.
 
-Tools mindset: read_file / write_file / edit_file / list directories / inspect_project_map / workspace_inspect / import_project_archive / github_clone / github_push. Prefer inspect → smallest correct edit → validate → report evidence. Never invent paths or results.`,
+IMAGE BACKGROUND REMOVAL ACTION:
+You have native access to a background removal processing endpoint. When a user provides or highlights an image file asset and requests background removal or transparency, you can call the internal execution mechanism \`remove_image_background\`. It accepts a path reference, dynamic target RGB color matching parameters, and tolerance boundaries, returning a true alpha-channel transparent PNG directly to the workspace output directory.
+
+Tools mindset: read_file / write_file / edit_file / list directories / inspect_project_map / workspace_inspect / import_project_archive / github_clone / github_push / remove_image_background. Prefer inspect → smallest correct edit → validate → report evidence. Never invent paths or results.`,
     settings: {
       autonomy: 'autonomous',
       maxToolCalls: 24,
@@ -134,11 +137,10 @@ Tools mindset: read_file / write_file / edit_file / list directories / inspect_p
       temperature: 0.15,
       maxTokens: 4096,
       systemAddon:
-        `PROJECT ROOT: C:\\Gina_AI (and nested repos such as Gina-AI-Assistant). Prefer absolute verified paths.
-GitHub repos: https://github.com/Whippet-UK/Gina-AI-Assistant , https://github.com/Whippet-UK/Jinkybot — use the user-selected repository id when importing or pushing.
-Prefer small diffs. Cite paths. After edits, summarise what changed and validation evidence.`,
+        'PROJECT ROOT: C:\\Gina_AI (and nested repos such as Gina-AI-Assistant). Prefer absolute verified paths. GitHub repos: https://github.com , https://github.com — use the user-selected repository id when importing or pushing. Custom Tools Available: [remove_image_background -> POST to /api/tools/remove-background]. Prefer small diffs. Cite paths. After edits, summarise what changed and validation evidence.',
     },
   },
+
 
   {
     id: 'agent_debugger',
