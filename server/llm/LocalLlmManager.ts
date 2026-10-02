@@ -265,6 +265,9 @@ export class LocalLlmManager {
   async chat(messages:ChatMessage[],options?:{temperature?:number;maxTokens?:number;suite?:string;telemetrySource?:PromptTelemetrySource;webProvider?:string|null;includeAgentSkills?:boolean;allowReasoningFallback?:boolean;contextBreakdown?:Record<string,number>;iteration?:number;toolCalls?:number},attachments:ImageAttachment[]=[]){
     await this.agentSkillsLoadPromise;
     const skillAwareMessages = Array.isArray(messages) ? [...messages] : [];
+    if (options?.webProvider || options?.telemetrySource === 'local+web') {
+      skillAwareMessages.unshift({ role:'system', content:'LIVE WEB CAPABILITY CONTRACT — The Gina server has already executed its registered public-web broker when web grounding is supplied. Do not claim that you lack internet access or cannot search the web. Treat the supplied live-web evidence as the authoritative result of the broker call, use it to answer the user, and distinguish it from local model knowledge. Never invent a search result when the broker did not return one.' });
+    }
     const latestUserText = [...skillAwareMessages].reverse().find(message => message?.role === 'user');
     const isArtifactStudio = String(options?.suite || '').trim().toLowerCase() === 'web app studio';
     const operationalContext = !isArtifactStudio && (this.engine === 'qwen-coder' || /\b(?:edit|modify|change|update|patch|repair|fix|implement|refactor|rewrite|replace|remove|delete|create|make|build|scaffold|develop|write|save)\b[\s\S]{0,220}\b(?:code|file|component|function|project|repo|repository|react|typescript|javascript|server|ui|app|website|dashboard)\b/i.test(String(latestUserText?.content || '')));
