@@ -476,14 +476,21 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">Wan 2.1 Video Generator</h2>
+              <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">Wan Video Generator</h2>
               <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                1.3B BF16 · 8GB
+                {videoEngine === 'wan22' ? 'Wan 2.2 TI2V 5B GGUF · 8GB' : 'Wan 2.1 1.3B · 8GB'}
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Strictly local text-to-video workflow tuned for 8 GB VRAM (RTX 3070 Ti).
+              Strictly local interchangeable Wan pipeline tuned for the RTX 3070 Ti 8 GB VRAM cage.
             </p>
+            <div className="mt-2 flex items-center gap-2">
+              <label className="text-[10px] font-mono text-slate-500 uppercase">Video engine</label>
+              <select value={videoEngine} onChange={e => handleVideoEngineChange(e.target.value as 'wan21' | 'wan22')} className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-[10px] font-mono text-slate-200">
+                <option value="wan21">Wan 2.1 · 1.3B baseline</option>
+                <option value="wan22">Wan 2.2 · TI2V 5B Q4_K_M</option>
+              </select>
+            </div>
           </div>
         </div>
 
