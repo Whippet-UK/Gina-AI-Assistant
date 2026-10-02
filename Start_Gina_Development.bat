@@ -29,35 +29,33 @@ if not exist "%GINA_ENV%" (
   exit /b 1
 )
 
-echo ============================================================
-echo  GINA AI DEVELOPMENT MODE
-echo ============================================================
-echo  Mode: %MODE%
-echo  Root: %GINA_ROOT%
-echo  Log:  %GINA_ROOT%\logs\gina-development-startup.log
-echo ============================================================
-echo.
-
-if not exist "%GINA_ROOT%\logs" mkdir "%GINA_ROOT%\logs" >nul 2>&1
-echo ============================================================ > "%GINA_ROOT%\logs\gina-development-startup.log"
-echo Gina Development Mode startup %date% %time% >> "%GINA_ROOT%\logs\gina-development-startup.log"
-echo Mode: %MODE% >> "%GINA_ROOT%\logs\gina-development-startup.log"
-echo ============================================================ >> "%GINA_ROOT%\logs\gina-development-startup.log"
-
-where node >nul 2>&1
-if errorlevel 1 (
-  echo [ERROR] Node.js was not found on PATH.
-  echo [ERROR] Node.js was not found on PATH. >> "%GINA_ROOT%\logs\gina-development-startup.log"
+if not exist "%GINA_ROOT%\node_modules\.bin\tsx.cmd" (
+  echo [ERROR] Gina Node dependencies are not installed.
+  echo [ERROR] Missing: %GINA_ROOT%\node_modules\.bin\tsx.cmd
+  echo [ERROR] Run "npm install" once from %GINA_ROOT%, then start Development Mode again.
   echo.
   pause
   exit /b 1
 )
 
-where npm >nul 2>&1
+if not exist "%GINA_ROOT%\logs" mkdir "%GINA_ROOT%\logs" >nul 2>&1
+> "%GINA_ROOT%\logs\gina-development-startup.log" echo Gina Development Mode startup %date% %time%
+>> "%GINA_ROOT%\logs\gina-development-startup.log" echo Mode: %MODE%
+
+echo ============================================================
+echo  GINA AI DEVELOPMENT MODE
+echo ============================================================
+echo  Mode: %MODE%
+echo  Root: %GINA_ROOT%
+echo  Server: http://127.0.0.1:3200
+echo  Log: %GINA_ROOT%\logs\gina-development-startup.log
+echo ============================================================
+echo.
+
+where node >nul 2>&1
 if errorlevel 1 (
-  echo [ERROR] npm was not found on PATH.
-  echo [ERROR] npm was not found on PATH. >> "%GINA_ROOT%\logs\gina-development-startup.log"
-  echo.
+  echo [ERROR] Node.js was not found on PATH.
+  >> "%GINA_ROOT%\logs\gina-development-startup.log" echo [ERROR] Node.js was not found on PATH.
   pause
   exit /b 1
 )
@@ -65,8 +63,7 @@ if errorlevel 1 (
 call "%GINA_ENV%"
 if errorlevel 1 (
   echo [ERROR] Could not activate Gina g_env.
-  echo [ERROR] Could not activate Gina g_env. >> "%GINA_ROOT%\logs\gina-development-startup.log"
-  echo.
+  >> "%GINA_ROOT%\logs\gina-development-startup.log" echo [ERROR] Could not activate Gina g_env.
   pause
   exit /b 1
 )
@@ -78,25 +75,24 @@ set "NODE_OPTIONS=--max-old-space-size=8192"
 if /I "%MODE%"=="dashboard-comfy" (
   if exist "%GINA_ROOT%\Start_ComfyUI.bat" (
     echo [DEV] Starting ComfyUI in a separate terminal.
-    echo [DEV] Starting ComfyUI. >> "%GINA_ROOT%\logs\gina-development-startup.log"
+    >> "%GINA_ROOT%\logs\gina-development-startup.log" echo [DEV] Starting ComfyUI.
     start "ComfyUI - Gina Dev" cmd /k call "%GINA_ROOT%\Start_ComfyUI.bat"
   ) else (
     echo [DEV][WARN] Start_ComfyUI.bat not found.
-    echo [DEV][WARN] Start_ComfyUI.bat not found. >> "%GINA_ROOT%\logs\gina-development-startup.log"
   )
 )
 
-echo [DEV] Gina will start on port 3200 (or the first free fallback port).
-echo [DEV] Heavy ML model loading and database initialisation are skipped in cold modes.
-echo [DEV] Opening the dashboard automatically when the server becomes reachable...
+echo [DEV] Starting Gina directly with the local TSX runtime.
+echo [DEV] The dashboard launcher is hidden; this window remains the Gina server log.
+echo [DEV] Dashboard will open automatically at http://127.0.0.1:3200 when ready.
 echo.
 
-start "Gina Dashboard Launcher" powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$deadline=(Get-Date).AddSeconds(90); while((Get-Date) -lt $deadline){ foreach($p in 3200..3210){ try{ $c=New-Object Net.Sockets.TcpClient; $a=$c.BeginConnect('127.0.0.1',$p,$null,$null); if($a.AsyncWaitHandle.WaitOne(250) -and $c.Connected){$c.Close(); Start-Process ('http://127.0.0.1:'+$p); exit 0}; $c.Close() }catch{} }; Start-Sleep -Milliseconds 500 }; Write-Host '[DEV][WARN] Gina did not become reachable within 90 seconds.'"
+>> "%GINA_ROOT%\logs\gina-development-startup.log" echo [DEV] Starting local TSX runtime.
 
-echo [DEV] Starting Gina server...
-echo [DEV] Starting Gina server... >> "%GINA_ROOT%\logs\gina-development-startup.log"
+rem Use a hidden PowerShell watcher so Development Mode does NOT open a second console window.
+start "" /b powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "$deadline=(Get-Date).AddSeconds(90); while((Get-Date) -lt $deadline){ foreach($p in 3200..3210){ try{ $c=New-Object Net.Sockets.TcpClient; $a=$c.BeginConnect('127.0.0.1',$p,$null,$null); if($a.AsyncWaitHandle.WaitOne(300) -and $c.Connected){$c.Close(); Start-Process ('http://127.0.0.1:'+$p); exit 0}; $c.Close() }catch{} }; Start-Sleep -Milliseconds 500 }; exit 1"
 
-npm.cmd run dev
+call "%GINA_ROOT%\node_modules\.bin\tsx.cmd" "%GINA_ROOT%\server.ts"
 set "GINA_EXIT_CODE=%ERRORLEVEL%"
 
 echo.
@@ -105,9 +101,8 @@ if "%GINA_EXIT_CODE%"=="0" (
   echo [DEV] Gina stopped normally.
 ) else (
   echo [ERROR] Gina exited with code %GINA_EXIT_CODE%.
-  echo [ERROR] The terminal is being kept open so the startup error remains visible.
-  echo [ERROR] Full startup log:
-  echo         %GINA_ROOT%\logs\gina-development-startup.log
+  echo [ERROR] See the server error above; this terminal will stay open.
+  echo [ERROR] Startup log: %GINA_ROOT%\logs\gina-development-startup.log
 )
 echo ============================================================
 echo.
