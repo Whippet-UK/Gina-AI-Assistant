@@ -32,8 +32,8 @@ const aliases: Record<string, { key: string; inputs: string[]; classes?: string[
   cfg: [{ key: 'cfg', inputs: ['cfg'], classes: ['KSampler', 'KSamplerAdvanced'] }],
   sampler: [{ key: 'sampler', inputs: ['sampler_name'], classes: ['KSampler', 'KSamplerAdvanced', 'KSamplerSelect'] }],
   scheduler: [{ key: 'scheduler', inputs: ['scheduler'], classes: ['BasicScheduler', 'KSampler', 'KSamplerAdvanced'] }],
-  width: [{ key: 'width', inputs: ['width'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage', 'EmptyHunyuanLatentVideo', 'EmptyLatentVideo'] }],
-  height: [{ key: 'height', inputs: ['height'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage', 'EmptyHunyuanLatentVideo', 'EmptyLatentVideo'] }],
+  width: [{ key: 'width', inputs: ['width'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage', 'EmptyHunyuanLatentVideo', 'EmptyLatentVideo', 'Wan22ImageToVideoLatent'] }],
+  height: [{ key: 'height', inputs: ['height'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage', 'EmptyHunyuanLatentVideo', 'EmptyLatentVideo', 'Wan22ImageToVideoLatent'] }],
   // Keep video temporal length separate from sample batch size. Wan 2.1 video batch_size is normally 1;
   // frame_count/length/num_frames are temporal controls and must never be aliased to batch_size.
   // UI sends parameters.frames — must bind to EmptyHunyuanLatentVideo.length (was hardcoded 25 → always ~1s).
