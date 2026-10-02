@@ -436,7 +436,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     if (modelName.includes('coder') || status?.engine === 'qwen-coder') {
       return {
         arch: 'Qwen-2.5-Coder-7B',
-        twin: 'claude-sonnet-5',
+        twin: 'gina-coder-v1',
         tier: 'Frontier Twin',
         inputRate: 1.5600,
         outputRate: 7.8000,
@@ -808,7 +808,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
               {supported && (
                 <>
                   <button type="button" onClick={() => downloadCodeFile(displayName, code, language === 'html' ? 'text/html;charset=utf-8' : 'text/plain;charset=utf-8')} className="rounded border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-sky-300 hover:bg-sky-500/20 flex items-center gap-1"><FileDown className="w-3 h-3" /> Download</button>
-                  <button type="button" onClick={() => void saveCodeBlock(displayName, code, blockKey)} className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/20">Save</button>
+                  <button type="button" onClick={() => void saveCodeBlock(displayName, code, blockKey)} className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-red-400 hover:bg-red-500/20">Save</button>
                 </>
               )}
               {saved && <a href={saved.url} target="_blank" rel="noopener noreferrer" download={displayName} className="rounded border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[8px] font-bold text-sky-300 hover:bg-sky-500/20">Saved · {saved.bytes.toLocaleString()} B</a>}
@@ -830,8 +830,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
         <div className="flex items-center justify-between gap-2 px-3 py-2 bg-slate-900/80 border-b border-slate-800">
           <div className="flex items-center gap-2 min-w-0">
             <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-bold ${
-              step.type === 'command' ? 'bg-amber-950/80 text-amber-300 border border-amber-600/40' :
-              step.type === 'file_write' || step.type === 'file_edit' ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-600/40' :
+              step.type === 'command' ? 'bg-red-950/80 text-red-300 border border-red-600/40' :
+              step.type === 'file_write' || step.type === 'file_edit' ? 'bg-red-950/80 text-red-300 border border-red-600/40' :
               step.type === 'file_read' ? 'bg-sky-950/80 text-sky-300 border border-sky-600/40' :
               step.type === 'test' ? 'bg-violet-950/80 text-violet-300 border border-violet-600/40' :
               'bg-slate-800 text-slate-300'
@@ -853,7 +853,7 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
               <span className="text-slate-500 text-[10px]">{step.durationMs}ms</span>
             )}
             <span className={`text-[10px] uppercase font-bold ${
-              step.status === 'success' ? 'text-emerald-400' :
+              step.status === 'success' ? 'text-red-400' :
               step.status === 'running' ? 'text-amber-400 animate-pulse' : 'text-rose-400'
             }`}>
               {step.status === 'success' ? '✓ Success' : step.status === 'running' ? '⟳ Running' : '✗ Failed'}
@@ -862,14 +862,14 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
         </div>
 
         {step.command && (
-          <div className="p-2.5 bg-black/60 text-amber-300 text-[11px] font-mono border-b border-slate-800/60 overflow-x-auto">
+          <div className="p-2.5 bg-black/60 text-red-300 text-[11px] font-mono border-b border-slate-800/60 overflow-x-auto">
             <span className="text-slate-500 mr-2">$</span>
             {step.command}
           </div>
         )}
 
         {step.codeSnippet && (
-          <div className="p-3 bg-black/70 text-emerald-300 text-[11px] font-mono overflow-x-auto max-h-[320px] custom-scrollbar">
+          <div className="p-3 bg-black/70 text-red-300 text-[11px] font-mono overflow-x-auto max-h-[320px] custom-scrollbar">
             <pre><code>{step.codeSnippet}</code></pre>
           </div>
         )}
@@ -2906,34 +2906,34 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                 className="h-full min-h-0 bg-slate-950/90 flex flex-col relative select-text"
                 style={ginaPanelStyle()}
               >
-                {/* Header with Claude Streaming Brand & Pure Text Telemetry */}
+                {/* Header with Gina Assistant Workspace & Pure Text Telemetry */}
                 <div className="border-b border-slate-800 px-3 pt-2.5 pb-2 shrink-0 bg-[#0d1117] flex flex-col gap-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-5 h-5 rounded bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
-                        C
+                      <div className="w-5 h-5 rounded flex items-center justify-center bg-black border border-red-500 text-white text-[10px] font-bold font-mono shadow-[0_0_10px_rgba(239,68,68,0.3)]">
+                        GA
                       </div>
-                      <span className="text-xs font-bold text-slate-100 tracking-tight">Claude Streaming Chat &amp; Live Log</span>
+                      <span className="text-xs font-bold text-slate-100 tracking-tight">Gina Assistant Workspace</span>
                       <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-[10px] font-mono text-slate-400">
-                        <span className={`w-1.5 h-1.5 rounded-full ${loading ? 'bg-amber-400 animate-pulse' : showResponseJumpToBottom ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                        <span className={`w-1.5 h-1.5 rounded-full ${loading ? 'bg-red-400 animate-pulse' : showResponseJumpToBottom ? 'bg-red-400' : 'bg-red-500'}`} />
                         <span>{showResponseJumpToBottom ? 'PAUSED (SCROLLED UP)' : loading ? 'STREAMING TOKENS…' : 'READY · Y-AXIS AUTO-SCROLL ACTIVE'}</span>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2 font-mono text-[9px]">
-                      {/* View Mode Switcher: Live Terminal Log (Claude Code) vs Formatted Chat */}
+                      {/* View Mode Switcher: Live Terminal Log (Gina Code) vs Formatted Chat */}
                       <div className="flex items-center rounded-lg border border-slate-800 bg-slate-900/90 p-0.5">
                         <button
                           type="button"
                           onClick={() => setLeftViewMode('chat')}
                           className={`px-2.5 py-1 rounded cursor-pointer transition-all flex items-center gap-1 ${
                             leftViewMode === 'chat'
-                              ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 shadow-sm'
+                              ? 'bg-red-500/10 text-red-400 font-bold border border-red-500/40 shadow-sm'
                               : 'text-slate-400 hover:text-slate-200'
                           }`}
                           title="Formatted Chat View"
                         >
-                          <MessageSquare className="w-3 h-3 text-amber-400" />
+                          <MessageSquare className="w-3 h-3 text-red-400" />
                           <span>Chat View</span>
                         </button>
                         <button
@@ -2941,12 +2941,12 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                           onClick={() => setLeftViewMode('terminal')}
                           className={`px-2.5 py-1 rounded cursor-pointer transition-all flex items-center gap-1 ${
                             leftViewMode === 'terminal'
-                              ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 shadow-sm'
+                              ? 'bg-red-500/10 text-red-400 font-bold border border-red-500/40 shadow-sm'
                               : 'text-slate-400 hover:text-slate-200'
                           }`}
-                          title="Live Terminal Streaming Log (Claude Code style)"
+                          title="Live Terminal Streaming Log (Gina Code style)"
                         >
-                          <Code2 className="w-3 h-3 text-emerald-400" />
+                          <Code2 className="w-3 h-3 text-red-400" />
                           <span>Terminal Log</span>
                         </button>
                       </div>
@@ -2976,8 +2976,8 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
 
                   {/* Pure Text Telemetry Data Strip */}
                   <div className="flex flex-wrap items-center gap-2.5 text-[10px] font-mono text-slate-400 pt-1 border-t border-slate-800/80">
-                    <span className="text-emerald-400 font-bold">
-                      TPS: <strong className="text-emerald-300">{Number(lastTelemetry?.tokensPerSecond || 42.8).toFixed(1)} tok/s</strong>
+                    <span className="text-red-500 font-bold">
+                      TPS: <strong className="text-red-400">{Number(lastTelemetry?.tokensPerSecond || 42.8).toFixed(1)} tok/s</strong>
                     </span>
                     <span className="text-slate-600">·</span>
                     <span>
@@ -2993,7 +2993,7 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                     </span>
                     <span className="text-slate-600">·</span>
                     <span>
-                      SCROLL LOCK: <strong className={showResponseJumpToBottom ? 'text-amber-400' : 'text-emerald-400'}>{showResponseJumpToBottom ? 'PAUSED (SCROLLED UP)' : 'ENGAGED (BOTTOM)'}</strong>
+                      SCROLL LOCK: <strong className={showResponseJumpToBottom ? 'text-red-400' : 'text-red-500'}>{showResponseJumpToBottom ? 'PAUSED (SCROLLED UP)' : 'ENGAGED (BOTTOM)'}</strong>
                     </span>
                   </div>
 
@@ -3010,11 +3010,11 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                           promptInputRef.current?.focus();
                         }
                       }}
-                      className="flex-1 bg-[#11161d] border border-slate-800 rounded px-2 py-1 text-slate-200 text-[10px] outline-none focus:border-amber-500 truncate"
+                      className="flex-1 bg-[#11161d] border border-slate-800 rounded px-2 py-1 text-slate-200 text-[10px] outline-none focus:border-red-400 truncate"
                     >
                       <option value="">⚡ Select [id:] Cheat Code or Preset Task…</option>
                       <option value="[id: 'rover_2d_sandbox'] Build a single-file responsive 2D web application using HTML5 Canvas, Tailwind CSS, and vanilla JS featuring an arena with obstacles, goal, and an AI rover with 8-ray LiDAR.">[id: 'rover_2d_sandbox'] 2D Rover Physics Arena + 8-Ray LiDAR</option>
-                      <option value="[id: 'claude_streaming_engine'] Explain the 3 core rules of real-time auto-scrolling with user-interrupt detection in live chat interfaces.">[id: 'claude_streaming_engine'] Auto-Scroll &amp; User Interrupt Architecture</option>
+                      <option value="[id: 'gina_streaming_engine'] Explain the 3 core rules of real-time auto-scrolling with user-interrupt detection in live chat interfaces.">[id: 'gina_streaming_engine'] Auto-Scroll &amp; User Interrupt Architecture</option>
                       <option value="[id: 'observability_metrics_service'] Implement a high-performance local Prometheus/Grafana style telemetry and live trace logging service.">[id: 'observability_metrics_service'] Local Prometheus Observability Engine</option>
                       <option value="[id: 'fastapi_microservice'] Implement a high-performance Python FastAPI service with WebSockets and streaming response generator.">[id: 'fastapi_microservice'] Python FastAPI Streaming Generator</option>
                       <option value="[id: 'creative_code'] Write a complete WebGL fragment shader simulation of a pulsing gravitational singularity.">[id: 'creative_code'] WebGL Singularity Shader</option>
@@ -3050,10 +3050,10 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                 <div
                   ref={responseScrollRef}
                   onScroll={handleResponseScroll}
-                  className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 space-y-3 relative bg-[#0d1117]"
+                  className="flex flex-col h-full max-h-[calc(100vh-240px)] overflow-y-auto custom-scrollbar p-3 space-y-3 relative bg-[#0d1117]"
                 >
                   {leftViewMode === 'terminal' ? (
-                    /* TEXT-ONLY REAL-TIME CLAUDE CODE EXECUTION LOG */
+                    /* TEXT-ONLY REAL-TIME GINA CODE EXECUTION LOG */
                     <div className="font-mono text-[11px] leading-5 text-slate-300 space-y-0.5">
                       {terminalLogLines.map((l) => (
                         <div key={l.id} className={`whitespace-pre-wrap break-words ${l.cls}`}>
@@ -3064,24 +3064,24 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                       ))}
                     </div>
                   ) : (
-                    /* CONVERSATION VIEW (Clean Claude flow with in-stream live logs, no detached black box) */
+                    /* CONVERSATION VIEW (Clean Gina flow with in-stream live logs, no detached black box) */
                     <div className="space-y-4">
                       {!messages.length && (
                         <div className="h-full min-h-[300px] flex items-center justify-center text-center text-slate-500 text-xs">
                           <div>
-                            <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-500 mx-auto mb-2 flex items-center justify-center font-bold">C</div>
-                            <p className="text-slate-300 font-semibold">Claude Streaming Chat &amp; Live Log Engine</p>
+                            <div className="w-8 h-8 rounded-lg bg-black/95 border-2 border-red-500 text-white font-black shadow-[0_0_25px_rgba(239,68,68,0.25)] mx-auto mb-2 flex items-center justify-center">GA</div>
+                            <p className="text-slate-300 font-semibold">Gina Assistant Engine</p>
                             <p className="text-[11px] mt-1 text-slate-500">Pure local inference on RTX 3070 Ti · Y-axis Auto-Scroll Active</p>
                           </div>
                         </div>
                       )}
 
-                      {/* Chat Messages formatted in Claude style */}
+                      {/* Chat Messages formatted in Gina style */}
                       {messages.map((message, index) => (
                         <div key={`${message.role}-${index}`} className={`flex flex-col w-full max-w-[820px] mx-auto ${message.role === 'user' ? 'items-end' : 'items-start'} animate-[fadeIn_0.2s_ease-out]`}>
                           <div className="text-[11px] font-semibold text-slate-500 mb-1 flex items-center gap-1.5 font-mono">
-                            <span className={message.role === 'user' ? 'text-slate-400 font-bold' : 'text-amber-500 font-bold'}>
-                              {message.role === 'user' ? 'You' : 'Claude'}
+                            <span className={message.role === 'user' ? 'text-slate-400 font-bold' : 'text-red-500 font-bold'} style={{ color: message.role === 'assistant' ? '#ef4444' : undefined }}>
+                              {message.role === 'user' ? 'You' : <span style={{ color: '#ef4444' }}>Gina</span>}
                             </span>
                             {message.role === 'assistant' && (
                               <span className="text-slate-600 font-normal">
@@ -3116,12 +3116,12 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
 
                       {loading && status?.ready && (
                         <div className="flex flex-col w-full max-w-[820px] mx-auto items-start font-mono text-xs">
-                          <div className="text-[11px] font-semibold text-amber-500 mb-1 flex items-center gap-1.5">
-                            <span>Claude · Streaming</span>
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                          <div className="text-[11px] font-semibold text-red-500 mb-1 flex items-center gap-1.5">
+                            <span style={{ color: '#ef4444' }}>Gina · Streaming</span>
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />
                           </div>
                           <div className="flex items-center gap-2 text-slate-300 py-1">
-                            <span className="inline-block w-2 h-4 bg-amber-500 animate-pulse" />
+                            <span className="inline-block w-2 h-4 bg-red-500 animate-pulse" />
                             <span className="text-slate-400 text-xs">Generating response locally on RTX 3070 Ti…</span>
                           </div>
                         </div>
@@ -3135,7 +3135,7 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                   <button
                     type="button"
                     onClick={() => scrollToResponseBottom(true)}
-                    className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-slate-800/95 hover:bg-slate-700 text-slate-100 text-xs font-mono font-semibold shadow-xl border border-white/15 backdrop-blur transition-all cursor-pointer animate-pulse"
+                    className="absolute bottom-28 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-black/95 hover:bg-zinc-900 text-red-400 hover:text-white text-xs font-mono font-semibold shadow-xl border border-red-500/40 backdrop-blur transition-all cursor-pointer animate-pulse"
                     title="Click to scroll to bottom and re-engage auto-scroll"
                   >
                     <span className="text-sm">↓</span> Auto-scroll paused (Scroll to bottom)
@@ -3146,18 +3146,85 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                   const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant');
                   const lastText = lastAssistant?.content || '';
                   return (
-                    <MovableResizableWrapper id="gina-response-actions" className="inline-block px-3 pb-2 pt-1 border-t border-slate-800/80 bg-slate-950/90">
+                    <MovableResizableWrapper id="gina-response-actions" className="inline-block px-3 pb-2 pt-1 border-t border-slate-800/80 bg-slate-950/90 shrink-0">
                       <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950/90 px-2 py-1.5">
                         <span className="mr-1 text-[8px] font-bold uppercase tracking-widest text-slate-600">RESPONSE</span>
-                        <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(lastText); } catch {} }} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-emerald-500/40 hover:text-emerald-300">Copy</button>
+                        <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(lastText); } catch {} }} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-red-500/40 hover:text-red-400">Copy</button>
                         <button type="button" onClick={() => void speakText(lastText)} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-sky-500/40 hover:text-sky-300"><Volume2 className="mr-1 inline h-3 w-3" />Audio</button>
-                        <button type="button" onClick={() => onAddLog('INFO', 'Response marked helpful.')} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-emerald-500/40 hover:text-emerald-300">👍</button>
+                        <button type="button" onClick={() => onAddLog('INFO', 'Response marked helpful.')} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-red-500/40 hover:text-red-400">👍</button>
                         <button type="button" onClick={() => onAddLog('INFO', 'Response marked not helpful.')} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-rose-500/40 hover:text-rose-300">👎</button>
-                        <button type="button" onClick={() => { const previousUser = [...messages].reverse().find(m => m.role === 'user'); if (previousUser?.content) { setInput(previousUser.content); requestAnimationFrame(() => void sendMessage(previousUser.content)); } }} disabled={loading} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-amber-500/40 hover:text-amber-300"><RotateCw className="mr-1 inline h-3 w-3" />Retry</button>
+                        <button type="button" onClick={() => { const previousUser = [...messages].reverse().find(m => m.role === 'user'); if (previousUser?.content) { setInput(previousUser.content); requestAnimationFrame(() => void sendMessage(previousUser.content)); } }} disabled={loading} className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[9px] font-bold text-slate-300 hover:border-red-500/40 hover:text-red-400"><RotateCw className="mr-1 inline h-3 w-3" />Retry</button>
                       </div>
                     </MovableResizableWrapper>
                   );
                 })()}
+
+                {/* REPOSITIONED PROMPT INPUT CONTAINER NESTED IN LEFT COLUMN */}
+                <div className="mt-auto border-t border-slate-800 pt-2.5 px-3 pb-3 bg-[#0d1117] shrink-0 font-mono">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept=".txt,.md,.markdown,.json,.csv,.tsv,.log,.ini,.cfg,.conf,.yaml,.yml,.xml,.html,.htm,.css,.js,.jsx,.ts,.tsx,.py,.ps1,.bat,.cmd,.sh,.sql,.c,.h,.cpp,.hpp,.cc,.java,.cs,.go,.rs,.toml,.env,.png,.jpg,.jpeg,.webp,.bmp,.gif,.zip,text/plain,application/json,text/csv,text/markdown,text/xml,image/png,image/jpeg,image/webp,application/zip"
+                    className="hidden"
+                    onChange={e => {
+                      const files = Array.from(e.target.files || []) as File[];
+                      void (async () => { for (const file of files) await handleAttachFile(file); })();
+                    }}
+                  />
+
+                  {attachedFiles.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {attachedFiles.map(file => (
+                        <div key={file.name} className="flex items-center gap-1.5 px-2 py-1 rounded border border-sky-500/20 bg-sky-500/5 text-sky-300 text-[9px] font-mono max-w-full">
+                          {file.kind === 'image' ? <ImageIcon className="w-3 h-3 shrink-0" /> : file.kind === 'archive' ? <Archive className="w-3 h-3 shrink-0" /> : <FileText className="w-3 h-3 shrink-0" />}
+                          <span className="truncate max-w-[220px]">{file.name}</span>
+                          <span className="text-slate-600">{Math.ceil(file.bytes / 1024)}KB</span>
+                          {file.extractedFiles ? <span className="text-red-400">{file.extractedFiles} files</span> : null}
+                          <button type="button" onClick={() => setAttachedFiles(prev => prev.filter(x => x.name !== file.name))} className="text-slate-500 hover:text-rose-300" title="Remove file"><X className="w-3 h-3" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {fileAttachError && <div className="mb-2 p-2 rounded border border-rose-500/20 bg-rose-500/5 text-[9px] text-rose-300">{fileAttachError}</div>}
+
+                  <MovableResizableWrapper id="gina-prompt-input" className="w-full">
+                    <div
+                      ref={promptBoxPanel.panelRef}
+                      className="relative flex flex-col transition-all"
+                      style={{ width: promptBoxPanel.width ? `${promptBoxPanel.width}px` : '100%' }}
+                    >
+                      <div className="relative flex gap-2 w-full">
+                        <textarea
+                          ref={promptInputRef}
+                          value={input}
+                          onChange={e => setInput(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (input.trim() || attachedFiles.length) void sendMessage(); } }}
+                          disabled={!status?.ready || loading}
+                          rows={1}
+                          placeholder={status?.ready ? 'Message Gina… (Enter to send, Shift+Enter for a new line)' : 'Start the local LLM first…'}
+                          className="flex-1 min-h-[44px] resize-y overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 pr-28 pb-4 text-xs text-slate-200 outline-none focus:border-red-400 disabled:opacity-50 leading-relaxed custom-scrollbar"
+                          style={{ height: promptBoxPanel.height ? `${promptBoxPanel.height}px` : undefined, minHeight: '44px', resize: 'vertical' }}
+                        />
+                        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!status?.ready || loading || attachedFiles.length >= maxLocalAiFiles} title={status?.engine === 'qwen-coder' ? 'Qwen Coder accepts text/code files and project ZIP archives. Image attachments require a multimodal vision model.' : 'Attach a supported local file, image or ZIP archive'} className="absolute right-14 bottom-2.5 h-9 px-2.5 rounded-lg border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1.5 cursor-pointer"><Paperclip className="w-3.5 h-3.5" /> Attach</button>
+                        {loading ? (
+                          <button onClick={() => void cancelChat()} className="absolute right-2 bottom-2.5 w-9 h-9 rounded-full border border-rose-500/50 bg-rose-500/15 text-rose-300 flex items-center justify-center cursor-pointer" title="Stop inference and flush VRAM"><Square className="w-3.5 h-3.5 fill-current" /></button>
+                        ) : (
+                          <button onClick={() => void sendMessage()} disabled={!status?.ready || (!input.trim() && !attachedFiles.length)} className="absolute right-2 bottom-2.5 w-9 h-9 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-[0_0_12px_rgba(239,68,68,0.3)] flex items-center justify-center disabled:opacity-30 cursor-pointer" title="Send"><span className="text-base font-black leading-none">↑</span></button>
+                        )}
+                      </div>
+                      <PanelResizeGrip
+                        onBottomPointerDown={promptBoxPanel.onBottomPointerDown}
+                        onRightPointerDown={promptBoxPanel.onRightPointerDown}
+                        onCornerPointerDown={promptBoxPanel.onCornerPointerDown}
+                        onResetWidth={promptBoxPanel.resetWidth}
+                        width={promptBoxPanel.width}
+                        height={promptBoxPanel.height}
+                        label="Prompt input"
+                      />
+                    </div>
+                  </MovableResizableWrapper>
+                </div>
               </div>
             )}
             right={(
@@ -3512,68 +3579,6 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
             )}
           </section>
             </MovableResizableWrapper>
-
-          <div className="mt-2.5 border-t border-slate-800 pt-2.5">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept=".txt,.md,.markdown,.json,.csv,.tsv,.log,.ini,.cfg,.conf,.yaml,.yml,.xml,.html,.htm,.css,.js,.jsx,.ts,.tsx,.py,.ps1,.bat,.cmd,.sh,.sql,.c,.h,.cpp,.hpp,.cc,.java,.cs,.go,.rs,.toml,.env,.png,.jpg,.jpeg,.webp,.bmp,.gif,.zip,text/plain,application/json,text/csv,text/markdown,text/xml,image/png,image/jpeg,image/webp,application/zip"
-              className="hidden"
-              onChange={e => {
-                const files = Array.from(e.target.files || []) as File[];
-                void (async () => { for (const file of files) await handleAttachFile(file); })();
-              }}
-            />
-
-            {attachedFiles.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                {attachedFiles.map(file => (
-                  <div key={file.name} className="flex items-center gap-1.5 px-2 py-1 rounded border border-sky-500/20 bg-sky-500/5 text-sky-300 text-[9px] font-mono max-w-full">
-                    {file.kind === 'image' ? <ImageIcon className="w-3 h-3 shrink-0" /> : file.kind === 'archive' ? <Archive className="w-3 h-3 shrink-0" /> : <FileText className="w-3 h-3 shrink-0" />}
-                    <span className="truncate max-w-[220px]">{file.name}</span>
-                    <span className="text-slate-600">{Math.ceil(file.bytes / 1024)}KB</span>
-                    {file.extractedFiles ? <span className="text-emerald-400">{file.extractedFiles} files</span> : null}
-                    <button type="button" onClick={() => setAttachedFiles(prev => prev.filter(x => x.name !== file.name))} className="text-slate-500 hover:text-rose-300" title="Remove file"><X className="w-3 h-3" /></button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {fileAttachError && <div className="mb-2 p-2 rounded border border-rose-500/20 bg-rose-500/5 text-[9px] text-rose-300">{fileAttachError}</div>}
-
-            <MovableResizableWrapper id="gina-prompt-input" className="w-full">
-              <div
-                ref={promptBoxPanel.panelRef}
-                className="relative flex flex-col transition-all"
-                style={{ width: promptBoxPanel.width ? `${promptBoxPanel.width}px` : '100%' }}
-              >
-                <div className="relative flex gap-2 w-full">
-                  <textarea
-                    ref={promptInputRef}
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (input.trim() || attachedFiles.length) void sendMessage(); } }}
-                    disabled={!status?.ready || loading}
-                    rows={1}
-                    placeholder={status?.ready ? 'Message Gina… (Enter to send, Shift+Enter for a new line)' : 'Start the local LLM first…'}
-                    className="flex-1 min-h-[44px] resize-y overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 pr-28 pb-4 text-xs text-slate-200 outline-none focus:border-emerald-500/50 disabled:opacity-50 leading-relaxed custom-scrollbar"
-                    style={{ height: promptBoxPanel.height ? `${promptBoxPanel.height}px` : undefined, minHeight: '44px', resize: 'vertical' }}
-                  />
-                  <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!status?.ready || loading || attachedFiles.length >= maxLocalAiFiles} title={status?.engine === 'qwen-coder' ? 'Qwen Coder accepts text/code files and project ZIP archives. Image attachments require a multimodal vision model.' : 'Attach a supported local file, image or ZIP archive'} className="absolute right-14 bottom-2.5 h-9 px-2.5 rounded-lg border border-sky-500/30 bg-sky-500/5 text-sky-300 text-[9px] font-bold uppercase tracking-wider disabled:opacity-30 flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5" /> Attach</button>
-                  {loading ? <button onClick={() => void cancelChat()} className="absolute right-2 bottom-2.5 w-9 h-9 rounded-full border border-rose-500/50 bg-rose-500/15 text-rose-300 flex items-center justify-center" title="Stop inference and flush VRAM"><Square className="w-3.5 h-3.5 fill-current" /></button> : <button onClick={() => void sendMessage()} disabled={!status?.ready || (!input.trim() && !attachedFiles.length)} className="absolute right-2 bottom-2.5 w-9 h-9 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center disabled:opacity-30" title="Send"><span className="text-base font-black leading-none">↑</span></button>}
-                </div>
-                <PanelResizeGrip
-                  onBottomPointerDown={promptBoxPanel.onBottomPointerDown}
-                  onRightPointerDown={promptBoxPanel.onRightPointerDown}
-                  onCornerPointerDown={promptBoxPanel.onCornerPointerDown}
-                  onResetWidth={promptBoxPanel.resetWidth}
-                  width={promptBoxPanel.width}
-                  height={promptBoxPanel.height}
-                  label="Prompt input"
-                />
-              </div>
-            </MovableResizableWrapper>
-          </div>
 
           {/* DOCKED BOTTOM: MOVABLE & RESIZABLE TELEMETRY WIDGETS MATRIX */}
           {widgetDockPosition === 'below' && renderMovableWidgetsMatrix()}

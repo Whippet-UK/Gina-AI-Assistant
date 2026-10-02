@@ -55,7 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="gina-suite-header">
       <div className="flex items-center gap-3 min-w-0">
-        <span className="gina-suite-mark">GX</span>
+        <div className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs bg-black border border-red-500 text-white shadow-[0_0_12px_rgba(239,68,68,0.3)] shrink-0">GA</div>
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[13px] font-semibold text-slate-100 tracking-tight">Gina</span>

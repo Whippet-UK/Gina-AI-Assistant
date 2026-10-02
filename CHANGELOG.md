@@ -1,3 +1,47 @@
+## 2026-10-02 — Global Black & Red Accent Theme, Header Alignment, and Chat Layout Restructuring
+- **Target File Path:** `/src/index.css`
+  - **Exact Code Snippet:**
+    ```css
+    /* Master Dark & Red Accent Theme Overrides */
+    body, html, #root { background-color: #000000 !important; }
+    .bg-slate-950, .bg-slate-900, .bg-slate-900\/50, .bg-slate-950\/80 { background-color: #050505 !important; border-color: #2a0808 !important; }
+    .bg-slate-950\/90, .bg-\[\#05070e\] { background-color: #000000 !important; }
+    ```
+  - **Why:** Enforced master dark theme override to force layout surfaces away from gray/slate to high-contrast absolute black and dark red border accents.
+
+- **Target File Path:** `/src/components/Header.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    <div className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs bg-black border border-red-500 text-white shadow-[0_0_12px_rgba(239,68,68,0.3)] shrink-0">GA</div>
+    ```
+  - **Why:** Aligned top bar title initials box with 'GA' token and high-contrast red accent glow.
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx`
+  - **Exact Code Snippet:**
+    ```tsx
+    // Locked chat container scrolling bounds
+    className="flex flex-col h-full max-h-[calc(100vh-240px)] overflow-y-auto custom-scrollbar p-3 space-y-3 relative bg-[#0d1117]"
+
+    // Header branding & badges
+    <div className="w-5 h-5 rounded flex items-center justify-center bg-black border border-red-500 text-white text-[10px] font-bold font-mono shadow-[0_0_10px_rgba(239,68,68,0.3)]">GA</div>
+    <span className="text-xs font-bold text-slate-100 tracking-tight">Gina Assistant Workspace</span>
+
+    // Splash watermark empty state
+    <div className="w-8 h-8 rounded-lg bg-black/95 border-2 border-red-500 text-white font-black shadow-[0_0_25px_rgba(239,68,68,0.25)] mx-auto mb-2 flex items-center justify-center">GA</div>
+    <p className="text-slate-300 font-semibold">Gina Assistant Engine</p>
+
+    // Speaker tag
+    <span className={message.role === 'user' ? 'text-slate-400 font-bold' : 'text-red-500 font-bold'} style={{ color: message.role === 'assistant' ? '#ef4444' : undefined }}>
+      {message.role === 'user' ? 'You' : <span style={{ color: '#ef4444' }}>Gina</span>}
+    </span>
+
+    // Nested prompt input container directly beneath message history in left column
+    <div className="mt-auto border-t border-slate-800 pt-2.5 px-3 pb-3 bg-[#0d1117] shrink-0 font-mono">
+      ...
+    </div>
+    ```
+  - **Why:** Relocated prompt input composer directly beneath message history frame inside left column tree, isolated chat container scroll bounds with `max-h-[calc(100vh-240px)]`, purged historical Claude tags in favor of Gina, and replaced emerald/amber accents with high-contrast red accents.
+
 ## 2026-10-02 — Claude Streaming Chat UI Layout, In-Stream Live Code & Tool Snippets, and Self-Hosted Local Observability Engine (Prometheus + Grafana)
 - **Target File Path:** `/claude-streaming-chat.html` & `/src/components/LocalLlmStudio.tsx`
   - **Exact Code Snippet:**
