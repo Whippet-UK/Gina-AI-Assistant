@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - "fix/development-mode-static-dashboard"
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -16,6 +19,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -44,4 +48,4 @@ jobs:
             exit 0
           fi
           git commit -m "build: include static dashboard for Development Mode"
-          git push origin HEAD:${GITHUB_REF_NAME}
+          git push origin HEAD:${{ github.head_ref || github.ref_name }}
