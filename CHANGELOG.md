@@ -1,3 +1,10 @@
+## 2026-10-02 — Development Mode launcher repair
+- Reworked `Start_Gina_Development.bat` so Development Mode runs Gina directly through the installed local `tsx.cmd` instead of invoking `npm run dev` (which ran `npm install` on every launch).
+- Removed the visible secondary “Gina Dashboard Launcher” console. The readiness watcher now runs as a hidden background PowerShell process.
+- The watcher probes Gina's 3200–3210 fallback ports and opens the first reachable dashboard URL automatically.
+- Added an explicit `node_modules\\.bin\\tsx.cmd` preflight with a clear one-time `npm install` instruction if dependencies are missing.
+- The main terminal remains attached to the actual Gina server process so startup/import errors stay visible instead of disappearing into a launcher window.
+
 # v1.20.16 — Production Integration Patch (2026-10-02)
 ## 2026-10-02 — Development Mode & Wan 2.2 Default
 - Added `server/DevelopmentModeService.ts` with bounded Windows BAT discovery, managed terminal tracking, terminate/close controls, and restart-by-boot-mode support.
