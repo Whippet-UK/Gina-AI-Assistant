@@ -29,15 +29,6 @@ if not exist "%GINA_ENV%" (
   exit /b 1
 )
 
-if not exist "%GINA_ROOT%\node_modules\.bin\tsx.cmd" (
-  echo [ERROR] Gina Node dependencies are not installed.
-  echo [ERROR] Missing: %GINA_ROOT%\node_modules\.bin\tsx.cmd
-  echo [ERROR] Run "npm install" once from %GINA_ROOT%, then start Development Mode again.
-  echo.
-  pause
-  exit /b 1
-)
-
 if not exist "%GINA_ROOT%\logs" mkdir "%GINA_ROOT%\logs" >nul 2>&1
 > "%GINA_ROOT%\logs\gina-development-startup.log" echo Gina Development Mode startup %date% %time%
 >> "%GINA_ROOT%\logs\gina-development-startup.log" echo Mode: %MODE%
@@ -52,25 +43,6 @@ echo  Log: %GINA_ROOT%\logs\gina-development-startup.log
 echo ============================================================
 echo.
 
-where node >nul 2>&1
-if errorlevel 1 (
-  echo [ERROR] Node.js was not found on PATH.
-  >> "%GINA_ROOT%\logs\gina-development-startup.log" echo [ERROR] Node.js was not found on PATH.
-  pause
-  exit /b 1
-)
-
-call "%GINA_ENV%"
-if errorlevel 1 (
-  echo [ERROR] Could not activate Gina g_env.
-  >> "%GINA_ROOT%\logs\gina-development-startup.log" echo [ERROR] Could not activate Gina g_env.
-  pause
-  exit /b 1
-)
-
-set "GINA_DEV_MODE=1"
-set "GINA_BOOT_MODE=%MODE%"
-set "NODE_OPTIONS=--max-old-space-size=8192"
 
 if /I "%MODE%"=="dashboard-comfy" (
   if exist "%GINA_ROOT%\Start_ComfyUI.bat" (
@@ -82,17 +54,24 @@ if /I "%MODE%"=="dashboard-comfy" (
   )
 )
 
-echo [DEV] Starting the lightweight Development Mode dashboard host.
-echo [DEV] Gina backend will run separately on port 3201.
+echo [DEV] Starting the backend-free Development Mode dashboard.
+echo [DEV] server.ts and the Gina backend will NOT be started.
 echo [DEV] Dashboard will open automatically at http://127.0.0.1:3200.
 echo.
 
->> "%GINA_ROOT%\logs\gina-development-startup.log" echo [DEV] Starting lightweight dashboard host.
+>> "%GINA_ROOT%\logs\gina-development-startup.log" echo [DEV] Starting backend-free dashboard host.
 
 rem Open the dashboard once the lightweight host is listening.
 start "" /b powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "$deadline=(Get-Date).AddSeconds(45); while((Get-Date) -lt $deadline){ try{ $c=New-Object Net.Sockets.TcpClient; $a=$c.BeginConnect('127.0.0.1',3200,$null,$null); if($a.AsyncWaitHandle.WaitOne(300) -and $c.Connected){$c.Close(); Start-Process 'http://127.0.0.1:3200'; exit 0}; $c.Close() }catch{}; Start-Sleep -Milliseconds 250 }; exit 1"
 
-call "%GINA_ROOT%\node_modules\.bin\tsx.cmd" "%GINA_ROOT%\server\DevelopmentModeDashboard.ts"
+where npm >nul 2>&1
+if errorlevel 1 (
+  echo [ERROR] npm/Node.js is required only to run the dashboard host.
+  pause
+  exit /b 1
+)
+
+call npx --no-install vite --host 127.0.0.1 --port 3200
 
 set "GINA_EXIT_CODE=%ERRORLEVEL%"
 
