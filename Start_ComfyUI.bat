@@ -25,7 +25,7 @@ call "C:\Gina_AI\g_env\Scripts\activate.bat"
 echo Starting ComfyUI...
 echo.
 
-python "C:\Gina_AI\ComfyUI_windows_portable\ComfyUI\main.py" --lowvram --fp8_e4m3fn-text-enc
+python "C:\Gina_AI\ComfyUI_windows_portable\ComfyUI\main.py" --lowvram --fp8_e4m3fn-text-enc --disable-xformers
 
 echo.
 echo ComfyUI has stopped.
