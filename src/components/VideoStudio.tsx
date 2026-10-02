@@ -217,7 +217,8 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
   const [prompt, setPrompt] = useState('A majestic black dragon breathing fiery embers in an obsidian cavern, slow cinematic camera pan, 8k resolution');
   const [negativePrompt, setNegativePrompt] = useState('blurry, static, distorted motion, flickering, low resolution, bad anatomy');
   const [showNegative, setShowNegative] = useState(false);
-  const [selectedDuration, setSelectedDuration] = useState(2); // default Native 2.0s @ 16fps
+  const [selectedDuration, setSelectedDuration] = useState(2); // default Wan 2.1 2.0s @ 16fps
+  const [videoEngine, setVideoEngine] = useState<'wan21' | 'wan22'>('wan21');
   const [customFrames, setCustomFrames] = useState(33);
   const [fps, setFps] = useState(16);
   const [motionScale, setMotionScale] = useState(1.0);
@@ -332,6 +333,20 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
     setSeed(newSeed);
   };
 
+  const selectedWorkflowId = videoEngine === 'wan22' ? 'wan_video_22' : 'wan_video';
+  const selectedModelFile = videoEngine === 'wan22' ? 'Wan2.2-TI2V-5B-Q4_K_M.gguf' : 'Wan2_1-T2V-1_3B_fp8_e4m3fn.safetensors';
+
+  const handleVideoEngineChange = (next: 'wan21' | 'wan22') => {
+    setVideoEngine(next); setVideoError(null);
+    if (next === 'wan22') {
+      setSelectedDuration(1); setCustomFrames(17); setFps(16); setResolution('896 × 512 · Wan 2.2 Base'); setWidth(896); setHeight(512); setSteps(20); setCfgScale(5.0); setActivePresetId('wan22_base_1s');
+      onAddLog('INFO', 'Selected Wan 2.2 TI2V 5B GGUF · 896×512×17 base · tiled VAE · exact 1280×704 delivery.');
+    } else {
+      setSelectedDuration(2); setCustomFrames(33); setFps(16); setResolution('832 × 480 · 16:9 Native'); setWidth(832); setHeight(480); setSteps(18); setCfgScale(3.0); setActivePresetId('native_2s');
+      onAddLog('INFO', 'Selected Wan 2.1 1.3B baseline video engine.');
+    }
+  };
+
   const handleGenerateVideo = async (promptOverride?: string) => {
     const activePrompt = String(promptOverride ?? prompt).trim();
     if (!activePrompt) {
@@ -350,9 +365,9 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
       body: JSON.stringify({ unload_models: false, free_memory: true })
     }).catch(() => null);
 
-    onAddLog('INFO', `Submitting Wan 2.1 Video Job: "${activePrompt.slice(0, 45)}..." (${customFrames} frames @ ${fps}fps, motion scale ${motionScale})`);
+    onAddLog('INFO', `Submitting ${videoEngine === 'wan22' ? 'Wan 2.2 TI2V 5B' : 'Wan 2.1'} Video Job: "${activePrompt.slice(0, 45)}..." (${customFrames} frames @ ${fps}fps, ${width}×${height})`);
 
-    const resultJob = await startJob('wan_video', {
+    const resultJob = await startJob(selectedWorkflowId, {
       prompt: activePrompt,
       negative_prompt: negativePrompt,
       duration_sec: selectedDuration,
@@ -366,7 +381,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
       steps,
       cfg: cfgScale,
       camera_motion: cameraMotion,
-      model: 'Wan2_1-T2V-1_3B_fp8_e4m3fn.safetensors'
+      model: selectedModelFile
     });
 
     if (!resultJob) {
@@ -416,8 +431,8 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
     setTimeout(() => setSavingAsset(false), 600);
   };
 
-  const isVideoJob = job?.workflowId === 'wan_video' || output?.job?.workflowId === 'wan_video';
-  const isBusy = (loading && (job?.workflowId === 'wan_video' || !job)) || (job?.workflowId === 'wan_video' && (job?.status === 'QUEUED' || job?.status === 'RUNNING'));
+  const isVideoJob = job?.workflowId === 'wan_video' || job?.workflowId === 'wan_video_22' || output?.job?.workflowId === 'wan_video' || output?.job?.workflowId === 'wan_video_22';
+  const isBusy = (loading && (job?.workflowId === 'wan_video' || job?.workflowId === 'wan_video_22' || !job)) || ((job?.workflowId === 'wan_video' || job?.workflowId === 'wan_video_22') && (job?.status === 'QUEUED' || job?.status === 'RUNNING'));
   const rawUrl = output?.outputs?.[0]?.url;
   const isMediaVideo = rawUrl && (isVideoJob || rawUrl.toLowerCase().includes('format=mp4') || rawUrl.toLowerCase().includes('.mp4') || rawUrl.toLowerCase().includes('.webp') || rawUrl.toLowerCase().includes('.gif'));
   const activeVideoUrl = (isMediaVideo ? rawUrl : undefined) || lastSuccessfulVideoUrl;
