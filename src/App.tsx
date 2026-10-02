@@ -360,7 +360,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
         </main>
 
         <main className={`space-y-5 ${activeView === 'video' ? 'block' : 'hidden'}`}>
-          <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Video workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Video Studio</h1><p className="text-xs text-slate-500 mt-1">Native Wan 2.1 1.3B workflow controls for local text-to-video.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">VIDEO · WAN 2.1 · 8GB VRAM</div></div>
+          <div className="flex items-end justify-between gap-4"><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Video workspace</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Video Studio</h1><p className="text-xs text-slate-500 mt-1">Selectable Wan 2.1 / Wan 2.2 local video workflow controls with 8GB VRAM guardrails.</p></div><div className="hidden sm:block text-right text-[9px] font-mono text-slate-600">VIDEO · WAN 2.1 / 2.2 · 8GB VRAM</div></div>
           <WorkspaceErrorBoundary name="Video Studio"><VideoStudio onAddLog={logWithOomCheck} logs={logs} telemetry={telemetry} onClearCache={() => handleClearCache(false, true)} /></WorkspaceErrorBoundary>
         </main>
 
