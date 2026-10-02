@@ -197,7 +197,7 @@ export const StudioWorkspace: React.FC<Props> = ({ telemetry, logs, onAddLog, on
             <div className="studio-split-resizer-line" />
           </div>
         )}
-        {layoutMode !== 'assistant-fullscreen' && (
+        {(layoutMode as string) !== 'assistant-fullscreen' && (
           <div className="min-h-0 min-w-0 overflow-hidden">
             {mode === 'image-studio' ? (
               <div className="h-full overflow-auto p-2"><PromptStudio onAddLog={onAddLog} onClearCache={onClearCache} telemetry={telemetry} /></div>

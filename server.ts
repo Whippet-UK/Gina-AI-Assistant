@@ -5829,7 +5829,7 @@ app.post("/api/jobs", async (req, res) => {
       const outFps = Math.max(1, Math.min(30, Math.round(Number(parameters.fps) || 16)));
       const baseWidth = 896;
       const baseHeight = 512;
-      for (const node of Object.values(workflow) as any[]) {
+      for (const node of Object.values(definition.workflow) as any[]) {
         if (!node?.inputs || typeof node.inputs !== 'object') continue;
         const cls = String(node.class_type || '');
         if (/UnetLoaderGGUF/i.test(cls) && Object.prototype.hasOwnProperty.call(node.inputs, 'unet_name')) node.inputs.unet_name = String(parameters.model || parameters.unet_name || 'Wan2.2-TI2V-5B-Q4_K_M.gguf');

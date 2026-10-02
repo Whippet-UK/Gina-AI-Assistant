@@ -6,10 +6,13 @@ import fs from 'fs';
 
 const router = express.Router();
 
+const isWin = process.platform === 'win32';
+const baseWorkspace = process.env.GINA_ROOT || (isWin ? 'C:\\Gina_AI' : process.cwd());
+
 // 1. Configure workspace upload folders
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = 'C:\\Gina_AI\\workspace\\uploads';
+    const uploadDir = path.join(baseWorkspace, 'workspace', 'uploads');
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
@@ -30,7 +33,7 @@ interface TransparencyPayload {
 }
 
 // 2. Process background removal request
-router.post('/remove-background', upload.single('image'), async (req: Request, res: Response): Promise<void> => {
+router.post('/remove-background', upload.single('image') as any, async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.file) {
       res.status(400).json({ error: 'No image file uploaded.' });
@@ -46,7 +49,9 @@ router.post('/remove-background', upload.single('image'), async (req: Request, r
 
     const inputPath = req.file.path;
     const outputPath = path.join(
-      'C:\\Gina_AI\\workspace\\outputs',
+      baseWorkspace,
+      'workspace',
+      'outputs',
       `transparent-${Date.now()}.png`
     );
 

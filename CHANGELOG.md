@@ -1,3 +1,35 @@
+## 2026-10-02 — GitHub Import Migration & Clean TypeScript Compilation
+- **Target File Path:** `/App.tsx`
+  - **Change:** Removed misplaced duplicate root file `/App.tsx`. The true application entry is `/src/App.tsx`.
+  - **Why:** Resolved 25 module resolution errors (`Cannot find module './components/...'`) caused by `App.tsx` residing outside `src/`.
+- **Target File Path:** `/server.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    for (const node of Object.values(definition.workflow) as any[]) {
+    ```
+  - **Why:** Fixed `Cannot find name 'workflow'` error in Wan 2.2 parameters validation by referencing `definition.workflow`.
+- **Target File Path:** `/server/tools/imageProcessor.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    const isWin = process.platform === 'win32';
+    const baseWorkspace = process.env.GINA_ROOT || (isWin ? 'C:\\Gina_AI' : process.cwd());
+    ...
+    router.post('/remove-background', upload.single('image') as any, async (req: Request, res: Response): Promise<void> => {
+    ```
+  - **Why:** Fixed multer `RequestHandler` type incompatibility and made upload/output paths platform-safe for both Linux container and Windows.
+- **Target File Path:** `/src/components/StudioWorkspace.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    {(layoutMode as string) !== 'assistant-fullscreen' && (
+    ```
+  - **Why:** Prevented TypeScript unintentional comparison error (TS2367) resulting from earlier type narrowing of `layoutMode`.
+- **Target File Path:** `/package.json`
+  - **Exact Code Snippet:**
+    ```json
+    "dev": "tsx server.ts",
+    ```
+  - **Why:** Removed redundant `npm install` on every dev launch to comply with container execution guidelines and speed up container boot.
+
 ## 2026-10-02 — Development Mode launcher repair
 - Reworked `Start_Gina_Development.bat` so Development Mode runs Gina directly through the installed local `tsx.cmd` instead of invoking `npm run dev` (which ran `npm install` on every launch).
 - Removed the visible secondary “Gina Dashboard Launcher” console. The readiness watcher now runs as a hidden background PowerShell process.

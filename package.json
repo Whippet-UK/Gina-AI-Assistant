@@ -4,7 +4,7 @@
   "version": "1.20.16",
   "type": "module",
   "scripts": {
-    "dev": "npm install --no-audit --no-fund && tsx server.ts",
+    "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "npm install --no-audit --no-fund && node dist/server.cjs",
     "clean": "rm -rf dist server.cjs",
