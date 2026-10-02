@@ -308,7 +308,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
 
   const runDiagnostic = async () => {
     setDiagLoading(true);
-    onAddLog('INFO', 'Running Wan 2.1 & ComfyUI capability audit...');
+    onAddLog('INFO', 'Running Wan 2.1 / Wan 2.2 & ComfyUI capability audit...');
     try {
       const res = await fetch('/api/diagnostics/wan21', { cache: 'no-store' });
       const data = await res.json();
@@ -551,7 +551,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <div className="flex items-center gap-2 font-bold text-slate-200">
               <Gauge className="w-4 h-4 text-emerald-400" />
-              WAN 2.1 & COMFYUI DIAGNOSTIC REPORT
+              WAN 2.1 / WAN 2.2 & COMFYUI DIAGNOSTIC REPORT
             </div>
             <button
               type="button"
@@ -570,17 +570,17 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
             </div>
 
             <div className={`p-2.5 rounded border ${diagResult.modelFound ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
-              <div className="text-[10px] text-slate-400">WAN 2.1 MODEL FILE</div>
+              <div className="text-[10px] text-slate-400">WAN 2.2 / WAN 2.1 ENGINES</div>
               <div className="font-bold">{diagResult.modelFound ? '✅ FOUND ON DISK' : '⚠️ NOT DETECTED'}</div>
               <div className="text-[9px] text-slate-400 mt-1">
-                {diagResult.modelPathsChecked?.find((p: any) => p.exists)?.sizeGB ? `${diagResult.modelPathsChecked.find((p: any) => p.exists).sizeGB} GB` : 'Check checkpoints folder'}
+                {diagResult.engines?.['wan22-ti2v-5b']?.available ? 'Wan 2.2 TI2V-5B validated' : diagResult.engines?.['wan21-i2v-14b']?.available ? 'Wan 2.1 I2V-14B validated' : 'Check Wan model paths'}
               </div>
             </div>
 
             <div className={`p-2.5 rounded border ${diagResult.modelInComfyObjectInfo ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-slate-900 border-slate-800 text-slate-400'}`}>
-              <div className="text-[10px] text-slate-400">COMFYUI RECOGNITION</div>
-              <div className="font-bold">{diagResult.modelInComfyObjectInfo ? '✅ RECOGNIZED IN LIST' : 'ℹ️ CHECKPOINT NOT LOADED'}</div>
-              <div className="text-[9px] text-slate-400 mt-1">{diagResult.comfyCheckpointsList?.length || 0} checkpoints in ComfyUI list</div>
+              <div className="text-[10px] text-slate-400">WAN ENGINE VALIDATION</div>
+              <div className="font-bold">{diagResult.engines?.['wan22-ti2v-5b']?.available ? '✅ WAN 2.2 READY' : diagResult.engines?.['wan21-i2v-14b']?.available ? '✅ WAN 2.1 READY' : '⚠️ WAN ENGINE NOT READY'}</div>
+              <div className="text-[9px] text-slate-400 mt-1">{diagResult.engines?.['wan22-ti2v-5b']?.expectedWorkflow || 'workflows/wan_video_22.json'}</div>
             </div>
           </div>
 
@@ -603,7 +603,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
                 <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400" />
-                Wan 2.1 Parameter Presets
+                Wan Parameter Presets
               </label>
               <span className="text-[10px] font-mono text-slate-500">Auto-configures Motion, Duration & Sampling</span>
             </div>
