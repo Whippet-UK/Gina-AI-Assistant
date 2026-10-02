@@ -139,7 +139,11 @@ const mcpServer = new McpServerAdapter({
 });
 
 const proxySavingsEngine = new ProxySavingsEngine({ comfyUrl: COMFY_URL, ginaRoot: GINA_ROOT });
-void proxySavingsEngine.init().catch(err => console.warn('[ProxySavingsEngine] SQLite ledger init warning:', err?.message || err));
+const developmentBootMode = String(process.env.GINA_BOOT_MODE || 'factory').toLowerCase();
+const developmentColdBoot = developmentBootMode === 'dashboard-only' || developmentBootMode === 'manual';
+if (!developmentColdBoot) {
+  void proxySavingsEngine.init().catch(err => console.warn('[ProxySavingsEngine] SQLite ledger init warning:', err?.message || err));
+}
 
 interface ComfyErrorLog {
   id: string;
