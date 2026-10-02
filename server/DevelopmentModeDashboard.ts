@@ -27,8 +27,16 @@ async function main() {
   console.log(`[Development Mode] Dashboard: http://127.0.0.1:${DASHBOARD_PORT}`);
   console.log(`[Development Mode] Gina backend: http://127.0.0.1:${BACKEND_PORT}`);
 
-  const tsx = path.join(ROOT, "node_modules", ".bin", process.platform === "win32" ? "tsx.cmd" : "tsx");
-  backend = spawn(tsx, [path.join(ROOT, "server.ts")], {
+  // Windows cannot reliably spawn a .cmd shim with shell:false. Invoke the
+  // actual tsx ESM CLI through the current Node executable instead.
+  const tsxCli = process.platform === "win32"
+    ? path.join(ROOT, "node_modules", "tsx", "dist", "cli.mjs")
+    : path.join(ROOT, "node_modules", ".bin", "tsx");
+  const backendCommand = process.platform === "win32" ? process.execPath : tsxCli;
+  const backendArgs = process.platform === "win32"
+    ? [tsxCli, path.join(ROOT, "server.ts")]
+    : [path.join(ROOT, "server.ts")];
+  backend = spawn(backendCommand, backendArgs, {
     cwd: ROOT,
     env: {
       ...process.env,
