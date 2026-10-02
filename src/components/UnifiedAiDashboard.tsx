@@ -224,84 +224,69 @@ export default function UnifiedAiDashboard() {
         </div>
       </header>
 
-      <main className="flex-1 min-h-0 p-4 flex flex-col gap-4 w-full">
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-[#0B0F17] border border-zinc-900 p-3 rounded-lg">
-          <MetricCard icon={<Layers className="w-3 h-3" />} label="Token Generation Velocity" value={tokensPerSec ? `${tokensPerSec.toFixed(1)} Tok/s` : '—'} />
-          <MetricCard icon={<Activity className="w-3 h-3" />} label="Active Prompt Queue" value={String(activePrompts)} />
-          <MetricCard icon={<Cpu className="w-3 h-3" />} label="Context Window Inference Latency" value={latency ? `${latency} ms` : '—'} />
-          <MetricCard icon={<Zap className="w-3 h-3" />} label="Local Response Pipeline Cache Load" value={cacheMb ? `${cacheMb} MB` : '—'} />
+      <main className="flex-1 min-h-0 p-4 flex flex-col gap-3 w-full font-mono text-xs">
+        {/* Pure Flat Text Telemetry Stream (No Container Boxes) */}
+        <section className="flex flex-wrap items-center gap-x-5 gap-y-1.5 py-1.5 border-b border-zinc-800/50 text-[11px]">
+          <span className="text-zinc-500 uppercase tracking-wider text-[9px]">VELOCITY: <strong className="text-emerald-400 font-bold">{tokensPerSec ? `${tokensPerSec.toFixed(1)} Tok/s` : '—'}</strong></span>
+          <span className="text-zinc-500 uppercase tracking-wider text-[9px]">QUEUE: <strong className="text-zinc-200">{String(activePrompts)}</strong></span>
+          <span className="text-zinc-500 uppercase tracking-wider text-[9px]">LATENCY: <strong className="text-zinc-200">{latency ? `${latency} ms` : '—'}</strong></span>
+          <span className="text-zinc-500 uppercase tracking-wider text-[9px]">CACHE: <strong className="text-sky-300">{cacheMb ? `${cacheMb} MB` : '—'}</strong></span>
+          <span className="text-zinc-500 uppercase tracking-wider text-[9px]">POWER: <strong className="text-amber-300">{powerW ? `${powerW.toFixed(0)} W` : 'Set watts'}</strong></span>
+          <span className="text-zinc-500 uppercase tracking-wider text-[9px]">COST: <strong className="text-emerald-400">{responseCost ? `£${responseCost.toFixed(6)}` : '—'}</strong></span>
+          <span className="text-zinc-500 uppercase tracking-wider text-[9px]">EST/DAY: <strong className="text-zinc-300">{dailyCost ? `£${dailyCost.toFixed(2)}/day` : '—'}</strong></span>
+          <span className="text-zinc-500 uppercase tracking-wider text-[9px]">MODEL: <strong className="text-emerald-400">Open-2.5-NL-7B-Instruct</strong></span>
         </section>
 
-        <section className="bg-[#0B0F17] border border-zinc-900 p-3 rounded-lg flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-3 text-[11px] font-mono text-amber-500 border-b border-zinc-900 pb-2">
-            <span>🔌 AI CORE RUNTIME &amp; GENERATION POWER CALCULATOR</span>
-            <button type="button" onClick={() => setShowConfig(v => !v)} className="bg-amber-500 text-black px-2 py-0.5 rounded text-[10px] font-bold">SET COST SYSTEMS</button>
+        {showConfig && (
+          <div className="flex flex-wrap items-center gap-3 py-2 border-b border-zinc-800/40 text-[10px]">
+            <label className="flex items-center gap-1.5 text-zinc-400">
+              WATTS:
+              <input value={powerInput} onChange={e => setPowerInput(e.target.value)} placeholder={powerW ? String(powerW) : '650'} type="number" min="0" className="w-20 bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-200 text-xs" />
+            </label>
+            <label className="flex items-center gap-1.5 text-zinc-400">
+              TARIFF £/kWh:
+              <input value={costInput} onChange={e => setCostInput(e.target.value)} placeholder={costPerKwh.toFixed(4)} type="number" min="0.0001" step="0.0001" className="w-24 bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-200 text-xs" />
+            </label>
+            <button type="button" onClick={saveCostSystem} className="bg-emerald-600 hover:bg-emerald-500 text-white rounded px-2.5 py-1 text-[10px] font-bold">SAVE</button>
           </div>
-          {showConfig && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-[#0E131F] border border-zinc-800 rounded p-3">
-              <label className="text-[10px] font-mono text-zinc-500">SYSTEM WATTS<input value={powerInput} onChange={e => setPowerInput(e.target.value)} placeholder={powerW ? String(powerW) : 'e.g. 650'} type="number" min="0" className="mt-1 w-full bg-[#07090E] border border-zinc-800 rounded px-2 py-1 text-zinc-200" /></label>
-              <label className="text-[10px] font-mono text-zinc-500">ELECTRICITY £/kWh<input value={costInput} onChange={e => setCostInput(e.target.value)} placeholder={costPerKwh.toFixed(4)} type="number" min="0.0001" step="0.0001" className="mt-1 w-full bg-[#07090E] border border-zinc-800 rounded px-2 py-1 text-zinc-200" /></label>
-              <button type="button" onClick={saveCostSystem} className="self-end bg-emerald-600 hover:bg-emerald-500 text-white rounded px-3 py-1.5 text-xs font-bold">SAVE COST SYSTEM</button>
-            </div>
-          )}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <RuntimeMetric label="Prompt Load" value={telemetry ? `${telemetry.promptTokens.toLocaleString()} tokens` : 'Waiting for prompt'} />
-            <RuntimeMetric label="Generation Power" value={powerW ? `${powerW.toFixed(0)} W` : 'Set system watts'} />
-            <RuntimeMetric label="Response Computation Cost" value={responseCost ? `£${responseCost.toFixed(6)}` : '—'} />
-            <RuntimeMetric label="Estimated Price / Day" value={dailyCost ? `£${dailyCost.toFixed(2)} / day` : 'Set power + tariff'} />
-          </div>
-        </section>
+        )}
 
-        <section className="bg-[#0B0F17] border border-zinc-900 p-3 rounded-lg flex flex-col gap-2">
-          <div className="flex items-center justify-between gap-3 text-[11px] font-mono text-blue-400 border-b border-zinc-900 pb-2">
-            <span>📊 PROMPT BENCHMARKS &amp; MODEL ALLOCATIONS</span>
-            <span className="text-[10px] text-zinc-600">Node Version: 1.20.14</span>
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-mono">
-            <RuntimeMetric label="Local Model" value="Open-2.5-NL-7B-Instruct" valueClass="text-emerald-500 font-bold" />
-            <RuntimeMetric label="Comparison Target" value="gemini-2.5-flash" valueClass="text-blue-400" />
-            <RuntimeMetric label="Total Prompt Tokens" value={telemetry ? telemetry.promptTokens.toLocaleString() : '—'} />
-            <RuntimeMetric label="Evaluation / Safety Window" value={telemetry ? `${telemetry.durationMs} ms · ${telemetry.source}` : 'Awaiting inference'} />
-          </div>
-        </section>
+        {/* Collapsed [id:] Preset Selector Menu (Strict max-height: 200px) */}
+        <div className="flex items-center gap-2 py-1 border-b border-zinc-800/40 max-h-[200px]">
+          <span className="text-[10px] text-zinc-500 uppercase tracking-wider shrink-0">PRESET:</span>
+          <select
+            onChange={e => { if (e.target.value) { setPrompt(e.target.value); } }}
+            className="flex-1 bg-transparent border border-zinc-800/80 rounded px-2 py-1 text-[11px] text-emerald-400 outline-none cursor-pointer max-h-[200px]"
+          >
+            <option value="" className="bg-zinc-950 text-zinc-400">⚡ Select [id:] Cheat Code or Preset Task…</option>
+            <option value="[id: 'rover_2d_sandbox'] Build a 2D web app using HTML5 Canvas, Tailwind CSS, and vanilla JS featuring arena, obstacles, goal, and AI rover with 8-ray LiDAR." className="bg-zinc-950 text-zinc-200">[id: 'rover_2d_sandbox'] 2D Rover Arena + 8-Ray LiDAR</option>
+            <option value="[id: 'claude_streaming_engine'] Explain the 3 core rules of real-time auto-scrolling with user-interrupt detection." className="bg-zinc-950 text-zinc-200">[id: 'claude_streaming_engine'] Auto-Scroll &amp; User Interrupt Architecture</option>
+            <option value="[id: 'fastapi_microservice'] Implement a high-performance Python FastAPI service with WebSockets." className="bg-zinc-950 text-zinc-200">[id: 'fastapi_microservice'] Python FastAPI Streaming Generator</option>
+          </select>
+        </div>
 
-        <section className="flex flex-col gap-3 min-h-0 flex-1">
-          <div className="bg-[#1E1E20] border border-zinc-800 rounded-xl overflow-hidden shadow-2xl">
-            {steps.length === 0 && <div className="p-5 text-xs font-mono text-zinc-600">No prompt activity on screen.</div>}
-            <div className="divide-y divide-zinc-800/60">
-              {steps.map(step => {
-                const open = !!expandedItems[step.id];
-                return (
-                  <div key={step.id}>
-                    <button type="button" onClick={() => step.isExpandable && setExpandedItems(prev => ({ ...prev, [step.id]: !prev[step.id] }))}
-                      className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-zinc-800/20">
-                      <div className="flex items-center gap-3 min-w-0 font-mono text-xs">
-                        {step.type === 'command' ? <Terminal className="w-4 h-4 text-zinc-500 shrink-0" /> : step.type === 'file-edit' ? <FileCode className="w-4 h-4 text-zinc-400 shrink-0" /> : <CheckCircle2 className="w-4 h-4 text-zinc-500 shrink-0" />}
-                        <span className="text-zinc-200 truncate">{step.title}</span>
-                      </div>
-                      {step.isExpandable && <ChevronRight className={`w-4 h-4 text-zinc-600 transition-transform ${open ? 'rotate-90 text-zinc-400' : ''}`} />}
-                    </button>
-                    {open && step.details && (
-                      <div className="px-4 pb-3.5 pt-0.5 grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
-                        <pre className="bg-[#141416] border border-zinc-800/80 rounded-lg p-2.5 font-mono text-[10.5px] text-zinc-400 min-h-[130px] whitespace-pre-wrap overflow-x-auto">{step.details}</pre>
-                        <div className="bg-[#141416] border border-zinc-800/80 rounded-lg p-2.5 min-h-[130px]">
-                          <div className="flex justify-between text-[9px] font-mono text-zinc-500 mb-2">
-                            <span>LIVE MCP / PROMPT THROUGHPUT · LAST 40s</span>
-                            <span className="text-emerald-400">{tokensPerSec ? `${tokensPerSec.toFixed(1)} tok/s` : 'Awaiting data'}</span>
-                          </div>
-                          <svg viewBox="0 0 100 40" className="w-full h-20" preserveAspectRatio="none" role="img" aria-label="Prompt throughput graph">
-                            {throughput.length > 1 && <path d={`M ${throughput.map((v, i) => `${(i/(throughput.length-1))*100},${36-Math.min(30,(v/Math.max(...throughput,1))*30)}`).join(' L ')}`} fill="none" stroke="#3b82f6" strokeWidth="1.5" />}
-                            {throughput.length > 1 && <path d={`M ${throughput.map((v,i)=>`${(i/(throughput.length-1))*100},${36-Math.min(30,(v/Math.max(...throughput,1))*30)}`).join(' L ')} L 100 40 L 0 40 Z`} fill="#3b82f6" fillOpacity="0.15" />}
-                          </svg>
-                          <div className="flex justify-between text-[8.5px] font-mono text-zinc-600 border-t border-zinc-800/60 pt-1"><span>-40s</span><span>Live prompt history</span><span>Now</span></div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+        {/* Pure Flat Text Log Stream (Raw terminal output directly on page layout) */}
+        <section className="flex-1 min-h-0 overflow-y-auto custom-scrollbar flex flex-col py-1 space-y-1">
+          {steps.length === 0 && <div className="text-[11px] text-zinc-600">No prompt activity on screen. Ready for input.</div>}
+          {steps.map(step => {
+            const open = !!expandedItems[step.id];
+            return (
+              <div key={step.id} className="text-[11px] font-mono leading-5">
+                <div
+                  onClick={() => step.isExpandable && setExpandedItems(prev => ({ ...prev, [step.id]: !prev[step.id] }))}
+                  className="flex items-center gap-2 cursor-pointer text-zinc-300 hover:text-white"
+                >
+                  <span className="text-zinc-600 select-none">❯</span>
+                  <span className={step.type === 'command' ? 'text-amber-400 font-semibold' : 'text-emerald-400'}>[{step.type.toUpperCase()}]</span>
+                  <span className="text-zinc-200">{step.title}</span>
+                  {step.isExpandable && <span className="text-zinc-600 text-[10px]">{open ? '▲ collapse' : '▼ expand'}</span>}
+                </div>
+                {open && step.details && (
+                  <pre className="mt-1 pl-4 text-[10px] text-zinc-400 whitespace-pre-wrap border-l border-zinc-800/80">{step.details}</pre>
+                )}
+              </div>
+            );
+          })}
         </section>
       </main>
 

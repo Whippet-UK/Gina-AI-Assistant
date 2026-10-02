@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude AI — Streaming Text & Live Log Interface</title>
+  <style>
+    /* CSS Reset & Fixed Viewport Constraint */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --border-subtle: rgba(240, 246, 252, 0.1);
+      --text-main: #e6edf3;
+      --text-muted: #8b949e;
+      --text-dim: #6e7681;
+      --accent-claude: #d97706; /* Amber/Terracotta warm accent */
+      --accent-claude-glow: rgba(217, 119, 6, 0.2);
+      --accent-emerald: #10b981;
+      --user-bubble: #1f2937;
+      --ai-bubble: transparent;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    }
+
+    html, body {
+      height: 100vh;
+      max-height: 100vh;
+      overflow: hidden; /* Requirement 1: Browser never sprouts outer scrollbar */
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Fixed 100vh Application Container */
+    #app-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100%;
+      max-width: 1100px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    /* 1. Flat, Borderless Header & Telemetry */
+    header {
+      padding: 12px 20px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: var(--bg-primary);
+      z-index: 10;
+      flex-shrink: 0;
+    }
+
+    .header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+    }
+
+    .brand-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      background: linear-gradient(135deg, #d97706, #b45309);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: bold;
+      color: #fff;
+    }
+
+    .status-pill {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-muted);
+    }
+
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-emerald);
+      box-shadow: 0 0 6px var(--accent-emerald);
+    }
+
+    .pulse-dot.streaming {
+      background: #f59e0b;
+      box-shadow: 0 0 8px #f59e0b;
+      animation: pulse 1s infinite alternate;
+    }
+
+    @keyframes pulse {
+      from { opacity: 0.4; }
+      to { opacity: 1; }
+    }
+
+    /* Pure Flat Text Telemetry Stream (No Container Boxes) */
+    .telemetry-strip {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .telemetry-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .telemetry-item strong {
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    .telemetry-item.emerald strong {
+      color: var(--accent-emerald);
+    }
+
+    /* Requirement 3: Collapsed [id:] Cheat Codes Prompt Section (Strict max-height: 200px) */
+    .cheat-code-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+      max-height: 200px;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .cheat-code-bar label {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+
+    .cheat-code-select {
+      flex: 1;
+      background: #11161d;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 6px 10px;
+      outline: none;
+      cursor: pointer;
+      max-height: 200px;
+    }
+
+    .cheat-code-select:focus {
+      border-color: var(--accent-claude);
+    }
+
+    .btn-flat {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-muted);
+      font-size: 11px;
+      font-family: var(--font-mono);
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .btn-flat:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-main);
+    }
+
+    /* Requirement 2: Vertical Scroll Container (overflow-y: auto exclusively) */
+    #message-history {
+      flex: 1;
+      min-height: 0; /* Crucial for child flex scrolling */
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 24px 20px 40px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      scroll-behavior: auto; /* Instant tracking without smooth scroll lag during streaming */
+    }
+
+    /* Custom subtle scrollbar */
+    #message-history::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    #message-history::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    #message-history::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 3px;
+    }
+
+    #message-history::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    /* Message Bubbles (Claude Style) */
+    .message-row {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      max-width: 820px;
+      margin: 0 auto;
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .message-row.user {
+      align-items: flex-end;
+    }
+
+    .message-row.assistant {
+      align-items: flex-start;
+    }
+
+    .message-header {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .message-bubble {
+      font-size: 14.5px;
+      line-height: 1.6;
+      word-break: break-word;
+    }
+
+    .message-row.user .message-bubble {
+      background: var(--user-bubble);
+      color: var(--text-main);
+      padding: 10px 16px;
+      border-radius: 16px 16px 4px 16px;
+      max-width: 85%;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .message-row.assistant .message-bubble {
+      background: transparent;
+      color: var(--text-main);
+      padding: 4px 0;
+      width: 100%;
+    }
+
+    /* Markdown-style typography within AI responses */
+    .message-bubble p {
+      margin-bottom: 12px;
+    }
+
+    .message-bubble p:last-child {
+      margin-bottom: 0;
+    }
+
+    .message-bubble ul, .message-bubble ol {
+      margin: 8px 0 12px 24px;
+    }
+
+    .message-bubble li {
+      margin-bottom: 4px;
+    }
+
+    .message-bubble pre {
+      background: #11161d;
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin: 10px 0;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      overflow-x: auto;
+      color: #93c5fd;
+    }
+
+    .message-bubble code {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+
+    /* Streaming Cursor Pulse */
+    .streaming-cursor {
+      display: inline-block;
+      width: 7px;
+      height: 15px;
+      background-color: var(--accent-claude);
+      margin-left: 3px;
+      vertical-align: -2px;
+      animation: blink 0.8s infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    /* Requirement 4: Smart Interruption Badge ("Jump to Bottom") */
+    #scroll-resume-badge {
+      position: absolute;
+      bottom: 84px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(30, 41, 59, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #f8fafc;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      padding: 6px 14px;
+      border-radius: 20px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+      display: none;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      z-index: 50;
+      backdrop-filter: blur(8px);
+      transition: all 0.2s ease;
+    }
+
+    #scroll-resume-badge:hover {
+      background: #334155;
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    #scroll-resume-badge .icon-down {
+      font-size: 12px;
+      display: inline-block;
+      transform: translateY(1px);
+    }
+
+    /* Bottom Prompt Input Area */
+    footer {
+      padding: 10px 20px 16px;
+      background: var(--bg-primary);
+      border-top: 1px solid var(--border-subtle);
+      flex-shrink: 0;
+    }
+
+    .input-wrapper {
+      max-width: 820px;
+      margin: 0 auto;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .input-box {
+      width: 100%;
+      min-height: 48px;
+      max-height: 120px;
+      background: #161b22;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      padding: 12px 64px 12px 14px;
+      color: var(--text-main);
+      font-size: 14px;
+      font-family: inherit;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+
+    .input-box:focus {
+      border-color: var(--accent-claude);
+      box-shadow: 0 0 0 2px var(--accent-claude-glow);
+    }
+
+    .send-btn {
+      position: absolute;
+      right: 8px;
+      bottom: 14px;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: none;
+      background: var(--accent-claude);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 15px;
+      transition: background-color 0.15s ease, opacity 0.15s ease;
+    }
+
+    .send-btn:hover:not(:disabled) {
+      background: #b45309;
+    }
+
+    .send-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .input-hints {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--text-dim);
+    }
+  </style>
+</head>
+<body>
+  <div id="app-container">
+    <!-- Header with Pure Text Telemetry (No Boxed Widgets) -->
+    <header>
+      <div class="header-top">
+        <div class="brand">
+          <div class="brand-icon">C</div>
+          <span>Claude Streaming Chat &amp; Live Log</span>
+        </div>
+        <div class="status-pill">
+          <span id="live-indicator" class="pulse-dot"></span>
+          <span id="connection-status">READY · Y-AXIS AUTO-SCROLL ACTIVE</span>
+        </div>
+      </div>
+
+      <!-- Pure Text Telemetry Data Strip -->
+      <div class="telemetry-strip">
+        <span class="telemetry-item emerald">TPS: <strong id="tps-display">42.8 tok/s</strong></span>
+        <span>·</span>
+        <span class="telemetry-item">TOKENS: <strong id="tokens-display">0</strong></span>
+        <span>·</span>
+        <span class="telemetry-item">LATENCY: <strong id="latency-display">0.0s</strong></span>
+        <span>·</span>
+        <span class="telemetry-item">ENGINE: <strong>Qwen Coder 7B (BF16)</strong></span>
+        <span>·</span>
+        <span class="telemetry-item">SCROLL LOCK: <strong id="scroll-state-display" style="color: #10b981;">ENGAGED (BOTTOM)</strong></span>
+      </div>
+
+      <!-- Collapsed [id:] Cheat Codes Prompt Section (Strict max-height: 200px) -->
+      <div class="cheat-code-bar">
+        <label for="cheat-selector">Presets / [id:]:</label>
+        <select id="cheat-selector" class="cheat-code-select">
+          <option value="">⚡ Select [id:] Cheat Code or Preset Task…</option>
+          <option value="[id: 'rover_2d_sandbox'] Build a single-file responsive 2D web application using HTML5 Canvas, Tailwind CSS, and vanilla JS featuring an arena with obstacles, goal, and an AI rover with 8-ray LiDAR.">[id: 'rover_2d_sandbox'] 2D Rover Physics Arena + 8-Ray LiDAR</option>
+          <option value="[id: 'claude_streaming_engine'] Explain the 3 core rules of real-time auto-scrolling with user-interrupt detection in live chat interfaces.">[id: 'claude_streaming_engine'] Auto-Scroll &amp; User Interrupt Architecture</option>
+          <option value="[id: 'fastapi_microservice'] Implement a high-performance Python FastAPI service with WebSockets and streaming response generator.">[id: 'fastapi_microservice'] Python FastAPI Streaming Generator</option>
+          <option value="[id: 'creative_code'] Write a complete WebGL fragment shader simulation of a pulsing gravitational singularity.">[id: 'creative_code'] WebGL Singularity Shader</option>
+        </select>
+        <button id="btn-insert-preset" class="btn-flat" type="button">+ Insert</button>
+        <button id="btn-clear-chat" class="btn-flat" type="button">Clear</button>
+      </div>
+    </header>
+
+    <!-- Requirement 2: Vertical Scroll Container with overflow-y: auto -->
+    <main id="message-history">
+      <!-- Initial AI Welcome Message -->
+      <div class="message-row assistant">
+        <div class="message-header">
+          <span style="color: var(--accent-claude);">Claude</span>
+          <span>· System</span>
+        </div>
+        <div class="message-bubble">
+          <p>Hello! I am Claude. This interface demonstrates <strong>anchored Y-axis auto-scrolling</strong>, <strong>smart interruption detection</strong>, and <strong>token-by-token streaming text</strong>.</p>
+          <p>Try sending a prompt below or pick a preset above. While text is streaming:</p>
+          <ul>
+            <li><strong>Auto-Scroll:</strong> The view automatically anchors to the bottom as new lines emerge.</li>
+            <li><strong>User Interrupt:</strong> If you scroll up to inspect earlier text, the auto-scroll immediately pauses so your view isn't jerked downward.</li>
+            <li><strong>Re-engagement:</strong> A "Resume Auto-scroll" badge appears, or you can scroll back to the bottom to seamlessly lock again.</li>
+          </ul>
+        </div>
+      </div>
+    </main>
+
+    <!-- Requirement 4: Smart Interruption "Resume Auto-scroll" Pill Button -->
+    <div id="scroll-resume-badge" title="Click to scroll to bottom and re-engage auto-scroll">
+      <span class="icon-down">↓</span> Auto-scroll paused (Scroll to bottom)
+    </div>
+
+    <!-- Input Footer -->
+    <footer>
+      <div class="input-wrapper">
+        <textarea
+          id="prompt-input"
+          class="input-box"
+          rows="1"
+          placeholder="Type a message or select a preset above… (Press Enter to send, Shift+Enter for new line)"
+        ></textarea>
+        <button id="send-button" class="send-btn" title="Send message">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+        <div class="input-hints">
+          <span>Viewport: 100vh locked · Zero outer scrollbars</span>
+          <span>Shift + Enter for multiline</span>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      // DOM Elements
+      const messageContainer = document.getElementById('message-history');
+      const scrollResumeBadge = document.getElementById('scroll-resume-badge');
+      const promptInput = document.getElementById('prompt-input');
+      const sendButton = document.getElementById('send-button');
+      const cheatSelector = document.getElementById('cheat-selector');
+      const btnInsertPreset = document.getElementById('btn-insert-preset');
+      const btnClearChat = document.getElementById('btn-clear-chat');
+      const liveIndicator = document.getElementById('live-indicator');
+      const connectionStatus = document.getElementById('connection-status');
+      const tpsDisplay = document.getElementById('tps-display');
+      const tokensDisplay = document.getElementById('tokens-display');
+      const latencyDisplay = document.getElementById('latency-display');
+      const scrollStateDisplay = document.getElementById('scroll-state-display');
+
+      // State Management
+      let isStreaming = false;
+      let isUserScrolledUp = false;
+      let totalTokens = 120;
+      let streamingTimer = null;
+      let currentBubbleElement = null;
+      let currentCursorElement = null;
+
+      // Requirement 4: Smart Interruption Logic
+      // Threshold in pixels from the bottom edge to consider the user "at the bottom"
+      const SCROLL_THRESHOLD_PX = 32;
+
+      function updateScrollEngagement() {
+        const distFromBottom = messageContainer.scrollHeight - messageContainer.scrollTop - messageContainer.clientHeight;
+        
+        if (distFromBottom > SCROLL_THRESHOLD_PX) {
+          // User has manually scrolled upwards
+          isUserScrolledUp = true;
+          scrollResumeBadge.style.display = 'flex';
+          scrollStateDisplay.textContent = 'PAUSED (SCROLLED UP)';
+          scrollStateDisplay.style.color = '#f59e0b';
+        } else {
+          // User is at or near the absolute bottom
+          isUserScrolledUp = false;
+          scrollResumeBadge.style.display = 'none';
+          scrollStateDisplay.textContent = 'ENGAGED (BOTTOM)';
+          scrollStateDisplay.style.color = '#10b981';
+        }
+      }
+
+      // Requirement 2 & 4: Listen to scroll events on vertical scroll container
+      messageContainer.addEventListener('scroll', function () {
+        updateScrollEngagement();
+      });
+
+      // Click resume badge to smoothly jump to bottom and re-engage auto-scroll
+      scrollResumeBadge.addEventListener('click', function () {
+        scrollToBottom(true);
+      });
+
+      function scrollToBottom(smooth = false) {
+        isUserScrolledUp = false;
+        scrollResumeBadge.style.display = 'none';
+        scrollStateDisplay.textContent = 'ENGAGED (BOTTOM)';
+        scrollStateDisplay.style.color = '#10b981';
+
+        if (smooth) {
+          messageContainer.scrollTo({
+            top: messageContainer.scrollHeight,
+            behavior: 'smooth'
+          });
+        } else {
+          // Instant anchoring during active streaming avoids jerkiness
+          messageContainer.scrollTop = messageContainer.scrollHeight;
+        }
+      }
+
+      // Requirement 3: Active Auto-Scrolling during streaming
+      function conditionalAutoScroll() {
+        if (!isUserScrolledUp) {
+          messageContainer.scrollTop = messageContainer.scrollHeight;
+        }
+      }
+
+      // Preset / [id:] Selector integration
+      btnInsertPreset.addEventListener('click', function () {
+        if (cheatSelector.value) {
+          promptInput.value = cheatSelector.value;
+          autoResizeTextarea();
+          promptInput.focus();
+        }
+      });
+
+      cheatSelector.addEventListener('change', function () {
+        if (cheatSelector.value) {
+          promptInput.value = cheatSelector.value;
+          autoResizeTextarea();
+          promptInput.focus();
+        }
+      });
+
+      btnClearChat.addEventListener('click', function () {
+        if (isStreaming) stopStreaming();
+        messageContainer.innerHTML = '';
+        totalTokens = 0;
+        tokensDisplay.textContent = '0';
+        latencyDisplay.textContent = '0.0s';
+      });
+
+      // Textarea auto-resize
+      function autoResizeTextarea() {
+        promptInput.style.height = 'auto';
+        promptInput.style.height = Math.min(promptInput.scrollHeight, 120) + 'px';
+      }
+
+      promptInput.addEventListener('input', autoResizeTextarea);
+
+      promptInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          handleSend();
+        }
+      });
+
+      sendButton.addEventListener('click', handleSend);
+
+      function handleSend() {
+        const text = promptInput.value.trim();
+        if (!text || isStreaming) return;
+
+        // 1. Append User Message Bubble
+        appendUserMessage(text);
+        promptInput.value = '';
+        promptInput.style.height = 'auto';
+
+        // 2. Determine Simulated Response
+        let responseContent = '';
+        if (text.includes('rover') || text.includes('2D')) {
+          responseContent = `I have generated the verified 2D Rover Physics Sandbox application.\n\n### Core System Specifications:\n1. **Environment:** 2D canvas arena (800×600) with randomized static block obstacles, movable crates with dynamic momentum, and a designated goal zone.\n2. **Agent Sensor Array:** Rover robot vehicle with orientation kinematics and an 8-ray radial LiDAR casting distance detection rays.\n3. **Console API Hooks:** Exposed \`window.setAITarget(steering, throttle)\` and \`window.getGameState()\` for programmatic control.\n4. **Telemetry HUD:** 60 FPS requestAnimationFrame render loop with real-time speed, heading angle, and sensor readouts.`;
+        } else if (text.includes('auto-scroll') || text.includes('streaming')) {
+          responseContent = `The modern AI streaming text layout relies on three core mechanical principles:\n\n1. **The CSS Viewport Lock (overflow-y: auto):** Restrict the main container height strictly to 100vh with \`overflow: hidden\` on the body, isolating overflow to the inner message stream.\n2. **Anchored Scroll Execution:** With every received token or token-chunk, the browser checks if the user is anchored at the bottom edge. If so, \`container.scrollTop = container.scrollHeight\` is called instantly.\n3. **Smart Interruption Detection:** If \`scrollHeight - scrollTop - clientHeight > threshold\`, the user has actively scrolled upwards to read previous context. In this state, auto-scrolling is temporarily paused to prevent disruptive view snapping.`;
+        } else {
+          responseContent = `Here is a breakdown of your request:\n\n- **Received:** "${text.slice(0, 100)}${text.length > 100 ? '…' : ''}"\n- **Inference Mode:** Streaming tokens sequentially with live anchor tracking.\n- **Status:** Processing operational sequence and ensuring flat borderless data flow.\n\nAll systems are operating nominally. Try scrolling up while this text streams to witness the automatic interruption pause in action!`;
+        }
+
+        // 3. Start Streaming Simulation
+        startStreamingResponse(responseContent);
+      }
+
+      function appendUserMessage(text) {
+        const row = document.createElement('div');
+        row.className = 'message-row user';
+
+        const header = document.createElement('div');
+        header.className = 'message-header';
+        header.textContent = 'You';
+
+        const bubble = document.createElement('div');
+        bubble.className = 'message-bubble';
+        bubble.textContent = text;
+
+        row.appendChild(header);
+        row.appendChild(bubble);
+        messageContainer.appendChild(row);
+
+        scrollToBottom();
+      }
+
+      function startStreamingResponse(fullText) {
+        isStreaming = true;
+        sendButton.disabled = true;
+        liveIndicator.className = 'pulse-dot streaming';
+        connectionStatus.textContent = 'STREAMING TOKENS…';
+
+        const row = document.createElement('div');
+        row.className = 'message-row assistant';
+
+        const header = document.createElement('div');
+        header.className = 'message-header';
+        header.innerHTML = '<span style="color: var(--accent-claude);">Claude</span> <span>· streaming</span>';
+
+        currentBubbleElement = document.createElement('div');
+        currentBubbleElement.className = 'message-bubble';
+
+        currentCursorElement = document.createElement('span');
+        currentCursorElement.className = 'streaming-cursor';
+
+        row.appendChild(header);
+        row.appendChild(currentBubbleElement);
+        currentBubbleElement.appendChild(currentCursorElement);
+        messageContainer.appendChild(row);
+
+        // Always scroll to bottom when a new response starts
+        scrollToBottom();
+
+        // Streaming text character by character / token chunk
+        const words = fullText.split(' ');
+        let wordIndex = 0;
+        let streamedString = '';
+        const startTime = Date.now();
+
+        streamingTimer = setInterval(function () {
+          if (wordIndex < words.length) {
+            const nextChunk = (wordIndex === 0 ? '' : ' ') + words[wordIndex];
+            streamedString += nextChunk;
+            wordIndex++;
+            totalTokens++;
+
+            // Render Markdown paragraphs & code snippets simply
+            renderFormattedText(currentBubbleElement, streamedString, currentCursorElement);
+
+            // Requirement 3: Active Auto-Scrolling
+            conditionalAutoScroll();
+
+            // Telemetry updates
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+            tokensDisplay.textContent = totalTokens.toLocaleString();
+            latencyDisplay.textContent = elapsed + 's';
+            tpsDisplay.textContent = (wordIndex / Math.max(0.1, (Date.now() - startTime) / 1000) * 1.3).toFixed(1) + ' tok/s';
+          } else {
+            stopStreaming();
+          }
+        }, 35); // ~35ms per token simulates 28-35 tok/s output
+      }
+
+      function stopStreaming() {
+        clearInterval(streamingTimer);
+        streamingTimer = null;
+        isStreaming = false;
+        sendButton.disabled = false;
+        liveIndicator.className = 'pulse-dot';
+        connectionStatus.textContent = 'READY · Y-AXIS AUTO-SCROLL ACTIVE';
+
+        if (currentCursorElement && currentCursorElement.parentNode) {
+          currentCursorElement.remove();
+        }
+
+        // Final anchoring pass
+        conditionalAutoScroll();
+      }
+
+      function renderFormattedText(container, text, cursor) {
+        // Simple and robust parser for paragraphs, code blocks, bold, and bullet points
+        const lines = text.split('\n');
+        let html = '';
+        let inCodeBlock = false;
+        let inList = false;
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+
+          if (line.startsWith('```')) {
+            if (inCodeBlock) {
+              html += '</code></pre>';
+              inCodeBlock = false;
+            } else {
+              html += '<pre><code>';
+              inCodeBlock = true;
+            }
+            continue;
+          }
+
+          if (inCodeBlock) {
+            html += escapeHtml(line) + '\n';
+            continue;
+          }
+
+          if (line.startsWith('- ') || line.startsWith('* ')) {
+            if (!inList) {
+              html += '<ul>';
+              inList = true;
+            }
+            html += '<li>' + formatInline(line.slice(2)) + '</li>';
+            continue;
+          } else if (inList) {
+            html += '</ul>';
+            inList = false;
+          }
+
+          if (line.startsWith('### ')) {
+            html += '<p><strong>' + formatInline(line.slice(4)) + '</strong></p>';
+          } else if (line.trim().length > 0) {
+            html += '<p>' + formatInline(line) + '</p>';
+          }
+        }
+
+        if (inList) html += '</ul>';
+        if (inCodeBlock) html += '</code></pre>';
+
+        container.innerHTML = html;
+        container.appendChild(cursor);
+      }
+
+      function formatInline(str) {
+        return escapeHtml(str)
+          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+          .replace(/`([^`]+)`/g, '<code>$1</code>');
+      }
+
+      function escapeHtml(str) {
+        return str
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      }
+    })();
+  </script>
+</body>
+</html>

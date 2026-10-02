@@ -3757,3 +3757,40 @@ className={... 'sm:w-[18rem]' ...}
 - Removed the /api/jobs hard gate that incorrectly required Qwen 2.5-VL + mmproj-F16.gguf before a direct FLUX image job could run.
 - Updated active status/telemetry copy to report FLUX.1 Dev and the genuine T5-XXL encoder.
 - Retained flux_lite_image only as a backward-compatible workflow identifier so existing local workflow files remain usable; it no longer denotes the retired Lite model.
+
+## 2026-10-02 — Phase 68: Flat Borderless Streaming UI & Claude Live Log
+
+- **Target File Path:** `/claude-streaming-chat.html`
+- **Exact Code Snippet:**
+  ```html
+  <main id="message-history">
+    <!-- Fixed 100vh Viewport Layout, overflow-y: auto, Active Auto-Scrolling & Interruption Detection -->
+  </main>
+  ```
+- **Why:** Created a single-file, self-contained HTML/CSS/JS application that replicates modern AI streaming chat behavior found in Claude. Implements fixed 100vh layout without outer browser scrollbars, strictly vertical scrolling (`overflow-y: auto`), character/token incremental streaming, and real-time auto-scroll with smart user interruption detection (pausing when scrolled up and re-engaging at bottom).
+
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx`
+- **Exact Code Snippet:**
+  ```tsx
+  <div ref={telemetryPanel.panelRef} className="relative bg-transparent border-0 p-1 transition-all flex flex-col font-mono text-[9px]">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-300 py-1">
+      <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">GEN:</span> <strong className="text-emerald-300">{tps} tok/s</strong></span>
+  ```
+- **Why:** Refactored telemetry, whole-PC electricity, commercial savings benchmarks, llama logs, and bottom engine panels into flat, borderless, pure text data streams directly aligned against the primary background, completely eliminating the cluttered "boxed widget" appearance.
+
+- **Target File Path:** `/src/components/GinaStudioProfilePicker.tsx`
+- **Exact Code Snippet:**
+  ```tsx
+  <div className="py-2 max-h-[200px] flex flex-col justify-between gap-2 overflow-hidden">
+    <select value={selectedId || ''} onChange={(e) => { ... }} className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-mono text-emerald-300 outline-none hover:border-emerald-500/50 focus:border-emerald-400 cursor-pointer">
+  ```
+- **Why:** Consolidated the large `[id:]` cheat codes prompt section into a minimal native `<select>` dropdown menu with a strict max-height constraint of 200px.
+
+- **Target File Path:** `/src/components/UnifiedAiDashboard.tsx`
+- **Exact Code Snippet:**
+  ```tsx
+  <section className="flex flex-wrap items-center gap-x-5 gap-y-1.5 py-1.5 border-b border-zinc-800/50 text-[11px]">
+    <span className="text-zinc-500 uppercase tracking-wider text-[9px]">VELOCITY: <strong className="text-emerald-400 font-bold">{tokensPerSec ? `${tokensPerSec.toFixed(1)} Tok/s` : '—'}</strong></span>
+  ```
+- **Why:** Converted dashboard telemetry cards and step boxes into clean, flat text streams directly on the page layout with a collapsed preset selector.
+

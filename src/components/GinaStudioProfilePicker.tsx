@@ -296,6 +296,20 @@ export const GinaStudioProfilePicker: React.FC<GinaStudioProfilePickerProps> = (
     return list;
   }, [activeKind, query, category]);
 
+  const allList = useMemo(() => {
+    if (activeKind === 'web-search') return GINA_SEARCH_PROFILES;
+    if (activeKind === 'image-studio') return GINA_IMAGE_PROFILES;
+    if (activeKind === 'video-generation') return GINA_VIDEO_PROFILES;
+    if (activeKind === 'agents') return GINA_AGENT_PROFILES;
+    if (activeKind === 'web-code') return GINA_WEB_APP_CODE_PROFILES;
+    return GINA_CODE_PROFILES;
+  }, [activeKind]);
+
+  const selectedProfile = useMemo(() => {
+    if (!selectedId) return null;
+    return allList.find((p) => p.id === selectedId) || null;
+  }, [allList, selectedId]);
+
   const total = useMemo(() => {
     if (activeKind === 'web-search') return GINA_SEARCH_PROFILES.length;
     if (activeKind === 'image-studio') return GINA_IMAGE_PROFILES.length;
@@ -319,14 +333,14 @@ export const GinaStudioProfilePicker: React.FC<GinaStudioProfilePickerProps> = (
       : meta.placeholder;
 
   return (
-    <div className={`rounded-xl border border-slate-800 bg-slate-950/90 ${className}`}>
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-2">
+    <div className={`bg-transparent border-0 shadow-none p-0 ${className}`}>
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800/40 py-1.5">
         <Icon className={`h-3.5 w-3.5 shrink-0 ${accentColor}`} />
         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">{meta.title}</span>
 
         {/* Dual-tab selector for Web App and Code Engine */}
         {mode === 'web-app' && (
-          <div className="flex items-center gap-1 bg-slate-900/90 rounded-lg p-0.5 border border-slate-800">
+          <div className="flex items-center gap-1 p-0.5">
             <button
               type="button"
               onClick={() => { setSubTab('agents'); setCategory('all'); }}
@@ -355,7 +369,7 @@ export const GinaStudioProfilePicker: React.FC<GinaStudioProfilePickerProps> = (
         )}
 
         {mode === 'code-engine' && (
-          <div className="flex items-center gap-1 bg-slate-900/90 rounded-lg p-0.5 border border-slate-800">
+          <div className="flex items-center gap-1 p-0.5">
             <button
               type="button"
               onClick={() => { setSubTab('code'); setCategory('all'); }}
@@ -406,7 +420,7 @@ export const GinaStudioProfilePicker: React.FC<GinaStudioProfilePickerProps> = (
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800/80 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800/40 py-1.5">
         <div className="relative min-w-[160px] flex-1">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-600" />
           <input
@@ -414,7 +428,7 @@ export const GinaStudioProfilePicker: React.FC<GinaStudioProfilePickerProps> = (
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={placeholderText}
-            className="w-full rounded-lg border border-slate-800 bg-slate-900 py-1.5 pl-7 pr-7 text-[11px] text-slate-200 outline-none placeholder:text-slate-600 focus:border-slate-600"
+            className="w-full rounded border border-slate-800/80 bg-slate-900/60 py-1 pl-7 pr-7 text-[11px] text-slate-200 outline-none placeholder:text-slate-600 focus:border-slate-600"
           />
           {query && (
             <button
@@ -429,7 +443,7 @@ export const GinaStudioProfilePicker: React.FC<GinaStudioProfilePickerProps> = (
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          className="rounded-lg border border-slate-800 bg-slate-900 px-2 py-1.5 text-[10px] text-slate-300 outline-none"
+          className="rounded border border-slate-800/80 bg-slate-900/60 px-2 py-1 text-[10px] text-slate-300 outline-none"
         >
           <option value="all">All categories</option>
           {cats.map((c) => (
@@ -440,55 +454,62 @@ export const GinaStudioProfilePicker: React.FC<GinaStudioProfilePickerProps> = (
         </select>
       </div>
 
-      <div className="custom-scrollbar grid max-h-48 grid-cols-1 gap-1.5 overflow-y-auto p-2 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.length === 0 && (
-          <div className="col-span-full py-6 text-center text-[11px] text-slate-600">
-            No profiles match “{query}”
+      {/* Minimal Native Dropdown Selector Zone (Strict max-height: 200px) */}
+      <div className="py-2 max-h-[200px] flex flex-col justify-between gap-2 overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Native HTML Select Dropdown for [id:] Cheat Codes */}
+          <div className="flex-1 min-w-[220px]">
+            <select
+              value={selectedId || ''}
+              onChange={(e) => {
+                const p = filtered.find((item) => item.id === e.target.value) || allList.find((item) => item.id === e.target.value);
+                if (p) {
+                  onSelect(p);
+                  onInsertShortcode?.(`[id: '${p.id}'] `);
+                }
+              }}
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-mono text-emerald-300 outline-none hover:border-emerald-500/50 focus:border-emerald-400 cursor-pointer"
+            >
+              <option value="" disabled className="text-slate-500 font-sans">
+                ⚡ Select [id:] Cheat Code or Preset Profile… ({filtered.length} available)
+              </option>
+              {filtered.map((p) => {
+                const isAgent = 'avatar' in p || GINA_AGENT_PROFILES.some((a) => a.id === p.id);
+                return (
+                  <option key={p.id} value={p.id} className="bg-slate-950 text-slate-200">
+                    [id: '{p.id}'] — {p.name} ({p.category})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {/* Quick Insert Active Shortcode Button */}
+          {selectedProfile && (
+            <button
+              type="button"
+              onClick={() => onInsertShortcode?.(`[id: '${selectedProfile.id}'] `)}
+              className="px-2.5 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold tracking-tight cursor-pointer shrink-0 transition-colors"
+              title="Insert this cheat code into prompt"
+            >
+              + Insert [id: '{selectedProfile.id}']
+            </button>
+          )}
+        </div>
+
+        {/* Selected Cheat Code Summary Strip (Ultra-compact, pure text, borderless) */}
+        {selectedProfile ? (
+          <div className="text-[11px] font-mono text-slate-400 flex items-center justify-between gap-3 truncate pt-1 border-t border-slate-800/60">
+            <span className="truncate">
+              <strong className="text-slate-200">{selectedProfile.name}</strong> · <span className="text-emerald-400">[id: '{selectedProfile.id}']</span>: {selectedProfile.positivePrompt.slice(0, 110)}…
+            </span>
+            <span className="text-[9px] text-slate-500 uppercase tracking-widest shrink-0">{selectedProfile.category}</span>
+          </div>
+        ) : (
+          <div className="text-[10px] font-mono text-slate-600 truncate pt-1">
+            Choose a cheat code above to automatically inject system instructions, coding frameworks, or agent profiles.
           </div>
         )}
-        {filtered.map((p) => {
-          const isAgent = 'avatar' in p || GINA_AGENT_PROFILES.some((a) => a.id === p.id);
-          const active = isAgent
-            ? (agentProfileId === p.id || (activeKind === 'agents' && selectedId === p.id))
-            : (codeProfileId === p.id || (activeKind !== 'agents' && selectedId === p.id));
-          const iconName = ('icon' in p && p.icon) || (isAgent ? 'Bot' : 'Code2');
-          return (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => {
-                onSelect(p);
-                onInsertShortcode?.(`[id: '${p.id}'] `);
-              }}
-              className={`rounded-lg border px-2.5 py-2 text-left transition ${
-                active
-                  ? 'border-emerald-500/50 bg-emerald-500/10 shadow-[0_0_12px_rgba(16,185,129,0.12)]'
-                  : 'border-slate-800 bg-slate-900/50 hover:border-slate-600 hover:bg-slate-900'
-              }`}
-              title={p.positivePrompt.slice(0, 220)}
-            >
-              <div className="flex items-center justify-between gap-1">
-                <span className="flex min-w-0 items-center gap-1.5">
-                  {'avatar' in p && (p as { avatar?: string }).avatar ? (
-                    <span
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-[13px] leading-none"
-                      title="Profile"
-                    >
-                      {(p as { avatar?: string }).avatar}
-                    </span>
-                  ) : (
-                    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-900 ${accentColor}`}>
-                      <ProfileIcon name={iconName} className="h-3.5 w-3.5" />
-                    </span>
-                  )}
-                  <span className="truncate text-[10px] font-semibold text-slate-200">{p.name}</span>
-                </span>
-                <span className="shrink-0 text-[8px] font-mono text-slate-600">{p.category}</span>
-              </div>
-              <div className={`mt-0.5 truncate font-mono text-[9px] ${accentColor}`}>[id: '{p.id}']</div>
-            </button>
-          );
-        })}
       </div>
     </div>
   );

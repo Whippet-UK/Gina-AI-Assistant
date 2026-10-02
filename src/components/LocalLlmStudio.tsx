@@ -2166,12 +2166,12 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                 <MovableResizableWrapper id="widget-telemetry" key="widget-telemetry" collapsible title="Telemetry" className="w-full" resizable={false}>
                 <div
                   ref={telemetryPanel.panelRef}
-                  className="rounded-lg border border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center justify-between text-[10px] font-mono transition-all"
+                  className="bg-transparent border-0 px-1 py-1 flex items-center justify-between text-[9px] font-mono transition-all"
                   style={{ width: telemetryPanel.width ? `${telemetryPanel.width}px` : '100%' }}
                 >
                   <div className="flex items-center gap-2 cursor-pointer flex-1 min-w-0" onClick={() => toggleSingleWidgetMin('telemetry')}>
-                    <Activity className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span className="font-bold text-slate-200">TELEMETRY</span>
+                    <Activity className="w-3 h-3 text-emerald-400 shrink-0" />
+                    <span className="font-bold text-slate-300">TELEMETRY:</span>
                     <span className={`font-bold ${isWatchdogTriggered ? 'text-amber-400' : 'text-emerald-400'}`}>{tps} tok/s</span>
                     <span className="text-slate-600 hidden sm:inline">·</span>
                     <span className="text-slate-400 hidden sm:inline">{totalToks.toLocaleString()} tokens</span>
@@ -2181,10 +2181,10 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                     <span className="text-slate-400 hidden lg:inline">GPU {hardwareTelemetry?.gpuUtilizationPercent ?? 0}%</span>
                   </div>
                   <div className="flex items-center gap-1 shrink-0 ml-2">
-                    <button type="button" onClick={() => moveWidget('telemetry', 'up')} disabled={idx === 0} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => moveWidget('telemetry', 'down')} disabled={idx === widgetOrder.length - 1} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => toggleSingleWidgetMin('telemetry')} className="p-1 rounded text-slate-400 hover:text-white cursor-pointer" title="Expand Widget"><Maximize2 className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => toggleWidget('telemetry')} className="p-1 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('telemetry', 'up')} disabled={idx === 0} className="p-0.5 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('telemetry', 'down')} disabled={idx === widgetOrder.length - 1} className="p-0.5 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleSingleWidgetMin('telemetry')} className="p-0.5 rounded text-slate-400 hover:text-white cursor-pointer" title="Expand Widget"><Maximize2 className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleWidget('telemetry')} className="p-0.5 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
                   </div>
                 </div>
                 </MovableResizableWrapper>
@@ -2195,75 +2195,49 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
               <MovableResizableWrapper id="widget-telemetry" key="widget-telemetry" collapsible title="Telemetry" className="w-full">
               <div
                 ref={telemetryPanel.panelRef}
-                className="relative rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 transition-all flex flex-col"
+                className="relative bg-transparent border-0 p-1 transition-all flex flex-col font-mono text-[9px]"
                 style={{ width: telemetryPanel.width ? `${telemetryPanel.width}px` : '100%' }}
               >
-                <div className="flex items-center justify-between mb-2 shrink-0">
-                  <div className="flex items-center gap-1.5">
-                    <Activity className="w-3.5 h-3.5 text-emerald-400" />
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">LOCAL AI TELEMETRY</span>
-                    <span className={`text-[8px] font-mono font-bold ml-2 ${isWatchdogTriggered ? 'text-amber-400 animate-pulse' : 'text-emerald-400/90'}`}>
+                <div className="flex items-center justify-between py-1 shrink-0 border-b border-slate-800/40">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-3 h-3 text-emerald-400" />
+                    <span className="font-bold uppercase tracking-wider text-slate-400">TELEMETRY</span>
+                    <span className={`font-bold ml-1 ${isWatchdogTriggered ? 'text-amber-400 animate-pulse' : 'text-emerald-400'}`}>
                       {tps} tok/s
                     </span>
+                    <span className="text-slate-600">·</span>
+                    <span className="text-slate-400">{totalToks.toLocaleString()} toks</span>
+                    <span className="text-slate-600">·</span>
+                    <span className="text-sky-300">{hardwareTelemetry ? `${hardwareTelemetry.vramUsedMB.toLocaleString()} MB VRAM` : '8GB'}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    {telemetryPanel.width && (
-                      <span className="text-[7px] font-mono text-emerald-400/80 bg-slate-900 px-1 rounded border border-slate-800">
-                        {telemetryPanel.width}px wide
-                      </span>
-                    )}
                     <span className="text-[8px] font-mono text-slate-600 hidden sm:inline">LIVE · 1s</span>
-                    <button type="button" onClick={() => moveWidget('telemetry', 'up')} disabled={idx === 0} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => moveWidget('telemetry', 'down')} disabled={idx === widgetOrder.length - 1} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => toggleSingleWidgetMin('telemetry')} className="p-1 rounded text-slate-400 hover:text-white cursor-pointer" title="Minimize Widget"><Minimize2 className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => toggleWidget('telemetry')} className="p-1 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('telemetry', 'up')} disabled={idx === 0} className="p-0.5 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('telemetry', 'down')} disabled={idx === widgetOrder.length - 1} className="p-0.5 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleSingleWidgetMin('telemetry')} className="p-0.5 rounded text-slate-400 hover:text-white cursor-pointer" title="Minimize Widget"><Minimize2 className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleWidget('telemetry')} className="p-0.5 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
                   </div>
                 </div>
 
-                <div className="overflow-y-auto custom-scrollbar flex-1 pr-0.5 space-y-1.5" style={{ height: `${telemetryPanel.height}px`, minHeight: '70px' }}>
+                <div className="overflow-y-auto custom-scrollbar flex-1 py-1" style={{ height: `${telemetryPanel.height}px`, minHeight: '50px' }}>
                   {isWatchdogTriggered && (
-                    <div className="mb-2 p-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-300 text-[8px] font-mono flex items-center justify-between">
-                      <span className="font-bold flex items-center gap-1">
-                        <Zap className="w-3 h-3 text-amber-400" />
-                        WATCHDOG ALERT: Token generation speed below 10 TPS ({tps} tok/s). Potential VRAM KV-cache bottleneck or context saturation.
-                      </span>
-                      <span className="text-slate-400">RTX 3070 Ti 8GB Sentinel</span>
+                    <div className="mb-1 text-amber-300 text-[8px] font-mono">
+                      ⚠ WATCHDOG ALERT: Token generation speed below 10 TPS ({tps} tok/s). Potential VRAM KV-cache bottleneck.
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
-                    <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-600">Generation</div>
-                      <div className="mt-0.5 text-[11px] font-bold font-mono text-emerald-300">{tps} tok/s</div>
-                    </div>
-                    <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-600">Tokens</div>
-                      <div className="mt-0.5 text-[11px] font-bold font-mono text-slate-200">{totalToks.toLocaleString()}</div>
-                      <div className="text-[7px] font-mono text-slate-600">prompt + completion</div>
-                    </div>
-                    <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-600">Latency</div>
-                      <div className="mt-0.5 text-[11px] font-bold font-mono text-slate-200">{durSec}s</div>
-                      <div className="text-[7px] font-mono text-slate-600">{lastTelemetry?.iteration != null ? `iteration ${lastTelemetry.iteration}` : 'per turn'}</div>
-                    </div>
-                    <div className="rounded border border-slate-800 bg-slate-900/70 p-2">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-600">VRAM</div>
-                      <div className="mt-0.5 flex items-center gap-1 text-[11px] font-bold font-mono text-slate-200">
-                        <Gauge className="w-3 h-3 text-sky-400" />
-                        {hardwareTelemetry ? `${hardwareTelemetry.vramUsedMB.toLocaleString()} MB` : '—'}
-                      </div>
-                      <div className="text-[7px] font-mono text-slate-600">of {vramTotal.toLocaleString()} MB</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-1.5 grid grid-cols-2 md:grid-cols-6 gap-1 text-[7px] font-mono">
-                    <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">GPU {hardwareTelemetry?.gpuUtilizationPercent ?? 0}%</span>
-                    <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">TEMP {hardwareTelemetry?.gpuTempC ?? 0}°C</span>
-                    <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">POWER {hardwareTelemetry?.gpuPowerW ?? 0}W</span>
-                    <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">ITER/s {runtimeTelemetry?.iterationsPerSecond != null ? runtimeTelemetry.iterationsPerSecond.toFixed(2) : '—'}</span>
-                    <span className="rounded bg-slate-900 px-1.5 py-1 text-slate-500">TOOLS {lastTelemetry?.toolCalls ?? runtimeTelemetry?.toolCalls ?? 0}</span>
-                    <span className={`rounded bg-slate-900 px-1.5 py-1 ${hardwareTelemetry?.thermalBrakeActive ? 'text-amber-400' : 'text-slate-500'}`}>
-                      {hardwareTelemetry?.thermalBrakeActive ? 'THERMAL BRAKE' : 'THERMAL OK'}
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-300 py-1">
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">GEN:</span> <strong className="text-emerald-300">{tps} tok/s</strong></span>
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">TOKENS:</span> <strong className="text-slate-200">{totalToks.toLocaleString()}</strong> <span className="text-slate-500">(prompt+comp)</span></span>
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">LATENCY:</span> <strong className="text-slate-200">{durSec}s</strong></span>
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">VRAM:</span> <strong className="text-sky-300">{hardwareTelemetry ? `${hardwareTelemetry.vramUsedMB.toLocaleString()} MB` : '—'}</strong> / {vramTotal.toLocaleString()} MB</span>
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">GPU:</span> {hardwareTelemetry?.gpuUtilizationPercent ?? 0}%</span>
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">TEMP:</span> {hardwareTelemetry?.gpuTempC ?? 0}°C</span>
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">POWER:</span> {hardwareTelemetry?.gpuPowerW ?? 0}W</span>
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">ITER/S:</span> {runtimeTelemetry?.iterationsPerSecond != null ? runtimeTelemetry.iterationsPerSecond.toFixed(2) : '—'}</span>
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">TOOLS:</span> {lastTelemetry?.toolCalls ?? runtimeTelemetry?.toolCalls ?? 0}</span>
+                    <span className={hardwareTelemetry?.thermalBrakeActive ? 'text-amber-400 font-bold' : 'text-slate-500'}>
+                      {hardwareTelemetry?.thermalBrakeActive ? '● THERMAL BRAKE' : '● THERMAL OK'}
                     </span>
                   </div>
                 </div>
@@ -2301,12 +2275,12 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                 <MovableResizableWrapper id="widget-power" key="widget-electricity" collapsible title="Power & Cost" resizable={false} className="w-full">
                 <div
                   ref={electricityPanel.panelRef}
-                  className="rounded-lg border border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center justify-between text-[10px] font-mono transition-all"
+                  className="bg-transparent border-0 px-1 py-1 flex items-center justify-between text-[9px] font-mono transition-all"
                   style={{ width: electricityPanel.width ? `${electricityPanel.width}px` : '100%' }}
                 >
                   <div className="flex items-center gap-2 cursor-pointer flex-1 min-w-0" onClick={() => toggleSingleWidgetMin('electricity')}>
-                    <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span className="font-bold text-slate-200">POWER &amp; COST</span>
+                    <Zap className="w-3 h-3 text-amber-400 shrink-0" />
+                    <span className="font-bold text-slate-300">POWER &amp; COST:</span>
                     <span className="text-amber-300 font-bold">{powerW}W</span>
                     <span className="text-slate-600 hidden sm:inline">·</span>
                     <span className="text-emerald-400 font-bold">£{hourlyCostPounds.toFixed(4)}/hr ({hourlyCostPence.toFixed(2)}p/hr)</span>
@@ -2316,10 +2290,10 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                     <span className="text-slate-400 hidden lg:inline">Session: £{sessionElectricityCost.toFixed(4)}</span>
                   </div>
                   <div className="flex items-center gap-1 shrink-0 ml-2">
-                    <button type="button" onClick={() => moveWidget('electricity', 'up')} disabled={idx === 0} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => moveWidget('electricity', 'down')} disabled={idx === widgetOrder.length - 1} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => toggleSingleWidgetMin('electricity')} className="p-1 rounded text-slate-400 hover:text-white cursor-pointer" title="Expand Widget"><Maximize2 className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => toggleWidget('electricity')} className="p-1 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('electricity', 'up')} disabled={idx === 0} className="p-0.5 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('electricity', 'down')} disabled={idx === widgetOrder.length - 1} className="p-0.5 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleSingleWidgetMin('electricity')} className="p-0.5 rounded text-slate-400 hover:text-white cursor-pointer" title="Expand Widget"><Maximize2 className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleWidget('electricity')} className="p-0.5 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
                   </div>
                 </div>
                 </MovableResizableWrapper>
@@ -2330,65 +2304,34 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
               <MovableResizableWrapper id="widget-power" key="widget-electricity" collapsible title="Power & Cost" className="w-full">
               <div
                 ref={electricityPanel.panelRef}
-                className="relative rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 transition-all flex flex-col"
+                className="relative bg-transparent border-0 p-1 transition-all flex flex-col font-mono text-[9px]"
                 style={{ width: electricityPanel.width ? `${electricityPanel.width}px` : '100%' }}
               >
-                <div className="flex items-center justify-between mb-1.5 shrink-0">
-                  <div className="flex items-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5 text-amber-400" />
-                    <span className="text-[8px] font-bold uppercase tracking-widest text-slate-300">WHOLE-PC ELECTRICITY &amp; RUNNING COST</span>
-                    <span className="text-[8px] font-mono text-emerald-400 font-semibold ml-2">
-                      £{hourlyCostPounds.toFixed(4)}/hr · {hourlyCostPence.toFixed(2)}p/hr
-                    </span>
+                <div className="flex items-center justify-between py-1 shrink-0 border-b border-slate-800/40">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-3 h-3 text-amber-400" />
+                    <span className="font-bold uppercase tracking-wider text-slate-400">POWER &amp; COST</span>
+                    <span className="text-amber-300 font-bold ml-1">{powerW}W</span>
+                    <span className="text-slate-600">·</span>
+                    <span className="text-emerald-400 font-bold">£{hourlyCostPounds.toFixed(4)}/hr ({hourlyCostPence.toFixed(2)}p/hr)</span>
+                    <span className="text-slate-600">·</span>
+                    <span className={isDayRate ? 'text-amber-300' : 'text-indigo-300'}>{isDayRate ? 'DAY (£0.3157)' : 'NIGHT (£0.1390)'}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    {electricityPanel.width && (
-                      <span className="text-[7px] font-mono text-emerald-400/80 bg-slate-900 px-1 rounded border border-slate-800">
-                        {electricityPanel.width}px wide
-                      </span>
-                    )}
-                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold ${isDayRate ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'}`}>
-                      {isDayRate ? 'DAY (£0.3157/kWh)' : 'NIGHT (£0.1390/kWh)'}
-                    </span>
-                    <button type="button" onClick={() => moveWidget('electricity', 'up')} disabled={idx === 0} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => moveWidget('electricity', 'down')} disabled={idx === widgetOrder.length - 1} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => toggleSingleWidgetMin('electricity')} className="p-1 rounded text-slate-400 hover:text-white cursor-pointer" title="Minimize Widget"><Minimize2 className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => toggleWidget('electricity')} className="p-1 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('electricity', 'up')} disabled={idx === 0} className="p-0.5 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('electricity', 'down')} disabled={idx === widgetOrder.length - 1} className="p-0.5 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleSingleWidgetMin('electricity')} className="p-0.5 rounded text-slate-400 hover:text-white cursor-pointer" title="Minimize Widget"><Minimize2 className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleWidget('electricity')} className="p-0.5 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
                   </div>
                 </div>
 
-                <div className="overflow-y-auto custom-scrollbar flex-1 pr-0.5 space-y-1.5" style={{ height: `${electricityPanel.height}px`, minHeight: '70px' }}>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
-                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Whole PC Draw</div>
-                      <div className="mt-0.5 text-[10px] font-bold font-mono text-amber-300">{powerW}W <span className="text-[7px] font-normal text-slate-400">({powerKw.toFixed(3)} kW)</span></div>
-                      <div className="text-[6px] font-mono text-slate-500">CPU {cpuPowerW || '—'}W · GPU {gpuPowerW}W · Other {otherPowerW}W</div>
-                    </div>
-                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Running Cost</div>
-                      <div className="mt-0.5 text-[10px] font-bold font-mono text-emerald-400">
-                        £{hourlyCostPounds.toFixed(4)}/hr · {hourlyCostPence.toFixed(2)}p/hr
-                      </div>
-                      <div className="text-[6px] font-mono text-slate-600">at £{rateKwh.toFixed(4)}/kWh</div>
-                    </div>
-                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Session Cost</div>
-                      <div className="mt-0.5 text-[10px] font-bold font-mono text-amber-300">
-                        £{sessionElectricityCost.toFixed(4)}
-                      </div>
-                      <div className="text-[6px] font-mono text-slate-600">accumulated runtime</div>
-                    </div>
-                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Est. 24h Cost</div>
-                      <div className="mt-0.5 text-[10px] font-bold font-mono text-slate-200">
-                        £{estimatedDailyCost.toFixed(2)}/day
-                      </div>
-                      <div className="text-[6px] font-mono text-slate-600">incl. £0.5472 standing</div>
-                    </div>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center justify-between text-[7px] font-mono text-slate-500 pt-1 border-t border-slate-900">
-                    <span>Day: £0.3157/kWh · Night: £0.1390/kWh · Standing: £0.5472/day · Cost shown in £/hr and p/hr</span>
-                    <span className="text-slate-400 font-semibold">Power source: {powerSource}</span>
+                <div className="overflow-y-auto custom-scrollbar flex-1 py-1" style={{ height: `${electricityPanel.height}px`, minHeight: '50px' }}>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-300 py-1">
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">WHOLE-PC DRAW:</span> <strong className="text-amber-300">{powerW}W</strong> <span className="text-slate-500">({powerKw.toFixed(3)} kW)</span></span>
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">RUNNING COST:</span> <strong className="text-emerald-400">£{hourlyCostPounds.toFixed(4)}/hr</strong> <span className="text-slate-400">({hourlyCostPence.toFixed(2)}p/hr)</span></span>
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">TARIFF:</span> <span className={isDayRate ? 'text-amber-300' : 'text-indigo-300'}>{isDayRate ? 'DAY (£0.3157/kWh)' : 'NIGHT (£0.1390/kWh)'}</span></span>
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">SESSION:</span> £{sessionElectricityCost.toFixed(4)}</span>
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">HARDWARE:</span> CPU {cpuPowerW || '—'}W · GPU {gpuPowerW}W · Other {otherPowerW}W</span>
                   </div>
                 </div>
                 <PanelResizeGrip
@@ -2398,10 +2341,10 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                   onResetWidth={electricityPanel.resetWidth}
                   width={electricityPanel.width}
                   height={electricityPanel.height}
-                  label="Power & Cost"
+                  label="Electricity & Running Cost"
                 />
               </div>
-            </MovableResizableWrapper>
+              </MovableResizableWrapper>
             );
           }
 
@@ -2413,12 +2356,12 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                 <MovableResizableWrapper id="widget-commercial" key="widget-commercial" collapsible title="Commercial" resizable={false} className="w-full">
                 <div
                   ref={commercialPanel.panelRef}
-                  className="rounded-lg border border-slate-800/80 bg-slate-950/90 px-3 py-1.5 flex items-center justify-between text-[10px] font-mono transition-all"
+                  className="bg-transparent border-0 px-1 py-1 flex items-center justify-between text-[9px] font-mono transition-all"
                   style={{ width: commercialPanel.width ? `${commercialPanel.width}px` : '100%' }}
                 >
                   <div className="flex items-center gap-2 cursor-pointer flex-1 min-w-0" onClick={() => toggleSingleWidgetMin('commercial')}>
-                    <DollarSign className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                    <span className="font-bold text-slate-200">COMMERCIAL BENCHMARK</span>
+                    <DollarSign className="w-3 h-3 text-sky-400 shrink-0" />
+                    <span className="font-bold text-slate-300">COMMERCIAL BENCHMARK:</span>
                     <span className="text-sky-300 font-bold">{resolvedLocalArch.arch} ➔ {resolvedLocalArch.twin}</span>
                     <span className="text-slate-600 hidden sm:inline">·</span>
                     <span className="text-emerald-400 font-bold">Saved £{commercialLedgerData.totalGbp.toFixed(2)}</span>
@@ -2428,10 +2371,10 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                     <span className="text-slate-400 hidden lg:inline">Turn: £{latestTurnSavingsGbp.toFixed(4)}</span>
                   </div>
                   <div className="flex items-center gap-1 shrink-0 ml-2">
-                    <button type="button" onClick={() => moveWidget('commercial', 'up')} disabled={idx === 0} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => moveWidget('commercial', 'down')} disabled={idx === widgetOrder.length - 1} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => toggleSingleWidgetMin('commercial')} className="p-1 rounded text-slate-400 hover:text-white cursor-pointer" title="Expand Widget"><Maximize2 className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => toggleWidget('commercial')} className="p-1 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('commercial', 'up')} disabled={idx === 0} className="p-0.5 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('commercial', 'down')} disabled={idx === widgetOrder.length - 1} className="p-0.5 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleSingleWidgetMin('commercial')} className="p-0.5 rounded text-slate-400 hover:text-white cursor-pointer" title="Expand Widget"><Maximize2 className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleWidget('commercial')} className="p-0.5 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
                   </div>
                 </div>
                 </MovableResizableWrapper>
@@ -2442,63 +2385,35 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
               <MovableResizableWrapper id="widget-commercial" key="widget-commercial" collapsible title="Commercial" className="w-full">
               <div
                 ref={commercialPanel.panelRef}
-                className="relative rounded-lg border border-slate-800 bg-slate-950/85 p-2.5 transition-all flex flex-col"
+                className="relative bg-transparent border-0 p-1 transition-all flex flex-col font-mono text-[9px]"
                 style={{ width: commercialPanel.width ? `${commercialPanel.width}px` : '100%' }}
               >
-                <div className="flex items-center justify-between mb-1.5 shrink-0">
-                  <div className="flex items-center gap-1.5">
-                    <DollarSign className="w-3.5 h-3.5 text-sky-400" />
-                    <span className="text-[8px] font-bold uppercase tracking-widest text-slate-300">COMMERCIAL PRICING BENCHMARKS (GBP £)</span>
-                    <span className="text-[8px] font-mono text-sky-300 font-bold ml-2">
-                      Twin: {resolvedLocalArch.arch} ──&gt; {resolvedLocalArch.twin}
+                <div className="flex items-center justify-between py-1 shrink-0 border-b border-slate-800/40">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-3 h-3 text-sky-400" />
+                    <span className="font-bold uppercase tracking-wider text-slate-400">COMMERCIAL BENCHMARKS (GBP £)</span>
+                    <span className="text-sky-300 font-bold ml-1">
+                      Twin: {resolvedLocalArch.arch} ➔ {resolvedLocalArch.twin}
+                    </span>
+                    <span className="text-slate-600">·</span>
+                    <span className="text-emerald-400 font-bold">
+                      Ledger: £{commercialLedgerData.totalGbp.toFixed(2)}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    {commercialPanel.width && (
-                      <span className="text-[7px] font-mono text-emerald-400/80 bg-slate-900 px-1 rounded border border-slate-800">
-                        {commercialPanel.width}px wide
-                      </span>
-                    )}
-                    <span className="text-[8px] font-mono text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
-                      Ledger Total: £{commercialLedgerData.totalGbp.toFixed(2)}
-                    </span>
-                    <button type="button" onClick={() => moveWidget('commercial', 'up')} disabled={idx === 0} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => moveWidget('commercial', 'down')} disabled={idx === widgetOrder.length - 1} className="p-1 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => toggleSingleWidgetMin('commercial')} className="p-1 rounded text-slate-400 hover:text-white cursor-pointer" title="Minimize Widget"><Minimize2 className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => toggleWidget('commercial')} className="p-1 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('commercial', 'up')} disabled={idx === 0} className="p-0.5 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Up"><ChevronUp className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => moveWidget('commercial', 'down')} disabled={idx === widgetOrder.length - 1} className="p-0.5 rounded text-slate-500 hover:text-slate-200 disabled:opacity-20 cursor-pointer" title="Move Down"><ChevronDown className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleSingleWidgetMin('commercial')} className="p-0.5 rounded text-slate-400 hover:text-white cursor-pointer" title="Minimize Widget"><Minimize2 className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => toggleWidget('commercial')} className="p-0.5 rounded text-slate-500 hover:text-rose-400 cursor-pointer" title="Hide Widget"><X className="w-3 h-3" /></button>
                   </div>
                 </div>
 
-                <div className="overflow-y-auto custom-scrollbar flex-1 pr-0.5 space-y-1.5" style={{ height: `${commercialPanel.height}px`, minHeight: '70px' }}>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
-                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Local Architecture</div>
-                      <div className="mt-0.5 text-[10px] font-bold font-mono text-slate-200">{resolvedLocalArch.arch}</div>
-                      <div className="text-[6px] font-mono text-emerald-400">{resolvedLocalArch.tier}</div>
-                    </div>
-                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-500">1-to-1 Commercial Twin</div>
-                      <div className="mt-0.5 text-[10px] font-bold font-mono text-sky-300">{resolvedLocalArch.twin}</div>
-                      <div className="text-[6px] font-mono text-slate-500">In £{resolvedLocalArch.inputRate.toFixed(4)} · Out £{resolvedLocalArch.outputRate.toFixed(4)}/1M</div>
-                    </div>
-                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-500">Turn Savings</div>
-                      <div className="mt-0.5 text-[10px] font-bold font-mono text-emerald-400">
-                        £{latestTurnSavingsGbp.toFixed(4)}
-                      </div>
-                      <div className="text-[6px] font-mono text-slate-600">{latestTurnTokens.total.toLocaleString()} tokens avoided</div>
-                    </div>
-                    <div className="rounded border border-slate-800 bg-slate-900/60 p-1.5">
-                      <div className="text-[7px] uppercase tracking-widest text-slate-500">SQLite Transactions</div>
-                      <div className="mt-0.5 text-[10px] font-bold font-mono text-slate-200">
-                        {commercialLedgerData.totalTransactions} runs
-                      </div>
-                      <div className="text-[6px] font-mono text-slate-600">ai_commercial_savings.db</div>
-                    </div>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center justify-between text-[7px] font-mono text-slate-500 pt-1 border-t border-slate-900">
-                    <span>Formula: ((In/1M)*Rate) + ((Out/1M)*Rate) + (Images*Vision) + (VideoSec*Video) · 1 USD = 0.78 GBP</span>
-                    <span className="text-slate-400 font-semibold">Vision: £{resolvedLocalArch.visionRate.toFixed(2)}/1k · Video: £{resolvedLocalArch.videoRate.toFixed(2)}/min</span>
+                <div className="overflow-y-auto custom-scrollbar flex-1 py-1" style={{ height: `${commercialPanel.height}px`, minHeight: '50px' }}>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-slate-300 py-1">
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">LOCAL ARCH:</span> <strong className="text-slate-200">{resolvedLocalArch.arch}</strong> <span className="text-emerald-400">({resolvedLocalArch.tier})</span></span>
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">1-TO-1 TWIN:</span> <strong className="text-sky-300">{resolvedLocalArch.twin}</strong> <span className="text-slate-500">(In £{resolvedLocalArch.inputRate.toFixed(4)} · Out £{resolvedLocalArch.outputRate.toFixed(4)}/1M)</span></span>
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">TURN SAVINGS:</span> <strong className="text-emerald-400">£{latestTurnSavingsGbp.toFixed(4)}</strong> <span className="text-slate-500">({latestTurnTokens.total.toLocaleString()} tokens avoided)</span></span>
+                    <span><span className="text-slate-500 uppercase tracking-wider text-[8px]">LEDGER SAVINGS:</span> <strong className="text-emerald-400 font-bold">£{commercialLedgerData.totalGbp.toFixed(2)}</strong> <span className="text-slate-500">({commercialLedgerData.totalTransactions} runs in ai_commercial_savings.db)</span></span>
                   </div>
                 </div>
                 <PanelResizeGrip
@@ -3224,31 +3139,26 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
           {status?.recentLog?.length ? (
             <div
               ref={llamaLogPanel.panelRef}
-              className="relative mt-1.5 rounded-lg border border-slate-800 bg-slate-950/60 flex flex-col transition-all"
+              className="relative mt-1 bg-transparent border-0 flex flex-col transition-all"
               style={{ width: llamaLogPanel.width ? `${llamaLogPanel.width}px` : '100%' }}
             >
               <button
                 type="button"
                 onClick={() => setLlamaLogOpen(v => !v)}
-                className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-900/50 cursor-pointer select-none transition-colors"
+                className="w-full flex items-center justify-between py-1 text-left cursor-pointer select-none border-b border-slate-800/40"
               >
                 <div className="flex items-center gap-2">
                   <ChevronRight className={`h-3 w-3 text-slate-500 transition-transform ${llamaLogOpen ? 'rotate-90 text-emerald-400' : ''}`} />
-                  <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400">llama-server diagnostic log</span>
+                  <span className="text-[8px] font-bold uppercase tracking-widest text-slate-400 font-mono">llama-server diagnostic log</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {llamaLogPanel.width && (
-                    <span className="text-[7px] font-mono text-emerald-400/80 bg-slate-900 px-1 rounded border border-slate-800">
-                      {llamaLogPanel.width}px wide
-                    </span>
-                  )}
-                  <span className="text-[7px] font-mono text-slate-600">{status.recentLog.length} lines</span>
+                  <span className="text-[7px] font-mono text-slate-500">{status.recentLog.length} lines</span>
                 </div>
               </button>
               {llamaLogOpen && (
                 <>
                   <pre
-                    className="border-t border-slate-800/80 px-3 py-2 text-[8px] font-mono text-slate-400 whitespace-pre-wrap overflow-y-auto custom-scrollbar flex-1"
+                    className="py-1 text-[8px] font-mono text-slate-400 whitespace-pre-wrap overflow-y-auto custom-scrollbar flex-1 bg-transparent border-0"
                     style={{ height: `${llamaLogPanel.height}px`, minHeight: '50px' }}
                   >
                     {status.recentLog.join('\n')}
@@ -3275,31 +3185,26 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
             </div>
           ) : null}
 
-          {pdfNotice && <div className={`mb-2 p-2 rounded border text-[9px] ${pdfNotice.startsWith('PDF saved:') ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300' : 'border-rose-500/30 bg-rose-500/5 text-rose-300'}`}>{pdfNotice}</div>}
+          {pdfNotice && <div className={`mb-1 p-1 text-[9px] font-mono ${pdfNotice.startsWith('PDF saved:') ? 'text-emerald-300' : 'text-rose-300'}`}>{pdfNotice}</div>}
 
-          <MovableResizableWrapper id="panel-local-inference" collapsible title="Local Inference Engine" className="mt-1.5">
+          <MovableResizableWrapper id="panel-local-inference" collapsible title="Local Inference Engine" className="mt-1">
             <section
             ref={bottomEnginePanel.panelRef}
-            className="relative rounded-lg border border-slate-800 bg-slate-950/90 flex flex-col transition-all"
+            className="relative bg-transparent border-0 flex flex-col transition-all font-mono"
             style={{ width: bottomEnginePanel.width ? `${bottomEnginePanel.width}px` : '100%' }}
           >
-            <div className="flex items-center justify-between gap-3 px-3 py-2.5 shrink-0">
+            <div className="flex items-center justify-between gap-3 py-1.5 shrink-0 border-b border-slate-800/40">
               <div className="flex min-w-0 items-center gap-2">
-                <Bot className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                <Bot className="h-3 w-3 text-emerald-400 shrink-0" />
                 <div className="min-w-0">
-                  <div className="text-[9px] font-bold uppercase tracking-widest text-slate-200">Local Inference Engine</div>
-                  <div className="truncate text-[8px] font-mono text-slate-500">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-300">Local Inference Engine: </span>
+                  <span className="truncate text-[8px] font-mono text-slate-400">
                     {status?.engine === 'qwen3.5' ? 'Qwen3.5 9B' : status?.engine === 'qwen-coder' ? 'Qwen Coder 7B' : 'Qwen 2.5-VL 7B'} · {status?.backend || 'CUDA'} · {status?.ready ? 'ONLINE' : 'OFFLINE'} · {status?.contextSize ?? 8192} context
-                  </div>
+                  </span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {bottomEnginePanel.width && (
-                  <span className="text-[7px] font-mono text-emerald-400/80 bg-slate-900 px-1 rounded border border-slate-800">
-                    {bottomEnginePanel.width}px wide
-                  </span>
-                )}
-                <button type="button" onClick={() => setShowBottomEngineConfig(v => !v)} className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/20">
+                <button type="button" onClick={() => setShowBottomEngineConfig(v => !v)} className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-emerald-300 hover:bg-emerald-500/20">
                   {showBottomEngineConfig ? 'Hide Config' : 'Show Config'}
                 </button>
               </div>
@@ -3307,24 +3212,24 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
             {showBottomEngineConfig && (
               <>
                 <div
-                  className="border-t border-slate-800 px-3 py-2.5 overflow-y-auto custom-scrollbar flex-1"
+                  className="py-1.5 overflow-y-auto custom-scrollbar flex-1"
                   style={{ height: `${bottomEnginePanel.height}px`, minHeight: '70px' }}
                 >
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                    <button type="button" onClick={() => void runAction('restart','qwen')} disabled={loading || status?.engine === 'qwen'} className="rounded border border-slate-700 bg-slate-900 p-2 text-left hover:border-emerald-500/40 disabled:opacity-40">
+                    <button type="button" onClick={() => void runAction('restart','qwen')} disabled={loading || status?.engine === 'qwen'} className="rounded border border-slate-800 bg-slate-900/60 p-1.5 text-left hover:border-emerald-500/40 disabled:opacity-40">
                       <div className="text-[9px] font-bold text-slate-200">Qwen 2.5-VL 7B</div><div className="text-[7px] text-slate-500">Vision / multimodal</div>
                     </button>
-                    <button type="button" onClick={() => void runAction('restart','qwen-coder')} disabled={loading || status?.engine === 'qwen-coder'} className="rounded border border-slate-700 bg-slate-900 p-2 text-left hover:border-emerald-500/40 disabled:opacity-40">
+                    <button type="button" onClick={() => void runAction('restart','qwen-coder')} disabled={loading || status?.engine === 'qwen-coder'} className="rounded border border-slate-800 bg-slate-900/60 p-1.5 text-left hover:border-emerald-500/40 disabled:opacity-40">
                       <div className="text-[9px] font-bold text-slate-200">Qwen Coder 7B</div><div className="text-[7px] text-amber-300">Text / code</div>
                     </button>
-                    <button type="button" onClick={() => void runAction('restart','qwen3.5')} disabled={loading || status?.engine === 'qwen3.5'} className="rounded border border-slate-700 bg-slate-900 p-2 text-left hover:border-emerald-500/40 disabled:opacity-40">
+                    <button type="button" onClick={() => void runAction('restart','qwen3.5')} disabled={loading || status?.engine === 'qwen3.5'} className="rounded border border-slate-800 bg-slate-900/60 p-1.5 text-left hover:border-emerald-500/40 disabled:opacity-40">
                       <div className="text-[9px] font-bold text-slate-200">Qwen3.5 9B</div><div className="text-[7px] text-sky-300">Multimodal</div>
                     </button>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => void runAction('start')} disabled={loading || !status?.configured || !!status?.running} className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-emerald-300 disabled:opacity-40">Start</button>
-                    <button type="button" onClick={() => void runAction('stop')} disabled={loading || !status?.running} className="rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-slate-300 disabled:opacity-40">Stop</button>
-                    <button type="button" onClick={() => void runAction('restart')} disabled={loading || !status?.configured} className="rounded border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wider text-sky-300 disabled:opacity-40">Restart</button>
+                    <button type="button" onClick={() => void runAction('start')} disabled={loading || !status?.configured || !!status?.running} className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-emerald-300 disabled:opacity-40">Start</button>
+                    <button type="button" onClick={() => void runAction('stop')} disabled={loading || !status?.running} className="rounded border border-slate-700 bg-slate-900/80 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-slate-300 disabled:opacity-40">Stop</button>
+                    <button type="button" onClick={() => void runAction('restart')} disabled={loading || !status?.configured} className="rounded border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-sky-300 disabled:opacity-40">Restart</button>
                     <span className="self-center text-[8px] font-mono text-slate-600 truncate">{status?.modelPath || 'Local model path unavailable'}</span>
                   </div>
                 </div>
