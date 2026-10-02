@@ -20,7 +20,7 @@ import { ComfyUIStatusIndicator } from './components/WanDiagnostic';
 import { RuntimeTelemetryPanel } from './components/RuntimeTelemetryPanel';
 import { StudioWorkspace } from './components/StudioWorkspace';
 import { LogEntry, SystemTelemetry } from './types';
-import { applyGinaPanelChrome, OuterWorkspaceFrame } from './components/ResizablePanels';
+import { applyGinaPanelChrome } from './components/ResizablePanels';
 import { Aida64Hud } from './components/Aida64Hud';
 import { APP_VERSION, ACTIVE_SAVE_POINT_ID } from './version';
 
