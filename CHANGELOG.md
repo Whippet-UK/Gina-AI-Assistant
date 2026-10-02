@@ -1,3 +1,54 @@
+## 2026-10-02 — Claude Streaming Chat UI Layout, In-Stream Live Code & Tool Snippets, and Self-Hosted Local Observability Engine (Prometheus + Grafana)
+- **Target File Path:** `/claude-streaming-chat.html` & `/src/components/LocalLlmStudio.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    // Removed detached black executionLog card above message history.
+    // In-stream live tool & execution steps with full code snippets and commands inside assistant message:
+    {message.liveSteps && message.liveSteps.length > 0 && (
+      <div className="space-y-2 mb-3">
+        {message.liveSteps.map((step) => renderLiveStep(step))}
+      </div>
+    )}
+    // Open syntax-highlighted code blocks with Copy, Download, and Preview buttons:
+    <pre className="max-h-[360px] overflow-auto border-t border-slate-800 p-3 font-mono text-[11px] leading-relaxed text-cyan-200 bg-[#0b0e14] custom-scrollbar"><code>{code}</code></pre>
+    ```
+  - **Why:** Replaced the detached black agent execution box with clean, in-stream live logs right inside the assistant response bubble matching `claude-streaming-chat.html`. Enabled live visualization of commands executed, files read, and code snippets modified. Removed the collapsed `<details>` summary so code blocks are immediately visible with dedicated copy, preview, and download actions.
+- **Target File Path:** `/server/observability/LocalObservabilityEngine.ts` & `/server.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    export class LocalObservabilityEngine { ... }
+    app.get('/metrics', ...);
+    app.get('/api/observability/traces', ...);
+    app.get('/api/observability/audit', ...);
+    app.get(['/api/docs', '/api/observability/docs'], ...); // Interactive Swagger UI
+    ```
+  - **Why:** Implemented 100% self-hosted, lightweight alternative to SigNoz Community Edition designed specifically for local AI environments. Features native `/metrics` standard Prometheus text scrape endpoint, in-memory ring buffer with SQLite audit log persistence, custom alert thresholds for anomalies (VRAM, latency, error rate), and OpenAPI 3.0 interactive Swagger UI at `/api/docs`.
+- **Target File Path:** `/src/components/ObservabilityStudio.tsx` & `/src/App.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    { id: 'observability' as const, label: 'OBSERVABILITY', icon: Activity, isGenerating: false }
+    <main className={`space-y-5 ${activeView === 'observability' ? 'block' : 'hidden'}`}>
+      <WorkspaceErrorBoundary name="Observability Studio">
+        <ObservabilityStudio />
+      </WorkspaceErrorBoundary>
+    </main>
+    ```
+  - **Why:** Added dedicated Observability Studio tab in the top navigation and modal launcher inside Assistant Studio, providing real-time hardware and HTTP telemetry, live tool trace explorer, audit log viewer with CSV/JSON export, alert threshold management, and automated backup snapshots.
+- **Target File Path:** `/docker-compose.observability.yml` & `/deploy/prometheus/prometheus.yml`
+  - **Exact Code Snippet:**
+    ```yaml
+    services:
+      prometheus:
+        image: prom/prometheus:v2.52.0
+        ports: ["9090:9090"]
+        volumes: [prometheus_data:/prometheus]
+      grafana:
+        image: grafana/grafana:11.0.0
+        ports: ["3001:3000"]
+        volumes: [grafana_data:/var/lib/grafana]
+    ```
+  - **Why:** Provided zero-cloud, containerized Docker Compose stack for Prometheus and Grafana with persistent volume mappings and pre-provisioned data sources for local service monitoring.
+
 ## 2026-10-02 — Text-Only Live Execution Log, Anchored Auto-Scroll with User Interrupt, and 2D Rover Sandbox
 - **Target File Path:** `/src/components/LocalLlmStudio.tsx`
   - **Exact Code Snippet:**

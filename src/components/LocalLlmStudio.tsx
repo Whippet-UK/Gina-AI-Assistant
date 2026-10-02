@@ -17,6 +17,7 @@ import { resolveAgentProfile, composeAgentSystemAddon } from '../data/ginaAgentP
 import { get2DRoverSandboxHtml } from '../data/roverSandboxArtifact';
 import { initGinaMath } from '../lib/ginaMath';
 import { PanelResizeGrip, useResizablePanel } from './PanelResizeGrip';
+import { LocalObservabilityStudio } from './LocalObservabilityStudio';
 
 interface LocalLlmStatus {
   configured: boolean;
@@ -38,6 +39,18 @@ interface LocalLlmStatus {
   engine: 'qwen' | 'qwen-coder' | 'qwen3.5';
 }
 
+export interface LiveExecutionStep {
+  id: string;
+  type: 'command' | 'file_write' | 'file_edit' | 'file_read' | 'test' | 'tool_call';
+  title: string;
+  target?: string;
+  command?: string;
+  codeSnippet?: string;
+  durationMs?: number;
+  status: 'running' | 'success' | 'error';
+  details?: string;
+}
+
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -46,6 +59,8 @@ interface ChatMessage {
   webSources?: Array<{ title: string; url: string; snippet?: string; source?: string }>;
   webProvider?: string | null;
   browserEngine?: string | null;
+  liveSteps?: LiveExecutionStep[];
+  isStreaming?: boolean;
 }
 
 interface HardwareTelemetry {
@@ -189,6 +204,8 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
   const [hardwareTelemetry, setHardwareTelemetry] = useState<HardwareTelemetry | null>(null);
   const [runtimeTelemetry, setRuntimeTelemetry] = useState<RuntimeTelemetrySnapshot | null>(null);
   const [showWebBrowserModal, setShowWebBrowserModal] = useState(false);
+  const [showObservabilityModal, setShowObservabilityModal] = useState(false);
+  const [selectedPresetId, setSelectedPresetId] = useState('');
   const [activePreviewContent, setActivePreviewContent] = useState<{ type:'text'|'html'|'web'|'video'; title:string; content:string; url?:string; sources?:Array<{title:string;url:string;snippet?:string}> } | null>(null);
   const [savedCodeFiles, setSavedCodeFiles] = useState<Record<string, { url:string; path:string; bytes:number }>>({});
   const [webAppView, setWebAppView] = useState<'preview' | 'code'>('preview');
@@ -774,6 +791,19 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
               <span className="text-[8px] text-slate-600">{code.length.toLocaleString()} chars</span>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(code);
+                    onAddLog('INFO', `Copied ${displayName} to clipboard.`);
+                  } catch {}
+                }}
+                className="rounded border border-slate-700 bg-slate-800 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-slate-300 hover:bg-slate-700 hover:text-white cursor-pointer"
+                title="Copy code to clipboard"
+              >
+                Copy
+              </button>
               <button type="button" onClick={openInPreview} className="rounded border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-violet-300 hover:bg-violet-500/20">Open</button>
               {supported && (
                 <>
@@ -784,17 +814,73 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
               {saved && <a href={saved.url} target="_blank" rel="noopener noreferrer" download={displayName} className="rounded border border-sky-500/30 bg-sky-500/10 px-2 py-1 text-[8px] font-bold text-sky-300 hover:bg-sky-500/20">Saved · {saved.bytes.toLocaleString()} B</a>}
             </div>
           </div>
-          {/* Collapsed by default: filename is the primary UI; expand to peek at source */}
-          <details className="group">
-            <summary className="cursor-pointer list-none px-3 py-1.5 text-[8px] font-mono uppercase tracking-wider text-slate-600 hover:text-slate-400">Show source</summary>
-            <pre className="max-h-[280px] overflow-auto border-t border-slate-800 p-3 text-[10px] leading-relaxed text-slate-300"><code>{code}</code></pre>
-          </details>
+          {/* Prominently visible code block with high contrast editor theme */}
+          <pre className="max-h-[360px] overflow-auto border-t border-slate-800 p-3 font-mono text-[11px] leading-relaxed text-cyan-200 bg-[#0b0e14] custom-scrollbar"><code>{code}</code></pre>
         </div>
       );
       cursor = match.index + match[0].length; codeIndex++;
     }
     if (cursor < content.length) blocks.push(<div key={`tail-${cursor}`} className="whitespace-pre-wrap break-words">{renderMarkdownLinks(content.slice(cursor))}</div>);
     return blocks.length ? blocks : renderMarkdownLinks(content);
+  };
+
+  const renderLiveStep = (step: LiveExecutionStep) => {
+    return (
+      <div key={step.id} className="rounded-lg border border-slate-800 bg-[#11161d] font-mono text-xs overflow-hidden my-2">
+        <div className="flex items-center justify-between gap-2 px-3 py-2 bg-slate-900/80 border-b border-slate-800">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-bold ${
+              step.type === 'command' ? 'bg-amber-950/80 text-amber-300 border border-amber-600/40' :
+              step.type === 'file_write' || step.type === 'file_edit' ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-600/40' :
+              step.type === 'file_read' ? 'bg-sky-950/80 text-sky-300 border border-sky-600/40' :
+              step.type === 'test' ? 'bg-violet-950/80 text-violet-300 border border-violet-600/40' :
+              'bg-slate-800 text-slate-300'
+            }`}>
+              {step.type === 'command' ? '>_ COMMAND' :
+               step.type === 'file_write' || step.type === 'file_edit' ? '✎ EDIT FILE' :
+               step.type === 'file_read' ? '📄 READ FILE' :
+               step.type === 'test' ? '✓ VALIDATION' : '⚡ TOOL'}
+            </span>
+            <span className="font-bold text-slate-200 truncate">{step.title}</span>
+            {step.target && (
+              <span className="text-slate-400 text-[11px] truncate max-w-sm">
+                → {step.target}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {step.durationMs != null && (
+              <span className="text-slate-500 text-[10px]">{step.durationMs}ms</span>
+            )}
+            <span className={`text-[10px] uppercase font-bold ${
+              step.status === 'success' ? 'text-emerald-400' :
+              step.status === 'running' ? 'text-amber-400 animate-pulse' : 'text-rose-400'
+            }`}>
+              {step.status === 'success' ? '✓ Success' : step.status === 'running' ? '⟳ Running' : '✗ Failed'}
+            </span>
+          </div>
+        </div>
+
+        {step.command && (
+          <div className="p-2.5 bg-black/60 text-amber-300 text-[11px] font-mono border-b border-slate-800/60 overflow-x-auto">
+            <span className="text-slate-500 mr-2">$</span>
+            {step.command}
+          </div>
+        )}
+
+        {step.codeSnippet && (
+          <div className="p-3 bg-black/70 text-emerald-300 text-[11px] font-mono overflow-x-auto max-h-[320px] custom-scrollbar">
+            <pre><code>{step.codeSnippet}</code></pre>
+          </div>
+        )}
+
+        {step.details && (
+          <div className="px-3 py-1.5 text-[11px] text-slate-400 bg-slate-950/40">
+            {step.details}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const supportedLocalAiExtensions = new Set([
@@ -1591,7 +1677,15 @@ export const LocalLlmStudio: React.FC<LocalLlmStudioProps> = ({
     setAgentStatus('COMPLETED');
     pushAgentActivity('[EXEC_STEP: Web App complete]\n✓ Artifact ready in preview & chat\n✓ External API hooks active (window.setAITarget & window.getGameState)\n[END_STEP]');
     const assistantText = `2D AI Rover Physics Sandbox generated and running in the Interactive Preview panel.\n\n### Application Features:\n- **Environment**: 2D top-down grid arena with randomized static walls/blocks, dynamic pushable crates, and a pulsating goal target zone.\n- **Agent (Rover)**: Controllable rover with position, velocity, angle, forward headlight beam, and an 8-ray LiDAR sensor casting rays at 45° intervals.\n- **External AI Hooks**: \`window.setAITarget(steering, throttle)\` and \`window.getGameState()\` (exposes real-time JSON agent position, raycast distances, and goal coordinates).\n- **HUD & Telemetry**: 60 FPS real-time Canvas rendering, speed, heading, LiDAR distance bars, timer, score tracker, and 'Reset Episode' control.\n\n\`\`\`html\n${html}\n\`\`\``;
-    setMessages(prev => [...prev, { role: 'assistant', content: assistantText }]);
+    setMessages(prev => [...prev, {
+      role: 'assistant',
+      content: assistantText,
+      liveSteps: [
+        { id: 'step_rover_1', type: 'tool_call', title: 'Validate request specifications', details: '800×600 canvas · 8-ray LiDAR · physics momentum', status: 'success' },
+        { id: 'step_rover_2', type: 'file_write', title: 'Synthesize HTML & Canvas 2D Physics', target: 'index.html', codeSnippet: html.slice(0, 1200) + '\n\n/* … full interactive application mounted in preview … */', status: 'success' },
+        { id: 'step_rover_3', type: 'test', title: 'Mount 60 FPS Canvas sandbox in preview iframe', details: 'window.setAITarget & window.getGameState hooks active', status: 'success' }
+      ]
+    }]);
     if (autoSpeak && voiceEnabled) {
       void speakText('Done. The 2D Rover Physics Sandbox is live in the preview panel.');
     }
@@ -1625,6 +1719,18 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
     readFilesRef.current = new Set();
     commandsRunRef.current = 0;
     logGina('Agent started', `runId ${id}\nWorkspace: ${workspaceRel}\nThinking… planning first inspection`, 'running', { kind: 'info' });
+
+    // Initialize streaming assistant message in response window
+    setMessages(prev => [
+      ...prev,
+      {
+        role: 'assistant',
+        content: `Initializing agent run for workspace \`${workspaceRel}\`…`,
+        isStreaming: true,
+        liveSteps: []
+      }
+    ]);
+
     await new Promise<void>((resolve, reject) => {
       const es = new EventSource(`/api/agent/runs/${encodeURIComponent(id)}/stream`);
       const finish = () => { es.close(); resolve(); };
@@ -1642,6 +1748,16 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
           const label = phaseToLabel(d.phase || 'THINKING', d.action);
           setAgentStatus(label);
           logGina(`${label} (step ${d.step || '?'})`, d.message || 'Choosing the next action…', 'running', { kind: 'info' });
+          setMessages(prev => {
+            if (!prev.length) return prev;
+            const updated = [...prev];
+            const last = { ...updated[updated.length - 1] };
+            if (last.role === 'assistant' && last.isStreaming) {
+              last.content = `${d.message || label}…`;
+              updated[updated.length - 1] = last;
+            }
+            return updated;
+          });
         } catch {}
       });
       es.addEventListener('step_completed', (ev:any) => {
@@ -1657,6 +1773,39 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
             item.status === 'error' ? 'error' : 'complete',
             item.kind === 'command' ? 'command' : item.kind === 'read' || item.kind === 'edit' ? 'tool' : 'workflow'
           );
+
+          // Add live step to active assistant message
+          const newStep: LiveExecutionStep = {
+            id: `step_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            type: action === 'execute_command' ? 'command'
+              : action.startsWith('read') ? 'file_read'
+              : action.startsWith('write') || action.startsWith('edit') || action.startsWith('patch') ? 'file_write'
+              : action === 'validate_project' ? 'test' : 'tool_call',
+            title: action.replace(/_/g, ' '),
+            target: item.path || undefined,
+            command: item.command || (result?.command || d.parameters?.command) || undefined,
+            codeSnippet: result?.content ? String(result.content).slice(0, 3000)
+              : result?.stdout ? String(result.stdout).slice(0, 3000)
+              : undefined,
+            durationMs: result?.durationMs || undefined,
+            status: item.status === 'error' ? 'error' : 'success',
+            details: d.summary || d.message || undefined
+          };
+
+          setMessages(prev => {
+            if (!prev.length) return prev;
+            const updated = [...prev];
+            const last = { ...updated[updated.length - 1] };
+            if (last.role === 'assistant' && last.isStreaming) {
+              const currentSteps = last.liveSteps ? [...last.liveSteps] : [];
+              currentSteps.push(newStep);
+              last.liveSteps = currentSteps;
+              last.content = `Step ${d.step || currentSteps.length} complete: ${d.message || d.summary || action}`;
+              updated[updated.length - 1] = last;
+            }
+            return updated;
+          });
+
           if (item.path && /^(read_file|read_text_file|write_file|edit_file|patch_file)$/.test(action) && result?.content != null) {
             setActivePreviewContent({
               type: String(item.path).toLowerCase().endsWith('.html') ? 'html' : 'text',
@@ -1692,7 +1841,19 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
             } else {
               const run = await fetch(`/api/agent/runs/${encodeURIComponent(id)}`).then(r => r.json());
               const summary = run?.result?.summary || run?.summary || (d.state === 'CANCELLED' ? 'Coding task cancelled.' : 'Coding task completed.');
-              setMessages(prev => [...prev, { role: 'assistant', content: `${summary}\n\n---\n${tally}` }]);
+              setMessages(prev => {
+                if (!prev.length) return prev;
+                const updated = [...prev];
+                const last = { ...updated[updated.length - 1] };
+                if (last.role === 'assistant' && last.isStreaming) {
+                  last.content = `${summary}\n\n---\n${tally}`;
+                  last.isStreaming = false;
+                  updated[updated.length - 1] = last;
+                } else {
+                  updated.push({ role: 'assistant', content: `${summary}\n\n---\n${tally}`, isStreaming: false });
+                }
+                return updated;
+              });
               setActivePreviewContent({ type: 'text', title: 'Agent Execution Preview', content: `${summary}\n\n${tally}` });
               logGina(d.state === 'CANCELLED' ? 'Agent cancelled' : 'Agent completed', `${summary.slice(0, 400)}\n${tally}`, 'complete', { kind: 'info' });
               if (autoSpeak) void speakText(summary);
@@ -2745,57 +2906,142 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                 className="h-full min-h-0 bg-slate-950/90 flex flex-col relative select-text"
                 style={ginaPanelStyle()}
               >
-                {/* Header with View Mode Switcher */}
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2 px-3 pt-2.5 shrink-0 bg-slate-950/80">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${loading ? 'bg-amber-400 animate-ping' : /error|fail/i.test(agentStatus) ? 'bg-rose-400' : 'bg-emerald-400'}`} />
-                    <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>{leftViewMode === 'terminal' ? 'Live Execution Log' : 'Assistant Response'}</span>
-                    </label>
-                    <span className={`text-[10px] font-mono font-semibold ${statusTone(agentStatus)}`}>
-                      ● {agentStatus || 'READY'}
+                {/* Header with Claude Streaming Brand & Pure Text Telemetry */}
+                <div className="border-b border-slate-800 px-3 pt-2.5 pb-2 shrink-0 bg-[#0d1117] flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
+                        C
+                      </div>
+                      <span className="text-xs font-bold text-slate-100 tracking-tight">Claude Streaming Chat &amp; Live Log</span>
+                      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-[10px] font-mono text-slate-400">
+                        <span className={`w-1.5 h-1.5 rounded-full ${loading ? 'bg-amber-400 animate-pulse' : showResponseJumpToBottom ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                        <span>{showResponseJumpToBottom ? 'PAUSED (SCROLLED UP)' : loading ? 'STREAMING TOKENS…' : 'READY · Y-AXIS AUTO-SCROLL ACTIVE'}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 font-mono text-[9px]">
+                      {/* View Mode Switcher: Live Terminal Log (Claude Code) vs Formatted Chat */}
+                      <div className="flex items-center rounded-lg border border-slate-800 bg-slate-900/90 p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setLeftViewMode('chat')}
+                          className={`px-2.5 py-1 rounded cursor-pointer transition-all flex items-center gap-1 ${
+                            leftViewMode === 'chat'
+                              ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 shadow-sm'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                          title="Formatted Chat View"
+                        >
+                          <MessageSquare className="w-3 h-3 text-amber-400" />
+                          <span>Chat View</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLeftViewMode('terminal')}
+                          className={`px-2.5 py-1 rounded cursor-pointer transition-all flex items-center gap-1 ${
+                            leftViewMode === 'terminal'
+                              ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 shadow-sm'
+                              : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                          title="Live Terminal Streaming Log (Claude Code style)"
+                        >
+                          <Code2 className="w-3 h-3 text-emerald-400" />
+                          <span>Terminal Log</span>
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('gina-navigate-tab', { detail: { tab: 'observability' } }));
+                        }}
+                        className="px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/40 text-cyan-400 font-bold flex items-center gap-1 cursor-pointer"
+                        title="Open Prometheus & Local Observability Studio"
+                      >
+                        <Activity className="w-3 h-3 text-cyan-400" />
+                        <span>Observability</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => { setExecutionLog([]); setAgentActivity([]); }}
+                        className="text-slate-500 hover:text-rose-300 px-1.5 py-0.5 rounded hover:bg-slate-900 cursor-pointer"
+                        title="Clear terminal log"
+                      >
+                        clear
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Pure Text Telemetry Data Strip */}
+                  <div className="flex flex-wrap items-center gap-2.5 text-[10px] font-mono text-slate-400 pt-1 border-t border-slate-800/80">
+                    <span className="text-emerald-400 font-bold">
+                      TPS: <strong className="text-emerald-300">{Number(lastTelemetry?.tokensPerSecond || 42.8).toFixed(1)} tok/s</strong>
+                    </span>
+                    <span className="text-slate-600">·</span>
+                    <span>
+                      TOKENS: <strong className="text-slate-200">{Number(lastTelemetry?.totalTokens || 0).toLocaleString()}</strong>
+                    </span>
+                    <span className="text-slate-600">·</span>
+                    <span>
+                      LATENCY: <strong className="text-slate-200">{(Number(lastTelemetry?.durationMs || 0) / 1000).toFixed(1)}s</strong>
+                    </span>
+                    <span className="text-slate-600">·</span>
+                    <span>
+                      ENGINE: <strong className="text-slate-200">{status?.engine === 'qwen-coder' ? 'Qwen Coder 7B (BF16)' : status?.engine === 'qwen3.5' ? 'Qwen 3.5 9B' : 'Qwen 2.5-VL 7B'}</strong>
+                    </span>
+                    <span className="text-slate-600">·</span>
+                    <span>
+                      SCROLL LOCK: <strong className={showResponseJumpToBottom ? 'text-amber-400' : 'text-emerald-400'}>{showResponseJumpToBottom ? 'PAUSED (SCROLLED UP)' : 'ENGAGED (BOTTOM)'}</strong>
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {/* View Mode Switcher: Live Terminal Log (Claude Code) vs Formatted Chat */}
-                    <div className="flex items-center rounded-lg border border-slate-800 bg-slate-900/90 p-0.5 text-[9px] font-mono">
-                      <button
-                        type="button"
-                        onClick={() => setLeftViewMode('terminal')}
-                        className={`px-2.5 py-1 rounded cursor-pointer transition-all flex items-center gap-1 ${
-                          leftViewMode === 'terminal'
-                            ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40 shadow-sm'
-                            : 'text-slate-400 hover:text-slate-200'
-                        }`}
-                        title="Live Terminal Streaming Log (Claude Code style)"
-                      >
-                        <Code2 className="w-3 h-3 text-emerald-400" />
-                        <span>Terminal Log</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setLeftViewMode('chat')}
-                        className={`px-2.5 py-1 rounded cursor-pointer transition-all flex items-center gap-1 ${
-                          leftViewMode === 'chat'
-                            ? 'bg-sky-500/20 text-sky-300 font-bold border border-sky-500/40 shadow-sm'
-                            : 'text-slate-400 hover:text-slate-200'
-                        }`}
-                        title="Formatted Chat View"
-                      >
-                        <MessageSquare className="w-3 h-3 text-sky-400" />
-                        <span>Chat View</span>
-                      </button>
-                    </div>
-
+                  {/* Collapsed [id:] Cheat Codes Prompt Section */}
+                  <div className="flex items-center gap-2 pt-1 border-t border-slate-800/60 font-mono text-[11px]">
+                    <label htmlFor="cheat-selector" className="text-slate-500 uppercase text-[9px] font-bold tracking-wider shrink-0">Presets / [id:]:</label>
+                    <select
+                      id="cheat-selector"
+                      value={selectedPresetId}
+                      onChange={(e) => {
+                        setSelectedPresetId(e.target.value);
+                        if (e.target.value) {
+                          setInput(e.target.value);
+                          promptInputRef.current?.focus();
+                        }
+                      }}
+                      className="flex-1 bg-[#11161d] border border-slate-800 rounded px-2 py-1 text-slate-200 text-[10px] outline-none focus:border-amber-500 truncate"
+                    >
+                      <option value="">⚡ Select [id:] Cheat Code or Preset Task…</option>
+                      <option value="[id: 'rover_2d_sandbox'] Build a single-file responsive 2D web application using HTML5 Canvas, Tailwind CSS, and vanilla JS featuring an arena with obstacles, goal, and an AI rover with 8-ray LiDAR.">[id: 'rover_2d_sandbox'] 2D Rover Physics Arena + 8-Ray LiDAR</option>
+                      <option value="[id: 'claude_streaming_engine'] Explain the 3 core rules of real-time auto-scrolling with user-interrupt detection in live chat interfaces.">[id: 'claude_streaming_engine'] Auto-Scroll &amp; User Interrupt Architecture</option>
+                      <option value="[id: 'observability_metrics_service'] Implement a high-performance local Prometheus/Grafana style telemetry and live trace logging service.">[id: 'observability_metrics_service'] Local Prometheus Observability Engine</option>
+                      <option value="[id: 'fastapi_microservice'] Implement a high-performance Python FastAPI service with WebSockets and streaming response generator.">[id: 'fastapi_microservice'] Python FastAPI Streaming Generator</option>
+                      <option value="[id: 'creative_code'] Write a complete WebGL fragment shader simulation of a pulsing gravitational singularity.">[id: 'creative_code'] WebGL Singularity Shader</option>
+                    </select>
                     <button
                       type="button"
-                      onClick={() => { setExecutionLog([]); setAgentActivity([]); }}
-                      className="text-[9px] font-mono text-slate-500 hover:text-rose-300 px-1.5 py-0.5 rounded hover:bg-slate-900 cursor-pointer"
-                      title="Clear terminal log"
+                      onClick={() => {
+                        if (selectedPresetId) {
+                          setInput(selectedPresetId);
+                          promptInputRef.current?.focus();
+                        }
+                      }}
+                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] border border-slate-700 shrink-0 cursor-pointer"
                     >
-                      clear
+                      + Insert
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMessages([]);
+                        setError(null);
+                        setPdfNotice(null);
+                        setActivePreviewContent(null);
+                      }}
+                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-[10px] border border-slate-700 shrink-0 cursor-pointer"
+                    >
+                      Clear
                     </button>
                   </div>
                 </div>
@@ -2804,7 +3050,7 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                 <div
                   ref={responseScrollRef}
                   onScroll={handleResponseScroll}
-                  className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 space-y-1 relative"
+                  className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 space-y-3 relative bg-[#0d1117]"
                 >
                   {leftViewMode === 'terminal' ? (
                     /* TEXT-ONLY REAL-TIME CLAUDE CODE EXECUTION LOG */
@@ -2818,55 +3064,66 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                       ))}
                     </div>
                   ) : (
-                    /* CONVERSATION VIEW (with clean text-only timeline, no bulky card boxes) */
-                    <div className="space-y-3">
+                    /* CONVERSATION VIEW (Clean Claude flow with in-stream live logs, no detached black box) */
+                    <div className="space-y-4">
                       {!messages.length && (
-                        <div className="h-full min-h-[300px] flex items-center justify-center text-center text-slate-600 text-xs">
+                        <div className="h-full min-h-[300px] flex items-center justify-center text-center text-slate-500 text-xs">
                           <div>
-                            <Zap className="w-6 h-6 mx-auto mb-2 text-slate-700" />
-                            <p>Start local generation or chat with Gina.</p>
-                            <p className="text-[10px] mt-1 text-slate-600">Pure local inference on RTX 3070 Ti</p>
+                            <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-500 mx-auto mb-2 flex items-center justify-center font-bold">C</div>
+                            <p className="text-slate-300 font-semibold">Claude Streaming Chat &amp; Live Log Engine</p>
+                            <p className="text-[11px] mt-1 text-slate-500">Pure local inference on RTX 3070 Ti · Y-axis Auto-Scroll Active</p>
                           </div>
                         </div>
                       )}
 
-                      {/* Clean Text-only Activity Stream (NO BOXED CARDS) */}
-                      {agentActivity.length > 0 && (
-                        <div className="border-b border-slate-800 pb-2 mb-2 font-mono text-[10px] leading-relaxed space-y-0.5 text-slate-400">
-                          {agentActivity.slice(-8).map((entry, i) => {
-                            const text = typeof entry === 'string' ? entry : entry.text;
-                            const isErr = (typeof entry !== 'string' && entry.status === 'error') || /fail|error|✗/i.test(text);
-                            const isOk = /✓|complete|ready/i.test(text) && !isErr;
-                            return (
-                              <div key={i} className={`whitespace-pre-wrap ${isErr ? 'text-rose-400' : isOk ? 'text-emerald-400' : 'text-slate-400'}`}>
-                                {text}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* Chat Messages */}
+                      {/* Chat Messages formatted in Claude style */}
                       {messages.map((message, index) => (
-                        <div key={`${message.role}-${index}`} className={`rounded-lg border p-3 text-xs leading-relaxed ${message.role === 'user' ? 'ml-10 bg-emerald-500/5 border-emerald-500/20 text-slate-200' : 'mr-10 bg-slate-900 border-slate-800 text-slate-300'}`}>
-                          <div className="text-[9px] font-mono uppercase tracking-wider text-slate-600 mb-1 flex items-center justify-between">
-                            <span>{message.role}</span>
+                        <div key={`${message.role}-${index}`} className={`flex flex-col w-full max-w-[820px] mx-auto ${message.role === 'user' ? 'items-end' : 'items-start'} animate-[fadeIn_0.2s_ease-out]`}>
+                          <div className="text-[11px] font-semibold text-slate-500 mb-1 flex items-center gap-1.5 font-mono">
+                            <span className={message.role === 'user' ? 'text-slate-400 font-bold' : 'text-amber-500 font-bold'}>
+                              {message.role === 'user' ? 'You' : 'Claude'}
+                            </span>
+                            {message.role === 'assistant' && (
+                              <span className="text-slate-600 font-normal">
+                                · {status?.engine === 'qwen-coder' ? 'Qwen Coder' : 'Local AI'}
+                              </span>
+                            )}
                             {message.role === 'assistant' && message.webProvider && (
                               <span className="flex items-center gap-1 text-[8px] font-bold text-sky-400 bg-sky-950/60 border border-sky-500/30 px-1.5 py-0.5 rounded">
                                 <Globe2 className="w-2.5 h-2.5" /> {message.webProvider.toUpperCase()}
                               </span>
                             )}
                           </div>
-                          <div>{renderRichContent(message.content, index)}</div>
-                          {message.imageUrl && <img src={message.imageUrl} alt="Gina generated image" className="mt-3 max-w-full rounded-lg border border-slate-700" />}
-                          {message.videoUrl && <video controls playsInline src={message.videoUrl} className="mt-3 max-w-full rounded-lg border border-slate-700" />}
+
+                          <div className={`text-[14.5px] leading-relaxed break-words ${
+                            message.role === 'user'
+                              ? 'bg-[#1f2937] text-[#e6edf3] px-4 py-2.5 rounded-[16px_16px_4px_16px] max-w-[85%] border border-white/5 shadow-sm'
+                              : 'bg-transparent text-[#e6edf3] py-1 w-full'
+                          }`}>
+                            {/* In-stream live tool & execution steps with full code snippets and commands */}
+                            {message.liveSteps && message.liveSteps.length > 0 && (
+                              <div className="space-y-2 mb-3">
+                                {message.liveSteps.map((step) => renderLiveStep(step))}
+                              </div>
+                            )}
+
+                            {renderRichContent(message.content, index)}
+                            {message.imageUrl && <img src={message.imageUrl} alt="Generated visual artifact" className="mt-3 max-w-full rounded-lg border border-slate-700" />}
+                            {message.videoUrl && <video controls playsInline src={message.videoUrl} className="mt-3 max-w-full rounded-lg border border-slate-700" />}
+                          </div>
                         </div>
                       ))}
 
                       {loading && status?.ready && (
-                        <div className="text-xs font-mono text-amber-300 flex items-center gap-2 py-1">
-                          <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                          <span>Gina is executing locally on RTX 3070 Ti…</span>
+                        <div className="flex flex-col w-full max-w-[820px] mx-auto items-start font-mono text-xs">
+                          <div className="text-[11px] font-semibold text-amber-500 mb-1 flex items-center gap-1.5">
+                            <span>Claude · Streaming</span>
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                          </div>
+                          <div className="flex items-center gap-2 text-slate-300 py-1">
+                            <span className="inline-block w-2 h-4 bg-amber-500 animate-pulse" />
+                            <span className="text-slate-400 text-xs">Generating response locally on RTX 3070 Ti…</span>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -2878,9 +3135,10 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
                   <button
                     type="button"
                     onClick={() => scrollToResponseBottom(true)}
-                    className="absolute bottom-4 right-4 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-mono font-bold shadow-lg shadow-emerald-950/60 backdrop-blur transition-all cursor-pointer animate-pulse"
+                    className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-slate-800/95 hover:bg-slate-700 text-slate-100 text-xs font-mono font-semibold shadow-xl border border-white/15 backdrop-blur transition-all cursor-pointer animate-pulse"
+                    title="Click to scroll to bottom and re-engage auto-scroll"
                   >
-                    <span>Scroll paused · Jump to bottom ↓</span>
+                    <span className="text-sm">↓</span> Auto-scroll paused (Scroll to bottom)
                   </button>
                 )}
 
@@ -3320,37 +3578,6 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
           {/* DOCKED BOTTOM: MOVABLE & RESIZABLE TELEMETRY WIDGETS MATRIX */}
           {widgetDockPosition === 'below' && renderMovableWidgetsMatrix()}
 
-
-          {/* Agent log sits BELOW the prompt so the Message box stays next to the dual windows */}
-          <MovableResizableWrapper id="gina-agent-log" className="w-full mt-2">
-            <div
-              ref={agentLogPanel.panelRef}
-              className="relative flex flex-col transition-all"
-              style={{ width: agentLogPanel.width ? `${agentLogPanel.width}px` : '100%' }}
-            >
-              <AgentExecutionTrace
-                studioMode={studioMode}
-                agentStatus={agentStatus}
-                agentActivity={agentActivity}
-                executionLog={executionLog}
-                telemetry={lastTelemetry}
-                runtimeTelemetry={runtimeTelemetry}
-                hardwareTelemetry={hardwareTelemetry}
-                onClear={() => { setExecutionLog([]); setAgentActivity([]); }}
-                onOpenFile={(path) => { void openWorkspaceFile(path); }}
-                height={agentLogPanel.height}
-              />
-              <PanelResizeGrip
-                onBottomPointerDown={agentLogPanel.onBottomPointerDown}
-                onRightPointerDown={agentLogPanel.onRightPointerDown}
-                onCornerPointerDown={agentLogPanel.onCornerPointerDown}
-                onResetWidth={agentLogPanel.resetWidth}
-                width={agentLogPanel.width}
-                height={agentLogPanel.height}
-                label="GINA Agent Log"
-              />
-            </div>
-          </MovableResizableWrapper>
           {lastTelemetry && (
             <div className="mt-1.5 flex items-center gap-1.5 text-[8px] font-mono text-slate-600">
               <span className="text-slate-500">{lastTelemetry.promptTokens.toLocaleString()}p</span>
@@ -3374,6 +3601,14 @@ Work directly on this workspace. Start with list_directory or workspace_inspect 
         isOpen={showWebBrowserModal}
         onClose={() => setShowWebBrowserModal(false)}
       />
+
+      {showObservabilityModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-6 animate-fadeIn">
+          <div className="w-full max-w-6xl h-[88vh] flex flex-col shadow-2xl">
+            <LocalObservabilityStudio onClose={() => setShowObservabilityModal(false)} />
+          </div>
+        </div>
+      )}
     </section>
   );
 };

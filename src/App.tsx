@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Image, Video, Film, FolderOpen, ListChecks, Settings2, Gauge, Bot, Music, AudioLines, Wrench } from 'lucide-react';
+import { Image, Video, Film, FolderOpen, ListChecks, Settings2, Gauge, Bot, Music, AudioLines, Wrench, Activity } from 'lucide-react';
 import { Header } from './components/Header';
 import { ProjectStateProvider, useProjectState } from './context/ProjectStateContext';
 import { GenerationJobProvider, useGenerationJob } from './context/GenerationJobContext';
@@ -13,6 +13,7 @@ import { UnifiedAudioDeck } from './components/UnifiedAudioDeck';
 import { Aida64Studio } from './components/Aida64Studio';
 import { AiStudioSuite } from './components/AiStudioSuite';
 import { SystemHub } from './components/SystemHub';
+import { ObservabilityStudio } from './components/ObservabilityStudio';
 import { DevelopmentModePanel } from './components/DevelopmentModePanel';
 import { RestoreManifestModal } from './components/RestoreManifestModal';
 import { VRAMWarningToast } from './components/VRAMWarningToast';
@@ -190,7 +191,7 @@ interface AppContentProps {
 }
 
 function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCache, handleRunAudit, isAuditing, activeSavePoint, isCooldownActive, cooldownRemainingSec, isManifestOpen, setIsManifestOpen }: AppContentProps) {
-  const [activeView, setActiveView] = useState<'studio' | 'create' | 'video' | 'gif' | 'streaminject' | 'music' | 'audio' | 'aida64' | 'shorts' | 'assets' | 'jobs' | 'system' | 'dev'>('studio');
+  const [activeView, setActiveView] = useState<'studio' | 'create' | 'video' | 'gif' | 'streaminject' | 'music' | 'audio' | 'observability' | 'aida64' | 'shorts' | 'assets' | 'jobs' | 'system' | 'dev'>('studio');
   const [isTelemetryOpen, setIsTelemetryOpen] = useState<boolean>(false);
   const { job, outputLoading } = useGenerationJob();
   const { updatePromptStudio } = useProjectState();
@@ -207,6 +208,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
     { id: 'streaminject' as const, label: 'STREAMINJECT', icon: Film, isGenerating: isJobActive && (job?.workflowId === 'streaminject_studio' || job?.workflowId === 'streaminject_render') },
     { id: 'music' as const, label: 'MUSIC SUITE', icon: Music, isGenerating: isJobActive && (job?.workflowId === 'music_studio' || job?.workflowId === 'stem_separation') },
     { id: 'audio' as const, label: 'VOICE GENERATOR', icon: AudioLines, isGenerating: false },
+    { id: 'observability' as const, label: 'OBSERVABILITY', icon: Activity, isGenerating: false },
     { id: 'aida64' as const, label: 'AIDA64', icon: Gauge, isGenerating: false },
     { id: 'shorts' as const, label: 'SHORTS', icon: Film, isGenerating: false },
     { id: 'assets' as const, label: 'ASSETS', icon: FolderOpen, isGenerating: false },
@@ -226,7 +228,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
     } catch {}
     return [
       'studio', 'create', 'video', 'gif', 'streaminject', 'music', 'audio',
-      'aida64', 'shorts', 'assets', 'jobs', 'system', 'dev'
+      'observability', 'aida64', 'shorts', 'assets', 'jobs', 'system', 'dev'
     ];
   });
 
@@ -394,6 +396,12 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
         <main className={`space-y-5 ${activeView === 'audio' ? 'block' : 'hidden'}`}>
           <div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Voice generator</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Voice Audio Generation</h1><p className="text-xs text-slate-500 mt-1">Self-hosted Bark + XTTS v2 with cloning, stitched timelines and local voice management.</p></div>
           <WorkspaceErrorBoundary name="Voice Generator"><UnifiedAudioDeck onAddLog={logWithOomCheck} /></WorkspaceErrorBoundary>
+        </main>
+
+        <main className={`space-y-5 ${activeView === 'observability' ? 'block' : 'hidden'}`}>
+          <WorkspaceErrorBoundary name="Observability Studio">
+            <ObservabilityStudio />
+          </WorkspaceErrorBoundary>
         </main>
 
         <main className={`space-y-5 ${activeView === 'shorts' ? 'block' : 'hidden'}`}><div><div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Production pipeline</div><h1 className="text-2xl md:text-3xl font-semibold text-slate-100 mt-1">Shorts Factory</h1><p className="text-xs text-slate-500 mt-1">Build faceless Shorts from scenes, local assets, audio and a final timeline.</p></div><WorkspaceErrorBoundary name="Shorts Factory"><AiStudioSuite onAddLog={logWithOomCheck} view="shorts" /></WorkspaceErrorBoundary></main>

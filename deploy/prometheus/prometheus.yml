@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'gina_local_engine'
+    metrics_path: '/metrics'
+    static_configs:
+      # Scrape the host machine where Gina runs (port 3000 in container/Linux or 3200 in Windows)
+      - targets: ['host.docker.internal:3000', 'host.docker.internal:3200']
+        labels:
+          environment: 'local_self_hosted'
+          app: 'gina_ai_factory'

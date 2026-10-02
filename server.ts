@@ -69,6 +69,7 @@ import imageRoutes from './server/routes/imageRoute.ts';
 import audioEngineRoute from './server/routes/audioEngineRoute.ts';
 import imageProcessorRouter from './server/tools/imageProcessor.ts';
 import { generate2DRoverSandboxApp } from "./server/services/webAppGenerator.js";
+import { observabilityEngine } from "./server/observability/LocalObservabilityEngine.js";
 
 const app = express();
 const isWin = process.platform === "win32";
@@ -390,6 +391,35 @@ app.use(express.json({ limit: "50mb" }));
 // 5-Mode Telemetry Classifier & Truncated/CoT output filter middleware
 app.use(createProxyClassifierMiddleware(proxySavingsEngine));
 
+// 100% Local Self-Hosted Observability, Rate Limiting & Threat Detection Middleware
+app.use((req, res, next) => {
+  const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
+  const rate = observabilityEngine.checkRateLimit(ip);
+  if (!rate.allowed) {
+    observabilityEngine.recordAudit({
+      actor: 'rate_limiter',
+      role: 'system',
+      action: 'RATE_LIMIT_EXCEEDED',
+      resource: req.path,
+      status: 'denied',
+      ip,
+      details: `Rate limit hit. Wait ${rate.resetSec}s`
+    });
+    return res.status(429).json({ ok: false, error: 'Rate limit exceeded. Local rate protection active.', resetSec: rate.resetSec });
+  }
+
+  const threat = observabilityEngine.detectThreat({ path: req.path, query: req.query, body: req.body, ip });
+  if (threat.threat) {
+    return res.status(403).json({ ok: false, error: 'Blocked by local security policy.', reason: threat.reason });
+  }
+
+  const start = Date.now();
+  res.on('finish', () => {
+    observabilityEngine.recordHttpRequest(Date.now() - start, res.statusCode);
+  });
+  next();
+});
+
 // Mount your new optimized image prompt router layer here:
 app.use("/api/llm", imageRoutes);
 app.use('/api/audio', audioEngineRoute);
@@ -645,6 +675,163 @@ app.get("/api/health", async (_req, res) => {
     gpu,
     cpu: { model: os.cpus()[0]?.model || "Unknown", logicalThreads: os.cpus().length },
     memory: { totalGB: Number(totalRAMGB.toFixed(2)), freeGB: Number(freeRAMGB.toFixed(2)), usedGB: Number((totalRAMGB - freeRAMGB).toFixed(2)) }
+  });
+});
+
+// ===============================================================================
+// 100% LOCAL SELF-HOSTED OBSERVABILITY & PROMETHEUS METRICS API
+// ===============================================================================
+
+// Prometheus standard text-format scraper endpoint
+app.get('/metrics', async (_req, res) => {
+  try {
+    const gpu = await getNvidiaSmi().catch(() => ({ available: false }));
+    const totalRAMGB = os.totalmem() / 1024 ** 3;
+    const freeRAMGB = os.freemem() / 1024 ** 3;
+    const hardware = {
+      vramUsedMB: (gpu as any)?.available ? (gpu as any).memoryUsedMB : 0,
+      vramTotalMB: (gpu as any)?.available ? (gpu as any).memoryTotalMB : 8192,
+      ramUsedGB: totalRAMGB - freeRAMGB,
+      ramTotalGB: totalRAMGB,
+      gpuUtilizationPercent: (gpu as any)?.available ? (gpu as any).utilizationPercent : 0,
+    };
+    const body = observabilityEngine.getPrometheusMetrics(hardware);
+    res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+    res.send(body);
+  } catch (error: any) {
+    res.status(500).send(`# ERROR: ${error?.message || 'metrics error'}\n`);
+  }
+});
+
+// Real-time JSON snapshot for in-dashboard telemetry
+app.get('/api/observability/metrics', async (_req, res) => {
+  try {
+    const gpu = await getNvidiaSmi().catch(() => ({ available: false }));
+    const totalRAMGB = os.totalmem() / 1024 ** 3;
+    const freeRAMGB = os.freemem() / 1024 ** 3;
+    const hardware = {
+      vramUsedMB: (gpu as any)?.available ? (gpu as any).memoryUsedMB : 0,
+      vramTotalMB: (gpu as any)?.available ? (gpu as any).memoryTotalMB : 8192,
+      ramUsedGB: totalRAMGB - freeRAMGB,
+      ramTotalGB: totalRAMGB,
+      gpuUtilizationPercent: (gpu as any)?.available ? (gpu as any).utilizationPercent : 0,
+    };
+    res.json({ ok: true, metrics: observabilityEngine.getSnapshot(hardware) });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message });
+  }
+});
+
+// Live execution traces (code snippets, commands, file operations)
+app.get('/api/observability/traces', (req, res) => {
+  const limit = Math.min(300, Math.max(1, Number(req.query.limit) || 100));
+  const type = String(req.query.type || 'all');
+  res.json({ ok: true, traces: observabilityEngine.getRecentTraces(limit, type) });
+});
+
+// Comprehensive system audit logs
+app.get('/api/observability/audit', (req, res) => {
+  const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+  const actor = req.query.actor ? String(req.query.actor) : undefined;
+  const role = req.query.role ? String(req.query.role) : undefined;
+  const status = req.query.status ? String(req.query.status) : undefined;
+  res.json({ ok: true, auditLogs: observabilityEngine.getAuditLogs({ limit, actor, role, status }) });
+});
+
+// Export audit logs as CSV or JSON
+app.get('/api/observability/audit/export', (req, res) => {
+  const format = req.query.format === 'csv' ? 'csv' : 'json';
+  const data = observabilityEngine.exportAuditLogs(format);
+  if (format === 'csv') {
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="gina-audit-logs-${Date.now()}.csv"`);
+  } else {
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="gina-audit-logs-${Date.now()}.json"`);
+  }
+  res.send(data);
+});
+
+// Active alerts & custom thresholds
+app.get('/api/observability/alerts', (_req, res) => {
+  res.json({ ok: true, alerts: observabilityEngine.activeAlerts, thresholds: observabilityEngine.thresholds });
+});
+
+app.post('/api/observability/alerts', (req, res) => {
+  if (req.body?.thresholds && typeof req.body.thresholds === 'object') {
+    Object.assign(observabilityEngine.thresholds, req.body.thresholds);
+    observabilityEngine.recordAudit({
+      actor: 'admin',
+      role: 'admin',
+      action: 'UPDATE_ALERT_THRESHOLDS',
+      resource: '/api/observability/alerts',
+      status: 'success',
+      ip: req.ip || '127.0.0.1',
+      details: JSON.stringify(req.body.thresholds)
+    });
+  }
+  res.json({ ok: true, thresholds: observabilityEngine.thresholds });
+});
+
+// Automated backup for configs & databases
+app.post('/api/observability/backup', (_req, res) => {
+  const result = observabilityEngine.createBackup();
+  res.json(result);
+});
+
+// OpenAPI 3.0 / Swagger documentation JSON
+app.get(['/api/observability/openapi.json', '/api/observability/swagger.json'], (_req, res) => {
+  res.json(observabilityEngine.getOpenApiSpec());
+});
+
+// Interactive Swagger UI documentation
+app.get(['/api/docs', '/api/observability/docs'], (_req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gina AI Factory — REST API Documentation & Swagger UI</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css" />
+  <style>
+    body { margin: 0; background: #0b0f19; font-family: sans-serif; }
+    .swagger-ui .topbar { display: none; }
+    .swagger-ui { filter: invert(88%) hue-rotate(180deg); max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .swagger-ui .info .title { color: #38bdf8; }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js"></script>
+  <script>
+    window.ui = SwaggerUIBundle({
+      url: '/api/observability/openapi.json',
+      dom_id: '#swagger-ui',
+      deepLinking: true,
+      presets: [
+        SwaggerUIBundle.presets.apis,
+        SwaggerUIBundle.SwaggerUIStandalonePreset
+      ]
+    });
+  </script>
+</body>
+</html>`);
+});
+
+// Real-time Server-Sent Events (SSE) trace stream
+app.get('/api/observability/stream', (_req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  });
+  res.write('data: {"connected":true,"service":"gina-observability"}\n\n');
+  const unsubscribe = observabilityEngine.subscribe((trace) => {
+    try { res.write(`data: ${JSON.stringify(trace)}\n\n`); } catch {}
+  });
+  _req.on('close', () => {
+    unsubscribe();
   });
 });
 
@@ -1778,6 +1965,27 @@ app.post('/api/agent/tool', async (req, res) => {
     auditAgent(action, parameters, true, result);
     const failed = Boolean(result && ((result as any).ok === false || Number((result as any).exitCode) > 0));
     await recordCapabilityOutcome(GINA_ROOT, action, !failed, result);
+
+    // Record rich live trace into Observability Engine for real-time streaming
+    try {
+      observabilityEngine.recordTrace({
+        type: action === 'execute_command' ? 'command'
+          : action.startsWith('read') ? 'file_read'
+          : action.startsWith('write') || action.startsWith('patch') || action.startsWith('edit') ? 'file_write'
+          : action === 'validate_project' ? 'test'
+          : 'tool_call',
+        title: action.replace(/_/g, ' '),
+        target: parameters.path || parameters.file || parameters.target || parameters.workspace,
+        command: parameters.command || parameters.cmd,
+        codeSnippet: parameters.content ? String(parameters.content).slice(0, 4000)
+          : (result as any)?.content ? String((result as any).content).slice(0, 4000)
+          : (result as any)?.stdout ? String((result as any).stdout).slice(0, 4000)
+          : undefined,
+        status: failed ? 'error' : 'success',
+        details: failed ? ((result as any)?.error || 'Action failed') : 'Action executed cleanly'
+      });
+    } catch {}
+
     res.json({ ok:!failed, action, parameters, result });
   } catch (error:any) {
     const action = String(req.body?.action || '').trim() || 'unknown';
@@ -1785,6 +1993,15 @@ app.post('/api/agent/tool', async (req, res) => {
     const failure = { ok:false, action, error:error?.message || String(error) };
     auditAgent(action, parameters, false, failure);
     await recordCapabilityOutcome(GINA_ROOT, action, false, failure);
+    try {
+      observabilityEngine.recordTrace({
+        type: 'tool_call',
+        title: action.replace(/_/g, ' '),
+        target: parameters.path || parameters.file || parameters.target,
+        status: 'error',
+        error: error?.message || String(error)
+      });
+    } catch {}
     res.status(500).json(failure);
   }
 });
@@ -2015,6 +2232,26 @@ ${String(raw).slice(0, 1800)}` }
       await recordCapabilityOutcome(GINA_ROOT, action, !failed, toolResult);
       if (failed) await publish('status', { phase:'REPAIRING', message:`${action} reported a failure; Gina will diagnose it on the next step.` });
       await publish('step_completed', { step:i+1, maxSteps:16, action, phase:failed ? 'REPAIRING' : phase, success:!failed, message:failed ? 'Tool reported failure.' : 'Tool completed successfully.', result:toolResult });
+
+      try {
+        observabilityEngine.recordTrace({
+          type: action === 'execute_command' ? 'command'
+            : action.startsWith('read') ? 'file_read'
+            : action.startsWith('write') || action.startsWith('patch') || action.startsWith('edit') ? 'file_write'
+            : action === 'validate_project' ? 'test'
+            : 'tool_call',
+          title: action.replace(/_/g, ' '),
+          target: plan.parameters?.path || plan.parameters?.file || plan.parameters?.target,
+          command: plan.parameters?.command || plan.parameters?.cmd,
+          codeSnippet: plan.parameters?.content ? String(plan.parameters.content).slice(0, 4000)
+            : toolResult?.content ? String(toolResult.content).slice(0, 4000)
+            : toolResult?.stdout ? String(toolResult.stdout).slice(0, 4000)
+            : undefined,
+          status: failed ? 'error' : 'success',
+          details: failed ? (toolResult?.error || 'Action failed') : (toolResult?.summary || `${action} completed`),
+          metadata: { step: i + 1, runId }
+        });
+      } catch {}
     } catch (toolError:any) {
       toolResult = { ok:false, error:toolError?.message || String(toolError), action };
       loopGuard.record(action, plan.parameters || {}, false);
