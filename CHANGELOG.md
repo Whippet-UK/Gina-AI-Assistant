@@ -1,3 +1,17 @@
+# v1.20.16 — Production Integration Patch (2026-10-02)
+
+- **Tavily web search:** `server/agent/WebResearchService.ts` lines 139–183 now use `TAVILY_API_KEY` as the primary provider, with defensive response validation and the existing public-URL SSRF guard retained. The exact local key location is `C:\\Gina_AI\\.env`; never commit the real key. `.env.example` line 3 documents the variable.
+- **Gina web capability contract:** `server/agent/AgentPromptPolicy.ts` lines 34–35 and `server/llm/LocalLlmManager.ts` lines 269–273 explicitly distinguish real brokered web capability from model knowledge. The runtime already binds `web_search`, `web_research`, and `web_fetch`; the prompt contract now prevents false “cannot search” claims when web grounding is available.
+- **Wan model interchange:** `server/capabilities/CapabilityManager.ts` lines 44–49 registers Wan 2.2 TI2V-5B GGUF, Wan 2.1 I2V-14B GGUF, the shared scaled-FP8 UMT5 encoder, and both matching VAEs. `server/comfy/WorkflowParser.ts` line 48 adds GGUF loader model binding and line 49 adds the explicit scale-by binding.
+- **Wan 2.2 workflow:** `workflows/wan_video_22.json` lines 5–13 uses `UnetLoaderGGUF`, shared UMT5, Wan 2.2 VAE, `Wan22ImageToVideoLatent`, `ModelSamplingSD3` shift 8, 896×512×17 base sampling, tiled VAE decode with 512 tiles, a 1.42× upscale stage, and final exact 1280×704 output.
+- **Wan UI selection:** `src/components/VideoStudio.tsx` lines 221 and 336–370 adds an explicit Wan 2.1 / Wan 2.2 engine selector and routes jobs to `wan_video` or `wan_video_22`. Job lifecycle and asset metadata now handle both workflow IDs.
+- **Wan diagnostics:** `scripts/check_wan_video.ts` lines 33–146 validates the five exact model assets, ComfyUI availability, `UnetLoaderGGUF`, and `VAEDecodeTiled`. `server.ts` line 35 imports the new checker and line 3328 serves its result.
+- **Full-bleed workspace:** `src/App.tsx` removes the global outer workspace padding/frame, and `src/index.css` adds the frame-free full-bleed studio overrides at the end of the stylesheet.
+
+**Known architectural gap:** no `server/src/services/htmlGeneratorEngine.ts` or `server/src/agents/ginaAgent.ts` exists in the current repository. Web App generation is implemented in `src/components/LocalLlmStudio.tsx` and the server's existing `/api/llm/web-app` lane. No unverified “cheat mode” parser was invented; multi-select cheat-mode changes require the actual existing cheat-mode state/parser to be identified first.
+
+**Validation limitation:** GitHub-side source validation was performed from the feature branch. A live Windows TypeScript/Vite build and ComfyUI execution require the user's local `C:\\Gina_AI` environment and were not claimed as passed here.
+
 # v1.20.16 — POST /api/llm/engine Resiliency, Web Profiles Expansion & Complete Drag Handles
 
 - **Target File Path:** `/server.ts`

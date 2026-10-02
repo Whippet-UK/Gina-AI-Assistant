@@ -43,8 +43,9 @@ const aliases: Record<string, { key: string; inputs: string[]; classes?: string[
     classes: ['EmptyHunyuanLatentVideo', 'EmptyLatentVideo', 'EmptyMochiLatentVideo', 'WanImageToVideo', 'Wan22ImageToVideoLatent']
   }],
   batchSize: [{ key: 'batch_size', inputs: ['batch_size'], classes: ['EmptyLatentImage', 'EmptySD3LatentImage', 'EmptyFlux2LatentImage'] }],
-  model: [{ key: 'model', inputs: ['ckpt_name'], classes: ['CheckpointLoaderSimple', 'CheckpointLoader', 'UNETLoader'] }],
-  fps: [{ key: 'fps', inputs: ['frame_rate', 'fps'], classes: ['VHS_VideoCombine', 'SaveAnimatedWEBP', 'SaveAnimatedPNG'] }],
+  model: [{ key: 'model', inputs: ['ckpt_name','unet_name'], classes: ['CheckpointLoaderSimple', 'CheckpointLoader', 'UNETLoader', 'UnetLoaderGGUF'] }],
+  fps: [{ key: 'fps', inputs: ['frame_rate', 'fps'], classes: ['VHS_VideoCombine', 'SaveAnimatedWEBP', 'SaveAnimatedPNG', 'CreateVideo'] }],
+  scaleBy: [{ key: 'scale_by', inputs: ['scale_by'], classes: ['ImageScaleBy'] }],
   startFrame: [{ key: 'start_frame', inputs: ['skip_first_frames', 'skip_first_images'], classes: ['VHS_LoadVideo', 'VHS_LoadImagesPath'] }],
   endFrame: [{ key: 'end_frame', inputs: ['frame_load_cap', 'image_load_cap'], classes: ['VHS_LoadVideo', 'VHS_LoadImagesPath'] }],
   denoise: [{ key: 'denoise', inputs: ['denoise'], classes: ['BasicScheduler', 'KSampler', 'KSamplerAdvanced'] }],

@@ -32,7 +32,7 @@ import { AgentTaskStore } from "./server/agent/AgentTaskStore.js";
 import { AgentApprovalManager, approvalRequired } from "./server/agent/AgentApprovalManager.js";
 import { AgentScheduler } from "./server/agent/AgentScheduler.js";
 import { McpServerAdapter } from "./server/agent/McpServerAdapter.js";
-import { runWanDiagnostic } from "./scripts/check_wan21.js";
+import { runWanVideoDiagnostic } from "./scripts/check_wan_video.js";
 import { LocalLlmManager } from "./server/llm/LocalLlmManager.js";
 import { LOCAL_LLM_MODELS, getLocalLlmModelOptions } from "./server/llm/LocalLlmModelCatalog.js";
 import { AgentContextManager } from "./server/agent/AgentContextManager.js";
@@ -3325,7 +3325,7 @@ app.get('/api/comfy/diagnostics', async (_req, res) => {
 
 app.get("/api/diagnostics/wan21", async (_req, res) => {
   try {
-    const result = await runWanDiagnostic();
+    const result = await runWanVideoDiagnostic();
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error?.message || "Failed to execute Wan 2.1 diagnostic" });

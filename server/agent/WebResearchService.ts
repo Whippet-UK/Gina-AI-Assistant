@@ -3,6 +3,7 @@ export interface WebSearchResult {
   url: string;
   snippet: string;
   source: string;
+  rawContent?: string;
 }
 
 export interface WebResearchResult {
@@ -36,9 +37,8 @@ async function fetchText(url: URL, timeoutMs = 30000): Promise<{ response: Respo
         signal: controller.signal,
         redirect: 'manual'
       });
-      if (![301,302,303,307,308].includes(response.status)) {
-        const text = await response.text();
-        return { response, text };
+      if (![301, 302, 303, 307, 308].includes(response.status)) {
+        return { response, text: await response.text() };
       }
       const location = response.headers.get('location');
       if (!location) throw new Error(`Web server returned redirect ${response.status} without a Location header.`);
@@ -69,13 +69,11 @@ function parseDuckDuckGo(html: string, maxResults: number): WebSearchResult[] {
     let href = link[1].replace(/&amp;/g, '&');
     try {
       if (href.startsWith('//')) href = `https:${href}`;
-      try {
-        const wrapped = new URL(href);
-        const destination = wrapped.searchParams.get('uddg');
-        if (destination) href = decodeURIComponent(destination);
-      } catch { /* use the original href */ }
+      const wrapped = new URL(href);
+      const destination = wrapped.searchParams.get('uddg');
+      if (destination) href = decodeURIComponent(destination);
       const parsed = new URL(href);
-      if (!['http:','https:'].includes(parsed.protocol)) continue;
+      if (!['http:', 'https:'].includes(parsed.protocol)) continue;
       const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/(?:a|div)/i);
       results.push({
         title: decodeHtml(title[1]),
@@ -88,13 +86,12 @@ function parseDuckDuckGo(html: string, maxResults: number): WebSearchResult[] {
   return results;
 }
 
-
 function parseBing(html: string, maxResults: number): WebSearchResult[] {
   const results: WebSearchResult[] = [];
-  const blocks = html.split(/<li[^>]+class=[\"']b_algo[\"'][^>]*>/i).slice(1);
+  const blocks = html.split(/<li[^>]+class=["']b_algo["'][^>]*>/i).slice(1);
   for (const block of blocks) {
     if (results.length >= maxResults) break;
-    const match = block.match(/<h2[^>]*>\s*<a[^>]+href=[\"']([^\"']+)[\"'][^>]*>([\s\S]*?)<\/a>/i);
+    const match = block.match(/<h2[^>]*>\s*<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
     if (!match) continue;
     try {
       const url = new URL(match[1]);
@@ -111,17 +108,44 @@ function parseBing(html: string, maxResults: number): WebSearchResult[] {
   return results;
 }
 
+function parseTavily(data: any, limit: number): WebSearchResult[] {
+  if (!data || typeof data !== 'object' || !Array.isArray(data.results)) return [];
+  return data.results.slice(0, limit).flatMap((item: any) => {
+    const rawUrl = typeof item?.url === 'string' ? item.url.trim() : '';
+    if (!rawUrl) return [];
+    try {
+      const url = assertPublicHttpUrl(rawUrl);
+      const title = String(item?.title || url.hostname).trim().slice(0, 500);
+      const snippet = String(item?.content || item?.snippet || '').trim().slice(0, 4000);
+      return [{
+        title,
+        url: url.toString(),
+        snippet,
+        source: url.hostname,
+        rawContent: typeof item?.raw_content === 'string' ? item.raw_content.slice(0, 12000) : undefined
+      }];
+    } catch {
+      return [];
+    }
+  });
+}
+
 export class WebResearchService {
   readonly enabled: boolean;
+  readonly provider: 'tavily' | 'legacy';
 
   constructor() {
     this.enabled = process.env.GINA_WEB_ACCESS !== 'false';
+    this.provider = process.env.TAVILY_API_KEY?.trim() ? 'tavily' : 'legacy';
   }
 
   status() {
     return {
       enabled: this.enabled,
-      provider: process.env.BRAVE_SEARCH_API_KEY ? 'Brave Search API + DuckDuckGo fallback' : 'DuckDuckGo HTML fallback',
+      provider: this.provider === 'tavily'
+        ? 'Tavily Search API'
+        : 'Legacy public search fallback (TAVILY_API_KEY not configured)',
+      tavilyConfigured: Boolean(process.env.TAVILY_API_KEY?.trim()),
       note: 'Internet research is available to the local agent when enabled. Private/local network targets remain blocked.'
     };
   }
@@ -132,29 +156,40 @@ export class WebResearchService {
     if (!clean) throw new Error('A web search query is required.');
     const limit = Math.max(1, Math.min(20, Number(maxResults) || 8));
 
-    const braveKey = process.env.BRAVE_SEARCH_API_KEY?.trim();
-    if (braveKey) {
-      try {
-        const endpoint = new URL('https://api.search.brave.com/res/v1/web/search');
-        endpoint.searchParams.set('q', clean);
-        endpoint.searchParams.set('count', String(limit));
-        const response = await fetch(endpoint, {
-          headers: { Accept: 'application/json', 'X-Subscription-Token': braveKey },
-          signal: AbortSignal.timeout(30000)
-        });
-        if (response.ok) {
-          const data: any = await response.json();
-          const results = Array.isArray(data?.web?.results) ? data.web.results.slice(0, limit).map((r:any) => ({
-            title: String(r.title || ''),
-            url: String(r.url || ''),
-            snippet: String(r.description || ''),
-            source: (() => { try { return new URL(r.url).hostname; } catch { return ''; } })()
-          })) : [];
-          return { query: clean, provider: 'Brave Search API', results };
-        }
-      } catch { /* fallback below */ }
+    const tavilyKey = process.env.TAVILY_API_KEY?.trim();
+    if (tavilyKey) {
+      const response = await fetch('https://api.tavily.com/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${tavilyKey}`
+        },
+        body: JSON.stringify({
+          query: clean,
+          search_depth: 'advanced',
+          max_results: limit,
+          include_answer: false,
+          include_raw_content: false,
+          topic: /\b(?:news|headline|headlines|breaking)\b/i.test(clean) ? 'news' : 'general'
+        }),
+        signal: AbortSignal.timeout(30000)
+      });
+      const bodyText = await response.text();
+      if (!response.ok) {
+        let detail = bodyText.slice(0, 500);
+        try { detail = String(JSON.parse(bodyText)?.detail || JSON.parse(bodyText)?.message || detail); } catch {}
+        throw new Error(`Tavily Search API HTTP ${response.status}: ${detail}`);
+      }
+      let data: any;
+      try { data = JSON.parse(bodyText); } catch { throw new Error('Tavily returned invalid JSON.'); }
+      const results = parseTavily(data, limit);
+      if (!results.length) throw new Error('Tavily returned no usable public search results.');
+      return { query: clean, provider: 'Tavily Search API', results };
     }
 
+    // Keep a deterministic local fallback so existing installations remain usable
+    // while the operator is adding TAVILY_API_KEY. Gina never claims Tavily was used
+    // unless the key was actually present and the Tavily request succeeded.
     const providers: Array<() => Promise<WebResearchResult>> = [
       async () => {
         const endpoint = new URL('https://html.duckduckgo.com/html/');
@@ -194,7 +229,12 @@ export class WebResearchService {
       throw new Error(`Unsupported web content type: ${contentType || 'unknown'}`);
     }
     const content = contentType.includes('html') ? decodeHtml(text) : text.replace(/\s+/g, ' ').trim();
-    return { url: url.toString(), title: content.match(/^.{0,160}/)?.[0] || url.hostname, content: content.slice(0, Math.max(1000, Math.min(100000, maxChars))), truncated: content.length > maxChars };
+    return {
+      url: url.toString(),
+      title: content.match(/^.{0,160}/)?.[0] || url.hostname,
+      content: content.slice(0, Math.max(1000, Math.min(100000, maxChars))),
+      truncated: content.length > maxChars
+    };
   }
 
   async research(query: string, maxResults = 6, fetchTop = true): Promise<WebResearchResult> {
