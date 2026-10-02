@@ -9,6 +9,11 @@ set "GINA_ENV=%GINA_ROOT%\g_env\Scripts\activate.bat"
 set "COMFY_MAIN=%GINA_ROOT%\ComfyUI_windows_portable\ComfyUI\main.py"
 set "PACKAGE=%GINA_ROOT%\package.json"
 
+REM Force FULL factory boot — never inherit leftover Development Mode flags
+set "GINA_BOOT_MODE=factory"
+set "GINA_DEV_MODE="
+set "GINA_SKIP_HEAVY_INIT="
+
 cd /d "%GINA_ROOT%"
 
 echo ==========================================
@@ -114,19 +119,27 @@ if errorlevel 1 (
 
 echo.
 
-echo [4/5] Starting Gina Dashboard...
-REM Stop only an existing Gina node process from this install so a stale
-REM v1.x server cannot occupy 3200 and serve an older API.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$procs=Get-CimInstance Win32_Process -Filter \"Name = 'node.exe'\" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and $_.CommandLine -match [regex]::Escape($env:GINA_ROOT) -and $_.CommandLine -match 'server\.ts|dist\\server\.cjs' }; foreach($p in $procs){ try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch {} }"
+echo [4/5] Starting Gina Dashboard (FULL FACTORY MODE)...
+
+REM 1) Kill any Node Gina server from this install (tsx / server.ts / dist server)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$root=[regex]::Escape($env:GINA_ROOT); $procs=Get-CimInstance Win32_Process -Filter \"Name = 'node.exe'\" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and $_.CommandLine -match $root -and $_.CommandLine -match 'server\.ts|dist\\server\.cjs|tsx' }; foreach($p in $procs){ try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch {} }"
+
+REM 2) Kill leftover Development Mode Python static host on 3200
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -Filter \"Name = 'python.exe'\" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and $_.CommandLine -match 'http\.server' -and $_.CommandLine -match '3200' } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch {} }"
+
 timeout /t 1 /nobreak >nul
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$c=Get-NetTCPConnection -LocalPort 3200 -State Listen -ErrorAction SilentlyContinue; if($c){exit 0}else{exit 1}"
-if not errorlevel 1 (
-  echo    [ERROR] Port 3200 is still occupied after stopping the old Gina process.
-  echo    Close the process using 3200, then run this launcher again.
+
+REM 3) Force-kill ANY process still listening on 3200
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$conns=Get-NetTCPConnection -LocalPort 3200 -State Listen -ErrorAction SilentlyContinue; foreach($c in $conns){ try { Stop-Process -Id $c.OwningProcess -Force -ErrorAction Stop } catch {} }; Start-Sleep -Milliseconds 800; $still=Get-NetTCPConnection -LocalPort 3200 -State Listen -ErrorAction SilentlyContinue; if($still){exit 1}else{exit 0}"
+if errorlevel 1 (
+  echo    [ERROR] Port 3200 is still occupied after force-kill.
+  echo    Close the process using 3200 manually (Task Manager), then run this launcher again.
   pause
   exit /b 1
 )
-start "Gina Dashboard" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && set NODE_OPTIONS=--max-old-space-size=8192 && npm.cmd run dev"
+
+REM 4) Start the real Node/Vite dashboard — explicitly factory mode, no Dev Mode flags
+start "Gina Dashboard" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && set GINA_BOOT_MODE=factory && set GINA_DEV_MODE= && set GINA_SKIP_HEAVY_INIT= && set NODE_OPTIONS=--max-old-space-size=8192 && npm.cmd run dev"
 
 echo.
 echo [4/5] Waiting for Gina at %GINA_URL% ...
@@ -189,6 +202,7 @@ echo Gina:      %GINA_URL%
 echo Local LLM: http://127.0.0.1:8080 (Qwen 2.5-VL 7B / Qwen Coder 7B)
 echo SDXL:      Juggernaut-XL v9 Photorealism (models/checkpoints/)
 echo FLUX:      FLUX.1-Schnell GGUF Q4_K_S (models/unet/)
+echo Boot mode: factory (full stack)
 echo.
 echo Opening Gina in your default browser...
 start "" "%GINA_URL%/?startup=ready"
