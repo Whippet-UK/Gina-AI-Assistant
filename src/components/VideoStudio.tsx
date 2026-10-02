@@ -417,13 +417,13 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
     setSavingAsset(true);
     const newAsset = {
       id: Math.random().toString(36).substring(2, 9),
-      title: `Wan 2.1 Video: ${prompt.slice(0, 30)}...`,
+      title: `${videoEngine === 'wan22' ? 'Wan 2.2 TI2V 5B' : 'Wan 2.1'} Video: ${prompt.slice(0, 30)}...`,
       type: 'video' as const,
       url: targetUrl,
       fileFormat: 'mp4',
       timestamp: new Date().toISOString(),
       promptUsed: prompt,
-      workflowId: 'wan_video',
+      workflowId: selectedWorkflowId,
       seed
     };
     setSavedAssets(prev => [newAsset, ...prev]);
@@ -446,7 +446,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
 
   // Persist failure state so error remains visible until dismissed or new success
   useEffect(() => {
-    if (job?.workflowId === 'wan_video' && job?.status === 'FAILED' && job?.error) {
+    if ((job?.workflowId === 'wan_video' || job?.workflowId === 'wan_video_22') && job?.status === 'FAILED' && job?.error) {
       const isOOM = /out of memory|cuda oom|cuda error/i.test(job.error);
       setVideoError({
         message: job.error,
@@ -454,7 +454,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
         isOOM,
         jobId: job.id
       });
-    } else if (job?.workflowId === 'wan_video' && job?.status === 'COMPLETED') {
+    } else if ((job?.workflowId === 'wan_video' || job?.workflowId === 'wan_video_22') && job?.status === 'COMPLETED') {
       setVideoError(null);
     }
   }, [job?.id, job?.status, job?.error, job?.workflowId]);
