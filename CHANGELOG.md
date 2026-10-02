@@ -1,4 +1,13 @@
 # v1.20.16 — Production Integration Patch (2026-10-02)
+## 2026-10-02 — Development Mode & Wan 2.2 Default
+- Added `server/DevelopmentModeService.ts` with bounded Windows BAT discovery, managed terminal tracking, terminate/close controls, and restart-by-boot-mode support.
+- Added `src/components/DevelopmentModePanel.tsx` and a `DEV MODE` navigation tab for Dashboard Only, Dashboard + ComfyUI, Manual/Cold, and Full Factory startup modes.
+- Added `Start_Gina_Development.bat`; Dashboard Only skips workflow scanning, ComfyUI orchestration, AIDA64 startup, and knowledge reindexing so Gina can open without waiting for heavy ML/database work.
+- Made Wan 2.2 TI2V 5B Q4_K_M the default Video Studio engine with 896×512 base generation, 17-frame default and 21-frame option.
+- Bound Wan 2.2 width/height/frame controls through `WorkflowParser.ts` and enforced server-side 17–21 frame limits plus exact 1280×704 delivery after the 1.42× stage.
+- Wan diagnostics/capability registration continues to validate the exact Wan 2.2 backbone, Wan 2.2 VAE, shared UMT5 scaled-FP8 encoder, GGUF loader and tiled VAE node.
+- Live Windows/ComfyUI acceptance remains external to this GitHub-only review environment.
+
 
 - **Tavily web search:** `server/agent/WebResearchService.ts` lines 139–183 now use `TAVILY_API_KEY` as the primary provider, with defensive response validation and the existing public-URL SSRF guard retained. The exact local key location is `C:\\Gina_AI\\.env`; never commit the real key. `.env.example` line 3 documents the variable.
 - **Gina web capability contract:** `server/agent/AgentPromptPolicy.ts` lines 34–35 and `server/llm/LocalLlmManager.ts` lines 269–273 explicitly distinguish real brokered web capability from model knowledge. The runtime already binds `web_search`, `web_research`, and `web_fetch`; the prompt contract now prevents false “cannot search” claims when web grounding is available.

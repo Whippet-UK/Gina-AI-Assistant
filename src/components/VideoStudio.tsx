@@ -32,7 +32,13 @@ const durationOptions = [
   { seconds: 5, frames: 81, label: '5.0s · 81 frames', vram: 'Spillover max · ≤640×480', tier: 'spillover' as const, maxW: 640, maxH: 480 },
 ];
 
+const wan22DurationOptions = [
+  { seconds: 1, frames: 17, label: '1.0s · 17 frames · Wan 2.2 base', vram: '896×512 base · low-VRAM tuned', tier: 'native' as const, maxW: 896, maxH: 512 },
+  { seconds: 1.25, frames: 21, label: '1.25s · 21 frames · Wan 2.2', vram: '896×512 base · higher temporal cost', tier: 'native' as const, maxW: 896, maxH: 512 },
+];
+
 const videoResolutionPresets = [
+  { label: '896 × 512 · Wan 2.2 Base', width: 896, height: 512, ratio: '16:9', vram: 'Wan 2.2 TI2V base · 17/21 frames' },
   { label: '480 × 320 · Extra low', width: 480, height: 320, ratio: '3:2', vram: 'Lowest VRAM · all durations' },
   { label: '512 × 384 · Low', width: 512, height: 384, ratio: '4:3', vram: 'Low VRAM · all durations' },
   { label: '512 × 512 · 1:1 Compact', width: 512, height: 512, ratio: '1:1', vram: 'Low VRAM · native OK' },
@@ -69,6 +75,18 @@ interface VideoPreset {
 }
 
 const videoParameterPresets: VideoPreset[] = [
+  {
+    id: 'wan22_base_1s', name: 'Wan 2.2 · Base', badge: '896×512 · 17 frames · 16fps',
+    description: 'Default Wan 2.2 TI2V 5B Q4_K_M low-VRAM base. Tiled VAE and exact 1280×704 delivery are applied by the workflow.', icon: '🟢',
+    motionScale: 1.0, durationSec: 1, frames: 17, fps: 16, steps: 20, cfgScale: 5.0,
+    resolutionLabel: '896 × 512 · Wan 2.2 Base', width: 896, height: 512, cameraMotion: 'Slow Cinematic Pan', isSafe8GB: true, interpolationMultiplier: 1
+  },
+  {
+    id: 'wan22_21f', name: 'Wan 2.2 · 21 frames', badge: '896×512 · 21 frames · 16fps',
+    description: 'Wan 2.2 TI2V 5B alternative temporal length at the same base resolution. Uses the same tiled-VAE/output pipeline.', icon: '🎬',
+    motionScale: 1.0, durationSec: 1.25, frames: 21, fps: 16, steps: 20, cfgScale: 5.0,
+    resolutionLabel: '896 × 512 · Wan 2.2 Base', width: 896, height: 512, cameraMotion: 'Slow Cinematic Pan', isSafe8GB: true, interpolationMultiplier: 1
+  },
   {
     id: 'native_1s',
     name: 'Native · 1.0s',
@@ -217,24 +235,24 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
   const [prompt, setPrompt] = useState('A majestic black dragon breathing fiery embers in an obsidian cavern, slow cinematic camera pan, 8k resolution');
   const [negativePrompt, setNegativePrompt] = useState('blurry, static, distorted motion, flickering, low resolution, bad anatomy');
   const [showNegative, setShowNegative] = useState(false);
-  const [selectedDuration, setSelectedDuration] = useState(2); // default Wan 2.1 2.0s @ 16fps
-  const [videoEngine, setVideoEngine] = useState<'wan21' | 'wan22'>('wan21');
-  const [customFrames, setCustomFrames] = useState(33);
+  const [selectedDuration, setSelectedDuration] = useState(1); // default Wan 2.2 17 frames @ 16fps
+  const [videoEngine, setVideoEngine] = useState<'wan21' | 'wan22'>('wan22');
+  const [customFrames, setCustomFrames] = useState(17);
   const [fps, setFps] = useState(16);
   const [motionScale, setMotionScale] = useState(1.0);
-  const [resolution, setResolution] = useState('832 × 480 · 16:9 Native');
-  const [width, setWidth] = useState(832);
-  const [height, setHeight] = useState(480);
+  const [resolution, setResolution] = useState('896 × 512 · Wan 2.2 Base');
+  const [width, setWidth] = useState(896);
+  const [height, setHeight] = useState(512);
   const [seed, setSeed] = useState(Math.floor(Math.random() * 1000000000));
   const [isRandomSeed, setIsRandomSeed] = useState(true);
-  const [steps, setSteps] = useState(18);
-  const [cfgScale, setCfgScale] = useState(3.0);
+  const [steps, setSteps] = useState(20);
+  const [cfgScale, setCfgScale] = useState(5.0);
   const [cameraMotion, setCameraMotion] = useState('None / Static Camera');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [savingAsset, setSavingAsset] = useState(false);
   const [diagLoading, setDiagLoading] = useState(false);
   const [diagResult, setDiagResult] = useState<any>(null);
-  const [activePresetId, setActivePresetId] = useState<string>('native_2s');
+  const [activePresetId, setActivePresetId] = useState<string>('wan22_base_1s');
   const [interpolationMultiplier, setInterpolationMultiplier] = useState<1 | 2 | 4>(1);
   const [showStitchModal, setShowStitchModal] = useState(false);
 
@@ -285,25 +303,24 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
     if (preset.interpolationMultiplier) {
       setInterpolationMultiplier(preset.interpolationMultiplier);
     }
-    onAddLog('INFO', `Loaded Wan 2.1 preset: "${preset.name}" (${preset.badge})`);
+    onAddLog('INFO', `Loaded ${videoEngine === 'wan22' ? 'Wan 2.2' : 'Wan 2.1'} preset: "${preset.name}" (${preset.badge})`);
   };
 
   const runDiagnostic = async () => {
     setDiagLoading(true);
-    onAddLog('INFO', 'Running Wan 2.1 & ComfyUI capability audit...');
+    onAddLog('INFO', 'Running Wan 2.1 / Wan 2.2 & ComfyUI capability audit...');
     try {
-      const res = await fetch('/api/capabilities', { cache: 'no-store' });
+      const res = await fetch('/api/diagnostics/wan21', { cache: 'no-store' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      const videoCapability = (data.capabilities || data).capabilities?.find?.((c:any) => c.id === 'wan-video') || (data.capabilities || []).find?.((c:any) => c.id === 'wan-video');
-      const models = Array.isArray(data.models) ? data.models : [];
-      const wanModel = models.find((m:any) => /wan2\.1.*1\.3b/i.test(String(m.fileName || m.name || '')));
-      const report = { comfyResponsive: Boolean(data.comfy?.connected ?? data.runtime?.comfyConnected ?? data.comfyConnected ?? true), modelFound: Boolean(wanModel || videoCapability), modelFile: wanModel?.fileName || 'Wan2_1-T2V-1_3B_fp8_e4m3fn.safetensors', capability: videoCapability, recommendations: [] };
+      const wan22 = data.engines?.['wan22-ti2v-5b'];
+      const wan21 = data.engines?.['wan21-i2v-14b'];
+      const report = { comfyResponsive: Boolean(data.comfyResponsive), modelFound: Boolean(wan22?.available || wan21?.available), modelFile: wan22?.backbone?.path || wan21?.backbone?.path || 'Wan2.2-TI2V-5B-Q4_K_M.gguf', engines: data.engines, recommendations: data.recommendations || [] };
       setDiagResult(report);
       if (report.comfyResponsive && report.modelFound) {
-        onAddLog('INFO', 'Diagnostic PASSED: ComfyUI is responsive and the active Wan 2.1 video capability is available.');
+        onAddLog('INFO', `Diagnostic PASSED: ComfyUI is responsive. Wan 2.2 TI2V-5B=${Boolean(wan22?.available)}, Wan 2.1 I2V-14B=${Boolean(wan21?.available)}.`);
       } else {
-        onAddLog('WARN', `Diagnostic WARN: ComfyUI responsive: ${report.comfyResponsive}, Wan 2.1 available: ${report.modelFound}`);
+        onAddLog('WARN', `Diagnostic WARN: ComfyUI responsive: ${report.comfyResponsive}, Wan engines available: ${report.modelFound}`);
       }
     } catch (err: any) {
       onAddLog('WARN', `Diagnostic failed: ${err?.message || err}`);
@@ -313,11 +330,12 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
   };
 
   // Keep custom frames in sync with selected duration option unless overridden
-  const activeDurationOpt = durationOptions.find(d => d.seconds === selectedDuration) || durationOptions[2];
+  const activeDurationList = videoEngine === 'wan22' ? wan22DurationOptions : durationOptions;
+  const activeDurationOpt = activeDurationList.find(d => d.seconds === selectedDuration) || activeDurationList[0];
 
   useEffect(() => {
     setCustomFrames(activeDurationOpt.frames);
-  }, [selectedDuration]);
+  }, [selectedDuration, videoEngine]);
 
   const handleResolutionChange = (resLabel: string) => {
     setResolution(resLabel);
@@ -343,7 +361,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
       onAddLog('INFO', 'Selected Wan 2.2 TI2V 5B GGUF · 896×512×17 base · tiled VAE · exact 1280×704 delivery.');
     } else {
       setSelectedDuration(2); setCustomFrames(33); setFps(16); setResolution('832 × 480 · 16:9 Native'); setWidth(832); setHeight(480); setSteps(18); setCfgScale(3.0); setActivePresetId('native_2s');
-      onAddLog('INFO', 'Selected Wan 2.1 1.3B baseline video engine.');
+      onAddLog('INFO', 'Selected Wan 2.1 1.3B baseline video engine. The separately registered Wan 2.1 I2V 14B GGUF remains available to the diagnostic/capability layer and will be exposed through the I2V input lane.');
     }
   };
 
@@ -357,7 +375,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
     const currentSeed = isRandomSeed ? Math.floor(Math.random() * 1000000000) : seed;
     if (isRandomSeed) setSeed(currentSeed);
 
-    // Auto-Flush Hook: ensure GPU memory is cleared before loading Wan 2.1 tensors
+    // Auto-Flush Hook: ensure GPU memory is cleared before loading Wan video tensors
     onAddLog('INFO', 'Auto-Flush Hook: Pre-clearing ComfyUI VRAM cache (/free) before loading video model...');
     await fetch('/api/comfy/clear-cache', {
       method: 'POST',
@@ -365,7 +383,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
       body: JSON.stringify({ unload_models: false, free_memory: true })
     }).catch(() => null);
 
-    onAddLog('INFO', `Submitting ${videoEngine === 'wan22' ? 'Wan 2.2 TI2V 5B' : 'Wan 2.1'} Video Job: "${activePrompt.slice(0, 45)}..." (${customFrames} frames @ ${fps}fps, ${width}×${height})`);
+    onAddLog('INFO', `Submitting ${videoEngine === 'wan22' ? 'Wan 2.2 TI2V 5B Q4_K_M' : 'Wan 2.1'} Video Job: "${activePrompt.slice(0, 45)}..." (${customFrames} frames @ ${fps}fps, ${width}×${height})`);
 
     const resultJob = await startJob(selectedWorkflowId, {
       prompt: activePrompt,
@@ -478,7 +496,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">Wan Video Generator</h2>
               <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                {videoEngine === 'wan22' ? 'Wan 2.2 TI2V 5B GGUF · 8GB' : 'Wan 2.1 1.3B · 8GB'}
+                {videoEngine === 'wan22' ? 'Wan 2.2 TI2V 5B Q4_K_M · 896×512' : 'Wan 2.1 1.3B · 8GB'}
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
@@ -533,7 +551,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <div className="flex items-center gap-2 font-bold text-slate-200">
               <Gauge className="w-4 h-4 text-emerald-400" />
-              WAN 2.1 & COMFYUI DIAGNOSTIC REPORT
+              WAN 2.1 / WAN 2.2 & COMFYUI DIAGNOSTIC REPORT
             </div>
             <button
               type="button"
@@ -552,17 +570,17 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
             </div>
 
             <div className={`p-2.5 rounded border ${diagResult.modelFound ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
-              <div className="text-[10px] text-slate-400">WAN 2.1 MODEL FILE</div>
+              <div className="text-[10px] text-slate-400">WAN 2.2 / WAN 2.1 ENGINES</div>
               <div className="font-bold">{diagResult.modelFound ? '✅ FOUND ON DISK' : '⚠️ NOT DETECTED'}</div>
               <div className="text-[9px] text-slate-400 mt-1">
-                {diagResult.modelPathsChecked?.find((p: any) => p.exists)?.sizeGB ? `${diagResult.modelPathsChecked.find((p: any) => p.exists).sizeGB} GB` : 'Check checkpoints folder'}
+                {diagResult.engines?.['wan22-ti2v-5b']?.available ? 'Wan 2.2 TI2V-5B validated' : diagResult.engines?.['wan21-i2v-14b']?.available ? 'Wan 2.1 I2V-14B validated' : 'Check Wan model paths'}
               </div>
             </div>
 
             <div className={`p-2.5 rounded border ${diagResult.modelInComfyObjectInfo ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-slate-900 border-slate-800 text-slate-400'}`}>
-              <div className="text-[10px] text-slate-400">COMFYUI RECOGNITION</div>
-              <div className="font-bold">{diagResult.modelInComfyObjectInfo ? '✅ RECOGNIZED IN LIST' : 'ℹ️ CHECKPOINT NOT LOADED'}</div>
-              <div className="text-[9px] text-slate-400 mt-1">{diagResult.comfyCheckpointsList?.length || 0} checkpoints in ComfyUI list</div>
+              <div className="text-[10px] text-slate-400">WAN ENGINE VALIDATION</div>
+              <div className="font-bold">{diagResult.engines?.['wan22-ti2v-5b']?.available ? '✅ WAN 2.2 READY' : diagResult.engines?.['wan21-i2v-14b']?.available ? '✅ WAN 2.1 READY' : '⚠️ WAN ENGINE NOT READY'}</div>
+              <div className="text-[9px] text-slate-400 mt-1">{diagResult.engines?.['wan22-ti2v-5b']?.expectedWorkflow || 'workflows/wan_video_22.json'}</div>
             </div>
           </div>
 
@@ -585,7 +603,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
                 <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400" />
-                Wan 2.1 Parameter Presets
+                Wan Parameter Presets
               </label>
               <span className="text-[10px] font-mono text-slate-500">Auto-configures Motion, Duration & Sampling</span>
             </div>
@@ -678,7 +696,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ onAddLog, logs = [], t
             <div className="space-y-2">
               <label className="text-[11px] font-semibold text-slate-300">Target Duration · 16 fps base</label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {durationOptions.map((opt) => {
+                {(videoEngine === 'wan22' ? wan22DurationOptions : durationOptions).map((opt) => {
                   const active = selectedDuration === opt.seconds;
                   const spill = opt.tier === 'spillover';
                   return (
