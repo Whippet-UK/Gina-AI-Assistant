@@ -287,7 +287,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
   return (
     <div className="min-h-screen bg-[#020617] text-[#c9d1d9] font-sans">
       <VRAMWarningToast telemetry={telemetry} thresholdMB={7168} isCooldownActive={isCooldownActive} cooldownRemainingSec={cooldownRemainingSec} onClearCache={() => handleClearCache(false)} />
-      <div className="w-full max-w-[100vw] px-4 sm:px-5 lg:px-6 xl:px-8 py-4 min-w-0 overflow-x-clip">
+      <div className="w-full min-h-[100vh] min-w-0 overflow-x-clip">
         <Header onRunAudit={handleRunAudit} onOpenManifest={() => setIsManifestOpen(true)} onOpenTelemetry={() => setIsTelemetryOpen(true)} isAuditing={isAuditing} activeSavePoint={activeSavePoint} />
         <div className="sticky top-0 z-20 mt-4 mb-6 -mx-2 px-2 py-2 bg-[#020617]/95 backdrop-blur border-y border-slate-800/80">
           <nav className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
@@ -349,7 +349,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
           </nav>
         </div>
 
-        <OuterWorkspaceFrame className="mb-6">
+        <div className="w-full min-w-0">
         <main className={`${activeView === 'studio' ? 'block' : 'hidden'}`}>
           <StudioWorkspace telemetry={telemetry} logs={logs} onAddLog={logWithOomCheck} onClearCache={() => handleClearCache(false, true)} />
         </main>
@@ -408,9 +408,9 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
           <WorkspaceErrorBoundary name="System"><SystemHub telemetry={telemetry} logs={logs} activeSavePoint={activeSavePoint} logWithOomCheck={logWithOomCheck} handleClearCache={handleClearCache} onClearLogs={() => setLogs([])} /></WorkspaceErrorBoundary>
         </main>
 
-        </OuterWorkspaceFrame>
+        </div>
 
-        <footer className="border-t border-slate-800 mt-8 pt-4 pb-6 text-center text-[10px] text-slate-600">Gina AI Factory v{APP_VERSION} · Local-first · ComfyUI + llama.cpp execution backends · C:\Gina_AI\</footer>
+        <footer className="mt-4 pb-4 text-center text-[10px] text-slate-600">Gina AI Factory v{APP_VERSION} · Local-first · ComfyUI + llama.cpp execution backends · C:\Gina_AI\</footer>
       </div>
       {isTelemetryOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
