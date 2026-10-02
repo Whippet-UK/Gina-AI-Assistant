@@ -10,9 +10,12 @@ set "COMFY_MAIN=%GINA_ROOT%\ComfyUI_windows_portable\ComfyUI\main.py"
 set "PACKAGE=%GINA_ROOT%\package.json"
 
 REM Force FULL factory boot — never inherit leftover Development Mode flags
+REM CRITICAL: pin dashboard to 3200 so launcher + browser never miss a PORT=4000 .env
 set "GINA_BOOT_MODE=factory"
 set "GINA_DEV_MODE="
 set "GINA_SKIP_HEAVY_INIT="
+set "PORT=3200"
+set "GINA_SERVER_PORT=3200"
 
 cd /d "%GINA_ROOT%"
 
@@ -47,15 +50,11 @@ if errorlevel 1 (
   exit /b 1
 )
 
-REM Repair the local Bark + XTTS environment in the same interpreter that
-REM runs the Gina server. This prevents the recurring "No module named TTS/bark"
-REM mismatch where packages were installed into a different Python.
 echo [0/5] Checking Gina voice engine Python dependencies...
 python scripts\setup_audio_deps.py
 if errorlevel 1 (
   echo [WARN] Voice engine dependency audit failed.
   echo        Gina will still start, but the VOICE GENERATOR may remain offline.
-  echo        Run 'repair_audio.bat' to automatically repair audio dependencies.
 ) else (
   echo    Voice engine Python environment is READY.
 )
@@ -65,8 +64,7 @@ if not exist "%GINA_ROOT%\node_modules\jszip\package.json" (
   echo    jszip is missing. Installing dependencies from package.json...
   call npm.cmd install --no-audit --no-fund
   if errorlevel 1 (
-    echo [ERROR] npm install failed. Gina cannot start without its dependencies.
-    echo         Check your internet connection and npm output above.
+    echo [ERROR] npm install failed.
     pause
     exit /b 1
   )
@@ -79,10 +77,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "$c=Get-NetTCPConnection 
 if errorlevel 1 (
   start "ComfyUI - Gina Backend" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && %GINA_ROOT%\g_env\Scripts\python.exe ComfyUI_windows_portable\ComfyUI\main.py --lowvram --fp8_e4m3fn-text-enc --disable-xformers --preview-method latent2rgb --disable-cuda-malloc"
 ) else (
-  echo    ComfyUI is already running; reusing it.
+  echo    ComfyUI already running; reusing it.
 )
 
-echo.
 echo [2/4] Waiting for ComfyUI at %COMFY_URL% ...
 set /a COMFY_TRIES=0
 :WAIT_COMFY
@@ -91,7 +88,6 @@ if not errorlevel 1 goto COMFY_READY
 set /a COMFY_TRIES+=1
 if !COMFY_TRIES! GEQ 90 (
   echo [ERROR] ComfyUI did not become ready within 180 seconds.
-  echo Check the ComfyUI console window for the actual error.
   pause
   exit /b 1
 )
@@ -109,7 +105,7 @@ if errorlevel 1 (
   if exist "%GINA_ROOT%\scripts\Start_ACEStep_Singing_API.bat" (
     start "ACE-Step 1.5 - Singing API" cmd /k call "%GINA_ROOT%\scripts\Start_ACEStep_Singing_API.bat"
   ) else if exist "%GINA_ROOT%\third_party\ACE-Step-1.5\pyproject.toml" (
-    start "ACE-Step 1.5 - Singing API" cmd /k "cd /d \"%GINA_ROOT%\third_party\ACE-Step-1.5\" && set \"ACESTEP_API_HOST=127.0.0.1\" & set \"ACESTEP_API_PORT=8101\" & set \"ACESTEP_INIT_SERVICE=true\" & set \"ACESTEP_CONFIG_PATH=acestep-v15-turbo\" & set \"ACESTEP_LM_MODEL_PATH=acestep-5Hz-lm-0.6B\" & set \"ACESTEP_LM_BACKEND=pt\" & set \"ACESTEP_OFFLOAD_TO_CPU=true\" & set \"ACESTEP_OFFLOAD_DIT_TO_CPU=true\" & set \"ACESTEP_INIT_LLM=true\" & set \"ACESTEP_LM_OFFLOAD_TO_CPU=true\" & uv run --no-sync acestep-api --host 127.0.0.1 --port 8101 --init-llm --lm-model-path acestep-5Hz-lm-0.6B"
+    start "ACE-Step 1.5 - Singing API" cmd /k "cd /d \"%GINA_ROOT%\third_party\ACE-Step-1.5\" && set ACESTEP_API_HOST=127.0.0.1 && set ACESTEP_API_PORT=8101 && uv run --no-sync acestep-api --host 127.0.0.1 --port 8101"
   ) else (
     echo    ACE-Step is not installed. Singing remains unavailable until setup is run.
   )
@@ -118,28 +114,25 @@ if errorlevel 1 (
 )
 
 echo.
-
 echo [4/5] Starting Gina Dashboard (FULL FACTORY MODE)...
 
-REM 1) Kill any Node Gina server from this install (tsx / server.ts / dist server)
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$root=[regex]::Escape($env:GINA_ROOT); $procs=Get-CimInstance Win32_Process -Filter \"Name = 'node.exe'\" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and $_.CommandLine -match $root -and $_.CommandLine -match 'server\.ts|dist\\server\.cjs|tsx' }; foreach($p in $procs){ try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch {} }"
+REM Kill Node servers from this install
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$root=[regex]::Escape('C:\Gina_AI'); $procs=Get-CimInstance Win32_Process -Filter \"Name = 'node.exe'\" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and ($_.CommandLine -match $root -or $_.CommandLine -match 'server\.ts|tsx') }; foreach($p in $procs){ try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch {} }"
 
-REM 2) Kill leftover Development Mode Python static host on 3200
+REM Kill leftover Dev Mode Python static host on 3200
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -Filter \"Name = 'python.exe'\" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and $_.CommandLine -match 'http\.server' -and $_.CommandLine -match '3200' } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch {} }"
 
-timeout /t 1 /nobreak >nul
-
-REM 3) Force-kill ANY process still listening on 3200
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$conns=Get-NetTCPConnection -LocalPort 3200 -State Listen -ErrorAction SilentlyContinue; foreach($c in $conns){ try { Stop-Process -Id $c.OwningProcess -Force -ErrorAction Stop } catch {} }; Start-Sleep -Milliseconds 800; $still=Get-NetTCPConnection -LocalPort 3200 -State Listen -ErrorAction SilentlyContinue; if($still){exit 1}else{exit 0}"
+REM Kill anything still on 3200 or 4000 (stale .env bind)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "foreach($port in 3200,4000){ $conns=Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue; foreach($c in $conns){ try { Stop-Process -Id $c.OwningProcess -Force -ErrorAction Stop } catch {} } }; Start-Sleep -Milliseconds 900; $still=Get-NetTCPConnection -LocalPort 3200 -State Listen -ErrorAction SilentlyContinue; if($still){exit 1}else{exit 0}"
 if errorlevel 1 (
   echo    [ERROR] Port 3200 is still occupied after force-kill.
-  echo    Close the process using 3200 manually (Task Manager), then run this launcher again.
+  echo    Close the process using 3200 in Task Manager, then run this launcher again.
   pause
   exit /b 1
 )
 
-REM 4) Start the real Node/Vite dashboard — explicitly factory mode, no Dev Mode flags
-start "Gina Dashboard" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && set GINA_BOOT_MODE=factory && set GINA_DEV_MODE= && set GINA_SKIP_HEAVY_INIT= && set NODE_OPTIONS=--max-old-space-size=8192 && npm.cmd run dev"
+REM Start Gina — PORT=3200 overrides .env and user environment (root cause of Factory hang)
+start "Gina Dashboard" cmd /k "cd /d %GINA_ROOT% && call g_env\Scripts\activate.bat && set GINA_BOOT_MODE=factory && set GINA_DEV_MODE= && set GINA_SKIP_HEAVY_INIT= && set PORT=3200 && set GINA_SERVER_PORT=3200 && set NODE_OPTIONS=--max-old-space-size=8192 && echo [Gina] Binding to PORT=3200 && npm.cmd run dev"
 
 echo.
 echo [4/5] Waiting for Gina at %GINA_URL% ...
@@ -150,7 +143,8 @@ if not errorlevel 1 goto GINA_READY
 set /a GINA_TRIES+=1
 if !GINA_TRIES! GEQ 90 (
   echo [ERROR] Gina did not become ready within 180 seconds.
-  echo Check the Gina Dashboard console window for the actual error.
+  echo Check the "Gina Dashboard" window for the actual error.
+  echo Expected log line: Running on http://127.0.0.1:3200
   pause
   exit /b 1
 )
@@ -163,14 +157,11 @@ echo    Gina Dashboard is READY.
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $d=(Invoke-WebRequest -Uri '%GINA_URL%/api/version' -UseBasicParsing -TimeoutSec 3).Content | ConvertFrom-Json; Write-Host ('    Dashboard Version: ' + $d.version); } catch { Write-Host '[WARN] Could not verify Gina API version.' }"
 echo.
 
-echo [MusicGen] Checking local MusicGen Medium resolution...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $m=(Invoke-WebRequest -Uri '%GINA_URL%/api/music/status' -UseBasicParsing -TimeoutSec 5).Content | ConvertFrom-Json; $x=$m.availableModels | Where-Object { $_.id -eq 'facebook/musicgen-medium' }; Write-Host ('    Status: cached=' + $x.cached + ' weights=' + $x.hasWeights + ' backend=' + $x.backend); Write-Host ('    Path: ' + $x.managedPath); if($x.resolution.revision){ Write-Host ('    Revision: ' + $x.resolution.revision); }; if($x.resolution.refs){ Write-Host ('    Refs: ' + ($x.resolution.refs -join ', ')); } } catch { Write-Host '[WARN] Could not query MusicGen resolution.' }"
-echo.
 echo [5/5] Starting local Qwen Vision/Code Engine...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $r=Invoke-WebRequest -Method POST -Uri '%GINA_URL%/api/llm/start' -UseBasicParsing -TimeoutSec 180; if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 300) { exit 0 } else { exit 1 } } catch { exit 1 }"
 if errorlevel 1 (
-  echo [WARN] Gina started, but Local LLM could not be started automatically.
-  echo       You can start the engine from LOCAL AI in the dashboard.
+  echo [WARN] Local LLM could not be started automatically.
+  echo       Start it from LOCAL AI in the dashboard.
   goto GINA_READY_FINAL
 )
 
@@ -181,7 +172,6 @@ if not errorlevel 1 goto LLM_READY
 set /a LLM_TRIES+=1
 if !LLM_TRIES! GEQ 120 (
   echo [WARN] Local LLM did not become ready within 240 seconds.
-  echo       Gina is still available; check LOCAL AI and the Gina terminal.
   goto GINA_READY_FINAL
 )
 echo    Local LLM is loading... ^(!LLM_TRIES!^)
@@ -189,7 +179,7 @@ timeout /t 2 /nobreak >nul
 goto WAIT_LLM
 
 :LLM_READY
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $d=(Invoke-WebRequest -Uri '%GINA_URL%/api/llm/status' -UseBasicParsing -TimeoutSec 3).Content | ConvertFrom-Json; Write-Host ('    Local LLM Engine READY: ' + $d.modelName + ' (Multimodal=' + $d.multimodal + ', Layers=' + $d.gpuLayers + ')'); } catch { Write-Host '    Local LLM Engine is READY.' }"
+echo    Local LLM Engine is READY.
 echo.
 
 :GINA_READY_FINAL
@@ -199,15 +189,13 @@ echo ==========================================
 echo.
 echo ComfyUI:   %COMFY_URL%
 echo Gina:      %GINA_URL%
-echo Local LLM: http://127.0.0.1:8080 (Qwen 2.5-VL 7B / Qwen Coder 7B)
-echo SDXL:      Juggernaut-XL v9 Photorealism (models/checkpoints/)
-echo FLUX:      FLUX.1-Schnell GGUF Q4_K_S (models/unet/)
 echo Boot mode: factory (full stack)
+echo Port pin:  3200 (overrides .env)
 echo.
 echo Opening Gina in your default browser...
 start "" "%GINA_URL%/?startup=ready"
 echo.
 echo Startup completed successfully.
-echo You can close this launcher window.
+echo You can close this launcher window. Keep "Gina Dashboard" open.
 pause
 endlocal
