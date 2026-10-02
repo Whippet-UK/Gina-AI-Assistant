@@ -41,6 +41,11 @@ const knownModels: ModelSeed[] = [
   { id:'qwen-coder-7b', fileName:'qwen2.5-coder-7b-instruct-q5_k_m.gguf', category:'other', relative:'..\\models\\llm\\qwen2.5-coder-7b-instruct-q5_k_m.gguf', purpose:'Qwen Coder 7B local text-only coding model via llama.cpp CUDA', enabled:true },
   { id:'qwen3.5-9b', fileName:'Qwen3.5-9B-Q4_K_M.gguf', category:'other', relative:'..\\models\\llm\\Qwen3.5-9B-Q4_K_M.gguf', purpose:'Qwen3.5 9B local multimodal model via llama.cpp CUDA', enabled:true },
   { id:'qwen3.5-mmproj', fileName:'mmproj-BF16.gguf', category:'projector', relative:'..\\models\\llm\\mmproj-BF16.gguf', purpose:'Qwen3.5-9B matched BF16 vision projector (4096 hidden size)', enabled:true },
+  { id:'wan22-ti2v-5b-gguf', fileName:'Wan2.2-TI2V-5B-Q4_K_M.gguf', category:'unet', relative:'models/unet/Wan2.2-TI2V-5B-Q4_K_M.gguf', purpose:'Wan 2.2 TI2V 5B GGUF video backbone', enabled:true },
+  { id:'wan21-i2v-14b-gguf', fileName:'wan2.1-i2v-14b-480p-Q4_K_M.gguf', category:'unet', relative:'models/unet/wan2.1-i2v-14b-480p-Q4_K_M.gguf', purpose:'Wan 2.1 I2V 14B 480p GGUF video backbone', enabled:true },
+  { id:'wan-umt5-fp8-scaled', fileName:'umt5_xxl_fp8_e4m3fn_scaled.safetensors', category:'text-encoder', relative:'models/clip/umt5_xxl_fp8_e4m3fn_scaled.safetensors', purpose:'Shared Wan UMT5 XXL scaled FP8 text encoder', enabled:true },
+  { id:'wan22-vae', fileName:'wan2.2_vae.safetensors', category:'vae', relative:'models/vae/wan2.2_vae.safetensors', purpose:'Wan 2.2 VAE', enabled:true },
+  { id:'wan21-vae', fileName:'wan2.1_vae.safetensors', category:'vae', relative:'models/vae/wan2.1_vae.safetensors', purpose:'Wan 2.1 VAE', enabled:true },
 ];
 
 function classifyModel(fileName:string, rel:string): {category:LocalModel['category']; purpose:string; id:string; note?:string}|null {
@@ -51,11 +56,15 @@ function classifyModel(fileName:string, rel:string): {category:LocalModel['categ
   }
   if (n.includes('juggernaut') || (n.includes('xl') && r.includes('checkpoints'))) return {category:'checkpoint',purpose:'SDXL photorealistic image generation model',id:`sdxl-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`};
   if (n.includes('flux') && (n.includes('gguf') || r.includes('unet'))) return {category:'unet',purpose:'FLUX image generation model',id:`flux-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`};
-  if (n.includes('wan2.1') || n.includes('wan_2.1')) return {category:'other',purpose:'Wan 2.1 video generation model',id:`wan-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`};
+  if (n.includes('wan2.2') || n.includes('wan_2.2')) return {category:'unet',purpose:'Wan 2.2 video generation model',id:`wan22-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`};
+  if (n.includes('wan2.1') || n.includes('wan_2.1')) return {category:n.includes('gguf') ? 'unet' : 'other',purpose:'Wan 2.1 video generation model',id:`wan21-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`};
   if (n.includes('rife')) return {category:'other',purpose:'RIFE optical-flow interpolation model',id:`rife-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`};
   if (n.includes('clip_l')) return {category:'clip',purpose:'CLIP-L text encoder',id:'clip-l-discovered'};
+  if (n.includes('umt5') && n.includes('fp8')) return {category:'text-encoder',purpose:'Wan UMT5 XXL scaled FP8 text encoder',id:'wan-umt5-fp8-discovered'};
   if (n.includes('t5xxl')) return {category:'clip',purpose:'T5-XXL text encoder',id:'t5xxl-discovered'};
-  if (n === 'ae.safetensors' || n.includes('vae')) return {category:'vae',purpose:'VAE decoder/autoencoder',id:`vae-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`};
+  if (n === 'wan2.2_vae.safetensors') return {category:'vae',purpose:'Wan 2.2 VAE',id:'wan22-vae-discovered'};
+  if (n === 'wan2.1_vae.safetensors' || n === 'wan_2.1_vae.safetensors') return {category:'vae',purpose:'Wan 2.1 VAE',id:'wan21-vae-discovered'};
+  if (n === 'ae.safetensors' || n.includes('vae')) return {category:'vae',purpose:'VAE decoder/autoencoder',id:`vae-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`}
   if (n.includes('qwen3.5') && n.endsWith('.gguf')) return {category:'other',purpose:'Qwen3.5 9B local multimodal LLM model',id:`qwen3.5-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`};
   if (n.includes('qwen') && n.endsWith('.gguf')) return {category:'other',purpose:'Qwen 2.5-VL local LLM model (Full CUDA 35+ t/s)',id:`qwen-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`};
   if (n.includes('qwen') && n.includes('coder') && n.endsWith('.gguf')) return {category:'other',purpose:'Qwen Coder 7B local text-only coding model',id:`qwen-coder-${fileName.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`};
@@ -121,7 +130,12 @@ export function buildCapabilities(args:{hardware:any; comfy:any; models:LocalMod
   const qwenCoder=has('qwen-coder-7b')||hasLike(/qwen.*coder.*7b.*\.gguf$/i);
   const qwen35=has('qwen3.5-9b')||hasLike(/qwen3\.5.*9b.*\.gguf$/i);
   const qwen35Mmproj=has('qwen3.5-mmproj')||hasLike(/mmproj-bf16.*\.gguf$/i)||hasLike(/qwen3\.5.*mmproj.*\.gguf$/i);
-  const wan=hasLike(/wan2\.1.*1\.3b|wan_2\.1_vae|umt5_xxl_fp8_e4m3fn_scaled/i);
+  const wan21I2v14b=has('wan21-i2v-14b-gguf')||hasLike(/wan2\.1-i2v-14b-480p.*\.gguf/i);
+  const wan22Ti2v5b=has('wan22-ti2v-5b-gguf')||hasLike(/wan2\.2.*ti2v.*5b.*\.gguf/i);
+  const wanUmt5=has('wan-umt5-fp8-scaled')||hasLike(/umt5_xxl_fp8_e4m3fn_scaled/i);
+  const wan21Vae=has('wan21-vae')||hasLike(/wan[_\.]?2\.1_vae/i);
+  const wan22Vae=has('wan22-vae')||hasLike(/wan2\.2_vae/i);
+  const wan=hasLike(/wan2\.1.*1\.3b|wan_2\.1_vae|umt5_xxl_fp8_e4m3fn_scaled/i) || wan21I2v14b || wan22Ti2v5b;
   const qwenMmproj=has('qwen-mmproj')||hasLike(/(qwen.*mmproj|mmproj-f16).*\.gguf$/i);
   const juggernaut=has('juggernaut-xl-v9')||hasLike(/juggernaut.*\.safetensors$/i)||hasLike(/xl.*photo.*\.safetensors$/i);
   const workflowSummaries=args.workflows.map(w=>({id:w.id,fileName:w.fileName,nodeCount:w.nodeCount,capabilities:w.capabilities||[]}));
@@ -156,7 +170,7 @@ export function buildCapabilities(args:{hardware:any; comfy:any; models:LocalMod
       ggufReady:hasLike(/\.gguf$/i),
       gifStudioReady:comfyOnline&&(gifW.length>0||vhsNode),
       rifeReady:comfyOnline&&(rife||rifeNode),
-      wanReady:comfyOnline&&(wan&&wanW.length>0 || hasNode('UNETLoader','EmptyHunyuanLatentVideo')),
+      wanReady:comfyOnline && (wan22Ti2v5b || wan21I2v14b || (wan&&wanW.length>0) || hasNode('UNETLoader','UnetLoaderGGUF','EmptyHunyuanLatentVideo')),
       nodeGraphSyncReady:comfyOnline&&graph
     },
     generators:[
@@ -164,7 +178,7 @@ export function buildCapabilities(args:{hardware:any; comfy:any; models:LocalMod
       {id:'flux-dev-image',label:'FLUX.1 Dev Q4_K_M',type:'image',status:flux&&imageW.length?'validated':flux?'installed':'unavailable',workflowIds:imageW.filter((id:string)=>/flux/i.test(id)),modelIds:['flux-dev-gguf','clip-l','t5xxl-fp8'],notes:['Optional FLUX.1 Dev text-in-image lane using T5-XXL FP8.']},
       {id:'qwen-local-vl',label:'Qwen 2.5-VL 7B Vision-Language Engine',type:'llm',status:qwen&&qwenMmproj?'validated':qwen?'installed':'unavailable',workflowIds:[],modelIds:args.models.filter(m=>m.exists&&/qwen|f16/i.test(m.fileName)).map(m=>m.id),notes:[qwenMmproj?'Full GPU offload (28 layers), ~35-45 t/s generation with mmproj-F16 vision projector.':'Qwen text model detected; vision projector not detected.']},      {id:'qwen-coder-local',label:'Qwen Coder 7B Local Coding Engine',type:'llm',status:qwenCoder?'validated':'unavailable',workflowIds:[],modelIds:args.models.filter(m=>m.exists&&/qwen.*coder/i.test(m.fileName)).map(m=>m.id),notes:['Text-only coding profile; mmproj is not mounted in Coder Mode.']},
       {id:'qwen3.5-local',label:'Qwen3.5 9B General + Vision Engine',type:'llm',status:qwen35&&qwen35Mmproj?'validated':qwen35?'installed':'unavailable',workflowIds:[],modelIds:args.models.filter(m=>m.exists&&(/qwen3\.5/i.test(m.fileName)||/mmproj-bf16/i.test(m.fileName)||/qwen3\.5.*mmproj/i.test(m.fileName))).map(m=>m.id),notes:['Q4_K_M model; vision is validated only when the model-matched mmproj-BF16.gguf (4096 hidden size) is present. The Qwen 2.5-VL-only mmproj-F16.gguf (3584) is ignored for this engine.']},
-      {id:'wan-video',label:'Wan 2.1 1.3B Native Video',type:'video',status:wan&&wanW.length?'validated':wan?'installed':'unavailable',workflowIds:wanW,modelIds:args.models.filter(m=>m.exists&&/wan2\.1|wan_2\.1|umt5_xxl/i.test(m.fileName)).map(m=>m.id),notes:['Native ComfyUI Wan 2.1 workflow with local UMT5 and Wan VAE.']},
+      {id:'wan-video',label:'Wan Video · Selectable Wan 2.2 TI2V-5B / Wan 2.1 I2V-14B',type:'video',status:(wan22Ti2v5b||wan21I2v14b||wan)&&wanW.length?'validated':(wan22Ti2v5b||wan21I2v14b||wan)?'installed':'unavailable',workflowIds:wanW,modelIds:args.models.filter(m=>m.exists&&/wan2\.1|wan2\.2|umt5_xxl|wan.*vae/i.test(m.fileName)).map(m=>m.id),notes:['Interchangeable local Wan backbones share the UMT5 text encoder but use their matching VAE.','Wan 2.2 TI2V-5B GGUF and Wan 2.1 I2V-14B GGUF are discovered from the configured models/unet directory.']}
       {id:'rife-motion',label:'RIFE Motion Studio',type:'video',status:(rife||rifeNode)?'validated':'unavailable',workflowIds:gifW,modelIds:args.models.filter(m=>m.exists&&/rife/i.test(m.fileName)).map(m=>m.id),notes:[rife||rifeNode?'RIFE runtime node/model detected locally.':'No RIFE runtime detected.']},
       {id:'gif-studio',label:'GIF Studio · VHS + RIFE',type:'video',status:gifW.length?'validated':comfyOnline?'installed':'unavailable',workflowIds:gifW,modelIds:[],notes:['Trim, optional interpolation, ping-pong looping and GIF/MP4 export.']}
     ],controls
