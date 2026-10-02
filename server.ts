@@ -71,7 +71,7 @@ import imageProcessorRouter from './server/tools/imageProcessor.ts'; // 👈 ADD
 
 const app = express();
 const isWin = process.platform === "win32";
-const PORT = isWin ? 3200 : (process.env.PORT ? parseInt(process.env.PORT, 10) : 3000);
+const PORT = isWin ? Number(process.env.GINA_SERVER_PORT || process.env.PORT || 3200) : (process.env.PORT ? parseInt(process.env.PORT, 10) : 3000);
 const HOST = process.env.HOST || (isWin ? "127.0.0.1" : "0.0.0.0");
 const COMFY_URL = process.env.COMFY_URL || "http://127.0.0.1:8188";
 const GINA_ROOT = process.env.GINA_ROOT || (isWin ? "C:\\Gina_AI" : process.cwd());
@@ -7080,7 +7080,7 @@ app.use((error: any, req: express.Request, res: express.Response, _next: express
 });
 
 async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && process.env.GINA_BACKEND_NO_VITE !== "1") {
     const vite = await createViteServer({
       configFile: path.resolve(process.cwd(), "vite.config.ts"),
       server: {
@@ -7122,7 +7122,7 @@ async function startServer() {
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (process.env.GINA_BACKEND_NO_VITE !== "1") {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (_req, res) => {
@@ -7154,7 +7154,7 @@ async function startServer() {
   // Gina's launcher and browser use a single canonical port. Falling back to a
   // different port can leave the browser pointed at a stale Gina instance.
   const candidatePorts = isWin
-    ? [3200, 3201, 3202, 3203, 3204, 3205, 3206, 3207, 3208, 3209, 3210]
+    ? [PORT, ...Array.from({ length: 10 }, (_, index) => PORT + index + 1)]
     : [PORT];
   let lastError: NodeJS.ErrnoException | undefined;
 
