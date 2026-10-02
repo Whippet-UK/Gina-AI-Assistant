@@ -3325,7 +3325,7 @@ app.get('/api/comfy/diagnostics', async (_req, res) => {
 
 app.get("/api/diagnostics/wan21", async (_req, res) => {
   try {
-    const result = await runWanDiagnostic();
+    const result = await runWanVideoDiagnostic();
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error?.message || "Failed to execute Wan 2.1 diagnostic" });
