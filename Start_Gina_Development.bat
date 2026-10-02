@@ -2,7 +2,8 @@
 setlocal EnableExtensions EnableDelayedExpansion
 title Gina AI Development Mode
 set "GINA_ROOT=C:\Gina_AI"
-set "GINA_ENV=%GINA_ROOT%\g_env\Scripts\activate.bat"
+set "GINA_PYTHON=%GINA_ROOT%\g_env\Scripts\python.exe"
+set "GINA_DIST=%GINA_ROOT%\dist"
 set "MODE=%~1"
 if /I "%MODE%"=="" set "MODE=dashboard-only"
 
@@ -21,9 +22,19 @@ cd /d "%GINA_ROOT%" || (
   exit /b 1
 )
 
-if not exist "%GINA_ENV%" (
-  echo [ERROR] Gina Python environment not found:
-  echo         %GINA_ENV%
+if not exist "%GINA_PYTHON%" (
+  echo [ERROR] Gina Python runtime not found:
+  echo         %GINA_PYTHON%
+  echo.
+  pause
+  exit /b 1
+)
+
+if not exist "%GINA_DIST%\index.html" (
+  echo [ERROR] Built Gina dashboard not found:
+  echo         %GINA_DIST%\index.html
+  echo [ERROR] Development Mode serves the existing build only and does not start Node.js/Vite.
+  echo [ERROR] Build the dashboard once with the normal development/build workflow, then retry.
   echo.
   pause
   exit /b 1
@@ -54,25 +65,18 @@ if /I "%MODE%"=="dashboard-comfy" (
   )
 )
 
-echo [DEV] Starting the backend-free Development Mode dashboard.
-echo [DEV] server.ts and the Gina backend will NOT be started.
+echo [DEV] Starting the static Development Mode dashboard.
+echo [DEV] Node.js, Vite, tsx and server.ts will NOT be started.
+echo [DEV] Serving the existing dist build with Python only.
 echo [DEV] Dashboard will open automatically at http://127.0.0.1:3200.
 echo.
 
->> "%GINA_ROOT%\logs\gina-development-startup.log" echo [DEV] Starting backend-free dashboard host.
+>> "%GINA_ROOT%\logs\gina-development-startup.log" echo [DEV] Starting static dashboard host with Python.
 
 rem Open the dashboard once the lightweight host is listening.
 start "" /b powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "$deadline=(Get-Date).AddSeconds(45); while((Get-Date) -lt $deadline){ try{ $c=New-Object Net.Sockets.TcpClient; $a=$c.BeginConnect('127.0.0.1',3200,$null,$null); if($a.AsyncWaitHandle.WaitOne(300) -and $c.Connected){$c.Close(); Start-Process 'http://127.0.0.1:3200'; exit 0}; $c.Close() }catch{}; Start-Sleep -Milliseconds 250 }; exit 1"
 
-where npm >nul 2>&1
-if errorlevel 1 (
-  echo [ERROR] npm/Node.js is required only to run the dashboard host.
-  pause
-  exit /b 1
-)
-
-call npx --no-install vite --host 127.0.0.1 --port 3200
-
+"%GINA_PYTHON%" -m http.server 3200 --bind 127.0.0.1 --directory "%GINA_DIST%"
 set "GINA_EXIT_CODE=%ERRORLEVEL%"
 
 echo.
