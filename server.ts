@@ -53,6 +53,7 @@ import { LocalRagEngine } from "./server/rag/LocalRagEngine.js";
 import { KnowledgeBase } from "./server/knowledge/KnowledgeBase.js";
 import { WebResearchService } from "./server/agent/WebResearchService.js";
 import { WebBrowserService } from "./server/agent/WebBrowserService.js";
+import { DevelopmentModeService } from "./server/DevelopmentModeService.js";
 import { LocalBrowserService } from "./server/browser/LocalBrowserService.js";
 import { TemporalFactStore } from "./server/knowledge/TemporalFactStore.js";
 import { StreamInjectService } from "./server/streaminject/StreamInjectService.js";
@@ -113,6 +114,7 @@ const localRag = new LocalRagEngine(GINA_ROOT);
 const knowledgeBase = new KnowledgeBase(GINA_ROOT);
 const webResearch = new WebResearchService();
 const webBrowser = new WebBrowserService(webResearch);
+const developmentMode = new DevelopmentModeService(GINA_ROOT);
 const localBrowser = new LocalBrowserService();
 const temporalFacts = new TemporalFactStore(GINA_ROOT);
 const autonomousResearch = new AutonomousResearchEngine(webResearch, localRag);
@@ -2314,6 +2316,36 @@ async function saveLocalPdf(requestedPath: string, text: string): Promise<{ path
   }
   return { path: target, bytes: stat.size, pages: Math.max(1, Math.ceil(sanitizePdfText(text).split('\n').length / 48)) };
 }
+
+app.get('/api/dev/state', async (_req,res) => {
+  try { res.json(await developmentMode.getState()); }
+  catch (error:any) { res.status(500).json({ok:false,error:error?.message||'Unable to read Development Mode state.'}); }
+});
+app.get('/api/dev/startups', async (_req,res) => {
+  try { res.json({ok:true,startups:await developmentMode.listStartupBats()}); }
+  catch (error:any) { res.status(500).json({ok:false,error:error?.message||'Unable to enumerate startup BATs.'}); }
+});
+app.post('/api/dev/run-bat', async (req,res) => {
+  try {
+    const relativePath=String(req.body?.relativePath||'');
+    const result=await developmentMode.runBatch(relativePath);
+    res.status(202).json({ok:true,...result,message:'Started '+result.title+'.'});
+  } catch(error:any) { res.status(400).json({ok:false,error:error?.message||'Unable to start BAT.'}); }
+});
+app.post('/api/dev/terminate', async (req,res) => {
+  try { res.json(await developmentMode.terminate(String(req.body?.id||''))); }
+  catch(error:any) { res.status(400).json({ok:false,error:error?.message||'Unable to terminate managed terminal.'}); }
+});
+app.post('/api/dev/close-terminals', async (_req,res) => {
+  try { res.json(await developmentMode.closeTerminals()); }
+  catch(error:any) { res.status(400).json({ok:false,error:error?.message||'Unable to close managed terminals.'}); }
+});
+app.post('/api/dev/restart', async (req,res) => {
+  try {
+    const mode=String(req.body?.mode||'dashboard-only') as any;
+    res.json(await developmentMode.restart(mode));
+  } catch(error:any) { res.status(400).json({ok:false,error:error?.message||'Unable to restart Gina.'}); }
+});
 
 app.get("/api/llm/models", async (_req, res) => {
   try {
@@ -7068,12 +7100,21 @@ async function startServer() {
     });
   }
 
-  await sanitizeLocalFluxDevWorkflow();
-  await workflowRegistry.scan();
-  comfyWebSocket.start();
-  startComfyWatchdog();
-  aida64Telemetry.start();
-  if (process.env.GINA_KNOWLEDGE_WATCHER !== 'false') {
+  const bootMode = developmentMode.getBootMode();
+  const coldBoot = bootMode === 'dashboard-only' || bootMode === 'manual';
+  const startComfyServices = !coldBoot && (bootMode === 'dashboard-comfy' || bootMode === 'factory');
+  if (coldBoot) {
+    console.log('[Development Mode] Cold dashboard boot: skipping workflow scan, ComfyUI orchestration, AIDA64 startup and knowledge reindex.');
+  } else {
+    await sanitizeLocalFluxDevWorkflow();
+    await workflowRegistry.scan();
+  }
+  if (startComfyServices) {
+    comfyWebSocket.start();
+    startComfyWatchdog();
+    aida64Telemetry.start();
+  }
+  if (!coldBoot && process.env.GINA_KNOWLEDGE_WATCHER !== 'false') {
     startKnowledgeWatcher();
     void localRag.reindex(GINA_ROOT).catch((error:any) => recordDashboardError(error?.message || 'Initial knowledge indexing failed', { source:'knowledge-watcher', status:500, stack:error?.stack }));
   }
