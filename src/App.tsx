@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Image, Video, Film, FolderOpen, ListChecks, Settings2, Gauge, Bot, Music, AudioLines } from 'lucide-react';
+import { Image, Video, Film, FolderOpen, ListChecks, Settings2, Gauge, Bot, Music, AudioLines, Wrench } from 'lucide-react';
 import { Header } from './components/Header';
 import { ProjectStateProvider, useProjectState } from './context/ProjectStateContext';
 import { GenerationJobProvider, useGenerationJob } from './context/GenerationJobContext';
@@ -13,6 +13,7 @@ import { UnifiedAudioDeck } from './components/UnifiedAudioDeck';
 import { Aida64Studio } from './components/Aida64Studio';
 import { AiStudioSuite } from './components/AiStudioSuite';
 import { SystemHub } from './components/SystemHub';
+import { DevelopmentModePanel } from './components/DevelopmentModePanel';
 import { RestoreManifestModal } from './components/RestoreManifestModal';
 import { VRAMWarningToast } from './components/VRAMWarningToast';
 import { WorkspaceErrorBoundary } from './components/WorkspaceErrorBoundary';
@@ -189,7 +190,7 @@ interface AppContentProps {
 }
 
 function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCache, handleRunAudit, isAuditing, activeSavePoint, isCooldownActive, cooldownRemainingSec, isManifestOpen, setIsManifestOpen }: AppContentProps) {
-  const [activeView, setActiveView] = useState<'studio' | 'create' | 'video' | 'gif' | 'streaminject' | 'music' | 'audio' | 'aida64' | 'shorts' | 'assets' | 'jobs' | 'system'>('studio');
+  const [activeView, setActiveView] = useState<'studio' | 'create' | 'video' | 'gif' | 'streaminject' | 'music' | 'audio' | 'aida64' | 'shorts' | 'assets' | 'jobs' | 'system' | 'dev'>('studio');
   const [isTelemetryOpen, setIsTelemetryOpen] = useState<boolean>(false);
   const { job, outputLoading } = useGenerationJob();
   const { updatePromptStudio } = useProjectState();
@@ -210,7 +211,8 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
     { id: 'shorts' as const, label: 'SHORTS', icon: Film, isGenerating: false },
     { id: 'assets' as const, label: 'ASSETS', icon: FolderOpen, isGenerating: false },
     { id: 'jobs' as const, label: 'JOBS', icon: ListChecks, isGenerating: isJobActive },
-    { id: 'system' as const, label: 'SYSTEM', icon: Settings2, isGenerating: false }
+    { id: 'system' as const, label: 'SYSTEM', icon: Settings2, isGenerating: false },
+    { id: 'dev' as const, label: 'DEV MODE', icon: Wrench, isGenerating: false }
   ], [isJobActive, isImageJob, isVideoJob, job?.workflowId]);
 
   // Persistent customizable tab ordering
@@ -224,7 +226,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
     } catch {}
     return [
       'studio', 'create', 'video', 'gif', 'streaminject', 'music', 'audio',
-      'aida64', 'shorts', 'assets', 'jobs', 'system'
+      'aida64', 'shorts', 'assets', 'jobs', 'system', 'dev'
     ];
   });
 
@@ -264,7 +266,7 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
   };
 
   const handleResetTabOrder = () => {
-    const def = ['studio', 'create', 'video', 'gif', 'streaminject', 'music', 'audio', 'aida64', 'shorts', 'assets', 'jobs', 'llm', 'dashboard', 'system'];
+    const def = ['studio', 'create', 'video', 'gif', 'streaminject', 'music', 'audio', 'aida64', 'shorts', 'assets', 'jobs', 'system', 'dev'];
     setTabOrder(def);
     try { localStorage.removeItem('gina_nav_tab_order'); } catch {}
   };
@@ -406,6 +408,10 @@ function AppContent({ telemetry, logs, setLogs, logWithOomCheck, handleClearCach
 
         <main className={`space-y-5 ${activeView === 'system' ? 'block' : 'hidden'}`}>
           <WorkspaceErrorBoundary name="System"><SystemHub telemetry={telemetry} logs={logs} activeSavePoint={activeSavePoint} logWithOomCheck={logWithOomCheck} handleClearCache={handleClearCache} onClearLogs={() => setLogs([])} /></WorkspaceErrorBoundary>
+        </main>
+
+        <main className={`space-y-5 ${activeView === 'dev' ? 'block' : 'hidden'}`}>
+          <WorkspaceErrorBoundary name="Development Mode"><DevelopmentModePanel /></WorkspaceErrorBoundary>
         </main>
 
         </div>
