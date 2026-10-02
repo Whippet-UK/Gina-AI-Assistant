@@ -43,19 +43,19 @@ export const SystemHub: React.FC<SystemHubProps> = ({
   const ActiveIcon = active.icon;
 
   return (
-    <div className="space-y-4">
-      <div>
-        <div className="text-[10px] uppercase tracking-[0.25em] text-emerald-400 font-bold">Local engine control center</div>
-        <div className="flex items-end justify-between gap-4 mt-1">
+    <div className="gina-suite-page space-y-3">
+      <div className="gina-suite-titleblock">
+        <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Local engine</div>
+        <div className="flex items-end justify-between gap-4 mt-0.5">
           <div>
-            <h1 className="text-2xl md:text-3xl font-semibold text-slate-100">System</h1>
-            <p className="text-xs text-slate-500 mt-1">Live local engine inventory: current models, ComfyUI nodes/workflows, generators, telemetry, VRAM controls, safeguards and diagnostics.</p>
+            <h1 className="text-xl font-semibold text-slate-100">System</h1>
+            <p className="text-[11px] text-slate-500 mt-0.5">Models, ComfyUI, telemetry, safeguards, logs — local only.</p>
           </div>
-          <div className="hidden lg:flex items-center gap-2 text-[9px] font-mono text-slate-600 uppercase"><HardDrive className="w-3.5 h-3.5" /> Local only</div>
+          <div className="hidden lg:flex items-center gap-2 text-[9px] font-mono text-slate-600"><HardDrive className="w-3.5 h-3.5" /> local</div>
         </div>
       </div>
 
-      <div className="bg-slate-950 border border-slate-800 rounded-lg p-1.5 shadow-md">
+      <div className="gina-suite-tabs">
         <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar">
           {tabs.map(tab => {
             const Icon = tab.icon;
@@ -66,7 +66,7 @@ export const SystemHub: React.FC<SystemHubProps> = ({
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 title={tab.description}
-                className={`shrink-0 flex items-center gap-2 px-3 py-2 rounded-md border text-[10px] font-bold tracking-widest transition-colors cursor-pointer ${selected ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-transparent hover:text-slate-200 hover:bg-slate-900 hover:border-slate-800'}`}
+                className={`gina-grok-chip shrink-0 flex items-center gap-2 px-3 py-1.5 text-[10px] font-semibold tracking-wide transition-colors cursor-pointer ${selected ? 'is-active' : ''}`}
               >
                 <Icon className="w-3.5 h-3.5" />
                 <span>{tab.label}</span>
@@ -83,7 +83,7 @@ export const SystemHub: React.FC<SystemHubProps> = ({
         <span>{active.description}</span>
       </div>
 
-      <div className="min-w-0">
+      <div className="min-w-0 gina-suite-panel">
         {activeTab === 'overview' && (
           <div className="space-y-5">
             <LocalProjectStateBar />
@@ -123,12 +123,12 @@ export const SystemHub: React.FC<SystemHubProps> = ({
 
         {activeTab === 'logs' && (
           <div className="space-y-5">
-            <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="gina-suite-panel flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div className="flex items-start gap-3">
-                <div className="p-2 rounded-md bg-rose-500/10 border border-rose-500/20"><FileText className="w-4 h-4 text-rose-400" /></div>
+                <FileText className="w-4 h-4 text-rose-400 mt-0.5" />
                 <div>
                   <div className="text-xs font-bold text-slate-200 uppercase tracking-widest">Diagnostic logs</div>
-                  <div className="text-[10px] text-slate-500 mt-1">Use <strong className="text-slate-300">COPY ERRORS</strong> in the log panel when you need to send me a failure report.</div>
+                  <div className="text-[10px] text-slate-500 mt-1">Use COPY ERRORS in the log panel when you need a failure report.</div>
                 </div>
               </div>
               <div className="text-[9px] font-mono text-slate-600">SERVER · COMFYUI · TELEMETRY</div>
