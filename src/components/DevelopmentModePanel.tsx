@@ -1,29 +1,127 @@
-import React,{useCallback,useEffect,useState} from 'react';
-import {Power,RefreshCw,Square,Terminal,Wrench,XCircle} from 'lucide-react';
-type BootMode='dashboard-only'|'dashboard-comfy'|'factory'|'manual';
-interface TerminalRow{id:string;pid:number;title:string;relativePath:string;startedAt:string;alive:boolean}
-interface DevState{developmentMode:boolean;bootMode:BootMode;platform:string;dashboardOnly:boolean;heavyInitialization:boolean;terminals:TerminalRow[]}
-interface BatRow{relativePath:string;title:string}
-const MODES:Array<{id:BootMode;label:string;detail:string}>= [
- {id:'dashboard-only',label:'Dashboard Only',detail:'Gina UI/API only. No ComfyUI orchestration, AIDA startup or knowledge reindex.'},
- {id:'dashboard-comfy',label:'Dashboard + ComfyUI',detail:'Open Gina immediately while ComfyUI starts separately.'},
- {id:'manual',label:'Manual / Cold',detail:'Keep automatic background services off; start individual BATs yourself.'},
- {id:'factory',label:'Full Factory',detail:'Use the normal Start_Factory.bat startup sequence.'}
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { RefreshCw, Square, Terminal, Wrench } from 'lucide-react';
+
+type BootMode = 'dashboard-only' | 'dashboard-comfy' | 'factory' | 'manual';
+interface TerminalRow { id: string; pid: number; title: string; relativePath: string; startedAt: string; alive: boolean; }
+interface DevState { developmentMode: boolean; bootMode: BootMode; platform: string; dashboardOnly: boolean; heavyInitialization: boolean; terminals: TerminalRow[]; }
+interface BatRow { relativePath: string; title: string; }
+interface ConsoleLine { id: string; ts: string; level: 'INFO' | 'WARN' | 'OK' | 'CMD'; msg: string; }
+
+const MODES: Array<{ id: BootMode; label: string; detail: string }> = [
+  { id: 'dashboard-only', label: 'Dashboard Only', detail: 'Gina UI/API only. No ComfyUI, AIDA, or knowledge reindex.' },
+  { id: 'dashboard-comfy', label: 'Dashboard + ComfyUI', detail: 'Open Gina immediately while ComfyUI starts separately.' },
+  { id: 'manual', label: 'Manual / Cold', detail: 'Keep automatic background services off; start BATs yourself.' },
+  { id: 'factory', label: 'Full Factory', detail: 'Normal Start_Factory.bat full stack.' },
 ];
-export const DevelopmentModePanel:React.FC=()=>{
- const [state,setState]=useState<DevState|null>(null); const [bats,setBats]=useState<BatRow[]>([]); const [selectedMode,setSelectedMode]=useState<BootMode>('dashboard-only'); const [busy,setBusy]=useState<string|null>(null); const [message,setMessage]=useState('');
- const load=useCallback(async()=>{try{const [a,b]=await Promise.all([fetch('/api/dev/state',{cache:'no-store'}),fetch('/api/dev/startups',{cache:'no-store'})]);const s=await a.json();const x=await b.json();if(a.ok){setState(s);setSelectedMode(s.bootMode||'dashboard-only')}if(b.ok)setBats(Array.isArray(x.startups)?x.startups:[])}catch(e:any){setMessage(e?.message||'Development Mode API unavailable.')}},[]);
- useEffect(()=>{void load();const t=setInterval(()=>void load(),3000);return()=>clearInterval(t)},[load]);
- const post=async(url:string,body?:any)=>{setBusy(url);setMessage('');try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'HTTP '+r.status);setMessage(d.message||(d.restarting?'Restarting Gina in '+selectedMode+' mode...':'Command completed.'));await load()}catch(e:any){setMessage(e?.message||'Command failed.')}finally{setBusy(null)}};
- return <section className="min-h-[calc(100vh-180px)] bg-slate-950 text-slate-200 border border-slate-800 rounded-xl overflow-hidden">
-  <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 px-5 py-4 border-b border-slate-800"><div><div className="flex items-center gap-2 text-emerald-400 text-[10px] font-bold tracking-[0.25em] uppercase"><Wrench className="w-4 h-4"/> Development Mode</div><h1 className="text-xl font-semibold text-slate-100 mt-1">Boot & Process Control</h1><p className="text-xs text-slate-500 mt-1">Open Gina without waiting for heavy ML weights, model caches or database/index initialization.</p></div><div className="flex items-center gap-2 text-[10px] font-mono"><span className="px-2 py-1 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-300">MODE: {state?.bootMode||'loading'}</span><button type="button" onClick={()=>void load()} className="p-2 rounded border border-slate-700 hover:border-slate-500" title="Refresh"><RefreshCw className="w-3.5 h-3.5"/></button></div></header>
-  <div className="grid xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]"><div className="p-5 space-y-5 border-r border-slate-800">
-   <div><div className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">Boot mode</div><div className="grid md:grid-cols-2 gap-2">{MODES.map(mode=><button key={mode.id} type="button" onClick={()=>setSelectedMode(mode.id)} className={'text-left p-3 rounded-lg border transition-colors '+(selectedMode===mode.id?'border-emerald-500/60 bg-emerald-500/10':'border-slate-800 bg-slate-900/40 hover:border-slate-700')}><div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-200">{mode.label}</span>{selectedMode===mode.id&&<Power className="w-3.5 h-3.5 text-emerald-400"/>}</div><p className="text-[10px] text-slate-500 mt-1 leading-relaxed">{mode.detail}</p></button>)}</div></div>
-   <div className="flex flex-wrap gap-2"><button type="button" disabled={busy!==null} onClick={()=>void post('/api/dev/restart',{mode:selectedMode})} className="px-3 py-2 rounded bg-emerald-500 text-slate-950 text-[10px] font-bold uppercase flex items-center gap-2 disabled:opacity-50"><RefreshCw className="w-3.5 h-3.5"/> Restart in Selected Mode</button><button type="button" disabled={busy!==null} onClick={()=>void post('/api/dev/close-terminals')} className="px-3 py-2 rounded bg-rose-500/10 text-rose-300 border border-rose-500/30 text-[10px] font-bold uppercase flex items-center gap-2 disabled:opacity-50"><XCircle className="w-3.5 h-3.5"/> Close Managed Terminals</button></div>
-   <div className="border-t border-slate-800 pt-4"><div className="flex items-center justify-between mb-2"><div className="text-[10px] uppercase tracking-widest text-slate-500">Runtime state</div><span className={state?.heavyInitialization?'text-amber-300':'text-emerald-300'}>{state?.heavyInitialization?'HEAVY BOOT ENABLED':'COLD / LIGHT BOOT'}</span></div><pre className="text-[10px] leading-5 font-mono text-slate-400 whitespace-pre-wrap">{JSON.stringify({bootMode:state?.bootMode,developmentMode:state?.developmentMode,dashboardOnly:state?.dashboardOnly,platform:state?.platform},null,2)}</pre></div>
-   {message&&<div className="text-[10px] font-mono text-slate-300 border border-slate-800 bg-slate-900/50 p-3 rounded">{message}</div>}
-  </div><div className="p-5 space-y-5">
-   <div><div className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">Managed terminals</div>{state?.terminals?.length?<div className="space-y-2">{state.terminals.map(row=><div key={row.id} className="p-3 rounded-lg border border-slate-800 bg-slate-900/40"><div className="flex items-center justify-between gap-2"><div><div className="text-xs font-bold text-slate-200">{row.title}</div><div className="text-[9px] font-mono text-slate-500">PID {row.pid} · {row.relativePath}</div></div><button type="button" onClick={()=>void post('/api/dev/terminate',{id:row.id})} className="p-2 rounded border border-rose-500/30 text-rose-300 hover:bg-rose-500/10" title="Terminate"><Square className="w-3.5 h-3.5"/></button></div></div>)}</div>:<div className="text-[10px] text-slate-600">No Gina-managed terminals are currently tracked.</div>}</div>
-   <div><div className="flex items-center justify-between mb-2"><div className="text-[10px] uppercase tracking-widest text-slate-500">Startup BATs</div><span className="text-[9px] font-mono text-slate-600">{bats.length} available</span></div><div className="space-y-1 max-h-[430px] overflow-auto">{bats.map(script=><div key={script.relativePath} className="flex items-center gap-2 p-2 rounded border border-slate-900 hover:border-slate-800"><Terminal className="w-3.5 h-3.5 text-slate-500 shrink-0"/><span className="text-[10px] font-mono text-slate-300 truncate flex-1" title={script.relativePath}>{script.relativePath}</span><button type="button" disabled={busy!==null} onClick={()=>void post('/api/dev/run-bat',{relativePath:script.relativePath})} className="px-2 py-1 rounded bg-slate-900 border border-slate-700 text-[9px] font-bold uppercase hover:border-emerald-500/50 disabled:opacity-50">Run</button></div>)}</div></div>
-  </div></div></section>;
+
+function ts() { return new Date().toISOString().slice(11, 23); }
+
+export const DevelopmentModePanel: React.FC = () => {
+  const [state, setState] = useState<DevState | null>(null);
+  const [bats, setBats] = useState<BatRow[]>([]);
+  const [selectedMode, setSelectedMode] = useState<BootMode>('dashboard-only');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [lines, setLines] = useState<ConsoleLine[]>([
+    { id: 'boot', ts: ts(), level: 'INFO', msg: 'Development Mode console ready. Full-bleed text stream — no frames.' },
+  ]);
+  const [batFilter, setBatFilter] = useState('');
+  const logRef = useRef<HTMLDivElement>(null);
+
+  const push = useCallback((level: ConsoleLine['level'], msg: string) => {
+    setLines(prev => [...prev.slice(-400), { id: Math.random().toString(36).slice(2, 10), ts: ts(), level, msg }]);
+  }, []);
+
+  const load = useCallback(async () => {
+    try {
+      const [a, b] = await Promise.all([
+        fetch('/api/dev/state', { cache: 'no-store' }),
+        fetch('/api/dev/startups', { cache: 'no-store' }),
+      ]);
+      const s = await a.json().catch(() => ({}));
+      const x = await b.json().catch(() => ({}));
+      if (a.ok) { setState(s); setSelectedMode((s.bootMode as BootMode) || 'dashboard-only'); }
+      else push('WARN', s?.error || `Dev state HTTP ${a.status}`);
+      if (b.ok) setBats(Array.isArray(x.startups) ? x.startups : []);
+    } catch (e: any) {
+      push('WARN', e?.message || 'Development Mode API unavailable.');
+    }
+  }, [push]);
+
+  useEffect(() => { void load(); const t = setInterval(() => void load(), 3000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [lines]);
+
+  const post = async (url: string, body?: any) => {
+    setBusy(url);
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      push('OK', d.message || (d.restarting ? `Restarting Gina in ${selectedMode} mode…` : 'Command completed.'));
+      await load();
+    } catch (e: any) {
+      push('WARN', e?.message || 'Command failed.');
+    } finally { setBusy(null); }
+  };
+
+  const filteredBats = bats.filter(b => {
+    if (!batFilter.trim()) return true;
+    const q = batFilter.toLowerCase();
+    return b.relativePath.toLowerCase().includes(q) || b.title.toLowerCase().includes(q);
+  });
+
+  const levelColor = (level: ConsoleLine['level']) => {
+    if (level === 'WARN') return 'text-amber-400';
+    if (level === 'OK') return 'text-emerald-400';
+    if (level === 'CMD') return 'text-sky-400';
+    return 'text-slate-400';
+  };
+
+  return (
+    <div className="gina-console-shell">
+      <div className="gina-console-toolbar">
+        <div className="flex items-center gap-2 text-emerald-400 text-[10px] font-bold tracking-[0.2em] uppercase">
+          <Wrench className="w-3.5 h-3.5" /> Development Mode
+        </div>
+        <select value={selectedMode} onChange={e => setSelectedMode(e.target.value as BootMode)} className="gina-console-select" title="Boot mode">
+          {MODES.map(m => (<option key={m.id} value={m.id}>{m.label}</option>))}
+        </select>
+        <span className="text-[10px] font-mono text-slate-500">{state?.heavyInitialization ? 'HEAVY' : 'LIGHT'} · {state?.bootMode || '…'} · {state?.platform || '…'}</span>
+        <div className="ml-auto flex items-center gap-3">
+          <button type="button" disabled={busy !== null} onClick={() => { push('CMD', `Restart in ${selectedMode}`); void post('/api/dev/restart', { mode: selectedMode }); }} className="gina-console-action text-emerald-300"><RefreshCw className="w-3 h-3" /> Restart</button>
+          <button type="button" disabled={busy !== null} onClick={() => { push('CMD', 'Close managed terminals'); void post('/api/dev/close-terminals'); }} className="gina-console-action text-rose-300"><Square className="w-3 h-3" /> Close terminals</button>
+          <button type="button" onClick={() => void load()} className="gina-console-action text-slate-400"><RefreshCw className="w-3 h-3" /></button>
+        </div>
+      </div>
+      <div className="gina-console-meta text-[10px] text-slate-500 font-mono px-3 py-1">
+        {MODES.find(m => m.id === selectedMode)?.detail}
+        {state?.terminals?.length ? ` · ${state.terminals.length} managed terminal(s)` : ' · no managed terminals'}
+      </div>
+      <div ref={logRef} className="gina-console-stream font-mono text-[11px] leading-5">
+        {lines.map(l => (
+          <div key={l.id} className="gina-console-line">
+            <span className="text-slate-600">{l.ts}</span>{' '}
+            <span className={levelColor(l.level)}>[{l.level}]</span>{' '}
+            <span className="text-slate-300">{l.msg}</span>
+          </div>
+        ))}
+        {(state?.terminals || []).map(row => (
+          <div key={row.id} className="gina-console-line">
+            <span className="text-slate-600">{ts()}</span>{' '}
+            <span className="text-sky-400">[TERM]</span>{' '}
+            <span className="text-slate-300">{row.title} PID {row.pid} · {row.relativePath} · {row.alive ? 'alive' : 'dead'}</span>{' '}
+            <button type="button" className="text-rose-400 hover:text-rose-300 underline ml-2" onClick={() => { push('CMD', `Terminate ${row.title}`); void post('/api/dev/terminate', { id: row.id }); }}>kill</button>
+          </div>
+        ))}
+      </div>
+      <div className="gina-console-toolbar border-t-0">
+        <Terminal className="w-3.5 h-3.5 text-slate-500" />
+        <input value={batFilter} onChange={e => setBatFilter(e.target.value)} placeholder="Search startup scripts…" className="gina-console-search" />
+        <select className="gina-console-select flex-1 max-w-md" defaultValue="" onChange={e => { const path = e.target.value; if (!path) return; push('CMD', `Run ${path}`); void post('/api/dev/run-bat', { relativePath: path }); e.target.value = ''; }}>
+          <option value="">Run startup BAT…</option>
+          {filteredBats.map(script => (<option key={script.relativePath} value={script.relativePath}>{script.relativePath}</option>))}
+        </select>
+        <span className="text-[9px] font-mono text-slate-600">{filteredBats.length}/{bats.length}</span>
+      </div>
+    </div>
+  );
 };
