@@ -5820,6 +5820,32 @@ app.post("/api/jobs", async (req, res) => {
   // Do NOT gate on localLlm engine or mmproj — Qwen is unrelated to FLUX generation.
   let textImageAudit: any = null;
   try {
+    if (workflowId === 'wan_video_22') {
+      const frameCount = Math.max(17, Math.min(21, Math.round(Number(parameters.frames) || 17)));
+      const outFps = Math.max(1, Math.min(30, Math.round(Number(parameters.fps) || 16)));
+      const baseWidth = 896;
+      const baseHeight = 512;
+      for (const node of Object.values(workflow) as any[]) {
+        if (!node?.inputs || typeof node.inputs !== 'object') continue;
+        const cls = String(node.class_type || '');
+        if (/UnetLoaderGGUF/i.test(cls) && Object.prototype.hasOwnProperty.call(node.inputs, 'unet_name')) node.inputs.unet_name = String(parameters.model || parameters.unet_name || 'Wan2.2-TI2V-5B-Q4_K_M.gguf');
+        if (/Wan22ImageToVideoLatent/i.test(cls)) {
+          if (Object.prototype.hasOwnProperty.call(node.inputs, 'length')) node.inputs.length = frameCount;
+          if (Object.prototype.hasOwnProperty.call(node.inputs, 'width')) node.inputs.width = Number(parameters.width) || baseWidth;
+          if (Object.prototype.hasOwnProperty.call(node.inputs, 'height')) node.inputs.height = Number(parameters.height) || baseHeight;
+        }
+        if (/VHS_VideoCombine|SaveAnimatedWEBP|SaveAnimatedPNG|CreateVideo/i.test(cls)) {
+          if (Object.prototype.hasOwnProperty.call(node.inputs, 'frame_rate')) node.inputs.frame_rate = outFps;
+          if (Object.prototype.hasOwnProperty.call(node.inputs, 'fps')) node.inputs.fps = outFps;
+        }
+        if (/^ImageScale$/i.test(cls)) {
+          if (Object.prototype.hasOwnProperty.call(node.inputs, 'width')) node.inputs.width = 1280;
+          if (Object.prototype.hasOwnProperty.call(node.inputs, 'height')) node.inputs.height = 704;
+        }
+      }
+      console.log(`[Wan 2.2] job frames=${frameCount} fps=${outFps} size=${parameters.width || baseWidth}x${parameters.height || baseHeight} delivery=1280x704`);
+    }
+
     if (workflowId === 'flux_lite_image') {
       textImageAudit = validateTextToImageWorkflow(definition, workflowId);
     }
