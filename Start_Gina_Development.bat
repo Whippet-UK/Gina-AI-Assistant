@@ -47,7 +47,7 @@ echo  GINA AI DEVELOPMENT MODE
 echo ============================================================
 echo  Mode: %MODE%
 echo  Root: %GINA_ROOT%
-echo  Server: http://127.0.0.1:3200
+echo  Dashboard: http://127.0.0.1:3200
 echo  Log: %GINA_ROOT%\logs\gina-development-startup.log
 echo ============================================================
 echo.
@@ -82,17 +82,18 @@ if /I "%MODE%"=="dashboard-comfy" (
   )
 )
 
-echo [DEV] Starting Gina directly with the local TSX runtime.
-echo [DEV] The dashboard launcher is hidden; this window remains the Gina server log.
-echo [DEV] Dashboard will open automatically at http://127.0.0.1:3200 when ready.
+echo [DEV] Starting the lightweight Development Mode dashboard host.
+echo [DEV] Gina backend will run separately on port 3201.
+echo [DEV] Dashboard will open automatically at http://127.0.0.1:3200.
 echo.
 
->> "%GINA_ROOT%\logs\gina-development-startup.log" echo [DEV] Starting local TSX runtime.
+>> "%GINA_ROOT%\logs\gina-development-startup.log" echo [DEV] Starting lightweight dashboard host.
 
-rem Use a hidden PowerShell watcher so Development Mode does NOT open a second console window.
-start "" /b powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "$deadline=(Get-Date).AddSeconds(90); while((Get-Date) -lt $deadline){ foreach($p in 3200..3210){ try{ $c=New-Object Net.Sockets.TcpClient; $a=$c.BeginConnect('127.0.0.1',$p,$null,$null); if($a.AsyncWaitHandle.WaitOne(300) -and $c.Connected){$c.Close(); Start-Process ('http://127.0.0.1:'+$p); exit 0}; $c.Close() }catch{} }; Start-Sleep -Milliseconds 500 }; exit 1"
+rem Open the dashboard once the lightweight host is listening.
+start "" /b powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command "$deadline=(Get-Date).AddSeconds(45); while((Get-Date) -lt $deadline){ try{ $c=New-Object Net.Sockets.TcpClient; $a=$c.BeginConnect('127.0.0.1',3200,$null,$null); if($a.AsyncWaitHandle.WaitOne(300) -and $c.Connected){$c.Close(); Start-Process 'http://127.0.0.1:3200'; exit 0}; $c.Close() }catch{}; Start-Sleep -Milliseconds 250 }; exit 1"
 
-call "%GINA_ROOT%\node_modules\.bin\tsx.cmd" "%GINA_ROOT%\server.ts"
+call "%GINA_ROOT%\node_modules\.bin\tsx.cmd" "%GINA_ROOT%\server\DevelopmentModeDashboard.ts"
+
 set "GINA_EXIT_CODE=%ERRORLEVEL%"
 
 echo.
