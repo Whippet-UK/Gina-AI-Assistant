@@ -107,10 +107,21 @@
     }
   },
   "10": {
-    "class_type": "ImageScale",
+    "class_type": "ImageScaleBy",
     "inputs": {
       "image": [
         "9",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "scale_by": 1.42
+    }
+  },
+  "11": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "10",
         0
       ],
       "upscale_method": "lanczos",
@@ -119,11 +130,11 @@
       "crop": "disabled"
     }
   },
-  "11": {
+  "12": {
     "class_type": "VHS_VideoCombine",
     "inputs": {
       "images": [
-        "10",
+        "11",
         0
       ],
       "frame_rate": 16,
