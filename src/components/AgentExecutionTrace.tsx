@@ -100,6 +100,8 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
   height,
 }) => {
   const streamRef = useRef<HTMLDivElement>(null);
+  const isUserScrolledUpRef = useRef(false);
+  const [showScrollResume, setShowScrollResume] = React.useState(false);
   const activeTelemetry = runtimeTelemetry || telemetry;
 
   const lines = useMemo(() => {
@@ -138,21 +140,50 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
     return out;
   }, [studioMode, agentStatus, agentActivity, executionLog, activeTelemetry, hardwareTelemetry]);
 
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distFromBottom > 35) {
+      isUserScrolledUpRef.current = true;
+      setShowScrollResume(true);
+    } else {
+      isUserScrolledUpRef.current = false;
+      setShowScrollResume(false);
+    }
+  };
+
+  const scrollToBottom = (smooth = false) => {
+    if (streamRef.current) {
+      streamRef.current.scrollTo({
+        top: streamRef.current.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto'
+      });
+      isUserScrolledUpRef.current = false;
+      setShowScrollResume(false);
+    }
+  };
+
   useEffect(() => {
-    if (streamRef.current) streamRef.current.scrollTop = streamRef.current.scrollHeight;
+    if (!isUserScrolledUpRef.current && streamRef.current) {
+      streamRef.current.scrollTop = streamRef.current.scrollHeight;
+    }
   }, [lines]);
 
   const style: React.CSSProperties = height && height > 80 ? { height, minHeight: height } : { minHeight: 160, maxHeight: 420 };
 
   return (
-    <div className="gina-console-shell w-full" style={style}>
+    <div className="gina-console-shell w-full relative" style={style}>
       <div className="gina-console-toolbar">
         <span className="text-[10px] font-bold tracking-[0.2em] text-emerald-400 uppercase">Agent execution</span>
         <span className={`text-[10px] font-mono ${statusTone(agentStatus)}`}>● {agentStatus || 'READY'}</span>
         <span className="text-[10px] font-mono text-slate-600">{studioMode}</span>
-        <button type="button" onClick={onClear} className="ml-auto gina-console-action text-slate-500 hover:text-rose-300" title="Clear agent log">clear</button>
+        <button type="button" onClick={onClear} className="ml-auto gina-console-action text-slate-500 hover:text-rose-300 cursor-pointer" title="Clear agent log">clear</button>
       </div>
-      <div ref={streamRef} className="gina-console-stream font-mono text-[11px] leading-5 overflow-y-auto custom-scrollbar flex-1 min-h-0">
+      <div
+        ref={streamRef}
+        onScroll={handleScroll}
+        className="gina-console-stream font-mono text-[11px] leading-5 overflow-y-auto custom-scrollbar flex-1 min-h-0"
+      >
         {lines.map((line) => (
           <div
             key={line.key}
@@ -169,6 +200,15 @@ export const AgentExecutionTrace: React.FC<AgentExecutionTraceProps> = ({
           </div>
         ))}
       </div>
+      {showScrollResume && (
+        <button
+          type="button"
+          onClick={() => scrollToBottom(true)}
+          className="absolute bottom-2 right-3 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-500/90 hover:bg-emerald-400 text-slate-950 text-[10px] font-mono font-bold shadow-lg shadow-emerald-950/50 backdrop-blur transition-all cursor-pointer animate-pulse"
+        >
+          <span>Scroll paused · Jump to bottom ↓</span>
+        </button>
+      )}
     </div>
   );
 };

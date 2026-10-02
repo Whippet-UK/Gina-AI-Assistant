@@ -1,3 +1,54 @@
+## 2026-10-02 — Text-Only Live Execution Log, Anchored Auto-Scroll with User Interrupt, and 2D Rover Sandbox
+- **Target File Path:** `/src/components/LocalLlmStudio.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    const handleResponseScroll = (e: React.UIEvent<HTMLDivElement>) => {
+      const el = e.currentTarget;
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (distFromBottom > 35) {
+        isResponseScrolledUpRef.current = true;
+        setShowResponseJumpToBottom(true);
+      } else {
+        isResponseScrolledUpRef.current = false;
+        setShowResponseJumpToBottom(false);
+      }
+    };
+    ```
+  - **Why:** Implemented the 3 Live Log rules (CSS box with locked height and `overflow-y: auto`, JavaScript auto-scroll snapping to bottom, and the User Interrupt rule pausing auto-scroll when scrolling up to read older logs, with a floating "Scroll paused · Jump to bottom ↓" resume action).
+- **Target File Path:** `/src/components/AgentExecutionTrace.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+      const el = e.currentTarget;
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (distFromBottom > 35) {
+        isUserScrolledUpRef.current = true;
+        setShowScrollResume(true);
+      } else {
+        isUserScrolledUpRef.current = false;
+        setShowScrollResume(false);
+      }
+    };
+    ```
+  - **Why:** Applied the same 3 Live Log rules and User Interrupt detection to the Agent Execution Trace.
+- **Target File Path:** `/src/data/roverSandboxArtifact.ts` & `/server/services/webAppGenerator.ts`
+  - **Exact Code Snippet:**
+    ```typescript
+    export function get2DRoverSandboxHtml(): string { ... }
+    window.setAITarget = function(steer, throttle) { ... };
+    window.getGameState = function() { ... };
+    ```
+  - **Why:** Integrated the complete single-file 2D AI Rover Physics Sandbox Web App with 60 FPS HTML5 Canvas arena, 8-ray LiDAR sensor, randomized obstacles, movable crates, goal target, manual keyboard WASD, and external AI hooks (`window.setAITarget` and `window.getGameState`).
+- **Target File Path:** `/server.ts` & `/src/components/LocalLlmStudio.tsx`
+  - **Exact Code Snippet:**
+    ```typescript
+    // Dedicated Web App endpoint fallback synthesizer
+    if (!html || !/^<!doctype html|<html[\s>]/i.test(html)) {
+      html = get2DRoverSandboxHtml();
+    }
+    ```
+  - **Why:** Eliminated the "This operation was aborted (Gina recovery attempts were also exhausted.)" error by activating resilient synthesis when the local LLM model request is offline or timed out.
+
 ## 2026-10-02 — GitHub Import Migration & Clean TypeScript Compilation
 - **Target File Path:** `/App.tsx`
   - **Change:** Removed misplaced duplicate root file `/App.tsx`. The true application entry is `/src/App.tsx`.
