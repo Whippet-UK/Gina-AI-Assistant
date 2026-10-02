@@ -6,8 +6,9 @@ Gina is local-first, but the autonomous agent can now use the public internet to
 
 - `GINA_WEB_ACCESS=true` (default): enables web search and public-page retrieval.
 - `GINA_WEB_ACCESS=false`: disables all internet access from the Gina web-research tools.
-- `BRAVE_SEARCH_API_KEY=<key>`: optional. When present, Gina uses Brave Search API first and falls back to DuckDuckGo if unavailable.
-- Without a Brave key, Gina uses DuckDuckGo's public HTML search endpoint.
+- `TAVILY_API_KEY=<key>`: primary search provider. Store it only in `C:\\Gina_AI\\.env`; never place the real key in source control.
+- When `TAVILY_API_KEY` is configured, Gina uses Tavily Search API for `web_search`/`web_research`.
+- If the key is not configured, the existing DuckDuckGo/Bing public-search fallback remains available so an installation can be bootstrapped before the key is added.
 
 The local Qwen model remains the reasoning engine. Internet results are retrieved by the server and supplied to Qwen as untrusted research data.
 
